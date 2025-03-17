@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   laravel-app:
     image: ${REGISTRY:-localhost}/runarion-app-laravel:${TAG:-latest}
@@ -53,7 +51,9 @@ services:
       DB_NAME: runarion
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD}
-      LLM_API_KEY: ${LLM_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
     networks:
       - runarion-app-network
     depends_on:

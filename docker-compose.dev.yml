@@ -1,0 +1,72 @@
+services:
+  laravel-app:
+    build:
+      context: ./runarion-laravel
+      dockerfile: dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "true"
+      APP_URL: http://localhost:8000
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres-db
+      DB_PORT: 5432
+      DB_DATABASE: runarion
+      DB_USERNAME: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-@kb4r123}
+      PYTHON_SERVICE_URL: http://python-app:5000
+    volumes:
+      - ./runarion-laravel:/var/www/html
+    networks:
+      - runarion-network
+    depends_on:
+      - postgres-db
+
+  python-app:
+    build:
+      context: ./runarion-python
+      dockerfile: dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      ENVIRONMENT: development
+      DB_HOST: postgres-db
+      DB_PORT: 5432
+      DB_NAME: runarion
+      DB_USER: postgres
+      DB_PASSWORD: ${DB_PASSWORD:-@kb4r123}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-your-gemini-api-key-here}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-your-google-api-key-here}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
+    volumes:
+      - ./runarion-python:/app
+    networks:
+      - runarion-network
+    depends_on:
+      - postgres-db
+
+  postgres-db:
+    image: postgres:14
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: runarion
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-@kb4r123}
+    networks:
+      - runarion-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  runarion-network:
+    driver: bridge
+
+volumes:
+  postgres_data: 
