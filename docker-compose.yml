@@ -1,0 +1,90 @@
+version: '3.8'
+
+services:
+  laravel-app:
+    image: ${REGISTRY:-localhost}/runarion-app-laravel:${TAG:-latest}
+    build:
+      context: ./runarion-laravel
+      dockerfile: dockerfile
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+        order: start-first
+      restart_policy:
+        condition: on-failure
+    ports:
+      - "8000:8000"
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_URL: ${APP_URL:-http://localhost}
+      DB_CONNECTION: pgsql
+      DB_HOST: postgres-db
+      DB_PORT: 5432
+      DB_DATABASE: runarion
+      DB_USERNAME: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      PYTHON_SERVICE_URL: http://runarion-python:5000
+    networks:
+      - runarion-app-network
+    depends_on:
+      - postgres-db
+
+  python-app:
+    image: ${REGISTRY:-localhost}/runarion-app-runarion-python:${TAG:-latest}
+    build:
+      context: ./runarion-python
+      dockerfile: dockerfile
+    deploy:
+      replicas: 2
+      update_config:
+        parallelism: 1
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    ports:
+      - "5000:5000"
+    environment:
+      ENVIRONMENT: production
+      DB_HOST: postgres-db
+      DB_PORT: 5432
+      DB_NAME: runarion
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASSWORD: ${DB_PASSWORD}
+      LLM_API_KEY: ${LLM_API_KEY}
+    networks:
+      - runarion-app-network
+    depends_on:
+      - postgres-db
+
+  postgres-db:
+    image: postgres:14
+    deploy:
+      placement:
+        constraints: [node.role == manager]
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: runarion
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+    networks:
+      - runarion-app-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  runarion-app-network:
+    driver: overlay
+    attachable: true
+
+volumes:
+  postgres_data:
+    driver: local
