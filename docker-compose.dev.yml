@@ -41,9 +41,15 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${LARAVEL_MEMORY_LIMIT:-512M}
+          memory: ${LARAVEL_MEMORY_LIMIT:-2048M}
         reservations:
-          memory: ${LARAVEL_MEMORY_RESERVATION:-256M}
+          memory: ${LARAVEL_MEMORY_RESERVATION:-1024M}
+    command: >
+      sh -c "php artisan key:generate --force &&
+             php artisan config:cache &&
+             php artisan route:cache &&
+             php artisan view:cache &&
+             php artisan serve --host=0.0.0.0 --port=8000"
 
   python-app:
     build:
@@ -81,9 +87,9 @@ services:
     deploy:
       resources:
         limits:
-          memory: ${PYTHON_MEMORY_LIMIT:-512M}
+          memory: ${PYTHON_MEMORY_LIMIT:-1024M}
         reservations:
-          memory: ${PYTHON_MEMORY_RESERVATION:-256M}
+          memory: ${PYTHON_MEMORY_RESERVATION:-512M}
 
   postgres-db:
     image: postgres:14
@@ -113,4 +119,4 @@ networks:
     driver: bridge
 
 volumes:
-  postgres_data: 
+  postgres_data:

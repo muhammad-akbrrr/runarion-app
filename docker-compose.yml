@@ -14,9 +14,9 @@ services:
         condition: on-failure
       resources:
         limits:
-          memory: ${LARAVEL_MEMORY_LIMIT:-512M}
+          memory: ${LARAVEL_MEMORY_LIMIT:-2048M}
         reservations:
-          memory: ${LARAVEL_MEMORY_RESERVATION:-256M}
+          memory: ${LARAVEL_MEMORY_RESERVATION:-1024M}
     ports:
       - "8000:8000"
     environment:
@@ -41,7 +41,7 @@ services:
       postgres-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -50,6 +50,12 @@ services:
       options:
         max-size: ${LOG_MAX_SIZE:-10m}
         max-file: ${LOG_MAX_FILE:-3}
+    command: >
+      sh -c "php artisan key:generate --force &&
+             php artisan config:cache &&
+             php artisan route:cache &&
+             php artisan view:cache &&
+             php artisan serve --host=0.0.0.0 --port=8000"
 
   python-app:
     image: ${REGISTRY:-localhost}/runarion-app-runarion-python:${TAG:-latest}
@@ -65,9 +71,9 @@ services:
         condition: on-failure
       resources:
         limits:
-          memory: ${PYTHON_MEMORY_LIMIT:-512M}
+          memory: ${PYTHON_MEMORY_LIMIT:-1024M}
         reservations:
-          memory: ${PYTHON_MEMORY_RESERVATION:-256M}
+          memory: ${PYTHON_MEMORY_RESERVATION:-512M}
     ports:
       - "5000:5000"
     environment:
@@ -86,7 +92,7 @@ services:
       postgres-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/health" ]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -100,7 +106,7 @@ services:
     image: postgres:14
     deploy:
       placement:
-        constraints: [node.role == manager]
+        constraints: [ node.role == manager ]
       restart_policy:
         condition: on-failure
       resources:
@@ -117,7 +123,7 @@ services:
     networks:
       - runarion-app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5
