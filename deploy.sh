@@ -15,28 +15,32 @@ if [ "$1" = "dev" ]; then
     
     # Build and start containers
     echo "Building and starting containers..."
-    docker-compose -f docker-compose.dev.yml up -d --build
+    docker compose -f docker-compose.dev.yml up -d --build
     
     # Wait for the database to be ready
     echo "Waiting for database to be ready..."
-    sleep 10
+    until docker compose -f docker-compose.dev.yml exec postgres-db pg_isready -U postgres; do
+        echo "Database is unavailable - sleeping"
+        sleep 1
+    done
+    echo "Database is ready!"
     
     # Generate Laravel application key
     echo "Generating Laravel application key..."
-    docker-compose -f docker-compose.dev.yml exec laravel-app php artisan key:generate
+    docker compose -f docker-compose.dev.yml exec laravel-app php artisan key:generate
     
     # Run Laravel migrations
     echo "Running Laravel migrations..."
-    docker-compose -f docker-compose.dev.yml exec laravel-app php artisan migrate --force
+    docker compose -f docker-compose.dev.yml exec laravel-app php artisan migrate --force
     
     # Install Laravel frontend dependencies and build assets
     echo "Installing Laravel frontend dependencies..."
-    docker-compose -f docker-compose.dev.yml exec laravel-app npm install
-    docker-compose -f docker-compose.dev.yml exec laravel-app npm run build
+    docker compose -f docker-compose.dev.yml exec laravel-app npm install
+    docker compose -f docker-compose.dev.yml exec laravel-app npm run build
     
     # Set proper permissions
     echo "Setting proper permissions..."
-    docker-compose -f docker-compose.dev.yml exec laravel-app chown -R www-data:www-data storage bootstrap/cache
+    docker compose -f docker-compose.dev.yml exec laravel-app chown -R www-data:www-data storage bootstrap/cache
     
     echo "Development environment is ready!"
     echo "Laravel frontend: http://localhost:8000"
@@ -54,6 +58,13 @@ else
     export GOOGLE_API_KEY=your-llm-api-key
     export OPENAI_API_KEY=your-llm-api-key
     export APP_URL=https://your-domain.com
+
+    # Create Docker secrets for sensitive data
+    echo "Creating Docker secrets..."
+    echo "$DB_PASSWORD" | docker secret create db_password -
+    echo "$GEMINI_API_KEY" | docker secret create gemini_api_key -
+    echo "$GOOGLE_API_KEY" | docker secret create google_api_key -
+    echo "$OPENAI_API_KEY" | docker secret create openai_api_key -
 
     # Build and push Docker images
     echo "Building and pushing Docker images..."
