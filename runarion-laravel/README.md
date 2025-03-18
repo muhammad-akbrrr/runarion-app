@@ -1,65 +1,188 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Runarion Laravel Application
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+## Overview
 
-## About Laravel
+The Laravel component of Runarion provides the web interface and API endpoints for the AI-powered novel generation pipeline. It handles user authentication, story management, and integration with the Python service.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+- User authentication and authorization
+- Story management interface
+- Real-time pipeline status monitoring
+- API integration with Python service
+- Database management for story data
+- File storage for generated content
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Setup and Installation
 
-## Learning Laravel
+### Prerequisites
+- PHP 8.3
+- Composer
+- Node.js and NPM
+- PostgreSQL 14
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+### Installation Steps
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+1. Install PHP dependencies:
+```bash
+cd runarion-laravel
+composer install
+```
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+2. Install Node.js dependencies:
+```bash
+npm install
+```
 
-## Laravel Sponsors
+3. Environment setup:
+```bash
+# Copy environment file
+cp .env.example .env
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+# Generate application key
+php artisan key:generate
+```
 
-### Premium Partners
+4. Configure database in `.env`:
+```
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=runarion
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
+```
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+## Development
 
-## Contributing
+### Starting the Development Server
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+The Laravel application is designed to run within Docker containers. Do not run the development server directly. Instead, use the Docker development script from the root directory:
 
-## Code of Conduct
+```bash
+# From the root directory
+./dev.sh
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+This will start all necessary services, including the Laravel application, in Docker containers.
 
-## Security Vulnerabilities
+### Database Management
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Database management should be done through GUI tools like DBeaver (recommended) or pgAdmin:
+
+1. Connect to the PostgreSQL database container:
+   - Host: localhost
+   - Port: 5432
+   - Database: runarion
+   - Username: from your .env file
+   - Password: from your .env file
+
+2. The database container persists data through Docker volumes, so your data will remain even after container restarts.
+
+3. For database migrations and seeding, these will be handled automatically by the Docker setup.
+
+### Directory Structure
+
+```
+runarion-laravel/
+├── app/
+│   ├── Http/
+│   │   ├── Controllers/
+│   │   └── Middleware/
+│   ├── Models/
+│   └── Services/
+├── database/
+│   ├── migrations/
+│   └── seeders/
+├── resources/
+│   ├── js/
+│   └── views/
+└── routes/
+    ├── api.php
+    └── web.php
+```
+
+### Key Components
+
+1. **Controllers**
+   - `StoryController` - Story management
+   - `PipelineController` - Pipeline control
+   - `AuthController` - User authentication
+
+2. **Models**
+   - `User` - User data
+   - `Story` - Story information
+   - `Pipeline` - Pipeline status
+
+3. **Services**
+   - `PythonService` - Python API integration
+   - `StoryService` - Story business logic
+   - `FileService` - File management
+
+## Configuration
+
+### Environment Variables
+
+Required variables in `.env`:
+```
+APP_NAME=Runarion
+APP_ENV=local
+APP_KEY=
+APP_DEBUG=true
+APP_URL=http://localhost
+
+DB_CONNECTION=pgsql
+DB_HOST=127.0.0.1
+DB_PORT=5432
+DB_DATABASE=runarion
+DB_USERNAME=your_username
+DB_PASSWORD=your_password
+
+PYTHON_SERVICE_URL=http://localhost:5000
+```
+
+### Queue Configuration
+
+For background job processing:
+```bash
+# Start queue worker
+php artisan queue:work
+
+# Monitor failed jobs
+php artisan queue:failed
+```
+
+## Testing
+
+Run the test suite:
+```bash
+php artisan test
+```
+
+### Common Issues
+
+1. **Database Connection**
+   - Verify PostgreSQL service is running
+   - Check database credentials
+   - Ensure database exists
+
+2. **API Integration**
+   - Check Python service availability
+   - Verify API endpoints
+   - Monitor request/response logs
+
+3. **File Permissions**
+   - Check storage directory permissions
+   - Verify file upload configurations
+   - Monitor disk space
+
+## Security
+
+- All API endpoints are protected with authentication
+- File uploads are validated and sanitized
+- CSRF protection is enabled
+- Rate limiting is implemented
+- SQL injection prevention is active
 
 ## License
 

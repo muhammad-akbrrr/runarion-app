@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   laravel-app:
     image: ${REGISTRY:-localhost}/runarion-app-laravel:${TAG:-latest}
@@ -14,6 +12,11 @@ services:
         order: start-first
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: ${LARAVEL_MEMORY_LIMIT:-2048M}
+        reservations:
+          memory: ${LARAVEL_MEMORY_RESERVATION:-1024M}
     ports:
       - "8000:8000"
     environment:
@@ -27,11 +30,33 @@ services:
       DB_USERNAME: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD}
       PYTHON_SERVICE_URL: http://runarion-python:5000
+      APP_LOCALE: ${APP_LOCALE:-en}
+      APP_FALLBACK_LOCALE: ${APP_FALLBACK_LOCALE:-en}
+      APP_FAKER_LOCALE: ${APP_FAKER_LOCALE:-en_US}
+      PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS:-4}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
     networks:
       - runarion-app-network
     depends_on:
-      - postgres-db
-
+      postgres-db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: ${LOG_DRIVER:-json-file}
+      options:
+        max-size: ${LOG_MAX_SIZE:-10m}
+        max-file: ${LOG_MAX_FILE:-3}
+    command: >
+      sh -c "php artisan key:generate --force &&
+             php artisan config:cache &&
+             php artisan route:cache &&
+             php artisan view:cache &&
+             php artisan serve --host=0.0.0.0 --port=8000"
+             
   python-app:
     image: ${REGISTRY:-localhost}/runarion-app-runarion-python:${TAG:-latest}
     build:
@@ -44,6 +69,11 @@ services:
         delay: 10s
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: ${PYTHON_MEMORY_LIMIT:-1024M}
+        reservations:
+          memory: ${PYTHON_MEMORY_RESERVATION:-512M}
     ports:
       - "5000:5000"
     environment:
@@ -53,19 +83,37 @@ services:
       DB_NAME: runarion
       DB_USER: ${DB_USER:-postgres}
       DB_PASSWORD: ${DB_PASSWORD}
-      LLM_API_KEY: ${LLM_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
     networks:
       - runarion-app-network
     depends_on:
-      - postgres-db
+      postgres-db:
+        condition: service_healthy
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:5000/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: ${LOG_DRIVER:-json-file}
+      options:
+        max-size: ${LOG_MAX_SIZE:-10m}
+        max-file: ${LOG_MAX_FILE:-3}
 
   postgres-db:
     image: postgres:14
     deploy:
       placement:
-        constraints: [node.role == manager]
+        constraints: [ node.role == manager ]
       restart_policy:
         condition: on-failure
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
     volumes:
       - postgres_data:/var/lib/postgresql/data
     environment:
@@ -75,10 +123,15 @@ services:
     networks:
       - runarion-app-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
       interval: 10s
       timeout: 5s
       retries: 5
+    logging:
+      driver: ${LOG_DRIVER:-json-file}
+      options:
+        max-size: ${LOG_MAX_SIZE:-10m}
+        max-file: ${LOG_MAX_FILE:-3}
 
 networks:
   runarion-app-network:
