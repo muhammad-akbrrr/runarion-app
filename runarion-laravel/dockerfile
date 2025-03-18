@@ -9,9 +9,11 @@ RUN apt-get update && apt-get install -y \
   libxml2-dev \
   libpq-dev \
   zip \
-  unzip \
-  nodejs \
-  npm
+  unzip
+
+# Install Node.js and npm
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+  && apt-get install -y nodejs
 
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -31,9 +33,6 @@ COPY . .
 # Install dependencies
 RUN composer install --optimize-autoloader --no-dev
 
-# Install and build frontend assets
-RUN npm install && npm run build
-
 # Set proper permissions
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache
 
@@ -42,6 +41,9 @@ EXPOSE 8000
 
 # Create entrypoint script
 RUN echo '#!/bin/sh' > /entrypoint.sh && \
+  echo 'if [ -z "$APP_KEY" ] && [ ! -s .env ]; then' >> /entrypoint.sh && \
+  echo '  php artisan key:generate' >> /entrypoint.sh && \
+  echo 'fi' >> /entrypoint.sh && \
   echo 'php artisan migrate --force' >> /entrypoint.sh && \
   echo 'php artisan optimize' >> /entrypoint.sh && \
   echo 'php artisan serve --host=0.0.0.0 --port=8000' >> /entrypoint.sh && \
