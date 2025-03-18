@@ -50,7 +50,7 @@ services:
              php artisan route:cache &&
              php artisan view:cache &&
              php artisan serve --host=0.0.0.0 --port=8000"
-
+             
   python-app:
     build:
       context: ./runarion-python
@@ -90,7 +90,7 @@ services:
           memory: ${PYTHON_MEMORY_LIMIT:-1024M}
         reservations:
           memory: ${PYTHON_MEMORY_RESERVATION:-512M}
-
+          
   postgres-db:
     image: postgres:14
     ports:
