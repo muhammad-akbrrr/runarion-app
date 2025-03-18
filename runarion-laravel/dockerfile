@@ -4,12 +4,19 @@ FROM php:8.3-fpm
 RUN apt-get update && apt-get install -y \
   git \
   curl \
-  libpng-dev \
   libonig-dev \
   libxml2-dev \
   libpq-dev \
   zip \
-  unzip
+  unzip \
+  libssl-dev \
+  libfreetype6-dev \
+  libjpeg62-turbo-dev \
+  libpng-dev \
+  libwebp-dev \
+  libzip-dev \
+  libicu-dev \
+  libgmp-dev
 
 # Install Node.js and npm
 RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
@@ -18,8 +25,18 @@ RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-# Install PHP extensions
-RUN docker-php-ext-install pdo_pgsql mbstring exif pcntl bcmath gd
+# Configure and install PHP extensions
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
+  && docker-php-ext-install -j$(nproc) \
+  pdo_pgsql \
+  mbstring \
+  exif \
+  pcntl \
+  bcmath \
+  gd \
+  zip \
+  intl \
+  gmp
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
