@@ -1,4 +1,4 @@
-/.phpunit.cache
+# Laravel specific
 /node_modules
 /public/build
 /public/hot
@@ -21,3 +21,68 @@ yarn-error.log
 /.nova
 /.vscode
 /.zed
+
+# Laravel Framework
+/bootstrap/cache/*.php
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+/storage/logs/*
+/storage/app/public/*
+/public/storage
+
+# Testing
+/coverage
+.phpunit.cache
+.phpunit.result.cache
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+
+# Dependencies
+package-lock.json
+yarn.lock
+composer.lock
+
+# Build files
+*.js.map
+*.css.map
+*.php.map
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Local development
+*.local
+local_settings.php
+
+# Security
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+*.p12
+*.pfx

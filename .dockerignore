@@ -1,11 +1,12 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
 # Environment files
 .env
 .env.*
 !.env.example
-
-# Docker
-.docker/
-docker-compose.override.yml
 
 # IDE and Editor files
 .idea/
@@ -71,3 +72,43 @@ htmlcov/
 # Local development
 *.local
 local_settings.py
+
+# Docker
+.docker/
+docker-compose.override.yml
+
+# Documentation
+*.md
+LICENSE
+CHANGELOG.md
+README.md
+
+# Security
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+*.p12
+*.pfx
+
+# Database files
+*.sql
+*.sqlite
+
+# Test files
+/tests
+.phpunit.cache
+.phpunit.result.cache
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+.hypothesis/ 
