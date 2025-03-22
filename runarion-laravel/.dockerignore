@@ -1,0 +1,99 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Dependencies
+/node_modules
+/vendor
+package-lock.json
+yarn.lock
+composer.lock
+
+# Development files
+/tests
+/phpunit.xml
+.phpunit.result.cache
+.phpunit.cache
+.phpactor.json
+Homestead.json
+Homestead.yaml
+/.fleet
+/.idea
+/.nova
+/.vscode
+/.zed
+
+# Build files
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+*.js.map
+*.css.map
+*.php.map
+
+# Logs and databases
+*.log
+*.sql
+*.sqlite
+/storage/logs/*
+/storage/framework/cache/*
+/storage/framework/sessions/*
+/storage/framework/views/*
+
+# Documentation
+/docs
+*.md
+LICENSE
+CHANGELOG.md
+README.md
+
+# Docker
+Dockerfile
+.dockerignore
+docker-compose*
+.docker/
+
+# IDE and Editor files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Testing and coverage
+/coverage
+.phpunit.cache
+.phpunit.result.cache
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Security
+*.pem
+*.key
+*.crt
+*.csr
+*.srl
+*.p12
+*.pfx 
