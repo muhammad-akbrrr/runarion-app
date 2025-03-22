@@ -28,6 +28,7 @@ services:
     volumes:
       - ./runarion-laravel:/var/www/html
       - /var/www/html/node_modules
+      - /var/www/html/vendor
     networks:
       - runarion-network
     depends_on:
