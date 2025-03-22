@@ -5,6 +5,7 @@
 /public/storage
 /storage/*.key
 /storage/pail
+/storage/migrations_ran
 /vendor
 .env
 .env.backup

@@ -26,6 +26,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy project files
 COPY . .
 
+# Copy and set up development entrypoint script
+COPY docker-entrypoint-dev.sh /app/
+RUN chmod +x /app/docker-entrypoint-dev.sh
+
 # Change ownership
 RUN chown -R appuser:appuser /app
 
@@ -36,4 +40,4 @@ USER appuser
 EXPOSE 5000
 
 # Run the application
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "src.app:app"]
+CMD ["/bin/bash", "/app/docker-entrypoint-dev.sh"]
