@@ -21,6 +21,18 @@ Each phase is meticulously designed to maintain quality and consistency while of
 
 ## Development Instructions
 
+### Windows-Specific Instructions
+
+This project supports development on both Linux and Windows. The development scripts automatically convert entry scripts to Unix format using `dos2unix`. 
+
+Before building the application container on Windows:
+
+1. Install `dos2unix` globally by running the following command in an administrator terminal (CMD or PowerShell):
+
+`choco install dos2unix`
+
+2. Once installed, you'll be able to run the Docker container on both Linux and Windows operating systems.
+
 ### Environment Setup
 
 - Ensure Docker Engine is running before executing `./dev.sh`

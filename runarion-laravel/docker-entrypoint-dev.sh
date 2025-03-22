@@ -43,10 +43,11 @@ start_development_server() {
     }
 }
 
-# Function to start Vite development server
+# Function to start Vite development server with Windows-specific settings
 start_vite() {
     log "Starting Vite development server..."
-    npm run dev || {
+    # Add specific flags for Windows compatibility
+    npm run dev -- --host 0.0.0.0 --port ${VITE_PORT:-5173} --strictPort || {
         log "Error: Vite server failed to start"
         exit 1
     }

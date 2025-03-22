@@ -52,6 +52,14 @@ check_ports() {
 # Function to ensure entrypoint scripts are executable
 make_scripts_executable() {
     echo "Making entrypoint scripts executable..."
+    # Fix line endings for entrypoint scripts
+    if command -v dos2unix >/dev/null 2>&1; then
+        echo "Fixing line endings in entrypoint scripts..."
+        dos2unix runarion-laravel/docker-entrypoint-dev.sh
+        dos2unix runarion-python/docker-entrypoint-dev.sh
+    else
+        echo "Warning: dos2unix not found. Line endings may not be fixed properly."
+    fi
     chmod +x runarion-laravel/docker-entrypoint-dev.sh
     chmod +x runarion-python/docker-entrypoint-dev.sh
 }

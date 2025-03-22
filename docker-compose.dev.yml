@@ -25,10 +25,23 @@ services:
       VITE_PORT: 5173
       VITE_HOST: 0.0.0.0
       VITE_SERVICE_URL: http://localhost:5173
+      # Windows-specific environment variables
+      NODE_OPTIONS: "--max_old_space_size=2048"
+      npm_config_cache: "/tmp/npm-cache"
+      # Add WSL-specific environment variables for better file watching
+      CHOKIDAR_USEPOLLING: "true"
+      WATCHPACK_POLLING: "true"
     volumes:
-      - ./runarion-laravel:/var/www/html
-      - /var/www/html/node_modules
-      - /var/www/html/vendor
+      - type: bind
+        source: ./runarion-laravel
+        target: /var/www/html
+        consistency: delegated
+      - type: volume
+        source: node_modules
+        target: /var/www/html/node_modules
+      - type: volume
+        source: vendor
+        target: /var/www/html/vendor
     networks:
       - runarion-network
     depends_on:
@@ -71,7 +84,9 @@ services:
       FLASK_ENV: development
       FLASK_DEBUG: "1"
     volumes:
-      - ./runarion-python:/app
+      - ./runarion-python/src:/app/src
+      - ./runarion-python/tests:/app/tests
+      - ./runarion-python/requirements.txt:/app/requirements.txt
       - /app/venv
     networks:
       - runarion-network
@@ -125,3 +140,5 @@ networks:
 
 volumes:
   postgres_data:
+  node_modules:
+  vendor:

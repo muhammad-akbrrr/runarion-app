@@ -5,6 +5,23 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
+# Function to check if Flask is running
+check_flask() {
+    local max_attempts=30
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:5000/health > /dev/null; then
+            log "Flask server is running"
+            return 0
+        fi
+        log "Waiting for Flask server... (attempt $attempt/$max_attempts)"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    log "Error: Flask server failed to start"
+    return 1
+}
+
 # Function to start the Flask application
 start_flask() {
     log "Starting Flask application..."
