@@ -6,35 +6,39 @@ The Laravel component of Runarion provides the web interface and API endpoints f
 
 ## Features
 
-- User authentication and authorization
-- Story management interface
-- Real-time pipeline status monitoring
-- API integration with Python service
-- Database management for story data
-- File storage for generated content
+-   User authentication and authorization
+-   Story management interface
+-   Real-time pipeline status monitoring
+-   API integration with Python service
+-   Database management for story data
+-   File storage for generated content
 
 ## Setup and Installation
 
 ### Prerequisites
-- PHP 8.3
-- Composer
-- Node.js and NPM
-- PostgreSQL 14
+
+-   PHP 8.3
+-   Composer
+-   Node.js and NPM
+-   PostgreSQL 14
 
 ### Installation Steps
 
 1. Install PHP dependencies:
+
 ```bash
 cd runarion-laravel
 composer install
 ```
 
 2. Install Node.js dependencies:
+
 ```bash
 npm install
 ```
 
 3. Environment setup:
+
 ```bash
 # Copy environment file
 cp .env.example .env
@@ -44,12 +48,13 @@ php artisan key:generate
 ```
 
 4. Configure database in `.env`:
+
 ```
 DB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_DATABASE=runarion
-DB_USERNAME=your_username
+DB_USERNAME=postgres
 DB_PASSWORD=your_password
 ```
 
@@ -71,11 +76,12 @@ This will start all necessary services, including the Laravel application, in Do
 Database management should be done through GUI tools like DBeaver (recommended) or pgAdmin:
 
 1. Connect to the PostgreSQL database container:
-   - Host: localhost
-   - Port: 5432
-   - Database: runarion
-   - Username: from your .env file
-   - Password: from your .env file
+
+    - Host: localhost
+    - Port: 5432
+    - Database: runarion
+    - Username: from your .env file
+    - Password: from your .env file
 
 2. The database container persists data through Docker volumes, so your data will remain even after container restarts.
 
@@ -105,25 +111,28 @@ runarion-laravel/
 ### Key Components
 
 1. **Controllers**
-   - `StoryController` - Story management
-   - `PipelineController` - Pipeline control
-   - `AuthController` - User authentication
+
+    - `StoryController` - Story management
+    - `PipelineController` - Pipeline control
+    - `AuthController` - User authentication
 
 2. **Models**
-   - `User` - User data
-   - `Story` - Story information
-   - `Pipeline` - Pipeline status
+
+    - `User` - User data
+    - `Story` - Story information
+    - `Pipeline` - Pipeline status
 
 3. **Services**
-   - `PythonService` - Python API integration
-   - `StoryService` - Story business logic
-   - `FileService` - File management
+    - `PythonService` - Python API integration
+    - `StoryService` - Story business logic
+    - `FileService` - File management
 
 ## Configuration
 
 ### Environment Variables
 
 Required variables in `.env`:
+
 ```
 APP_NAME=Runarion
 APP_ENV=local
@@ -135,7 +144,7 @@ DB_CONNECTION=pgsql
 DB_HOST=127.0.0.1
 DB_PORT=5432
 DB_DATABASE=runarion
-DB_USERNAME=your_username
+DB_USERNAME=postgres
 DB_PASSWORD=your_password
 
 PYTHON_SERVICE_URL=http://localhost:5000
@@ -144,6 +153,7 @@ PYTHON_SERVICE_URL=http://localhost:5000
 ### Queue Configuration
 
 For background job processing:
+
 ```bash
 # Start queue worker
 php artisan queue:work
@@ -155,6 +165,7 @@ php artisan queue:failed
 ## Testing
 
 Run the test suite:
+
 ```bash
 php artisan test
 ```
@@ -162,28 +173,30 @@ php artisan test
 ### Common Issues
 
 1. **Database Connection**
-   - Verify PostgreSQL service is running
-   - Check database credentials
-   - Ensure database exists
+
+    - Verify PostgreSQL service is running
+    - Check database credentials
+    - Ensure database exists
 
 2. **API Integration**
-   - Check Python service availability
-   - Verify API endpoints
-   - Monitor request/response logs
+
+    - Check Python service availability
+    - Verify API endpoints
+    - Monitor request/response logs
 
 3. **File Permissions**
-   - Check storage directory permissions
-   - Verify file upload configurations
-   - Monitor disk space
+    - Check storage directory permissions
+    - Verify file upload configurations
+    - Monitor disk space
 
 ## Security
 
-- All API endpoints are protected with authentication
-- File uploads are validated and sanitized
-- CSRF protection is enabled
-- Rate limiting is implemented
-- SQL injection prevention is active
+-   All API endpoints are protected with authentication
+-   File uploads are validated and sanitized
+-   CSRF protection is enabled
+-   Rate limiting is implemented
+-   SQL injection prevention is active
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+This project is licensed under the MIT License. See `LICENSE` for details.

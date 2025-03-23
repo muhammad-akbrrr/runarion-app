@@ -1,5 +1,5 @@
 import React, { forwardRef, HTMLAttributes } from "react";
-import { cn } from "@/lib/utils";
+import { cn } from "@/Lib/utils";
 import { HandleProps } from "@xyflow/react";
 
 import { BaseHandle } from "@/Components/base-handle";

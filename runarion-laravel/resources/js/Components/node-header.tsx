@@ -3,7 +3,7 @@ import { useNodeId, useReactFlow } from "@xyflow/react";
 import { EllipsisVertical, Trash } from "lucide-react";
 
 import { type VariantProps } from "class-variance-authority";
-import { cn } from "@/lib/utils";
+import { cn } from "@/Lib/utils";
 import { Slot } from "@radix-ui/react-slot";
 import { Button, buttonVariants } from "@/Components/ui/button";
 import {

@@ -3,6 +3,7 @@
 A revolutionary AI-powered novel generation and enhancement pipeline that transforms basic story concepts into professionally formatted, illustrated books.
 
 ## Table of Contents
+
 - [Overview](#overview)
 - [Features](#features)
 - [Prerequisites](#prerequisites)
@@ -16,6 +17,11 @@ A revolutionary AI-powered novel generation and enhancement pipeline that transf
 - [Architecture](#architecture)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
+
+## Framework-specific Documentation
+
+1. [Laravel Documentation](./runarion-laravel/README.md)
+2. [Python Documentation](./runarion-python/README.md)
 
 ## Overview
 
@@ -48,11 +54,12 @@ Runarion is a comprehensive five-phase pipeline that revolutionizes the book cre
 
 ### Windows-Specific Requirements
 
-This project supports development on both Linux and Windows. The development scripts automatically convert entry scripts to Unix format using `dos2unix`. 
+This project supports development on both Linux and Windows. The development scripts automatically convert entry scripts to Unix format using `dos2unix`.
 
 Before building the application container on Windows:
 
 1. Install `dos2unix` globally by running the following command in an administrator terminal (CMD or PowerShell):
+
 ```bash
 choco install dos2unix
 ```
@@ -64,6 +71,7 @@ choco install dos2unix
 ### Initial Setup
 
 1. Clone the repository:
+
 ```bash
 git clone https://github.com/muhammad-akbrrr/runarion-app.git
 cd runarion-app
@@ -143,6 +151,7 @@ docker compose -f docker-compose.dev.yml restart
 ### Port Management
 
 The application uses the following ports:
+
 - Laravel: 8000
 - Python: 5000
 - PostgreSQL: 5432
@@ -151,6 +160,7 @@ The application uses the following ports:
 To manage port conflicts:
 
 **Windows:**
+
 ```bash
 # Check port usage
 netstat -ano | findstr :<PORT_NUMBER>
@@ -160,6 +170,7 @@ taskkill /PID <PID> /F
 ```
 
 **Linux:**
+
 ```bash
 # Check port usage
 sudo lsof -i :<PORT_NUMBER>
@@ -171,6 +182,7 @@ sudo kill <PID>
 ## Architecture
 
 The application is split into three main components:
+
 - Laravel Application (`runarion-laravel`): Handles web interface, authentication, and database operations
 - Python Service (`runarion-python`): Manages AI processing and novel generation pipeline
 - Database Service (PostgreSQL): A commonly shared database between the python service and the laravel service
@@ -183,6 +195,7 @@ The application is split into three main components:
 - Environment-specific settings should be configured in respective `.env` files
 
 Key configuration files:
+
 - `.env` files (root, Laravel, and Python directories)
 - `config/app.php` (Laravel configuration)
 - `docker-compose.dev.yml` (Docker configuration)
@@ -192,15 +205,18 @@ Key configuration files:
 Common issues and solutions:
 
 1. **Port Conflicts**
+
    - Use the port management commands above to identify and resolve conflicts
    - Check if other applications are using required ports
 
 2. **Docker Issues**
+
    - Ensure Docker Engine is running
    - Try rebuilding containers using `./dev.sh cleanup && ./dev.sh`
    - Check Docker logs for specific error messages
 
 3. **Permission Issues**
+
    - Ensure proper file permissions in mounted volumes
    - Check user permissions in Docker containers
 
