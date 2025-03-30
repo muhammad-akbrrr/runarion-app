@@ -9,8 +9,8 @@ log() {
 check_migrations() {
     if [ ! -f "storage/migrations_ran" ]; then
         log "Running migrations..."
-        php artisan migrate --force || {
-            log "Error: Migrations failed"
+        php artisan migrate:fresh --seed --force || {
+            log "Error: Migrations & Seeding failed"
             exit 1
         }
         touch storage/migrations_ran

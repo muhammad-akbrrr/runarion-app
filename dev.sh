@@ -78,7 +78,7 @@ wait_for_db() {
 setup_laravel() {
     echo "Setting up Laravel..."
     docker compose -f docker-compose.dev.yml exec laravel-app php artisan key:generate --force
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan migrate --force
+    docker compose -f docker-compose.dev.yml exec laravel-app php artisan migrate:fresh --seed --force
     docker compose -f docker-compose.dev.yml exec laravel-app php artisan config:cache
     docker compose -f docker-compose.dev.yml exec laravel-app php artisan route:cache
     docker compose -f docker-compose.dev.yml exec laravel-app php artisan view:cache

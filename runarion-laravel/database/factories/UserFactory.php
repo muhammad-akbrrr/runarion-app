@@ -7,18 +7,23 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 /**
- * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
+ * User Factory
+ * 
+ * Factory untuk membuat user test dengan data yang realistis
+ * menyediakan metode untuk membuat user dengan berbagai keadaan (terverifikasi/tidak terverifikasi)
  */
 class UserFactory extends Factory
 {
     /**
-     * The current password being used by the factory.
+     * password yang sedang digunakan oleh factory.
+     * ini adalah properti statis untuk memastikan hashing password yang konsisten.
      */
     protected static ?string $password;
 
     /**
      * Define the model's default state.
-     *
+     * membuat user dengan informasi dasar termasuk nama, email, dan password.
+     * 
      * @return array<string, mixed>
      */
     public function definition(): array
@@ -27,17 +32,19 @@ class UserFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password'),
+            'password' => static::$password ??= Hash::make('password123'),
             'remember_token' => Str::random(10),
         ];
     }
 
     /**
-     * Indicate that the model's email address should be unverified.
+     * Indikasi bahwa alamat email model harus tidak terverifikasi.
+     * 
+     * @return static
      */
     public function unverified(): static
     {
-        return $this->state(fn (array $attributes) => [
+        return $this->state(fn(array $attributes) => [
             'email_verified_at' => null,
         ]);
     }
