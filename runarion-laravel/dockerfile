@@ -25,11 +25,11 @@ ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
 ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
 RUN mkdir -p $NVM_DIR && \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
-    . $NVM_DIR/nvm.sh && \
-    nvm install $NODE_VERSION && \
-    nvm alias default $NODE_VERSION && \
-    nvm use default
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+  . $NVM_DIR/nvm.sh && \
+  nvm install $NODE_VERSION && \
+  nvm alias default $NODE_VERSION && \
+  nvm use default
 
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -57,8 +57,8 @@ WORKDIR /var/www/html
 COPY . .
 
 # Copy and set up development entrypoint script
-COPY docker-entrypoint-dev.sh /var/www/html/
-RUN chmod +x /var/www/html/docker-entrypoint-dev.sh
+COPY docker-entrypoint.sh /var/www/html/
+RUN chmod +x /var/www/html/docker-entrypoint.sh
 
 # Install dependencies with increased verbosity for debugging
 RUN composer install --optimize-autoloader --verbose
@@ -71,10 +71,10 @@ RUN npm install --verbose --legacy-peer-deps
 
 # Set proper permissions (modified for Windows compatibility)
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache && \
-    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+  chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # Expose port 8000
 EXPOSE 8000
 
 # Run entrypoint script
-CMD ["/bin/bash", "/var/www/html/docker-entrypoint-dev.sh"]
+CMD ["/bin/bash", "/var/www/html/docker-entrypoint.sh"]

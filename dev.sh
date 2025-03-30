@@ -55,13 +55,17 @@ make_scripts_executable() {
     # Fix line endings for entrypoint scripts
     if command -v dos2unix >/dev/null 2>&1; then
         echo "Fixing line endings in entrypoint scripts..."
-        dos2unix runarion-laravel/docker-entrypoint-dev.sh
-        dos2unix runarion-python/docker-entrypoint-dev.sh
+        dos2unix docker-entrypoint.sh
+        dos2unix docker-ensure-initdb.sh
+        dos2unix runarion-laravel/docker-entrypoint.sh
+        dos2unix runarion-python/docker-entrypoint.sh
     else
         echo "Warning: dos2unix not found. Line endings may not be fixed properly."
     fi
-    chmod +x runarion-laravel/docker-entrypoint-dev.sh
-    chmod +x runarion-python/docker-entrypoint-dev.sh
+    chmod +x docker-entrypoint.sh
+    chmod +x docker-ensure-initdb.sh
+    chmod +x runarion-laravel/docker-entrypoint.sh
+    chmod +x runarion-python/docker-entrypoint.sh
 }
 
 # Function to wait for database to be ready
@@ -142,4 +146,4 @@ echo "Vite HMR: http://localhost:5173"
 
 # Show logs
 echo "Showing logs (press Ctrl+C to stop)..."
-docker compose -f docker-compose.dev.yml logs -f 
+docker compose -f docker-compose.dev.yml logs -f

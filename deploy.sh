@@ -22,10 +22,12 @@ echo "$OPENAI_API_KEY" | docker secret create openai_api_key -
 
 # Build and push Docker images
 echo "Building and pushing Docker images..."
-docker build -t $REGISTRY/runarion-app-runarion-laravel:$TAG ./runarion-laravel
+docker build -t $REGISTRY/runarion-app-postgres:$TAG .
+docker build -t $REGISTRY/runarion-app-laravel:$TAG ./runarion-laravel
 docker build -t $REGISTRY/runarion-app-runarion-python:$TAG ./runarion-python
 
-docker push $REGISTRY/runarion-app-runarion-laravel:$TAG
+docker push $REGISTRY/runarion-app-postgres:$TAG
+docker push $REGISTRY/runarion-app-laravel:$TAG
 docker push $REGISTRY/runarion-app-runarion-python:$TAG
 
 # Deploy stack to Docker Swarm

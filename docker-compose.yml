@@ -103,7 +103,10 @@ services:
         max-file: ${LOG_MAX_FILE:-3}
 
   postgres-db:
-    image: postgres:14
+    image: ${REGISTRY:-localhost}/runarion-app-postgres:${TAG:-latest}
+    build:
+      context: .
+      dockerfile: dockerfile
     deploy:
       placement:
         constraints: [ node.role == manager ]
@@ -120,13 +123,15 @@ services:
       POSTGRES_DB: runarion
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     networks:
       - runarion-app-network
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d runarion"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     logging:
       driver: ${LOG_DRIVER:-json-file}
       options:

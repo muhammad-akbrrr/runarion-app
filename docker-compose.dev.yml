@@ -63,7 +63,7 @@ services:
           memory: ${LARAVEL_MEMORY_LIMIT:-2048M}
         reservations:
           memory: ${LARAVEL_MEMORY_RESERVATION:-1024M}
-    command: ["/bin/bash", "/var/www/html/docker-entrypoint-dev.sh"]
+    command: ["/bin/bash", "/var/www/html/docker-entrypoint.sh"]
              
   python-app:
     build:
@@ -109,10 +109,12 @@ services:
           memory: ${PYTHON_MEMORY_LIMIT:-1024M}
         reservations:
           memory: ${PYTHON_MEMORY_RESERVATION:-512M}
-    command: ["/bin/bash", "/app/docker-entrypoint-dev.sh"]
+    command: ["/bin/bash", "/app/docker-entrypoint.sh"]
           
   postgres-db:
-    image: postgres:14
+    build:
+      context: .
+      dockerfile: dockerfile
     ports:
       - "5432:5432"
     volumes:
@@ -121,18 +123,26 @@ services:
       POSTGRES_DB: runarion
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${DB_PASSWORD:-@kb4r123}
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     networks:
       - runarion-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d runarion"]
       interval: 10s
       timeout: 5s
       retries: 5
+      start_period: 10s
     logging:
       driver: ${LOG_DRIVER:-json-file}
       options:
         max-size: ${LOG_MAX_SIZE:-10m}
         max-file: ${LOG_MAX_FILE:-3}
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 512M
 
 networks:
   runarion-network:
