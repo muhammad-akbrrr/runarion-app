@@ -11,9 +11,6 @@
 # Dependencies
 /node_modules
 /vendor
-package-lock.json
-yarn.lock
-composer.lock
 
 # Development files
 /tests
@@ -56,7 +53,7 @@ CHANGELOG.md
 README.md
 
 # Docker
-Dockerfile
+dockerfile
 .dockerignore
 docker-compose*
 .docker/

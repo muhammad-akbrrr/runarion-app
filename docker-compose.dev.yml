@@ -52,6 +52,7 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+      start_period: 10s
     logging:
       driver: ${LOG_DRIVER:-json-file}
       options:
@@ -63,7 +64,13 @@ services:
           memory: ${LARAVEL_MEMORY_LIMIT:-2048M}
         reservations:
           memory: ${LARAVEL_MEMORY_RESERVATION:-1024M}
-    command: ["/bin/bash", "/var/www/html/docker-entrypoint.sh"]
+    command: >
+      sh -c "npm install --verbose --legacy-peer-deps &&
+             php artisan key:generate --force &&
+             php artisan config:cache &&
+             php artisan route:cache &&
+             php artisan view:cache &&
+             /bin/bash /var/www/html/docker-entrypoint.sh"
              
   python-app:
     build:

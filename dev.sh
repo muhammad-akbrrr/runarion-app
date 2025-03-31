@@ -78,6 +78,24 @@ wait_for_db() {
     echo "Database is ready!"
 }
 
+# Function to wait for Vite server to be ready
+wait_for_vite() {
+    echo "Waiting for Vite server to be ready..."
+    local max_attempts=30
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:5173 > /dev/null; then
+            echo "Vite server is ready!"
+            return 0
+        fi
+        echo "Waiting for Vite server... (attempt $attempt/$max_attempts)"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    echo "Warning: Vite server did not become ready in time"
+    return 1
+}
+
 # Function to setup Laravel
 setup_laravel() {
     echo "Setting up Laravel..."
@@ -91,7 +109,7 @@ setup_laravel() {
 # Function to install frontend dependencies
 install_frontend_deps() {
     echo "Installing frontend dependencies..."
-    docker compose -f docker-compose.dev.yml exec laravel-app npm install
+    docker compose -f docker-compose.dev.yml exec laravel-app npm install --verbose --legacy-peer-deps
     docker compose -f docker-compose.dev.yml exec laravel-app npm run build
 }
 
@@ -132,10 +150,12 @@ make_scripts_executable
 echo "Building and starting containers..."
 docker compose -f docker-compose.dev.yml up -d --build
 
-# Wait for database and setup services
+# Wait for services to be ready
 wait_for_db
+wait_for_vite
+
+# Setup services
 setup_laravel
-install_frontend_deps
 set_permissions
 
 echo "Development environment is ready!"

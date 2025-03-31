@@ -59,7 +59,7 @@ CHANGELOG.md
 README.md
 
 # Docker
-Dockerfile
+dockerfile
 .dockerignore
 docker-compose*
 .docker/
