@@ -3,7 +3,6 @@ from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 import psycopg2
-from psycopg2 import pool
 
 # Load environment variables
 load_dotenv()
@@ -19,12 +18,29 @@ CORS(app, resources={
 
 # Database configuration
 db_config = {
-    'host': os.getenv('DB_HOST', 'postgres-db'),
-    'port': os.getenv('DB_PORT', '5432'),
-    'database': os.getenv('DB_NAME', 'runarion'),
-    'user': os.getenv('DB_USER', 'postgres'),
-    'password': os.getenv('DB_PASSWORD', '@kb4r123')
+    'host': os.getenv('DB_HOST'),
+    'port': os.getenv('DB_PORT'),
+    'database': os.getenv('DB_DATABASE'),
+    'user': os.getenv('DB_USER'),
+    'password': os.getenv('DB_PASSWORD')
 }
+
+# Validate required environment variables
+required_env_vars = [
+    'DB_HOST',
+    'DB_PORT',
+    'DB_DATABASE',
+    'DB_USER',
+    'DB_PASSWORD',
+    'GEMINI_API_KEY',
+    'GOOGLE_API_KEY',
+    'OPENAI_API_KEY'
+]
+
+missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+if missing_vars:
+    raise ValueError(
+        f"Missing required environment variables: {', '.join(missing_vars)}")
 
 # Create connection pool
 try:

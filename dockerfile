@@ -2,16 +2,16 @@
 FROM debian:stable-slim
 
 # Set environment variables
-ENV PG_MAJOR 17
-ENV PG_VERSION 17.4-1.pgdg120+2
+ENV PG_MAJOR ${PG_MAJOR:-17}
+ENV PG_VERSION ${PG_VERSION:-17.4-1.pgdg120+2}
 ENV PATH $PATH:/usr/lib/postgresql/$PG_MAJOR/bin
-ENV LANG en_US.utf8
-ENV PGDATA /var/lib/postgresql/data
+ENV LANG ${LANG:-en_US.utf8}
+ENV PGDATA ${PGDATA:-/var/lib/postgresql/data}
 
 # Create postgres user and group
 RUN set -eux; \
-  groupadd -r postgres --gid=999; \
-  useradd -r -g postgres --uid=999 --home-dir=/var/lib/postgresql --shell=/bin/bash postgres; \
+  groupadd -r postgres --gid=${POSTGRES_GID:-999}; \
+  useradd -r -g postgres --uid=${POSTGRES_UID:-999} --home-dir=/var/lib/postgresql --shell=/bin/bash postgres; \
   install --verbose --directory --owner postgres --group postgres --mode 1777 /var/lib/postgresql
 
 # Install system dependencies
@@ -27,7 +27,7 @@ RUN set -ex; \
   rm -rf /var/lib/apt/lists/*
 
 # Install gosu for proper user switching
-ENV GOSU_VERSION 1.17
+ENV GOSU_VERSION ${GOSU_VERSION:-1.17}
 RUN set -eux; \
   savedAptMark="$(apt-mark showmanual)"; \
   apt-get update; \
@@ -148,7 +148,7 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 STOPSIGNAL SIGINT
 
 # Expose PostgreSQL port
-EXPOSE 5432
+EXPOSE ${DB_PORT:-5432}
 
 # Start PostgreSQL
 CMD ["postgres"]

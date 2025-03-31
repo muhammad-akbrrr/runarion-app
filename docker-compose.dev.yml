@@ -4,33 +4,31 @@ services:
       context: ./runarion-laravel
       dockerfile: dockerfile
     ports:
-      - "8000:8000"
-      - "5173:5173"
+      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
+      - "${LARAVEL_PORT:-8000}:${LARAVEL_PORT:-8000}"
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
-      APP_URL: http://localhost:8000
-      DB_CONNECTION: pgsql
-      DB_HOST: postgres-db
-      DB_PORT: 5432
-      DB_DATABASE: runarion
-      DB_USERNAME: postgres
-      DB_PASSWORD: ${DB_PASSWORD:-@kb4r123}
-      PYTHON_SERVICE_URL: http://localhost:5000
-      APP_LOCALE: ${APP_LOCALE:-en}
-      APP_FALLBACK_LOCALE: ${APP_FALLBACK_LOCALE:-en}
-      APP_FAKER_LOCALE: ${APP_FAKER_LOCALE:-en_US}
-      PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS:-4}
-      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
-      VITE_PORT: 5173
-      VITE_HOST: 0.0.0.0
-      VITE_SERVICE_URL: http://localhost:5173
-      # Windows-specific environment variables
-      NODE_OPTIONS: "--max_old_space_size=2048"
-      npm_config_cache: "/tmp/npm-cache"
-      # Add WSL-specific environment variables for better file watching
-      CHOKIDAR_USEPOLLING: "true"
-      WATCHPACK_POLLING: "true"
+      APP_URL: ${APP_URL}
+      DB_CONNECTION: ${DB_CONNECTION}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USERNAME: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      PYTHON_SERVICE_URL: ${PYTHON_SERVICE_URL}
+      APP_LOCALE: ${APP_LOCALE}
+      APP_FALLBACK_LOCALE: ${APP_FALLBACK_LOCALE}
+      APP_FAKER_LOCALE: ${APP_FAKER_LOCALE}
+      PHP_CLI_SERVER_WORKERS: ${PHP_CLI_SERVER_WORKERS}
+      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS}
+      VITE_PORT: ${VITE_PORT}
+      VITE_HOST: ${VITE_HOST}
+      VITE_SERVICE_URL: ${VITE_SERVICE_URL}
+      NODE_OPTIONS: ${NODE_OPTIONS:-"--max_old_space_size=2048"}
+      npm_config_cache: ${NPM_CONFIG_CACHE:-"/tmp/npm-cache"}
+      CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-"true"}
+      WATCHPACK_POLLING: ${WATCHPACK_POLLING:-"true"}
     volumes:
       - type: bind
         source: ./runarion-laravel
@@ -48,22 +46,22 @@ services:
       postgres-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${LARAVEL_PORT:-8000}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 10s
     logging:
-      driver: ${LOG_DRIVER:-json-file}
+      driver: ${LOG_DRIVER}
       options:
-        max-size: ${LOG_MAX_SIZE:-10m}
-        max-file: ${LOG_MAX_FILE:-3}
+        max-size: ${LOG_MAX_SIZE}
+        max-file: ${LOG_MAX_FILE}
     deploy:
       resources:
         limits:
-          memory: ${LARAVEL_MEMORY_LIMIT:-2048M}
+          memory: ${LARAVEL_MEMORY_LIMIT}
         reservations:
-          memory: ${LARAVEL_MEMORY_RESERVATION:-1024M}
+          memory: ${LARAVEL_MEMORY_RESERVATION}
     command: >
       sh -c "npm install --verbose --legacy-peer-deps &&
              php artisan key:generate --force &&
@@ -77,19 +75,19 @@ services:
       context: ./runarion-python
       dockerfile: dockerfile
     ports:
-      - "5000:5000"
+      - "${PYTHON_PORT:-5000}:${PYTHON_PORT:-5000}"
     environment:
       ENVIRONMENT: development
-      DB_HOST: postgres-db
-      DB_PORT: 5432
-      DB_NAME: runarion
-      DB_USER: postgres
-      DB_PASSWORD: ${DB_PASSWORD:-@kb4r123}
-      GEMINI_API_KEY: ${GEMINI_API_KEY:-your-gemini-api-key-here}
-      GOOGLE_API_KEY: ${GOOGLE_API_KEY:-your-google-api-key-here}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-your-openai-api-key-here}
-      FLASK_ENV: development
-      FLASK_DEBUG: "1"
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_DATABASE: ${DB_DATABASE}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      GOOGLE_API_KEY: ${GOOGLE_API_KEY}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      FLASK_ENV: ${FLASK_ENV:-development}
+      FLASK_DEBUG: ${FLASK_DEBUG:-"1"}
     volumes:
       - ./runarion-python/src:/app/src
       - ./runarion-python/tests:/app/tests
@@ -101,55 +99,59 @@ services:
       postgres-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${PYTHON_PORT:-5000}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
     logging:
-      driver: ${LOG_DRIVER:-json-file}
+      driver: ${LOG_DRIVER}
       options:
-        max-size: ${LOG_MAX_SIZE:-10m}
-        max-file: ${LOG_MAX_FILE:-3}
+        max-size: ${LOG_MAX_SIZE}
+        max-file: ${LOG_MAX_FILE}
     deploy:
       resources:
         limits:
-          memory: ${PYTHON_MEMORY_LIMIT:-1024M}
+          memory: ${PYTHON_MEMORY_LIMIT}
         reservations:
-          memory: ${PYTHON_MEMORY_RESERVATION:-512M}
+          memory: ${PYTHON_MEMORY_RESERVATION}
     command: ["/bin/bash", "/app/docker-entrypoint.sh"]
           
   postgres-db:
     build:
       context: .
       dockerfile: dockerfile
+    environment:
+      - POSTGRES_PASSWORD=${DB_PASSWORD}
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_DB=${DB_DATABASE:-runarion}
+      - POSTGRES_HOST_AUTH_METHOD=${POSTGRES_HOST_AUTH_METHOD:-scram-sha-256}
+      - POSTGRES_INITDB_WALDIR=${POSTGRES_INITDB_WALDIR:-}
+      - POSTGRES_INITDB_ARGS=${POSTGRES_INITDB_ARGS:-}
+      - PG_MAJOR=${PG_MAJOR:-17}
+      - PG_VERSION=${PG_VERSION:-17.4-1.pgdg120+2}
+      - PGDATA=${PGDATA:-/var/lib/postgresql/data}
+      - POSTGRES_GID=${POSTGRES_GID:-999}
+      - POSTGRES_UID=${POSTGRES_UID:-999}
+      - GOSU_VERSION=${GOSU_VERSION:-1.17}
+      - LANG=${LANG:-en_US.utf8}
     ports:
-      - "5432:5432"
+      - "${DB_PORT:-5432}:${DB_PORT:-5432}"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    environment:
-      POSTGRES_DB: runarion
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-@kb4r123}
-      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
     networks:
       - runarion-network
+    deploy:
+      resources:
+        limits:
+          memory: ${POSTGRES_MEMORY_LIMIT:-1G}
+        reservations:
+          memory: ${POSTGRES_MEMORY_RESERVATION:-512M}
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d runarion"]
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_DATABASE:-runarion}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    logging:
-      driver: ${LOG_DRIVER:-json-file}
-      options:
-        max-size: ${LOG_MAX_SIZE:-10m}
-        max-file: ${LOG_MAX_FILE:-3}
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 512M
 
 networks:
   runarion-network:

@@ -1,9 +1,23 @@
 #!/bin/bash
 
+# Exit on error
+set -e
+
+# Load environment variables
+if [ -f .env ]; then
+    export $(cat .env | grep -v '^#' | xargs)
+fi
+
+# Default values for environment variables
+REGISTRY=${REGISTRY:-localhost}
+TAG=${TAG:-latest}
+DOCKER_STACK_NAME=${DOCKER_STACK_NAME:-runarion-app}
+DOCKER_COMPOSE_FILE=${DOCKER_COMPOSE_FILE:-docker-compose.yml}
+
 # Function to check if Docker is running
 check_docker() {
     if ! docker info > /dev/null 2>&1; then
-        echo "Error: Docker is not running. Please start Docker and try again."
+        echo "Error: Docker is not running"
         exit 1
     fi
 }
@@ -11,7 +25,7 @@ check_docker() {
 # Function to check if Docker Swarm is initialized
 check_swarm() {
     if ! docker info | grep -q "Swarm: active"; then
-        echo "Error: Docker Swarm is not initialized. Please run 'docker swarm init' first."
+        echo "Error: Docker Swarm is not initialized"
         exit 1
     fi
 }
@@ -50,27 +64,28 @@ create_secrets() {
     echo "$OPENAI_API_KEY" | docker secret create openai_api_key -
 }
 
-# Function to build and push Docker images
-build_and_push_images() {
-    echo "Building and pushing Docker images..."
-    local tag=$(git rev-parse --short HEAD)
-    local registry=${REGISTRY:-localhost}
+# Function to build images
+build_images() {
+    echo "Building images..."
+    docker-compose -f ${DOCKER_COMPOSE_FILE} build
+}
 
-    # Build images
-    docker build -t $registry/runarion-app-postgres:$tag .
-    docker build -t $registry/runarion-app-laravel:$tag ./runarion-laravel
-    docker build -t $registry/runarion-app-runarion-python:$tag ./runarion-python
-
-    # Push images
-    docker push $registry/runarion-app-postgres:$tag
-    docker push $registry/runarion-app-laravel:$tag
-    docker push $registry/runarion-app-runarion-python:$tag
+# Function to push images to registry
+push_images() {
+    echo "Pushing images to registry..."
+    docker-compose -f ${DOCKER_COMPOSE_FILE} push
 }
 
 # Function to deploy stack
 deploy_stack() {
-    echo "Deploying stack to Docker Swarm..."
-    docker stack deploy -c docker-compose.yml runarion-app
+    echo "Deploying stack ${DOCKER_STACK_NAME}..."
+    docker stack deploy -c ${DOCKER_COMPOSE_FILE} ${DOCKER_STACK_NAME}
+}
+
+# Function to check stack status
+check_stack_status() {
+    echo "Checking stack status..."
+    docker stack ps ${DOCKER_STACK_NAME}
 }
 
 # Function to wait for services to be ready
@@ -80,7 +95,7 @@ wait_for_services() {
     local attempt=1
 
     while [ $attempt -le $max_attempts ]; do
-        local services=$(docker service ls --filter name=runarion-app --format '{{.Name}}')
+        local services=$(docker service ls --filter name=${DOCKER_STACK_NAME} --format '{{.Name}}')
         local all_ready=true
 
         for service in $services; do
@@ -110,7 +125,7 @@ wait_for_services() {
 # Function to check service health
 check_service_health() {
     echo "Checking service health..."
-    local services=$(docker service ls --filter name=runarion-app --format '{{.Name}}')
+    local services=$(docker service ls --filter name=${DOCKER_STACK_NAME} --format '{{.Name}}')
     local unhealthy_services=()
 
     for service in $services; do
@@ -132,35 +147,43 @@ check_service_health() {
 # Function to handle script interruption
 handle_interrupt() {
     echo -e "\nInterrupted by user. Cleaning up..."
-    docker stack rm runarion-app
+    docker stack rm ${DOCKER_STACK_NAME}
     exit 1
 }
 
 # Set up trap for script interruption
 trap handle_interrupt SIGINT SIGTERM
 
-# Main execution
-echo "Starting production deployment..."
+# Main deployment process
+main() {
+    echo "Starting deployment process..."
+    
+    # Check prerequisites
+    check_docker
+    check_swarm
+    check_env_vars
 
-# Check prerequisites
-check_docker
-check_swarm
-check_env_vars
+    # Create secrets
+    create_secrets
 
-# Create secrets
-create_secrets
+    # Build and push images
+    build_images
+    push_images
+    
+    # Deploy stack
+    deploy_stack
+    
+    # Wait for services and check health
+    wait_for_services
+    check_service_health
+    
+    # Check status
+    check_stack_status
+    
+    echo "Deployment completed successfully!"
+}
 
-# Build and push images
-build_and_push_images
-
-# Deploy stack
-deploy_stack
-
-# Wait for services and check health
-wait_for_services
-check_service_health
-
-echo "Deployment complete! Checking service status..."
-docker service ls --filter name=runarion-app
+# Run main function
+main
 
 echo "Application is now available at: $APP_URL"

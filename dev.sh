@@ -11,29 +11,52 @@ check_docker() {
 # Function to check if required environment variables are set
 check_env_vars() {
     local required_vars=(
+        # Database Configuration
+        "DB_HOST"
+        "DB_PORT"
+        "DB_DATABASE"
+        "DB_USER"
         "DB_PASSWORD"
+        "POSTGRES_HOST_AUTH_METHOD"
+        
+        # API Keys
         "GEMINI_API_KEY"
         "GOOGLE_API_KEY"
         "OPENAI_API_KEY"
+        
+        # Application URLs
+        "APP_URL"
+        "PYTHON_SERVICE_URL"
+        
+        # Service Ports
+        "LARAVEL_PORT"
+        "PYTHON_PORT"
+        "VITE_PORT"
+        "VITE_HOST"
+        "VITE_SERVICE_URL"
+        
+        # PHP Configuration
+        "PHP_CLI_SERVER_WORKERS"
+        "BCRYPT_ROUNDS"
+        
+        # Logging Configuration
+        "LOG_DRIVER"
+        "LOG_MAX_SIZE"
+        "LOG_MAX_FILE"
+        
+        # Resource Limits
+        "LARAVEL_MEMORY_LIMIT"
+        "LARAVEL_MEMORY_RESERVATION"
+        "PYTHON_MEMORY_LIMIT"
+        "PYTHON_MEMORY_RESERVATION"
+        "POSTGRES_MEMORY_LIMIT"
+        "POSTGRES_MEMORY_RESERVATION"
     )
 
     for var in "${required_vars[@]}"; do
         if [ -z "${!var}" ]; then
-            echo "Warning: $var is not set. Using default development value."
-            case $var in
-                "DB_PASSWORD")
-                    export DB_PASSWORD="@kb4r123"
-                    ;;
-                "GEMINI_API_KEY")
-                    export GEMINI_API_KEY="your-gemini-api-key-here"
-                    ;;
-                "GOOGLE_API_KEY")
-                    export GOOGLE_API_KEY="your-google-api-key-here"
-                    ;;
-                "OPENAI_API_KEY")
-                    export OPENAI_API_KEY="your-openai-api-key-here"
-                    ;;
-            esac
+            echo "Error: $var is not set. Please set it in your .env file."
+            exit 1
         fi
     done
 }
