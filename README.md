@@ -46,10 +46,10 @@ Runarion is a comprehensive five-phase pipeline that revolutionizes the book cre
 
 - Docker Engine
 - Node.js (v20 or higher)
-- PHP 8.3
+- PHP 8.4
 - Composer
 - Python 3.12
-- PostgreSQL 14
+- PostgreSQL 17
 - Git
 
 ### Windows-Specific Requirements

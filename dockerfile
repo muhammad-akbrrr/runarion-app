@@ -1,5 +1,5 @@
 # PostgreSQL 17.4 Dockerfile
-FROM debian:bookworm-slim
+FROM debian:stable-slim
 
 # Set environment variables
 ENV PG_MAJOR 17
