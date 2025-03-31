@@ -3,6 +3,12 @@
 # Exit on error
 set -e
 
+# Fix line endings in .env file if dos2unix is available
+if command -v dos2unix >/dev/null 2>&1; then
+    echo "Fixing line endings in .env file..."
+    dos2unix .env
+fi
+
 # Load environment variables
 if [ -f .env ]; then
     export $(cat .env | grep -v '^#' | xargs)

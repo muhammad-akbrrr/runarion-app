@@ -27,13 +27,13 @@ check_env_vars() {
         # Application URLs
         "APP_URL"
         "PYTHON_SERVICE_URL"
+        "VITE_SERVICE_URL"
         
         # Service Ports
         "LARAVEL_PORT"
         "PYTHON_PORT"
         "VITE_PORT"
         "VITE_HOST"
-        "VITE_SERVICE_URL"
         
         # PHP Configuration
         "PHP_CLI_SERVER_WORKERS"
@@ -75,13 +75,14 @@ check_ports() {
 # Function to ensure entrypoint scripts are executable
 make_scripts_executable() {
     echo "Making entrypoint scripts executable..."
-    # Fix line endings for entrypoint scripts
+    # Fix line endings for entrypoint scripts and env file
     if command -v dos2unix >/dev/null 2>&1; then
-        echo "Fixing line endings in entrypoint scripts..."
+        echo "Fixing line endings in entrypoint scripts and env file..."
         dos2unix docker-entrypoint.sh
         dos2unix docker-ensure-initdb.sh
         dos2unix runarion-laravel/docker-entrypoint.sh
         dos2unix runarion-python/docker-entrypoint.sh
+        dos2unix .env
     else
         echo "Warning: dos2unix not found. Line endings may not be fixed properly."
     fi
