@@ -4,13 +4,23 @@
 load_env() {
     if [ -f .env ]; then
         echo "Loading environment variables from .env file..."
-        while IFS= read -r line; do
+        # Fix line endings for .env file if dos2unix is available
+        if command -v dos2unix >/dev/null 2>&1; then
+            dos2unix .env
+        fi
+        # Use a more robust way to read the .env file
+        while IFS='=' read -r key value || [ -n "$key" ]; do
             # Skip comments and empty lines
-            [[ $line =~ ^#.*$ ]] && continue
-            [[ -z $line ]] && continue
+            [[ $key =~ ^#.*$ ]] && continue
+            [[ -z $key ]] && continue
             
-            # Export the variable
-            export "$line"
+            # Remove any carriage returns and trim whitespace
+            value=$(echo "$value" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+            
+            # Export the variable if it's not empty
+            if [ -n "$value" ]; then
+                export "$key=$value"
+            fi
         done < .env
     else
         echo "Error: .env file not found"
@@ -99,11 +109,11 @@ make_scripts_executable() {
     # Fix line endings for entrypoint scripts and env file
     if command -v dos2unix >/dev/null 2>&1; then
         echo "Fixing line endings in entrypoint scripts and env file..."
+        dos2unix .env
         dos2unix docker-entrypoint.sh
         dos2unix docker-ensure-initdb.sh
         dos2unix runarion-laravel/docker-entrypoint.sh
         dos2unix runarion-python/docker-entrypoint.sh
-        dos2unix .env
     else
         echo "Warning: dos2unix not found. Line endings may not be fixed properly."
     fi
