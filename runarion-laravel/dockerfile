@@ -1,4 +1,4 @@
-FROM php:8.3-fpm
+FROM php:8.4-fpm
 
 # Install dependencies
 RUN apt-get update && apt-get install -y \
@@ -25,11 +25,11 @@ ENV NODE_PATH $NVM_DIR/v$NODE_VERSION/lib/node_modules
 ENV PATH $NVM_DIR/versions/node/v$NODE_VERSION/bin:$PATH
 
 RUN mkdir -p $NVM_DIR && \
-    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
-    . $NVM_DIR/nvm.sh && \
-    nvm install $NODE_VERSION && \
-    nvm alias default $NODE_VERSION && \
-    nvm use default
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash && \
+  . $NVM_DIR/nvm.sh && \
+  nvm install $NODE_VERSION && \
+  nvm alias default $NODE_VERSION && \
+  nvm use default
 
 # Clear cache
 RUN apt-get clean && rm -rf /var/lib/apt/lists/*
@@ -53,15 +53,8 @@ COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 # Set working directory
 WORKDIR /var/www/html
 
-# Copy project files
-COPY . .
-
-# Copy and set up development entrypoint script
-COPY docker-entrypoint-dev.sh /var/www/html/
-RUN chmod +x /var/www/html/docker-entrypoint-dev.sh
-
-# Install dependencies with increased verbosity for debugging
-RUN composer install --optimize-autoloader --verbose
+# Copy package files first
+COPY package.json package-lock.json ./
 
 # Install Node.js dependencies with increased verbosity and legacy peer deps
 # Add specific configurations for Windows compatibility
@@ -69,12 +62,26 @@ ENV CHOKIDAR_USEPOLLING=true
 ENV WATCHPACK_POLLING=true
 RUN npm install --verbose --legacy-peer-deps
 
+# Copy project files
+COPY . .
+
+# Copy and set up development entrypoint script
+COPY docker-entrypoint.sh /var/www/html/
+RUN chmod +x /var/www/html/docker-entrypoint.sh
+
+# Install dependencies with increased verbosity for debugging
+RUN composer install --optimize-autoloader --verbose
+
 # Set proper permissions (modified for Windows compatibility)
 RUN chown -R www-data:www-data /var/www/html/storage /var/www/html/bootstrap/cache && \
-    chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
+  chmod -R 775 /var/www/html/storage /var/www/html/bootstrap/cache
 
 # Expose port 8000
 EXPOSE 8000
 
+# Add healthcheck for Vite server
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:${VITE_PORT:-5173} || exit 1
+
 # Run entrypoint script
-CMD ["/bin/bash", "/var/www/html/docker-entrypoint-dev.sh"]
+CMD ["/bin/bash", "/var/www/html/docker-entrypoint.sh"]

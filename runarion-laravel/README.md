@@ -17,10 +17,10 @@ The Laravel component of Runarion provides the web interface and API endpoints f
 
 ### Prerequisites
 
--   PHP 8.3
+-   PHP 8.4
 -   Composer
 -   Node.js and NPM
--   PostgreSQL 14
+-   PostgreSQL 17
 
 ### Installation Steps
 

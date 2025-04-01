@@ -29,10 +29,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Copy and set up development entrypoint script with proper line endings
-COPY docker-entrypoint-dev.sh /tmp/
-RUN tr -d '\r' < /tmp/docker-entrypoint-dev.sh > /app/docker-entrypoint-dev.sh && \
-    chmod +x /app/docker-entrypoint-dev.sh && \
-    rm /tmp/docker-entrypoint-dev.sh
+COPY docker-entrypoint.sh /tmp/
+RUN tr -d '\r' < /tmp/docker-entrypoint.sh > /app/docker-entrypoint.sh && \
+  chmod +x /app/docker-entrypoint.sh && \
+  rm /tmp/docker-entrypoint.sh
 
 # Change ownership
 RUN chown -R appuser:appuser /app
@@ -44,4 +44,4 @@ USER appuser
 EXPOSE 5000
 
 # Run the application
-CMD ["/bin/bash", "/app/docker-entrypoint-dev.sh"]
+CMD ["/bin/bash", "/app/docker-entrypoint.sh"]

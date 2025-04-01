@@ -42,14 +42,27 @@ Runarion is a comprehensive five-phase pipeline that revolutionizes the book cre
 - Professional PDF formatting and enhancement
 - Integrated illustration generation
 
+## Cross-Platform Compatibility
+
+This project is designed to work on both Linux and Windows. For Windows users:
+
+1. Use Git Bash, WSL with Docker Desktop
+2. Ensure line endings are properly handled:
+   - Git will handle this automatically thanks to .gitattributes
+   - If issues occur, run `dos2unix .env` and other script files (already done for the dev scripts)
+3. Environment variables are loaded from .env file:
+   - Copy .env.example to .env
+   - Update values as needed (namely db password)
+   - The dev.sh script will handle loading them properly
+
 ## Prerequisites
 
 - Docker Engine
 - Node.js (v20 or higher)
-- PHP 8.3
+- PHP 8.4
 - Composer
 - Python 3.12
-- PostgreSQL 14
+- PostgreSQL 17
 - Git
 
 ### Windows-Specific Requirements
