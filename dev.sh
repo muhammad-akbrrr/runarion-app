@@ -1,5 +1,26 @@
 #!/bin/bash
 
+# Function to load environment variables from .env file
+load_env() {
+    if [ -f .env ]; then
+        echo "Loading environment variables from .env file..."
+        while IFS= read -r line; do
+            # Skip comments and empty lines
+            [[ $line =~ ^#.*$ ]] && continue
+            [[ -z $line ]] && continue
+            
+            # Export the variable
+            export "$line"
+        done < .env
+    else
+        echo "Error: .env file not found"
+        exit 1
+    fi
+}
+
+# Load environment variables
+load_env
+
 # Function to check if Docker is running
 check_docker() {
     if ! docker info > /dev/null 2>&1; then

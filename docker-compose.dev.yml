@@ -4,8 +4,8 @@ services:
       context: ./runarion-laravel
       dockerfile: dockerfile
     ports:
-      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
-      - "${LARAVEL_PORT:-8000}:${LARAVEL_PORT:-8000}"
+      - "${VITE_PORT:-5173}:5173"
+      - "${LARAVEL_PORT:-8000}:8000"
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
@@ -75,7 +75,7 @@ services:
       context: ./runarion-python
       dockerfile: dockerfile
     ports:
-      - "${PYTHON_PORT:-5000}:${PYTHON_PORT:-5000}"
+      - "${PYTHON_PORT:-5000}:5000"
     environment:
       ENVIRONMENT: development
       DB_HOST: ${DB_HOST}
@@ -135,7 +135,7 @@ services:
       - GOSU_VERSION=${GOSU_VERSION:-1.17}
       - LANG=${LANG:-en_US.utf8}
     ports:
-      - "${DB_PORT:-5432}:${DB_PORT:-5432}"
+      - "${DB_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:
