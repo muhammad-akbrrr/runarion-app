@@ -3,6 +3,7 @@ from flask_cors import CORS
 import os
 from dotenv import load_dotenv
 import psycopg2
+from psycopg2 import pool
 
 # Load environment variables
 load_dotenv()

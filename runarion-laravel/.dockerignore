@@ -73,6 +73,7 @@ docker-compose*
 .Trashes
 ehthumbs.db
 Thumbs.db
+C
 
 # Testing and coverage
 /coverage
