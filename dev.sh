@@ -85,8 +85,6 @@ check_env_vars() {
         
         # Stable Diffusion Configuration
         "SD_API_PORT"
-        "SD_MEMORY_LIMIT"
-        "SD_MEMORY_RESERVATION"
         "SD_SERVICE_URL"
     )
 
