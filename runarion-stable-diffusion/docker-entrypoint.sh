@@ -1,0 +1,82 @@
+#!/bin/bash
+set -e
+
+# Function to log messages
+log() {
+    echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Function to check if CUDA is available
+check_cuda() {
+    log "Checking CUDA availability..."
+    
+    # Check if NVIDIA drivers are accessible
+    if [ ! -d "/proc/driver/nvidia" ]; then
+        log "Error: NVIDIA drivers not found in /proc/driver/nvidia"
+        exit 1
+    fi
+    
+    # Check if nvidia-smi is available
+    if ! command -v nvidia-smi &> /dev/null; then
+        log "Error: nvidia-smi not found"
+        exit 1
+    fi
+    
+    # Check GPU information
+    if ! nvidia-smi &> /dev/null; then
+        log "Error: nvidia-smi failed to run"
+        exit 1
+    fi
+    
+    # Check CUDA version
+    local cuda_version
+    cuda_version=$(nvidia-smi --query-gpu=driver_version,cuda_version --format=csv,noheader | awk -F', ' '{print $2}')
+    if [ -z "$cuda_version" ]; then
+        log "Error: Could not determine CUDA version"
+        exit 1
+    fi
+    
+    log "CUDA is available (Version: $cuda_version)"
+    log "GPU Information:"
+    nvidia-smi
+}
+
+# Function to check if required models are present
+check_models() {
+    log "Checking required models..."
+    local required_models=(
+        "models/stable-diffusion-v1-5"
+        "models/controlnet"
+    )
+    
+    for model in "${required_models[@]}"; do
+        if [ ! -d "$model" ]; then
+            log "Warning: Required model $model not found. Please ensure models are properly mounted."
+        else
+            log "Model $model found"
+        fi
+    done
+}
+
+# Function to start the Stable Diffusion service
+start_service() {
+    log "Starting Stable Diffusion service..."
+    
+    # Activate virtual environment
+    source /app/venv/bin/activate
+    
+    # Start the FastAPI server
+    exec uvicorn src.main:app --host 0.0.0.0 --port 7860 --workers 1
+}
+
+# Main execution
+log "Starting Stable Diffusion container initialization..."
+
+# Check CUDA availability
+check_cuda
+
+# Check required models
+check_models
+
+# Start the service
+start_service

@@ -1,0 +1,51 @@
+# Core ML dependencies
+torch==2.6.0
+torchvision==0.21.0
+diffusers==0.33.1
+transformers==4.51.3
+accelerate==1.6.0
+safetensors==0.5.3
+xformers==0.0.29.post3
+controlnet-aux==0.0.9
+
+# Image processing
+opencv-python==4.11.0.86
+pillow==11.2.1
+numpy==2.2.5
+scipy==1.15.2
+scikit-image==0.25.2
+tifffile==2025.3.30
+imageio==2.37.0
+
+# Web framework
+fastapi==0.115.12
+uvicorn==0.34.2
+python-multipart==0.0.20
+pydantic==2.11.3
+pydantic-core==2.33.1
+starlette==0.46.2
+
+# UI and API
+gradio==5.25.2
+gradio-client==1.8.0
+httpx==0.28.1
+httpcore==1.0.8
+websockets==15.0.1
+aiofiles==24.1.0
+
+# Utilities
+tqdm==4.67.1
+filelock==3.18.0
+fsspec==2025.3.2
+huggingface-hub==0.30.2
+requests==2.32.3
+orjson==3.10.16
+pandas==2.2.3
+psutil==7.0.0
+pydub==0.25.1
+
+# Development tools
+ruff==0.11.6
+typer==0.15.2
+tomlkit==0.13.2
+semantic-version==2.10.0

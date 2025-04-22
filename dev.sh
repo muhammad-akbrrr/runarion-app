@@ -82,6 +82,12 @@ check_env_vars() {
         "PYTHON_MEMORY_RESERVATION"
         "POSTGRES_MEMORY_LIMIT"
         "POSTGRES_MEMORY_RESERVATION"
+        
+        # Stable Diffusion Configuration
+        "SD_API_PORT"
+        "SD_MEMORY_LIMIT"
+        "SD_MEMORY_RESERVATION"
+        "SD_SERVICE_URL"
     )
 
     for var in "${required_vars[@]}"; do
@@ -94,7 +100,7 @@ check_env_vars() {
 
 # Function to check if ports are available
 check_ports() {
-    local ports=("8000" "5000" "5432" "5173")
+    local ports=("8000" "5000" "5432" "5173" "7860")
     for port in "${ports[@]}"; do
         if lsof -i :$port > /dev/null 2>&1; then
             echo "Warning: Port $port is already in use. Please free up the port and try again."
@@ -114,6 +120,7 @@ make_scripts_executable() {
         dos2unix docker-ensure-initdb.sh
         dos2unix runarion-laravel/docker-entrypoint.sh
         dos2unix runarion-python/docker-entrypoint.sh
+        dos2unix runarion-stable-diffusion/docker-entrypoint.sh
     else
         echo "Warning: dos2unix not found. Line endings may not be fixed properly."
     fi
@@ -121,6 +128,7 @@ make_scripts_executable() {
     chmod +x docker-ensure-initdb.sh
     chmod +x runarion-laravel/docker-entrypoint.sh
     chmod +x runarion-python/docker-entrypoint.sh
+    chmod +x runarion-stable-diffusion/docker-entrypoint.sh
 }
 
 # Function to wait for database to be ready
@@ -149,6 +157,105 @@ wait_for_vite() {
     done
     echo "Warning: Vite server did not become ready in time"
     return 1
+}
+
+# Function to check if NVIDIA GPU is available
+check_gpu() {
+    echo "Checking NVIDIA GPU availability..."
+    
+    # Test CUDA availability using a test container
+    if ! docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi &> /dev/null; then
+        echo "Error: CUDA is not properly configured in Docker."
+        echo "Please ensure the NVIDIA Container Toolkit is properly installed and configured."
+        exit 1
+    fi
+    
+    # Get GPU information from the container
+    local gpu_info
+    gpu_info=$(docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi --query-gpu=name,memory.total,driver_version,cuda_version --format=csv,noheader)
+    
+    # Extract memory information (assumes memory is in MiB)
+    local gpu_memory
+    gpu_memory=$(echo "$gpu_info" | awk -F', ' '{print $2}' | sed 's/ MiB//')
+    
+    if [ -n "$gpu_memory" ] && [ "$gpu_memory" -lt 8000 ]; then
+        echo "Warning: GPU memory is less than 8GB. Stable Diffusion may not perform optimally."
+        read -p "Do you want to continue anyway? (y/n) " -n 1 -r
+        echo
+        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+            exit 1
+        fi
+    fi
+    
+    echo "NVIDIA GPU detected and available in Docker."
+    echo "GPU Information:"
+    echo "$gpu_info"
+}
+
+# Function to wait for Stable Diffusion service to be ready
+wait_for_sd() {
+    echo "Waiting for Stable Diffusion service to be ready..."
+    local max_attempts=30
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:7860/health > /dev/null; then
+            echo "Stable Diffusion service is ready!"
+            return 0
+        fi
+        echo "Waiting for Stable Diffusion service... (attempt $attempt/$max_attempts)"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+    echo "Warning: Stable Diffusion service did not become ready in time"
+    return 1
+}
+
+# Function to download Stable Diffusion model
+download_sd_model() {
+    local model_dir="runarion-stable-diffusion/models/stable-diffusion-v1-5"
+    if [ ! -f "$model_dir/model_index.json" ]; then
+        echo "Downloading Stable Diffusion model..."
+        cd runarion-stable-diffusion && ./download_models.sh && cd ..
+    fi
+}
+
+# Function to download ControlNet model
+download_controlnet_model() {
+    local model_dir="runarion-stable-diffusion/models/controlnet"
+    if [ ! -f "$model_dir/model_index.json" ]; then
+        echo "Downloading ControlNet model..."
+        cd runarion-stable-diffusion && ./download_models.sh && cd ..
+    fi
+}
+
+# Function to setup Stable Diffusion
+setup_stable_diffusion() {
+    echo "Setting up Stable Diffusion..."
+    
+    # Ensure model directories exist
+    mkdir -p runarion-stable-diffusion/{models,outputs,inputs,cache}
+    
+    # Set proper permissions
+    chmod -R 755 runarion-stable-diffusion/{models,outputs,inputs,cache}
+    
+    # Create and activate virtual environment if it doesn't exist
+    if [ ! -d "runarion-stable-diffusion/venv" ]; then
+        echo "Creating virtual environment..."
+        cd runarion-stable-diffusion && python3 -m venv venv && cd ..
+    fi
+    
+    # Activate virtual environment and install dependencies
+    echo "Installing dependencies in virtual environment..."
+    cd runarion-stable-diffusion
+    source venv/bin/activate
+    pip install huggingface_hub
+    
+    # Download models if needed
+    ./download_models.sh
+    
+    cd ..
+    
+    echo "Stable Diffusion setup complete."
 }
 
 # Function to setup Laravel
@@ -199,7 +306,11 @@ echo "Starting development environment setup..."
 check_docker
 check_env_vars
 check_ports
+check_gpu
 make_scripts_executable
+
+# Setup Stable Diffusion
+setup_stable_diffusion
 
 # Build and start containers
 echo "Building and starting containers..."
@@ -208,6 +319,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 # Wait for services to be ready
 wait_for_db
 wait_for_vite
+wait_for_sd
 
 # Setup services
 setup_laravel
@@ -218,6 +330,7 @@ echo "Laravel frontend: http://localhost:8000"
 echo "Python service: http://localhost:5000"
 echo "Database: localhost:5432"
 echo "Vite HMR: http://localhost:5173"
+echo "Stable Diffusion: http://stable-diffusion:7860 (internal network only)"
 
 # Show logs
 echo "Showing logs (press Ctrl+C to stop)..."

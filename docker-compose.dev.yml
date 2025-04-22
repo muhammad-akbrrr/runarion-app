@@ -153,6 +153,52 @@ services:
       retries: 5
       start_period: 10s
 
+  stable-diffusion:
+    build:
+      context: ./runarion-stable-diffusion
+      dockerfile: dockerfile
+    ports:
+      - "${SD_API_PORT:-7860}:7860"
+    env_file:
+      - ./runarion-stable-diffusion/.env
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - NVIDIA_REQUIRE_CUDA="cuda>=11.8"
+      - CUDA_VISIBLE_DEVICES=0
+    volumes:
+      - ./runarion-stable-diffusion/models:/app/models
+      - ./runarion-stable-diffusion/outputs:/app/outputs
+      - ./runarion-stable-diffusion/inputs:/app/inputs
+      - ./runarion-stable-diffusion/cache:/app/cache
+    runtime: nvidia
+    deploy:
+      resources:
+        limits:
+          memory: ${SD_MEMORY_LIMIT:-8G}
+        reservations:
+          memory: ${SD_MEMORY_RESERVATION:-4G}
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    networks:
+      - runarion-network
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:${SD_API_PORT:-7860}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: ${LOG_DRIVER}
+      options:
+        max-size: ${LOG_MAX_SIZE}
+        max-file: ${LOG_MAX_FILE}
+
 networks:
   runarion-network:
     driver: bridge

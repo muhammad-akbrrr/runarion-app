@@ -1,0 +1,68 @@
+# Use NVIDIA CUDA base image
+FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+
+# Set environment variables
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PATH="/home/sduser/.local/bin:${PATH}"
+ENV NVIDIA_VISIBLE_DEVICES=all
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
+ENV NVIDIA_REQUIRE_CUDA="cuda>=11.8"
+ENV PIP_CACHE_DIR=/app/cache/pip
+ENV PIP_NO_CACHE_DIR=false
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+  python3.10 \
+  python3-pip \
+  python3-venv \
+  git \
+  wget \
+  curl \
+  libgl1-mesa-glx \
+  libglib2.0-0 \
+  && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -s /bin/bash sduser
+
+# Set working directory
+WORKDIR /app
+
+# Create and activate virtual environment
+RUN python3 -m venv /app/venv
+ENV PATH="/app/venv/bin:$PATH"
+
+# Create cache directories
+RUN mkdir -p /app/cache/pip && chown -R sduser:sduser /app/cache
+
+# Copy requirements first to leverage Docker cache
+COPY requirements.txt .
+
+# Install Python dependencies with caching
+RUN pip install --cache-dir=/app/cache/pip -r requirements.txt
+
+# Copy application code
+COPY . .
+
+# Create necessary directories with proper permissions
+RUN mkdir -p /app/models /app/outputs /app/inputs /app/cache \
+  && chown -R sduser:sduser /app
+
+# Set entrypoint and make it executable
+COPY docker-entrypoint.sh /app/
+RUN chmod +x /app/docker-entrypoint.sh && chown sduser:sduser /app/docker-entrypoint.sh
+
+# Switch to non-root user
+USER sduser
+
+# Expose port for API
+EXPOSE 7860
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:7860/health || exit 1
+
+# Run the application
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
