@@ -25,14 +25,15 @@ create_directories() {
 
 # Function to download Stable Diffusion model
 download_sd_model() {
-    echo "Downloading Stable Diffusion v1.5 model..."
+    echo "Downloading Stable Diffusion v1.5 model (Forge compatible)..."
     huggingface-cli download --resume-download --local-dir "$MODELS_DIR/stable-diffusion-v1-5" runwayml/stable-diffusion-v1-5
 }
 
 # Function to download ControlNet model
 download_controlnet_model() {
-    echo "Downloading ControlNet model..."
-    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet" lllyasviel/ControlNet-v1-1 --include "control_v11p_sd15_canny.pth" "control_v11p_sd15_canny.yaml"
+    echo "Downloading ControlNet model (Forge compatible)..."
+    # Download the canny model which is most commonly used
+    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet" lllyasviel/control_v11p_sd15_canny --include "diffusion_pytorch_model.bin" "config.json"
 }
 
 # Function to verify downloads
@@ -45,12 +46,12 @@ verify_downloads() {
         exit 1
     fi
     
-    # Check ControlNet model - updated paths to match actual downloaded files
-    if [ ! -f "$MODELS_DIR/controlnet/control_v11p_sd15_canny.pth" ] || [ ! -f "$MODELS_DIR/controlnet/control_v11p_sd15_canny.yaml" ]; then
+    # Check ControlNet model
+    if [ ! -f "$MODELS_DIR/controlnet/diffusion_pytorch_model.bin" ] || [ ! -f "$MODELS_DIR/controlnet/config.json" ]; then
         echo "Error: ControlNet model download failed or is incomplete."
         echo "Expected files:"
-        echo "- $MODELS_DIR/controlnet/control_v11p_sd15_canny.pth"
-        echo "- $MODELS_DIR/controlnet/control_v11p_sd15_canny.yaml"
+        echo "- $MODELS_DIR/controlnet/diffusion_pytorch_model.bin"
+        echo "- $MODELS_DIR/controlnet/config.json"
         echo "Found files:"
         ls -la "$MODELS_DIR/controlnet/"
         exit 1

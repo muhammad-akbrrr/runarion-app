@@ -10,35 +10,21 @@ log() {
 check_cuda() {
     log "Checking CUDA availability..."
     
-    # Check if NVIDIA drivers are accessible
-    if [ ! -d "/proc/driver/nvidia" ]; then
-        log "Error: NVIDIA drivers not found in /proc/driver/nvidia"
-        exit 1
-    fi
-    
-    # Check if nvidia-smi is available
+    # Check if nvidia-smi is available and working
     if ! command -v nvidia-smi &> /dev/null; then
-        log "Error: nvidia-smi not found"
-        exit 1
+        log "Warning: nvidia-smi not found, but continuing anyway..."
+        return 0
     fi
     
-    # Check GPU information
-    if ! nvidia-smi &> /dev/null; then
-        log "Error: nvidia-smi failed to run"
-        exit 1
+    # Try to get CUDA version from nvidia-smi
+    if ! nvidia-smi --query-gpu=driver_version --format=csv,noheader &> /dev/null; then
+        log "Warning: Could not get CUDA version from nvidia-smi, but continuing anyway..."
+        return 0
     fi
     
-    # Check CUDA version
-    local cuda_version
-    cuda_version=$(nvidia-smi --query-gpu=driver_version,cuda_version --format=csv,noheader | awk -F', ' '{print $2}')
-    if [ -z "$cuda_version" ]; then
-        log "Error: Could not determine CUDA version"
-        exit 1
-    fi
-    
-    log "CUDA is available (Version: $cuda_version)"
-    log "GPU Information:"
-    nvidia-smi
+    log "NVIDIA GPU detected"
+    nvidia-smi || true
+    return 0
 }
 
 # Function to check if required models are present

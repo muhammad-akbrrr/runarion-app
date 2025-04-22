@@ -195,18 +195,26 @@ check_gpu() {
 # Function to wait for Stable Diffusion service to be ready
 wait_for_sd() {
     echo "Waiting for Stable Diffusion service to be ready..."
-    local max_attempts=30
+    local max_attempts=60
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
         if curl -s http://localhost:7860/health > /dev/null; then
-            echo "Stable Diffusion service is ready!"
-            return 0
+            local health_status=$(curl -s http://localhost:7860/health | jq -r '.status')
+            if [ "$health_status" = "healthy" ]; then
+                echo "Stable Diffusion service is ready and initialized!"
+                return 0
+            else
+                echo "Stable Diffusion service is starting up... (status: $health_status, attempt $attempt/$max_attempts)"
+            fi
+        else
+            echo "Waiting for Stable Diffusion service to respond... (attempt $attempt/$max_attempts)"
         fi
-        echo "Waiting for Stable Diffusion service... (attempt $attempt/$max_attempts)"
-        sleep 2
+        sleep 5
         attempt=$((attempt + 1))
     done
     echo "Warning: Stable Diffusion service did not become ready in time"
+    echo "Last health check response:"
+    curl -s http://localhost:7860/health || echo "No response from health endpoint"
     return 1
 }
 
