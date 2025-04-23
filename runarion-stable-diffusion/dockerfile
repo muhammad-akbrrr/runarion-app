@@ -5,12 +5,12 @@ FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONDONTWRITEBYTECODE=1
-ENV PATH="/home/sduser/.local/bin:${PATH}"
+ENV PATH="/app/venv/bin:${PATH}"
+ENV PYTHONPATH="/app/src"
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
 ENV NVIDIA_REQUIRE_CUDA="cuda>=12.1"
-ENV PIP_CACHE_DIR=/app/cache/pip
-ENV PIP_NO_CACHE_DIR=false
+ENV PIP_NO_CACHE_DIR=1
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -32,22 +32,19 @@ WORKDIR /app
 
 # Create and activate virtual environment
 RUN python3 -m venv /app/venv
-ENV PATH="/app/venv/bin:$PATH"
-
-# Create cache directories
-RUN mkdir -p /app/cache/pip && chown -R sduser:sduser /app/cache
 
 # Copy requirements first to leverage Docker cache
 COPY requirements.txt .
 
-# Install Python dependencies with caching
-RUN pip install --cache-dir=/app/cache/pip -r requirements.txt
+# Install Python dependencies
+RUN . /app/venv/bin/activate && \
+  python -m pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/models /app/outputs /app/inputs /app/cache \
+RUN mkdir -p /app/models /app/outputs /app/inputs \
   && chown -R sduser:sduser /app
 
 # Set entrypoint and make it executable

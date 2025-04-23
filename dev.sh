@@ -247,14 +247,14 @@ setup_stable_diffusion() {
     # Create and activate virtual environment if it doesn't exist
     if [ ! -d "runarion-stable-diffusion/venv" ]; then
         echo "Creating virtual environment..."
-        cd runarion-stable-diffusion && python3 -m venv venv && cd ..
+        cd runarion-stable-diffusion && python3 -m venv venv --clear && cd ..
     fi
     
     # Activate virtual environment and install dependencies
     echo "Installing dependencies in virtual environment..."
     cd runarion-stable-diffusion
     source venv/bin/activate
-    pip install huggingface_hub
+    python -m pip install --no-cache-dir huggingface_hub
     
     # Download models if needed
     ./download_models.sh

@@ -51,8 +51,11 @@ start_service() {
     # Activate virtual environment
     source /app/venv/bin/activate
     
+    # Set Python path
+    export PYTHONPATH="/app/src"
+    
     # Start the FastAPI server
-    exec uvicorn src.main:app --host 0.0.0.0 --port 7860 --workers 1
+    exec python -m uvicorn src.main:app --host 0.0.0.0 --port 7860 --workers 1
 }
 
 # Main execution

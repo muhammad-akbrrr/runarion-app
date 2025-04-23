@@ -88,11 +88,14 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FLASK_ENV: ${FLASK_ENV:-development}
       FLASK_DEBUG: ${FLASK_DEBUG:-"1"}
+      PYTHONPATH: /app/src
+      PYTHONDONTWRITEBYTECODE: 1
+      PYTHONUNBUFFERED: 1
     volumes:
       - ./runarion-python/src:/app/src
       - ./runarion-python/tests:/app/tests
       - ./runarion-python/requirements.txt:/app/requirements.txt
-      - /app/venv
+      - python_venv:/app/venv
     networks:
       - runarion-network
     depends_on:
@@ -164,11 +167,15 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - PYTHONPATH=/app/src
+      - PYTHONDONTWRITEBYTECODE=1
+      - PYTHONUNBUFFERED=1
     volumes:
       - ./runarion-stable-diffusion/models:/app/models
       - ./runarion-stable-diffusion/outputs:/app/outputs
       - ./runarion-stable-diffusion/inputs:/app/inputs
       - ./runarion-stable-diffusion/cache:/app/cache
+      - sd_venv:/app/venv
     deploy:
       resources:
         reservations:
@@ -202,3 +209,5 @@ volumes:
   postgres_data:
   node_modules:
   vendor:
+  python_venv:
+  sd_venv:

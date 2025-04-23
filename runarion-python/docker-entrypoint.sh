@@ -1,4 +1,5 @@
 #!/bin/bash
+set -e
 
 # Function to log messages
 log() {
@@ -25,12 +26,17 @@ check_flask() {
 # Function to start the Flask application
 start_flask() {
     log "Starting Flask application..."
+    
+    # Activate virtual environment
+    source /app/venv/bin/activate
+    
     # Set Flask environment variables
     export FLASK_APP=src/app.py
     export FLASK_ENV=development
     export FLASK_DEBUG=1
     export PYTHONUNBUFFERED=1
     export PYTHONDONTWRITEBYTECODE=1
+    export PYTHONPATH="/app/src"
     
     # Run Flask directly with python instead of using flask CLI
     python src/app.py || {
