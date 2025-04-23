@@ -39,7 +39,7 @@ async def startup_event():
             os.path.join(MODELS_DIR, "controlnet"),
             torch_dtype=torch.float16,
             local_files_only=True,
-            use_safetensors=False  # Using .bin format
+            use_safetensors=False
         )
 
         # Load Stable Diffusion model
@@ -48,16 +48,14 @@ async def startup_event():
             controlnet=controlnet,
             torch_dtype=torch.float16,
             local_files_only=True,
-            safety_checker=None,  # Disable safety checker for better performance
+            safety_checker=None,
             requires_safety_checker=False
         )
 
         # Move to GPU if available
         if torch.cuda.is_available():
             pipe = pipe.to("cuda")
-            # Enable memory efficient attention for better performance
             pipe.enable_xformers_memory_efficient_attention()
-            # Enable model CPU offload for better memory management
             pipe.enable_model_cpu_offload()
             logger.info(
                 "Models loaded and moved to GPU with xformers and CPU offload enabled")
@@ -74,7 +72,6 @@ async def startup_event():
 @app.get("/health")
 async def health_check():
     try:
-        # Check if pipe exists and is properly initialized
         pipe_initialized = False
         if hasattr(app.state, "pipe"):
             try:

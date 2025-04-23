@@ -59,11 +59,14 @@ check_env_vars() {
         "APP_URL"
         "PYTHON_SERVICE_URL"
         "VITE_SERVICE_URL"
+        "SD_SERVICE_URL"
         
         # Service Ports
         "LARAVEL_PORT"
         "PYTHON_PORT"
         "VITE_PORT"
+        "SD_API_PORT"
+        
         "VITE_HOST"
         
         # PHP Configuration
@@ -82,10 +85,6 @@ check_env_vars() {
         "PYTHON_MEMORY_RESERVATION"
         "POSTGRES_MEMORY_LIMIT"
         "POSTGRES_MEMORY_RESERVATION"
-        
-        # Stable Diffusion Configuration
-        "SD_API_PORT"
-        "SD_SERVICE_URL"
     )
 
     for var in "${required_vars[@]}"; do
@@ -170,7 +169,7 @@ check_gpu() {
     
     # Get GPU information from the container
     local gpu_info
-    gpu_info=$(docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi --query-gpu=name,memory.total,driver_version,cuda_version --format=csv,noheader)
+    gpu_info=$(docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader)
     
     # Extract memory information (assumes memory is in MiB)
     local gpu_memory
@@ -196,14 +195,12 @@ wait_for_sd() {
     local max_attempts=60
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:7860/health > /dev/null; then
-            local health_status=$(curl -s http://localhost:7860/health | jq -r '.status')
-            if [ "$health_status" = "healthy" ]; then
-                echo "Stable Diffusion service is ready and initialized!"
-                return 0
-            else
-                echo "Stable Diffusion service is starting up... (status: $health_status, attempt $attempt/$max_attempts)"
-            fi
+        local health_response
+        health_response=$(curl -s http://localhost:7860/health)
+        
+        if echo "$health_response" | grep -q '"status":"healthy"'; then
+            echo "Stable Diffusion service is ready and initialized!"
+            return 0
         else
             echo "Waiting for Stable Diffusion service to respond... (attempt $attempt/$max_attempts)"
         fi

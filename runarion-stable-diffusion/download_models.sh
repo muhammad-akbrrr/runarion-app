@@ -4,10 +4,37 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODELS_DIR="$SCRIPT_DIR/models"
 
+# Function to detect the operating system
+detect_os() {
+    case "$(uname -s)" in
+        Linux*)     echo "linux";;
+        Darwin*)    echo "macos";;
+        CYGWIN*|MINGW*|MSYS*) echo "windows";;
+        *)          echo "unknown";;
+    esac
+}
+
+# Function to get the virtual environment activation script path
+get_venv_activate_path() {
+    local os=$(detect_os)
+    if [ "$os" = "windows" ]; then
+        echo "$SCRIPT_DIR/venv/Scripts/activate"
+    else
+        echo "$SCRIPT_DIR/venv/bin/activate"
+    fi
+}
+
 # Function to check if huggingface-cli is installed
 check_huggingface_cli() {
+    local venv_activate=$(get_venv_activate_path)
+    
     # Activate virtual environment
-    source "$SCRIPT_DIR/venv/bin/activate"
+    if [ -f "$venv_activate" ]; then
+        source "$venv_activate"
+    else
+        echo "Error: Virtual environment activation script not found at $venv_activate"
+        exit 1
+    fi
     
     if ! command -v huggingface-cli &> /dev/null; then
         echo "Error: huggingface-cli is not installed in the virtual environment."
