@@ -117,7 +117,7 @@ sudo systemctl restart docker
 1. Install Docker Desktop
 2. Enable WSL 2
 3. Install a Linux distro in your WSL environment
-4. Enable the distro in the "Resources" tab under WSL Integration in your Docker Desktop
+4. Enable the distro in the "WSL Integration" tab under the "Resources" tab in your Docker Desktop
 5. Access your Linux Distro of choice
 6. Install NVIDIA CUDA Toolkit
 7. Install NVIDIA Container Toolkit for WSL 2
@@ -134,8 +134,8 @@ cd runarion-app
 ```
 
 2. Create necessary .env files:
-   - Copy `.env.example` to `.env` in the root directory `cp ./.env.example .env` (make sure you run this in the current directory you wanna copy the env files to).
-   - Copy `.env.example` to `.env` in `runarion-laravel`, `runarion-python`, and `runarion-stable-diffusion` directories
+   - Copy `.env.example` to `.env` in the root directory `cp ./.env.example .env` (make sure you run this in the current directory you wanna copy your .env files to)
+   - Copy `.env.example` to `.env` in: `runarion-laravel`, `runarion-python`, and `runarion-stable-diffusion` directories
 
 ### Laravel Setup
 
@@ -217,7 +217,7 @@ cd ..
 
 The project uses Docker for development to ensure consistency across environments.
 
-Before we proceed with running any entry scripts, we must make sure we have nvidia runtime configured in our docker engine:
+Before we proceed with running any entry scripts, we must make sure we have the NVIDIA runtime is configured in our Docker engine:
 
 **Linux:**
 
@@ -233,7 +233,7 @@ docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
 
 1. Access your preferred Linux distro through WSL:
    ```bash
-   wsl -d <your-distro-name>
+   wsl -d <your-distro-name> e.g. Ubuntu
    ```
 2. Verify NVIDIA Container Toolkit installation:
    ```bash
@@ -305,7 +305,7 @@ The application is split into four main components:
 
 ## Configuration
 
-- Database configuration is managed through Laravel's `.env` file
+- Database configuration is managed through Laravel's `.env` as well as the root `.env` file
 - AI settings can be adjusted in the Python service's configuration
 - Docker settings are defined in `docker-compose.dev.yml`
 - Environment-specific settings should be configured in respective `.env` files
@@ -341,7 +341,7 @@ Common issues and solutions:
 4. **Database Connection Issues**
 
    - Verify PostgreSQL password in `.env` files
-   - Ensure database service is running
+   - Ensure the database service is running
    - Check network connectivity between containers
 
 5. **Stable Diffusion Issues**
@@ -357,4 +357,4 @@ Common issues and solutions:
    - Check internet connectivity
    - Verify Hugging Face credentials if using private models
    - Ensure sufficient disk space for model files
-   - Try running `./download_models.sh` multiple times if download fails
+   - Try running `./download_models.sh` multiple times if the download fails
