@@ -11,7 +11,6 @@ import numpy as np
 import cv2
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 # Configure logging
@@ -21,7 +20,8 @@ logger = logging.getLogger(__name__)
 app = FastAPI(title="Stable Diffusion API")
 
 # Configure CORS
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:8000,http://localhost:5000").split(",")
+allowed_origins = os.getenv(
+    "ALLOWED_ORIGINS", "http://localhost:8000,http://localhost:5000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
@@ -33,7 +33,12 @@ app.add_middleware(
 # Initialize models
 MODELS_DIR = os.getenv("MODELS_DIR", "/app/models")
 CONTROLNET_MODEL_PATH = os.getenv("CONTROLNET_MODEL_PATH", "controlnet")
-STABLE_DIFFUSION_MODEL_PATH = os.getenv("STABLE_DIFFUSION_MODEL_PATH", "stable-diffusion-v1-5")
+STABLE_DIFFUSION_MODEL_PATH = os.getenv(
+    "STABLE_DIFFUSION_MODEL_PATH", "stable-diffusion-v1-5")
+USE_SAFETENSORS = os.getenv("USE_SAFETENSORS", "true").lower() == "true"
+ENABLE_MODEL_CACHING = os.getenv(
+    "ENABLE_MODEL_CACHING", "true").lower() == "true"
+CACHE_DIR = os.getenv("CACHE_DIR", "/app/cache")
 
 # Generation parameters
 NUM_INFERENCE_STEPS = int(os.getenv("NUM_INFERENCE_STEPS", "20"))
@@ -43,6 +48,17 @@ GUIDANCE_SCALE = float(os.getenv("GUIDANCE_SCALE", "7.5"))
 USE_CUDA = os.getenv("USE_CUDA", "true").lower() == "true"
 ENABLE_XFORMERS = os.getenv("ENABLE_XFORMERS", "true").lower() == "true"
 ENABLE_CPU_OFFLOAD = os.getenv("ENABLE_CPU_OFFLOAD", "true").lower() == "true"
+ENABLE_SEQUENTIAL_CPU_OFFLOAD = os.getenv(
+    "ENABLE_SEQUENTIAL_CPU_OFFLOAD", "true").lower() == "true"
+ENABLE_ATTENTION_SLICING = os.getenv(
+    "ENABLE_ATTENTION_SLICING", "true").lower() == "true"
+ENABLE_VAE_TILING = os.getenv("ENABLE_VAE_TILING", "true").lower() == "true"
+ENABLE_GRADIENT_CHECKPOINTING = os.getenv(
+    "ENABLE_GRADIENT_CHECKPOINTING", "true").lower() == "true"
+
+# Create cache directory if it doesn't exist
+if ENABLE_MODEL_CACHING:
+    os.makedirs(CACHE_DIR, exist_ok=True)
 
 
 @app.on_event("startup")
@@ -55,7 +71,8 @@ async def startup_event():
             os.path.join(MODELS_DIR, CONTROLNET_MODEL_PATH),
             torch_dtype=torch.float16,
             local_files_only=True,
-            use_safetensors=False
+            use_safetensors=USE_SAFETENSORS,
+            cache_dir=CACHE_DIR if ENABLE_MODEL_CACHING else None
         )
 
         # Load Stable Diffusion model
@@ -65,7 +82,9 @@ async def startup_event():
             torch_dtype=torch.float16,
             local_files_only=True,
             safety_checker=None,
-            requires_safety_checker=False
+            requires_safety_checker=False,
+            use_safetensors=USE_SAFETENSORS,
+            cache_dir=CACHE_DIR if ENABLE_MODEL_CACHING else None
         )
 
         # Move to GPU if available and configured
@@ -73,9 +92,21 @@ async def startup_event():
             pipe = pipe.to("cuda")
             if ENABLE_XFORMERS:
                 pipe.enable_xformers_memory_efficient_attention()
-            if ENABLE_CPU_OFFLOAD:
-                pipe.enable_model_cpu_offload()
-            logger.info("Models loaded and moved to GPU with configured optimizations")
+                logger.info("XFormers memory efficient attention enabled")
+            if ENABLE_SEQUENTIAL_CPU_OFFLOAD:
+                pipe.enable_sequential_cpu_offload()
+                logger.info("Sequential CPU offload enabled")
+            if ENABLE_ATTENTION_SLICING:
+                pipe.enable_attention_slicing()
+                logger.info("Attention slicing enabled")
+            if ENABLE_VAE_TILING:
+                pipe.enable_vae_tiling()
+                logger.info("VAE tiling enabled")
+            if ENABLE_GRADIENT_CHECKPOINTING:
+                pipe.unet.enable_gradient_checkpointing()
+                logger.info("Gradient checkpointing enabled")
+            logger.info(
+                "Models loaded and moved to GPU with configured optimizations")
         else:
             logger.warning("CUDA not available or disabled, using CPU")
 
@@ -111,8 +142,7 @@ async def health_check():
             "status": "healthy" if pipe_initialized else "initializing",
             "cuda_available": torch.cuda.is_available(),
             "model_loaded": hasattr(app.state, "pipe"),
-            "model_initialized": pipe_initialized,
-            "xformers_enabled": hasattr(app.state, "pipe") and hasattr(app.state.pipe, "enable_xformers_memory_efficient_attention")
+            "model_initialized": pipe_initialized
         }
     except Exception as e:
         logger.error(f"Health check failed: {str(e)}")
@@ -144,5 +174,3 @@ async def generate_image(prompt: str):
     except Exception as e:
         logger.error(f"Error generating image: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
-
-# Add more endpoints here for image generation, etc.

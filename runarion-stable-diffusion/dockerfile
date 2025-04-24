@@ -44,7 +44,7 @@ RUN . /app/venv/bin/activate && \
 COPY . .
 
 # Create necessary directories with proper permissions
-RUN mkdir -p /app/models /app/outputs /app/inputs \
+RUN mkdir -p /app/models /app/outputs /app/inputs /app/cache \
   && chown -R sduser:sduser /app
 
 # Set entrypoint and make it executable

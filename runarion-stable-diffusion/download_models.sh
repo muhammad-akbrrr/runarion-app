@@ -53,14 +53,36 @@ create_directories() {
 # Function to download Stable Diffusion model
 download_sd_model() {
     echo "Downloading Stable Diffusion v1.5 model (Forge compatible)..."
-    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/stable-diffusion-v1-5" runwayml/stable-diffusion-v1-5
+    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/stable-diffusion-v1-5" \
+        runwayml/stable-diffusion-v1-5 \
+        --include "*.safetensors" "*.json" "*.txt" "*.yaml" "*.ckpt" \
+        --exclude "*.bin" "*.pt" "*.pth"
+    
+    # Ensure the model is in the correct format for Forge
+    if [ ! -f "$MODELS_DIR/stable-diffusion-v1-5/v1-5-pruned.safetensors" ]; then
+        echo "Converting model to Forge format..."
+        huggingface-cli download --resume-download --local-dir "$MODELS_DIR/stable-diffusion-v1-5" \
+            runwayml/stable-diffusion-v1-5 \
+            --include "v1-5-pruned.safetensors"
+    fi
 }
 
 # Function to download ControlNet model
 download_controlnet_model() {
     echo "Downloading ControlNet model (Forge compatible)..."
     # Download the canny model which is most commonly used
-    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet" lllyasviel/control_v11p_sd15_canny --include "diffusion_pytorch_model.bin" "config.json"
+    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet" \
+        lllyasviel/control_v11p_sd15_canny \
+        --include "*.safetensors" "*.json" "*.txt" "*.yaml" \
+        --exclude "*.bin" "*.pt" "*.pth"
+    
+    # Ensure the model is in the correct format for Forge
+    if [ ! -f "$MODELS_DIR/controlnet/diffusion_pytorch_model.safetensors" ]; then
+        echo "Converting ControlNet model to Forge format..."
+        huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet" \
+            lllyasviel/control_v11p_sd15_canny \
+            --include "diffusion_pytorch_model.safetensors"
+    fi
 }
 
 # Function to verify downloads
@@ -68,23 +90,79 @@ verify_downloads() {
     echo "Verifying model downloads..."
     
     # Check Stable Diffusion model
-    if [ ! -f "$MODELS_DIR/stable-diffusion-v1-5/model_index.json" ]; then
-        echo "Error: Stable Diffusion model download failed or is incomplete."
+    local sd_required_files=(
+        "model_index.json"
+        "v1-5-pruned.safetensors"
+        "v1-inference.yaml"
+        "scheduler/scheduler_config.json"
+    )
+    
+    # Check required subdirectories
+    local sd_required_dirs=(
+        "unet"
+        "vae"
+        "text_encoder"
+        "tokenizer"
+        "scheduler"
+    )
+    
+    for file in "${sd_required_files[@]}"; do
+        if [ ! -f "$MODELS_DIR/stable-diffusion-v1-5/$file" ]; then
+            echo "Error: Stable Diffusion model download failed or is incomplete."
+            echo "Missing required file: $file"
+            echo "Found files:"
+            ls -la "$MODELS_DIR/stable-diffusion-v1-5/"
+            exit 1
+        fi
+    done
+    
+    for dir in "${sd_required_dirs[@]}"; do
+        if [ ! -d "$MODELS_DIR/stable-diffusion-v1-5/$dir" ]; then
+            echo "Error: Stable Diffusion model structure is incomplete."
+            echo "Missing required directory: $dir"
+            echo "Found directories:"
+            ls -la "$MODELS_DIR/stable-diffusion-v1-5/"
+            exit 1
+        fi
+    done
+    
+    # Verify model type and version
+    if ! grep -q "\"_class_name\": \"StableDiffusionPipeline\"" "$MODELS_DIR/stable-diffusion-v1-5/model_index.json"; then
+        echo "Error: Incorrect model type in model_index.json"
+        echo "Expected: StableDiffusionPipeline"
+        echo "Found:"
+        grep "_class_name" "$MODELS_DIR/stable-diffusion-v1-5/model_index.json"
         exit 1
     fi
     
     # Check ControlNet model
-    if [ ! -f "$MODELS_DIR/controlnet/diffusion_pytorch_model.bin" ] || [ ! -f "$MODELS_DIR/controlnet/config.json" ]; then
-        echo "Error: ControlNet model download failed or is incomplete."
-        echo "Expected files:"
-        echo "- $MODELS_DIR/controlnet/diffusion_pytorch_model.bin"
-        echo "- $MODELS_DIR/controlnet/config.json"
-        echo "Found files:"
-        ls -la "$MODELS_DIR/controlnet/"
+    local cn_required_files=(
+        "config.json"
+        "diffusion_pytorch_model.safetensors"
+        "diffusion_pytorch_model.fp16.safetensors"
+    )
+    
+    for file in "${cn_required_files[@]}"; do
+        if [ ! -f "$MODELS_DIR/controlnet/$file" ]; then
+            echo "Error: ControlNet model download failed or is incomplete."
+            echo "Missing required file: $file"
+            echo "Found files:"
+            ls -la "$MODELS_DIR/controlnet/"
+            exit 1
+        fi
+    done
+    
+    # Verify ControlNet model type
+    if ! grep -q "\"_class_name\": \"ControlNetModel\"" "$MODELS_DIR/controlnet/config.json"; then
+        echo "Error: Incorrect ControlNet model type in config.json"
+        echo "Expected: ControlNetModel"
+        echo "Found:"
+        grep "_class_name" "$MODELS_DIR/controlnet/config.json"
         exit 1
     fi
     
     echo "All models downloaded and verified successfully!"
+    echo "Model structure matches Forge requirements."
 }
 
 # Main execution

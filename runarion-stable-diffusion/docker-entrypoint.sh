@@ -31,17 +31,36 @@ check_cuda() {
 check_models() {
     log "Checking required models..."
     local required_models=(
-        "models/stable-diffusion-v1-5"
-        "models/controlnet"
+        "models/stable-diffusion-v1-5/model_index.json"
+        "models/stable-diffusion-v1-5/v1-5-pruned.safetensors"
+        "models/stable-diffusion-v1-5/scheduler/scheduler_config.json"
+        "models/controlnet/diffusion_pytorch_model.safetensors"
+        "models/controlnet/config.json"
     )
     
     for model in "${required_models[@]}"; do
-        if [ ! -d "$model" ]; then
-            log "Warning: Required model $model not found. Please ensure models are properly mounted."
+        if [ ! -f "/app/$model" ]; then
+            log "Warning: Required model file $model not found. Please ensure models are properly mounted."
+            return 1
         else
-            log "Model $model found"
+            log "Model file $model found"
         fi
     done
+}
+
+# Function to check cache directory
+check_cache() {
+    log "Checking cache directory..."
+    if [ ! -d "/app/cache" ]; then
+        log "Creating cache directory..."
+        mkdir -p /app/cache
+        chown sduser:sduser /app/cache
+    fi
+    
+    if [ ! -w "/app/cache" ]; then
+        log "Warning: Cache directory is not writable. Model caching may not work properly."
+        return 1
+    fi
 }
 
 # Function to start the Stable Diffusion service
@@ -63,6 +82,9 @@ log "Starting Stable Diffusion container initialization..."
 
 # Check CUDA availability
 check_cuda
+
+# Check cache directory
+check_cache
 
 # Check required models
 check_models
