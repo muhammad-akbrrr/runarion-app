@@ -88,9 +88,9 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       FLASK_ENV: ${FLASK_ENV:-development}
       FLASK_DEBUG: ${FLASK_DEBUG:-"1"}
-      PYTHONPATH: /app/src
-      PYTHONDONTWRITEBYTECODE: 1
-      PYTHONUNBUFFERED: 1
+      PYTHONPATH: ${PYTHON_PYTHONPATH:-/app/src}
+      PYTHONDONTWRITEBYTECODE: ${PYTHON_PYTHONDONTWRITEBYTECODE:-1}
+      PYTHONUNBUFFERED: ${PYTHON_PYTHONUNBUFFERED:-1}
     volumes:
       - ./runarion-python/src:/app/src
       - ./runarion-python/tests:/app/tests
@@ -165,11 +165,11 @@ services:
     env_file:
       - ./runarion-stable-diffusion/.env
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - PYTHONPATH=/app/src
-      - PYTHONDONTWRITEBYTECODE=1
-      - PYTHONUNBUFFERED=1
+      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
+      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+      - PYTHONPATH=${SD_PYTHONPATH:-/app/src}
+      - PYTHONDONTWRITEBYTECODE=${SD_PYTHONDONTWRITEBYTECODE:-1}
+      - PYTHONUNBUFFERED=${SD_PYTHONUNBUFFERED:-1}
     volumes:
       - ./runarion-stable-diffusion/models:/app/models
       - ./runarion-stable-diffusion/outputs:/app/outputs

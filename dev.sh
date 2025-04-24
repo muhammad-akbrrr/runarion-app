@@ -42,7 +42,14 @@ check_docker() {
 # Function to check if required environment variables are set
 check_env_vars() {
     local required_vars=(
+        # Docker Configuration
+        "REGISTRY"
+        "TAG"
+        "DOCKER_STACK_NAME"
+        "DOCKER_COMPOSE_FILE"
+        
         # Database Configuration
+        "DB_CONNECTION"
         "DB_HOST"
         "DB_PORT"
         "DB_DATABASE"
@@ -67,17 +74,6 @@ check_env_vars() {
         "VITE_PORT"
         "SD_API_PORT"
         
-        "VITE_HOST"
-        
-        # PHP Configuration
-        "PHP_CLI_SERVER_WORKERS"
-        "BCRYPT_ROUNDS"
-        
-        # Logging Configuration
-        "LOG_DRIVER"
-        "LOG_MAX_SIZE"
-        "LOG_MAX_FILE"
-        
         # Resource Limits
         "LARAVEL_MEMORY_LIMIT"
         "LARAVEL_MEMORY_RESERVATION"
@@ -85,12 +81,92 @@ check_env_vars() {
         "PYTHON_MEMORY_RESERVATION"
         "POSTGRES_MEMORY_LIMIT"
         "POSTGRES_MEMORY_RESERVATION"
+        
+        # Logging Configuration
+        "LOG_DRIVER"
+        "LOG_MAX_SIZE"
+        "LOG_MAX_FILE"
+        
+        # Development Settings
+        "VITE_HOST"
+        "VITE_APP_NAME"
+        
+        # PHP Settings
+        "PHP_CLI_SERVER_WORKERS"
+        "BCRYPT_ROUNDS"
+        
+        # Locale Settings
+        "APP_LOCALE"
+        "APP_FALLBACK_LOCALE"
+        "APP_FAKER_LOCALE"
+        
+        # Node.js Settings
+        "NODE_OPTIONS"
+        "NPM_CONFIG_CACHE"
+        "CHOKIDAR_USEPOLLING"
+        "WATCHPACK_POLLING"
+        
+        # Flask Settings
+        "FLASK_ENV"
+        "FLASK_DEBUG"
+        
+        # Python Settings
+        "PYTHON_PYTHONPATH"
+        "PYTHON_PYTHONDONTWRITEBYTECODE"
+        "PYTHON_PYTHONUNBUFFERED"
+        
+        # Stable Diffusion Settings
+        "NVIDIA_VISIBLE_DEVICES"
+        "NVIDIA_DRIVER_CAPABILITIES"
+        "SD_PYTHONPATH"
+        "SD_PYTHONDONTWRITEBYTECODE"
+        "SD_PYTHONUNBUFFERED"
+        "SD_DIR_PERMISSIONS"
+        
+        # Network Configuration
+        "NETWORK_DRIVER"
+        "NETWORK_ATTACHABLE"
+        
+        # Volume Configuration
+        "VOLUME_DRIVER"
     )
 
+    # Optional variables that can be empty
+    local optional_vars=(
+        # PostgreSQL Advanced Configuration
+        "POSTGRES_INITDB_WALDIR"
+        "POSTGRES_INITDB_ARGS"
+        "PG_MAJOR"
+        "PG_VERSION"
+        "PGDATA"
+        "POSTGRES_GID"
+        "POSTGRES_UID"
+        "GOSU_VERSION"
+        "LANG"
+    )
+
+    # Check required variables
     for var in "${required_vars[@]}"; do
         if [ -z "${!var}" ]; then
             echo "Error: $var is not set. Please set it in your .env file."
             exit 1
+        fi
+    done
+
+    # Set default values for optional variables if they're not set
+    for var in "${optional_vars[@]}"; do
+        if [ -z "${!var}" ]; then
+            case $var in
+                "POSTGRES_INITDB_WALDIR") export POSTGRES_INITDB_WALDIR="" ;;
+                "POSTGRES_INITDB_ARGS") export POSTGRES_INITDB_ARGS="" ;;
+                "PG_MAJOR") export PG_MAJOR="17" ;;
+                "PG_VERSION") export PG_VERSION="17.4-1.pgdg120+2" ;;
+                "PGDATA") export PGDATA="/var/lib/postgresql/data" ;;
+                "POSTGRES_GID") export POSTGRES_GID="999" ;;
+                "POSTGRES_UID") export POSTGRES_UID="999" ;;
+                "GOSU_VERSION") export GOSU_VERSION="1.17" ;;
+                "LANG") export LANG="en_US.utf8" ;;
+            esac
         fi
     done
 }
@@ -239,7 +315,7 @@ setup_stable_diffusion() {
     mkdir -p runarion-stable-diffusion/{models,outputs,inputs,cache}
     
     # Set proper permissions
-    chmod -R 755 runarion-stable-diffusion/{models,outputs,inputs,cache}
+    chmod -R ${SD_DIR_PERMISSIONS:-755} runarion-stable-diffusion/{models,outputs,inputs,cache}
     
     # Create and activate virtual environment if it doesn't exist
     if [ ! -d "runarion-stable-diffusion/venv" ]; then
