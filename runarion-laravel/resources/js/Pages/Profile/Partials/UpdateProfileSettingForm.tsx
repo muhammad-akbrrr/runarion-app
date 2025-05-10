@@ -6,7 +6,7 @@ import { Transition } from "@headlessui/react";
 import { useForm, usePage } from "@inertiajs/react";
 import { FormEventHandler } from "react";
 
-const settingFields = [
+const userSettingFields = [
     {
         name: "setting1",
         label: "Setting 1",
@@ -24,7 +24,7 @@ const settingFields = [
     },
 ];
 
-export default function UpdateProfileSetting({
+export default function UpdateProfileSettingForm({
     className = "",
 }: {
     className?: string;
@@ -52,7 +52,7 @@ export default function UpdateProfileSetting({
             </header>
 
             <form onSubmit={submit} className="mt-6 space-y-6">
-                {settingFields.map((field) =>
+                {userSettingFields.map((field) =>
                     field.type === "checkbox" ? (
                         <div
                             key={field.name}
@@ -73,7 +73,11 @@ export default function UpdateProfileSetting({
                             <Input
                                 id={field.name}
                                 type={field.type}
-                                value={data[field.name]?.toString() || ""}
+                                value={
+                                    data[field.name]
+                                        ? data[field.name].toString()
+                                        : ""
+                                }
                                 onChange={(e) =>
                                     setData(field.name, e.target.value)
                                 }

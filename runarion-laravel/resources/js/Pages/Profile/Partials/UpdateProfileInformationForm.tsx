@@ -1,15 +1,15 @@
+import { Alert, AlertDescription } from "@/Components/ui/alert";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
-import { Alert, AlertDescription } from "@/Components/ui/alert";
-import { Transition } from '@headlessui/react';
-import { Link, useForm, usePage } from '@inertiajs/react';
-import { FormEventHandler } from 'react';
+import { Transition } from "@headlessui/react";
+import { Link, useForm, usePage } from "@inertiajs/react";
+import { FormEventHandler } from "react";
 
-export default function UpdateProfileInformation({
+export default function UpdateProfileInformationForm({
     mustVerifyEmail,
     status,
-    className = '',
+    className = "",
 }: {
     mustVerifyEmail: boolean;
     status?: string;
@@ -25,7 +25,7 @@ export default function UpdateProfileInformation({
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        patch(route('profile.update'));
+        patch(route("profile.update"));
     };
 
     return (
@@ -46,12 +46,14 @@ export default function UpdateProfileInformation({
                     <Input
                         id="name"
                         value={data.name}
-                        onChange={(e) => setData('name', e.target.value)}
+                        onChange={(e) => setData("name", e.target.value)}
                         required
                         autoComplete="name"
                     />
                     {errors.name && (
-                        <p className="text-sm text-destructive">{errors.name}</p>
+                        <p className="text-sm text-destructive">
+                            {errors.name}
+                        </p>
                     )}
                 </div>
 
@@ -61,12 +63,14 @@ export default function UpdateProfileInformation({
                         id="email"
                         type="email"
                         value={data.email}
-                        onChange={(e) => setData('email', e.target.value)}
+                        onChange={(e) => setData("email", e.target.value)}
                         required
                         autoComplete="username"
                     />
                     {errors.email && (
-                        <p className="text-sm text-destructive">{errors.email}</p>
+                        <p className="text-sm text-destructive">
+                            {errors.email}
+                        </p>
                     )}
                 </div>
 
@@ -75,7 +79,7 @@ export default function UpdateProfileInformation({
                         <AlertDescription>
                             Your email address is unverified.
                             <Link
-                                href={route('verification.send')}
+                                href={route("verification.send")}
                                 method="post"
                                 as="button"
                                 className="ml-1 text-sm text-primary underline hover:text-primary/80"
@@ -86,10 +90,11 @@ export default function UpdateProfileInformation({
                     </Alert>
                 )}
 
-                {status === 'verification-link-sent' && (
+                {status === "verification-link-sent" && (
                     <Alert variant="success">
                         <AlertDescription>
-                            A new verification link has been sent to your email address.
+                            A new verification link has been sent to your email
+                            address.
                         </AlertDescription>
                     </Alert>
                 )}
@@ -106,9 +111,7 @@ export default function UpdateProfileInformation({
                         leave="transition ease-in-out"
                         leaveTo="opacity-0"
                     >
-                        <p className="text-sm text-muted-foreground">
-                            Saved.
-                        </p>
+                        <p className="text-sm text-muted-foreground">Saved.</p>
                     </Transition>
                 </div>
             </form>
