@@ -1,10 +1,11 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/Components/ui/card";
-import AuthenticatedLayout from '@/Layouts/AuthenticatedLayout';
-import { PageProps } from '@/types';
-import { Head, usePage } from '@inertiajs/react';
-import DeleteUserForm from './Partials/DeleteUserForm';
-import UpdatePasswordForm from './Partials/UpdatePasswordForm';
-import UpdateProfileInformationForm from './Partials/UpdateProfileInformationForm';
+import { Card, CardContent } from "@/Components/ui/card";
+import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
+import { PageProps } from "@/types";
+import { Head, usePage } from "@inertiajs/react";
+import DeleteUserForm from "./Partials/DeleteUserForm";
+import UpdatePasswordForm from "./Partials/UpdatePasswordForm";
+import UpdateProfileInformationForm from "./Partials/UpdateProfileInformationForm";
+import UpdateProfileSettingForm from "./Partials/UpdateProfileSettingForm";
 
 export default function Edit({
     mustVerifyEmail,
@@ -32,6 +33,12 @@ export default function Edit({
                                 status={status}
                                 className="max-w-xl"
                             />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardContent>
+                            <UpdateProfileSettingForm className="max-w-xl" />
                         </CardContent>
                     </Card>
 
