@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WorkspaceController;
+use App\Http\Controllers\WorkspaceMemberController;
 use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
@@ -33,5 +34,15 @@ Route::middleware('auth')->group(function () {
     Route::patch('/workspaces/{workspace_id}/billing', [WorkspaceController::class, 'updateBilling'])->name('workspaces.update.billing');
     Route::delete('/workspaces/{workspace_id}', [WorkspaceController::class, 'destroy'])->name('workspaces.destroy');
 });
+
+Route::middleware('auth')->group(function () {
+    Route::post('/workspace-members', [WorkspaceMemberController::class, 'assign'])->name('workspace-members.assign');
+    Route::patch('/workspace-members', [WorkspaceMemberController::class, 'update'])->name('workspace-members.update');
+    Route::delete('/workspace-members', [WorkspaceMemberController::class, 'remove'])->name('workspace-members.remove');
+    Route::delete('/workspace-members/{workspace_id}', [WorkspaceMemberController::class, 'leave'])->name('workspace-members.leave');
+});
+
+// Workspace invitation accept route (no auth required)
+Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
 
 require __DIR__.'/auth.php';
