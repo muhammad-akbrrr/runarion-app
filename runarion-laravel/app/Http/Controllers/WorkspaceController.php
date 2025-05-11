@@ -125,12 +125,18 @@ class WorkspaceController extends Controller
     {
         $workspace = $this->getUpdatableWorkspace($workspace_id, $request->user()->id);
 
-        $validated = $request->validate([
-            'billing_email' => 'email',
+        $request->validate([
             'billing_*' => 'string|max:255',
+            'billing_email' => 'email',
         ]);
 
-        $workspace->update($validated);
+        $data = $request->only(
+            array_filter(
+                array_keys($request->all()),
+                fn($key) => str_starts_with($key, 'billing_')
+            )
+        );
+        $workspace->update($data);
 
         $workspace->save();
 
