@@ -28,7 +28,9 @@ export default function UpdateWorkspaceSetting({
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        patch(route("workspaces.update.settings", workspace.id));
+        patch(route("workspaces.update.settings", workspace.id), {
+            preserveScroll: true,
+        });
     };
 
     const themeOptions = [
@@ -60,7 +62,7 @@ export default function UpdateWorkspaceSetting({
                             {themeOptions.map(([value, label]) => (
                                 <DropdownMenuItem
                                     key={value}
-                                    onClick={() => setData("theme", "system")}
+                                    onClick={() => setData("theme", value)}
                                 >
                                     {label}
                                 </DropdownMenuItem>

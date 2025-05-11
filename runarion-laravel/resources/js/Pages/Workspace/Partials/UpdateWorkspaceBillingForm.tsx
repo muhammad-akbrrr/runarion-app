@@ -80,7 +80,9 @@ export default function UpdateWorkspaceBillingForm({
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        patch(route("workspaces.update.billing", workspace.id));
+        patch(route("workspaces.update.billing", workspace.id), {
+            preserveScroll: true,
+        });
     };
 
     return (

@@ -53,7 +53,7 @@ export default function Edit({
                         </CardContent>
                     </Card>
 
-                    {isUserAdmin && (
+                    {isUserOwnerOrAdmin && (
                         <Card>
                             <CardContent>
                                 <UpdateWorkspaceBillingForm

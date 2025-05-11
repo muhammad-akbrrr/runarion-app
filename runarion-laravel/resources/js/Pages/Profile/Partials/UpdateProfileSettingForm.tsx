@@ -36,7 +36,9 @@ export default function UpdateProfileSettingForm({
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        patch(route("profile.update.settings"));
+        patch(route("profile.update.settings"), {
+            preserveScroll: true,
+        });
     };
 
     return (
