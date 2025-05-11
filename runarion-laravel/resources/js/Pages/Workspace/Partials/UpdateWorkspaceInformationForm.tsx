@@ -9,11 +9,11 @@ import { FormEventHandler } from "react";
 
 export default function UpdateWorkspaceInformationForm({
     workspace,
-    isUserAdmin,
+    isUserOwnerOrAdmin,
     className = "",
 }: {
     workspace: Workspace;
-    isUserAdmin: boolean;
+    isUserOwnerOrAdmin: boolean;
     className?: string;
 }) {
     const { data, setData, patch, errors, processing, recentlySuccessful } =
@@ -44,7 +44,7 @@ export default function UpdateWorkspaceInformationForm({
                         onChange={(e) => setData("name", e.target.value)}
                         required
                         autoComplete="name"
-                        disabled={!isUserAdmin}
+                        disabled={!isUserOwnerOrAdmin}
                     />
                     {errors.name && (
                         <p className="text-sm text-destructive">
@@ -61,7 +61,7 @@ export default function UpdateWorkspaceInformationForm({
                         onChange={(e) => setData("description", e.target.value)}
                         rows={3}
                         placeholder="A short description of your workspace."
-                        disabled={!isUserAdmin}
+                        disabled={!isUserOwnerOrAdmin}
                     />
                     {errors.description && (
                         <p className="text-sm text-destructive">
@@ -70,7 +70,7 @@ export default function UpdateWorkspaceInformationForm({
                     )}
                 </div>
 
-                {isUserAdmin && (
+                {isUserOwnerOrAdmin && (
                     <div className="flex items-center gap-4">
                         <Button type="submit" disabled={processing}>
                             Save

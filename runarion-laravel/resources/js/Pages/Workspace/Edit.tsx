@@ -11,8 +11,14 @@ import UpdateWorkspaceSettingForm from "./Partials/UpdateWorkspaceSettingForm";
 export default function Edit({
     workspace,
     isUserAdmin,
-}: PageProps<{ workspace: Workspace; isUserAdmin: boolean }>) {
+    isUserOwner,
+}: PageProps<{
+    workspace: Workspace;
+    isUserAdmin: boolean;
+    isUserOwner: boolean;
+}>) {
     const { auth } = usePage().props;
+    const isUserOwnerOrAdmin = isUserOwner || isUserAdmin;
 
     return (
         <AuthenticatedLayout
@@ -31,7 +37,7 @@ export default function Edit({
                         <CardContent>
                             <UpdateWorkspaceInformationForm
                                 workspace={workspace}
-                                isUserAdmin={isUserAdmin}
+                                isUserOwnerOrAdmin={isUserOwnerOrAdmin}
                                 className="max-w-xl"
                             />
                         </CardContent>
@@ -41,7 +47,7 @@ export default function Edit({
                         <CardContent>
                             <UpdateWorkspaceSettingForm
                                 workspace={workspace}
-                                isUserAdmin={isUserAdmin}
+                                isUserOwnerOrAdmin={isUserOwnerOrAdmin}
                                 className="max-w-xl"
                             />
                         </CardContent>
@@ -52,14 +58,14 @@ export default function Edit({
                             <CardContent>
                                 <UpdateWorkspaceBillingForm
                                     workspace={workspace}
-                                    isUserAdmin={isUserAdmin}
+                                    isUserOwnerOrAdmin={isUserOwnerOrAdmin}
                                     className="max-w-xl"
                                 />
                             </CardContent>
                         </Card>
                     )}
 
-                    {isUserAdmin && (
+                    {isUserOwner && (
                         <Card>
                             <CardContent>
                                 <DeleteWorkspaceForm

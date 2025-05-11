@@ -8,14 +8,14 @@ import { FormEventHandler } from "react";
 
 export default function UpdateWorkspaceBillingForm({
     workspace,
-    isUserAdmin,
+    isUserOwnerOrAdmin,
     className = "",
 }: {
     workspace: Workspace;
-    isUserAdmin: boolean;
+    isUserOwnerOrAdmin: boolean;
     className?: string;
 }) {
-    if (!isUserAdmin) {
+    if (!isUserOwnerOrAdmin) {
         return null;
     }
 

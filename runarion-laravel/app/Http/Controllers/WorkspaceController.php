@@ -11,10 +11,10 @@ use Inertia\Response;
 
 class WorkspaceController extends Controller
 {
-    private function getWorkspace(int $workspace_id): Workspace
+    private function getWorkspace(int $workspaceId): Workspace
     {
         /** @var \App\Models\Workspace $workspace */
-        $workspace = Workspace::find($workspace_id);
+        $workspace = Workspace::find($workspaceId);
 
         if (!$workspace) {
             abort(401, 'Workspace not found.');
@@ -23,20 +23,29 @@ class WorkspaceController extends Controller
         return $workspace;
     }
 
-    private function getViewableWorkspace(int $workspace_id, int $user_id): Workspace
+    private function getViewableWorkspace(int $workspaceId, int $userId): Workspace
     {
-        $workspace = $this->getWorkspace($workspace_id);
-        if (!$workspace->isMember($user_id)) {
+        $workspace = $this->getWorkspace($workspaceId);
+        if (!$workspace->isMember($userId)) {
             abort(403, 'You are not authorized to view this workspace.');
         }
         return $workspace;
     }
 
-    private function getModifiableWorkspace(int $workspace_id, int $user_id): Workspace
+    private function getUpdatableWorkspace(int $workspaceId, int $userId): Workspace
     {
-        $workspace = $this->getWorkspace($workspace_id);
-        if (!$workspace->isOwnerOrAdmin($user_id)) {
-            abort(403, 'You are not authorized to modify this workspace.');
+        $workspace = $this->getWorkspace($workspaceId);
+        if (!$workspace->isOwnerOrAdmin($userId)) {
+            abort(403, 'You are not authorized to update this workspace.');
+        }
+        return $workspace;
+    }
+
+    private function getDestroyableWorkspace(int $workspaceId, int $userId): Workspace
+    {
+        $workspace = $this->getWorkspace($workspaceId);
+        if (!$workspace->isOwner($userId)) {
+            abort(403, 'You are not authorized to delete this workspace.');
         }
         return $workspace;
     }
@@ -48,8 +57,9 @@ class WorkspaceController extends Controller
     {
         $workspace = $this->getViewableWorkspace($workspace_id, $request->user()->id);
 
-        $isUserAdmin = $workspace->isOwnerOrAdmin($request->user()->id);
-        if (!$isUserAdmin) {
+        $isUserAdmin = $workspace->isAdmin($request->user()->id);
+        $isUserOwner = $workspace->isOwner($request->user()->id);
+        if (!$isUserAdmin && !$isUserOwner) {
             $workspace = $workspace->only([
                 'id',
                 'name', 
@@ -66,6 +76,7 @@ class WorkspaceController extends Controller
         return Inertia::render('Workspace/Edit', [
             'workspace' => $workspace,
             'isUserAdmin' => $isUserAdmin,
+            'isUserOwner' => $isUserOwner,
         ]);
     }
 
@@ -74,7 +85,7 @@ class WorkspaceController extends Controller
      */
     public function update(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getModifiableWorkspace($workspace_id, $request->user()->id);
+        $workspace = $this->getUpdatableWorkspace($workspace_id, $request->user()->id);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -93,7 +104,7 @@ class WorkspaceController extends Controller
      */
     public function updateSettings(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getModifiableWorkspace($workspace_id, $request->user()->id);
+        $workspace = $this->getUpdatableWorkspace($workspace_id, $request->user()->id);
 
         $validated = $request->validate([
             'theme' => 'string|max:255',
@@ -112,7 +123,7 @@ class WorkspaceController extends Controller
      */
     public function updateBilling(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getModifiableWorkspace($workspace_id, $request->user()->id);
+        $workspace = $this->getUpdatableWorkspace($workspace_id, $request->user()->id);
 
         $validated = $request->validate([
             'billing_email' => 'email',
@@ -131,7 +142,7 @@ class WorkspaceController extends Controller
      */
     public function destroy(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getModifiableWorkspace($workspace_id, $request->user()->id);
+        $workspace = $this->getDestroyableWorkspace($workspace_id, $request->user()->id);
 
         $workspace->delete();
 

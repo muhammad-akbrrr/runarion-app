@@ -14,11 +14,11 @@ import { FormEventHandler } from "react";
 
 export default function UpdateWorkspaceSetting({
     workspace,
-    isUserAdmin,
+    isUserOwnerOrAdmin,
     className = "",
 }: {
     workspace: Workspace;
-    isUserAdmin: boolean;
+    isUserOwnerOrAdmin: boolean;
     className?: string;
 }) {
     const { data, setData, patch, errors, processing, recentlySuccessful } =
@@ -52,7 +52,7 @@ export default function UpdateWorkspaceSetting({
                         <DropdownMenuTrigger
                             id="theme"
                             className="px-2 py-1 bg-gray-200 rounded"
-                            disabled={!isUserAdmin}
+                            disabled={!isUserOwnerOrAdmin}
                         >
                             {data.theme || "..."}
                         </DropdownMenuTrigger>
@@ -87,7 +87,7 @@ export default function UpdateWorkspaceSetting({
                                                 [key]: !!checked,
                                             })
                                         }
-                                        disabled={!isUserAdmin}
+                                        disabled={!isUserOwnerOrAdmin}
                                     />
                                     <Label htmlFor={key}>{key}</Label>
                                 </div>
@@ -95,7 +95,7 @@ export default function UpdateWorkspaceSetting({
                         )}
                 </div>
 
-                {isUserAdmin && (
+                {isUserOwnerOrAdmin && (
                     <div className="flex items-center gap-4">
                         <Button type="submit" disabled={processing}>
                             Save

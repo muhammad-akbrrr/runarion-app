@@ -90,6 +90,19 @@ class Workspace extends Model
     }
 
     /**
+     * cek apakah suatu user adalah owner dari workspace
+     * 
+     * @return bool
+     */
+    public function isOwner(int $userId): bool
+    {
+        return $this->members()
+            ->where('user_id', $userId)
+            ->where('role', 'owner')
+            ->exists();
+    }
+
+    /**
      * ambil semua admin workspace
      * 
      * @return \Illuminate\Database\Eloquent\Relations\HasMany
@@ -97,6 +110,19 @@ class Workspace extends Model
     public function admins(): HasMany
     {
         return $this->members()->where('role', 'admin');
+    }
+
+    /**
+     * cek apakah suatu user adalah admin dari workspace
+     * 
+     * @return bool
+     */
+    public function isAdmin(int $userId): bool
+    {
+        return $this->members()
+            ->where('user_id', $userId)
+            ->where('role', 'admin')
+            ->exists();
     }
 
     /**
