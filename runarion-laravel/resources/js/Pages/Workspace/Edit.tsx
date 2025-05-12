@@ -4,6 +4,7 @@ import { PageProps } from "@/types";
 import { Workspace, WorkspaceMember } from "@/types/workspace";
 import { Head, usePage } from "@inertiajs/react";
 import DeleteWorkspaceForm from "./Partials/DeleteWorkspaceForm";
+import ManageWorkspaceMemberForm from "./Partials/ManageWorkspaceMemberForm";
 import UpdateWorkspaceBillingForm from "./Partials/UpdateWorkspaceBillingForm";
 import UpdateWorkspaceInformationForm from "./Partials/UpdateWorkspaceInformationForm";
 import UpdateWorkspaceSettingForm from "./Partials/UpdateWorkspaceSettingForm";
@@ -50,6 +51,19 @@ export default function Edit({
                             <UpdateWorkspaceSettingForm
                                 workspace={workspace}
                                 isUserOwnerOrAdmin={isUserOwnerOrAdmin}
+                                className="max-w-xl"
+                            />
+                        </CardContent>
+                    </Card>
+
+                    <Card>
+                        <CardContent>
+                            <ManageWorkspaceMemberForm
+                                userId={auth.user.id}
+                                workspaceId={workspace.id}
+                                workspaceMembers={workspaceMembers}
+                                isUserOwner={isUserOwner}
+                                isUserAdmin={isUserAdmin}
                                 className="max-w-xl"
                             />
                         </CardContent>
