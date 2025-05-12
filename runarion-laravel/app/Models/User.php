@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Notifications\Notifiable;
 use Laravel\Sanctum\HasApiTokens;
 
@@ -16,7 +17,8 @@ use Laravel\Sanctum\HasApiTokens;
  * mewakili user pada sistem dengan fitur autentikasi dan manajemen workspace
  * meng extend class authenticatable laravel untuk fitur autentikasi
  */
-class User extends Authenticatable
+class User extends Authenticatable 
+    // implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
     use HasApiTokens, HasFactory, Notifiable;
@@ -56,6 +58,16 @@ class User extends Authenticatable
             'password' => 'hashed',
             'settings' => 'array',
         ];
+    }
+
+    /**
+     * cek apakah email sudah diverifikasi
+     * 
+     * @return bool
+     */
+    public function isVerified(): bool
+    {
+        return $this->email_verified_at !== null;
     }
 
     /**
