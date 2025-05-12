@@ -8,8 +8,8 @@ import {
     DialogTitle,
 } from "@/Components/ui/dialog";
 import { Workspace } from "@/types/workspace";
-import { useForm } from "@inertiajs/react";
-import { FormEventHandler, useState } from "react";
+import { router } from "@inertiajs/react";
+import { useState } from "react";
 
 export default function DeleteWorkspaceForm({
     workspace,
@@ -19,17 +19,15 @@ export default function DeleteWorkspaceForm({
     className?: string;
 }) {
     const [openDialog, setOpenDialog] = useState(false);
+    const [processing, setProcessing] = useState(false);
 
-    const { delete: destroy, processing } = useForm();
-
-    const handleDelete: FormEventHandler = (e) => {
-        e.preventDefault();
-
-        destroy(route("workspaces.destroy", workspace.id), {
+    const handleDelete = () =>
+        router.delete(route("workspaces.destroy", workspace.id), {
             preserveScroll: true,
             onSuccess: () => setOpenDialog(false),
+            onStart: () => setProcessing(true),
+            onFinish: () => setProcessing(false),
         });
-    };
 
     return (
         <section className={`space-y-6 ${className}`}>
@@ -52,24 +50,21 @@ export default function DeleteWorkspaceForm({
                         </DialogDescription>
                     </DialogHeader>
 
-                    <form onSubmit={handleDelete} className="space-y-4">
-                        <DialogFooter>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setOpenDialog(false)}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                type="submit"
-                                variant="destructive"
-                                disabled={processing}
-                            >
-                                Yes
-                            </Button>
-                        </DialogFooter>
-                    </form>
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => setOpenDialog(false)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            disabled={processing}
+                            onClick={handleDelete}
+                        >
+                            Yes
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </section>
