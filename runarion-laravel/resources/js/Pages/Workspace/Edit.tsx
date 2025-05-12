@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/Components/ui/card";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
-import { Workspace } from "@/types/workspace";
+import { Workspace, WorkspaceMember } from "@/types/workspace";
 import { Head, usePage } from "@inertiajs/react";
 import DeleteWorkspaceForm from "./Partials/DeleteWorkspaceForm";
 import UpdateWorkspaceBillingForm from "./Partials/UpdateWorkspaceBillingForm";
@@ -10,10 +10,12 @@ import UpdateWorkspaceSettingForm from "./Partials/UpdateWorkspaceSettingForm";
 
 export default function Edit({
     workspace,
+    workspaceMembers,
     isUserAdmin,
     isUserOwner,
 }: PageProps<{
     workspace: Workspace;
+    workspaceMembers: WorkspaceMember[];
     isUserAdmin: boolean;
     isUserOwner: boolean;
 }>) {

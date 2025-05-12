@@ -31,3 +31,12 @@ export interface WorkspaceField {
     label: string;
     type: "text" | "email" | "checkbox" | "tel";
 }
+
+export interface WorkspaceMember {
+    id: number | null;
+    name: string | null;
+    email: string;
+    avatar_url: string | null;
+    role: string;
+    is_verified: boolean | null;
+}

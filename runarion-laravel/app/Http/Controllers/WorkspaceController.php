@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workspace;
+use App\Models\WorkspaceInvitation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Redirect;
@@ -73,8 +74,34 @@ class WorkspaceController extends Controller
             ]);
         }
 
+        $workspaceMembers = $workspace->members()
+            ->with('user')
+            ->get()
+            ->map(fn  ($member) => [
+                'id' => $member->user->id,
+                'name' => $member->user->name,
+                'email' => $member->user->email,
+                'avatar_url' => $member->user->avatar_url,
+                'role' => $member->role,
+                'is_verified' => $member->user->isVerified(),
+            ])
+            ->toArray();
+
+        $workspaceInvitedMembers = WorkspaceInvitation::where('workspace_id', $workspace->id)
+            ->get()    
+            ->map(fn ($invitation) => [
+                'id' => null,
+                'name' => null,
+                'email' => $invitation->user_email,
+                'avatar_url' => null,
+                'role' => $invitation->role,
+                'is_verified' => null,
+            ])
+            ->toArray();
+
         return Inertia::render('Workspace/Edit', [
             'workspace' => $workspace,
+            'workspaceMembers' => array_merge($workspaceMembers, $workspaceInvitedMembers),
             'isUserAdmin' => $isUserAdmin,
             'isUserOwner' => $isUserOwner,
         ]);
