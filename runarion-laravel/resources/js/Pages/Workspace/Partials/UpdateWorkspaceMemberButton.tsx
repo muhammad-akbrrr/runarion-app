@@ -21,9 +21,9 @@ export default function UpdateWorkspaceMemberButton({
         processing ||
         selected.filter((item) => typeof item === "string").length > 0;
 
-    const handleRemove = () =>
+    const handleUpdate = () =>
         router.patch(
-            route("workspace-members.update", workspaceId),
+            route("workspace-members.update"),
             {
                 workspace_id: workspaceId,
                 role: action === "promote" ? "admin" : "member",
@@ -39,7 +39,7 @@ export default function UpdateWorkspaceMemberButton({
 
     return (
         <Button
-            onClick={handleRemove}
+            onClick={handleUpdate}
             disabled={disabled}
             size="sm"
             type="button"

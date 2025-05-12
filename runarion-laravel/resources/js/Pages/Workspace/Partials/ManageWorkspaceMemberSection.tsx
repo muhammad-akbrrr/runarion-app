@@ -114,6 +114,7 @@ export default function ManageWorkspaceMemberSection({
                                 workspaceId={workspaceId}
                                 role="admin"
                                 selected={selectedAdmins}
+                                onSuccess={() => setSelectedAdmins([])}
                             />
                             <UpdateWorkspaceMemberButton
                                 workspaceId={workspaceId}
@@ -155,6 +156,7 @@ export default function ManageWorkspaceMemberSection({
                                 workspaceId={workspaceId}
                                 role="member"
                                 selected={selectedMembers}
+                                onSuccess={() => setSelectedMembers([])}
                             />
                             <UpdateWorkspaceMemberButton
                                 workspaceId={workspaceId}

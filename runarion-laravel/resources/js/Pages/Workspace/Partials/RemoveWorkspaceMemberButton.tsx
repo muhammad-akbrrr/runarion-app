@@ -14,10 +14,12 @@ export default function RemoveWorkspaceMemberButton({
     workspaceId,
     role,
     selected,
+    onSuccess,
 }: {
     workspaceId: number;
     role: string;
     selected: (string | number)[];
+    onSuccess: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const [processing, setProcessing] = useState(false);
@@ -26,7 +28,7 @@ export default function RemoveWorkspaceMemberButton({
     const emails = selected.filter((item) => typeof item === "string");
 
     const handleRemove = () =>
-        router.delete(route("workspace-members.remove", workspaceId), {
+        router.delete(route("workspace-members.remove"), {
             data: {
                 workspace_id: workspaceId,
                 role: role,
@@ -34,7 +36,10 @@ export default function RemoveWorkspaceMemberButton({
                 user_emails: emails,
             },
             preserveScroll: true,
-            onSuccess: () => setOpen(false),
+            onSuccess: () => {
+                setOpen(false);
+                onSuccess();
+            },
             onStart: () => setProcessing(true),
             onFinish: () => setProcessing(false),
         });
