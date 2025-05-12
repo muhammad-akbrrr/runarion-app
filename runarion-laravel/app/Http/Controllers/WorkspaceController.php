@@ -58,22 +58,6 @@ class WorkspaceController extends Controller
     {
         $workspace = $this->getViewableWorkspace($workspace_id, $request->user()->id);
 
-        $isUserAdmin = $workspace->isAdmin($request->user()->id);
-        $isUserOwner = $workspace->isOwner($request->user()->id);
-        if (!$isUserAdmin && !$isUserOwner) {
-            $workspace = $workspace->only([
-                'id',
-                'name', 
-                'slug',
-                'description',
-                'cover_image_url',
-                'settings',
-                'trial_ends_at',
-                'subscription_ends_at',
-                'is_active',
-            ]);
-        }
-
         $workspaceMembers = $workspace->members()
             ->with('user')
             ->get()
@@ -98,6 +82,22 @@ class WorkspaceController extends Controller
                 'is_verified' => null,
             ])
             ->toArray();
+
+        $isUserAdmin = $workspace->isAdmin($request->user()->id);
+        $isUserOwner = $workspace->isOwner($request->user()->id);
+        if (!$isUserAdmin && !$isUserOwner) {
+            $workspace = $workspace->only([
+                'id',
+                'name', 
+                'slug',
+                'description',
+                'cover_image_url',
+                'settings',
+                'trial_ends_at',
+                'subscription_ends_at',
+                'is_active',
+            ]);
+        }
 
         return Inertia::render('Workspace/Edit', [
             'workspace' => $workspace,
