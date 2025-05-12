@@ -6,7 +6,7 @@ use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceInvitation;
 use App\Models\WorkspaceMember;
-use App\Notifications\WorkspaceInvitation as WorkspaceInvitationNotification;
+use App\Notifications\WorkspaceInvitationNotification;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;

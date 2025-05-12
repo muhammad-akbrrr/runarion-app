@@ -8,7 +8,7 @@ use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 use Illuminate\Bus\Queueable;
 
-class WorkspaceInvitation extends Notification 
+class WorkspaceInvitationNotification extends Notification 
     // implements ShouldQueue
 {
     // use Queueable;
