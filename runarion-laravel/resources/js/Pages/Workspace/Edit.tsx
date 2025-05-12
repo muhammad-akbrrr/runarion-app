@@ -85,7 +85,7 @@ export default function Edit({
                         <Card>
                             <CardContent>
                                 <DeleteWorkspaceSection
-                                    workspace={workspace}
+                                    workspaceId={workspace.id}
                                     className="max-w-xl"
                                 />
                             </CardContent>

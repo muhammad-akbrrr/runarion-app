@@ -7,22 +7,21 @@ import {
     DialogHeader,
     DialogTitle,
 } from "@/Components/ui/dialog";
-import { Workspace } from "@/types/workspace";
 import { router } from "@inertiajs/react";
 import { useState } from "react";
 
 export default function DeleteWorkspaceSection({
-    workspace,
+    workspaceId,
     className = "",
 }: {
-    workspace: Workspace;
+    workspaceId: number;
     className?: string;
 }) {
     const [openDialog, setOpenDialog] = useState(false);
     const [processing, setProcessing] = useState(false);
 
     const handleDelete = () =>
-        router.delete(route("workspaces.destroy", workspace.id), {
+        router.delete(route("workspaces.destroy", workspaceId), {
             preserveScroll: true,
             onSuccess: () => setOpenDialog(false),
             onStart: () => setProcessing(true),
