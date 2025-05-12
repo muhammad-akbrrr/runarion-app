@@ -100,7 +100,7 @@ class WorkspaceMemberController extends Controller
             ]
         );
 
-        $acceptUrl = route('workspace.invitation.accept', ['token' => $token]);
+        $acceptUrl = route('workspace-invitation.accept', ['token' => $token]);
         Notification::route('mail', $userEmail)
             ->notify(new WorkspaceInvitationNotification($workspace, $acceptUrl, $role, $userExists));
     }
@@ -176,9 +176,9 @@ class WorkspaceMemberController extends Controller
         $validated = $request->validate([
             'workspace_id' => 'required|numeric',
             'role' => 'required|in:admin,member',
-            'user_ids' => 'required|array',
+            'user_ids' => 'array',
             'user_ids.*' => 'numeric',
-            'user_emails' => 'required|array',
+            'user_emails' => 'array',
             'user_emails.*' => 'email',
         ]);
 
@@ -189,13 +189,16 @@ class WorkspaceMemberController extends Controller
             'remove'
         );
 
+        if (!empty($validated['user_ids'])) {
         WorkspaceMember::where('workspace_id', $workspace->id)
             ->whereIn('user_id', $validated['user_ids'])
             ->delete();
-
+        }
+        if (!empty($validated['user_emails'])) {
         WorkspaceInvitation::where('workspace_id', $workspace->id)
             ->whereIn('user_email', $validated['user_emails'])
             ->delete();
+        }
         
         return Redirect::route('workspaces.edit', ['workspace_id' => $workspace->id]);
     }

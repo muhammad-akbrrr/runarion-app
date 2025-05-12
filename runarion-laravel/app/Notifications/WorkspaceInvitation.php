@@ -6,9 +6,13 @@ use App\Models\Workspace;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Bus\Queueable;
 
-class WorkspaceInvitation extends Notification implements ShouldQueue
+class WorkspaceInvitation extends Notification 
+    // implements ShouldQueue
 {
+    // use Queueable;
+
     /**
      * Create a new notification instance.
      */
@@ -37,7 +41,7 @@ class WorkspaceInvitation extends Notification implements ShouldQueue
         return (new MailMessage)
             ->subject("Invitation to {$this->workspace->name} workspace")
             ->line("You've been invited to be {$roleText} of the {$this->workspace->name} workspace.")
-            ->lineIf(!$this->userExists, 'Since you are not registered, please register first before accepting the invitation.')
+            ->lineIf(!$this->userExists, 'Since you are not registered, PLEASE REGISTER first before accepting the invitation.')
             ->action('Accept Invitation', $this->acceptUrl)
             ->line('If you did not expect to receive this invitation, you can safely ignore this email.');
     }
