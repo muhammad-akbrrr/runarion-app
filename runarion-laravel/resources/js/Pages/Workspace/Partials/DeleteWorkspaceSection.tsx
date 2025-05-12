@@ -11,7 +11,7 @@ import { Workspace } from "@/types/workspace";
 import { router } from "@inertiajs/react";
 import { useState } from "react";
 
-export default function DeleteWorkspaceForm({
+export default function DeleteWorkspaceSection({
     workspace,
     className = "",
 }: {

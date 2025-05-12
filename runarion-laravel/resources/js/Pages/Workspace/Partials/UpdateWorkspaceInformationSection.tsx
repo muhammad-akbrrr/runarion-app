@@ -7,7 +7,7 @@ import { Transition } from "@headlessui/react";
 import { useForm } from "@inertiajs/react";
 import { FormEventHandler } from "react";
 
-export default function UpdateWorkspaceInformationForm({
+export default function UpdateWorkspaceInformationSection({
     workspace,
     isUserOwnerOrAdmin,
     className = "",

@@ -3,11 +3,11 @@ import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
 import { Workspace, WorkspaceMember } from "@/types/workspace";
 import { Head, usePage } from "@inertiajs/react";
-import DeleteWorkspaceForm from "./Partials/DeleteWorkspaceForm";
-import ManageWorkspaceMemberForm from "./Partials/ManageWorkspaceMemberForm";
-import UpdateWorkspaceBillingForm from "./Partials/UpdateWorkspaceBillingForm";
-import UpdateWorkspaceInformationForm from "./Partials/UpdateWorkspaceInformationForm";
-import UpdateWorkspaceSettingForm from "./Partials/UpdateWorkspaceSettingForm";
+import DeleteWorkspaceSection from "./Partials/DeleteWorkspaceSection";
+import ManageWorkspaceMemberSection from "./Partials/ManageWorkspaceMemberSection";
+import UpdateWorkspaceBillingSection from "./Partials/UpdateWorkspaceBillingSection";
+import UpdateWorkspaceInformationSection from "./Partials/UpdateWorkspaceInformationSection";
+import UpdateWorkspaceSettingSection from "./Partials/UpdateWorkspaceSettingSection";
 
 export default function Edit({
     workspace,
@@ -38,7 +38,7 @@ export default function Edit({
                 <div className="mx-auto max-w-7xl space-y-6 sm:px-6 lg:px-8">
                     <Card>
                         <CardContent>
-                            <UpdateWorkspaceInformationForm
+                            <UpdateWorkspaceInformationSection
                                 workspace={workspace}
                                 isUserOwnerOrAdmin={isUserOwnerOrAdmin}
                                 className="max-w-xl"
@@ -48,7 +48,7 @@ export default function Edit({
 
                     <Card>
                         <CardContent>
-                            <UpdateWorkspaceSettingForm
+                            <UpdateWorkspaceSettingSection
                                 workspace={workspace}
                                 isUserOwnerOrAdmin={isUserOwnerOrAdmin}
                                 className="max-w-xl"
@@ -58,7 +58,7 @@ export default function Edit({
 
                     <Card>
                         <CardContent>
-                            <ManageWorkspaceMemberForm
+                            <ManageWorkspaceMemberSection
                                 userId={auth.user.id}
                                 workspaceId={workspace.id}
                                 workspaceMembers={workspaceMembers}
@@ -72,7 +72,7 @@ export default function Edit({
                     {isUserOwnerOrAdmin && (
                         <Card>
                             <CardContent>
-                                <UpdateWorkspaceBillingForm
+                                <UpdateWorkspaceBillingSection
                                     workspace={workspace}
                                     isUserOwnerOrAdmin={isUserOwnerOrAdmin}
                                     className="max-w-xl"
@@ -84,7 +84,7 @@ export default function Edit({
                     {isUserOwner && (
                         <Card>
                             <CardContent>
-                                <DeleteWorkspaceForm
+                                <DeleteWorkspaceSection
                                     workspace={workspace}
                                     className="max-w-xl"
                                 />

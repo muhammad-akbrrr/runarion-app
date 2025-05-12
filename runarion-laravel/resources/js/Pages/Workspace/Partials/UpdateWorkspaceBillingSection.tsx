@@ -6,7 +6,7 @@ import { Transition } from "@headlessui/react";
 import { useForm } from "@inertiajs/react";
 import { FormEventHandler } from "react";
 
-export default function UpdateWorkspaceBillingForm({
+export default function UpdateWorkspaceBillingSection({
     workspace,
     isUserOwnerOrAdmin,
     className = "",

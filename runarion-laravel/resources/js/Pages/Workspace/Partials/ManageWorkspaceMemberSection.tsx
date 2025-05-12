@@ -5,7 +5,7 @@ import RemoveWorkspaceMemberButton from "./RemoveWorkspaceMemberButton";
 import UpdateWorkspaceMemberButton from "./UpdateWorkspaceMemberButton";
 import WorkspaceMemberCard from "./WorkspaceMemberCard";
 
-export default function ManageWorkspaceMemberForm({
+export default function ManageWorkspaceMemberSection({
     userId,
     workspaceId,
     workspaceMembers,
