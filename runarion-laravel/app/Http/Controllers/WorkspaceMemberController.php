@@ -105,6 +105,26 @@ class WorkspaceMemberController extends Controller
             ->notify(new WorkspaceInvitationNotification($workspace, $acceptUrl, $role, $userExists));
     }
 
+    /**
+     * Get list of unassigned users
+     */
+    public function unassigned(Request $request, int $workspaceId)
+    {
+        $search = trim($request->query('search', ''));
+        $limit = $request->query('limit', 10);
+
+        $userIds = WorkspaceMember::where('workspace_id', $workspaceId)
+            ->pluck('user_id')
+            ->all();
+
+        $users = User::whereNotIn('id', $userIds)
+            ->where('email', 'like', "%{$search}%")
+            ->orderBy('email', 'asc')
+            ->limit($limit)
+            ->get(['id', 'name', 'email']);
+
+        return response()->json($users);
+    }
 
     /**
      * Assign users to a workspace via email invitation
@@ -190,16 +210,16 @@ class WorkspaceMemberController extends Controller
         );
 
         if (!empty($validated['user_ids'])) {
-        WorkspaceMember::where('workspace_id', $workspace->id)
-            ->whereIn('user_id', $validated['user_ids'])
-            ->delete();
+            WorkspaceMember::where('workspace_id', $workspace->id)
+                ->whereIn('user_id', $validated['user_ids'])
+                ->delete();
         }
         if (!empty($validated['user_emails'])) {
-        WorkspaceInvitation::where('workspace_id', $workspace->id)
-            ->whereIn('user_email', $validated['user_emails'])
-            ->delete();
+            WorkspaceInvitation::where('workspace_id', $workspace->id)
+                ->whereIn('user_email', $validated['user_emails'])
+                ->delete();
         }
-        
+
         return Redirect::route('workspaces.edit', ['workspace_id' => $workspace->id]);
     }
 

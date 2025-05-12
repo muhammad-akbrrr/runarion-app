@@ -1,6 +1,7 @@
 import { Label } from "@/Components/ui/label";
 import { WorkspaceMember } from "@/types/workspace";
 import { useState } from "react";
+import AddWorkspaceMemberButton from "./AddWorkspaceMemberButton";
 import RemoveWorkspaceMemberButton from "./RemoveWorkspaceMemberButton";
 import UpdateWorkspaceMemberButton from "./UpdateWorkspaceMemberButton";
 import WorkspaceMemberCard from "./WorkspaceMemberCard";
@@ -110,6 +111,10 @@ export default function ManageWorkspaceMemberSection({
                     </div>
                     {isUserOwner && (
                         <div className="flex gap-2">
+                            <AddWorkspaceMemberButton
+                                workspaceId={workspaceId}
+                                role="admin"
+                            />
                             <RemoveWorkspaceMemberButton
                                 workspaceId={workspaceId}
                                 role="admin"
@@ -152,6 +157,10 @@ export default function ManageWorkspaceMemberSection({
                     </div>
                     {(isUserAdmin || isUserOwner) && (
                         <div className="flex gap-2">
+                            <AddWorkspaceMemberButton
+                                workspaceId={workspaceId}
+                                role="member"
+                            />
                             <RemoveWorkspaceMemberButton
                                 workspaceId={workspaceId}
                                 role="member"

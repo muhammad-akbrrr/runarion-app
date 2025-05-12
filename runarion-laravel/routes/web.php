@@ -36,6 +36,7 @@ Route::middleware('auth')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
+    Route::get('/workspace-members/{workspace_id}/unassigned', [WorkspaceMemberController::class, 'unassigned'])->name('workspace-members.unassigned');
     Route::post('/workspace-members', [WorkspaceMemberController::class, 'assign'])->name('workspace-members.assign');
     Route::patch('/workspace-members', [WorkspaceMemberController::class, 'update'])->name('workspace-members.update');
     Route::delete('/workspace-members', [WorkspaceMemberController::class, 'remove'])->name('workspace-members.remove');
