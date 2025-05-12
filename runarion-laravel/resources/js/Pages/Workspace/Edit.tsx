@@ -4,6 +4,7 @@ import { PageProps } from "@/types";
 import { Workspace, WorkspaceMember } from "@/types/workspace";
 import { Head, usePage } from "@inertiajs/react";
 import DeleteWorkspaceSection from "./Partials/DeleteWorkspaceSection";
+import LeaveWorkspaceSection from "./Partials/LeaveWorkspaceSection";
 import ManageWorkspaceMemberSection from "./Partials/ManageWorkspaceMemberSection";
 import UpdateWorkspaceBillingSection from "./Partials/UpdateWorkspaceBillingSection";
 import UpdateWorkspaceInformationSection from "./Partials/UpdateWorkspaceInformationSection";
@@ -75,6 +76,17 @@ export default function Edit({
                                 <UpdateWorkspaceBillingSection
                                     workspace={workspace}
                                     isUserOwnerOrAdmin={isUserOwnerOrAdmin}
+                                    className="max-w-xl"
+                                />
+                            </CardContent>
+                        </Card>
+                    )}
+
+                    {!isUserOwner && (
+                        <Card>
+                            <CardContent>
+                                <LeaveWorkspaceSection
+                                    workspaceId={workspace.id}
                                     className="max-w-xl"
                                 />
                             </CardContent>
