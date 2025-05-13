@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workspace;
+use App\Models\WorkspaceMember;
 use App\Models\WorkspaceInvitation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -27,7 +28,10 @@ class WorkspaceController extends Controller
     private function getViewableWorkspace(int $workspaceId, int $userId): Workspace
     {
         $workspace = $this->getWorkspace($workspaceId);
-        if (!$workspace->isMember($userId)) {
+        $isUserMember = $workspace->hasMany(WorkspaceMember::class)
+            ->where('user_id', $userId)
+            ->exists();
+        if ($isUserMember) {
             abort(403, 'You are not authorized to view this workspace.');
         }
         return $workspace;
@@ -36,7 +40,11 @@ class WorkspaceController extends Controller
     private function getUpdatableWorkspace(int $workspaceId, int $userId): Workspace
     {
         $workspace = $this->getWorkspace($workspaceId);
-        if (!$workspace->isOwnerOrAdmin($userId)) {
+        $isUserOwnerOrAdmin = $workspace->hasMany(WorkspaceMember::class)
+            ->where('user_id', $userId)
+            ->whereIn('role', ['owner', 'admin'])
+            ->exists();
+        if (!$isUserOwnerOrAdmin) {
             abort(403, 'You are not authorized to update this workspace.');
         }
         return $workspace;
@@ -45,7 +53,11 @@ class WorkspaceController extends Controller
     private function getDestroyableWorkspace(int $workspaceId, int $userId): Workspace
     {
         $workspace = $this->getWorkspace($workspaceId);
-        if (!$workspace->isOwner($userId)) {
+        $isUserOwner = $workspace->hasMany(WorkspaceMember::class)
+            ->where('user_id', $userId)
+            ->where('role', 'owner')
+            ->exists();
+        if (!$isUserOwner) {
             abort(403, 'You are not authorized to delete this workspace.');
         }
         return $workspace;
@@ -58,7 +70,7 @@ class WorkspaceController extends Controller
     {
         $workspace = $this->getViewableWorkspace($workspace_id, $request->user()->id);
 
-        $workspaceMembers = $workspace->members()
+        $workspaceMembers = $workspace->hasMany(WorkspaceMember::class)
             ->with('user')
             ->get()
             ->map(fn  ($member) => [
@@ -83,8 +95,14 @@ class WorkspaceController extends Controller
             ])
             ->toArray();
 
-        $isUserAdmin = $workspace->isAdmin($request->user()->id);
-        $isUserOwner = $workspace->isOwner($request->user()->id);
+        $isUserAdmin = $workspace->hasMany(WorkspaceMember::class)
+            ->where('user_id', $request->user()->id)
+            ->where('role', 'admin')
+            ->exists();
+        $isUserOwner = $workspace->hasMany(WorkspaceMember::class)
+            ->where('user_id', $request->user()->id)
+            ->where('role', 'owner')
+            ->exists();
         if (!$isUserAdmin && !$isUserOwner) {
             $workspace = $workspace->only([
                 'id',

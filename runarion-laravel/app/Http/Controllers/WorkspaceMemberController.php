@@ -36,9 +36,17 @@ class WorkspaceMemberController extends Controller
             $message = '';
         }
 
+        $isUserOwner = $workspace->hasMany(WorkspaceMember::class)
+            ->where('user_id', $userId)
+            ->where('role', 'owner')
+            ->exists();
+        $isUserOwnerOrAdmin = $workspace->hasMany(WorkspaceMember::class)
+            ->where('user_id', $userId)
+            ->whereIn('role', ['owner', 'admin'])
+            ->exists();
         $isAuthorized = $role == 'admin' ? 
-            $workspace->isOwner($userId) :
-            $workspace->isOwnerOrAdmin($userId);
+            $isUserOwner :
+            $isUserOwnerOrAdmin;
         if (!$isAuthorized) {
             abort(403, "You are not authorized to {$message}.");
         }
@@ -235,7 +243,11 @@ class WorkspaceMemberController extends Controller
         }
 
         $user = $request->user();
-        if ($user->isWorkspaceOwner($workspace)) {
+        $isOwner = $user->hasMany(WorkspaceMember::class)
+            ->where('workspace_id', $workspace->id)
+            ->where('role', 'owner')
+            ->exists();
+        if ($isOwner) {
             abort(400, 'You cannot leave a workspace you own.');
         }
 
