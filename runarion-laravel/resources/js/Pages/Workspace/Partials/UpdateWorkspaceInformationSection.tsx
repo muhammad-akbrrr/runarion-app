@@ -2,7 +2,7 @@ import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
 import { Textarea } from "@/Components/ui/textarea";
-import { Workspace } from "@/types/workspace";
+import { Workspace } from "@/types";
 import { Transition } from "@headlessui/react";
 import { useForm } from "@inertiajs/react";
 import { FormEventHandler } from "react";

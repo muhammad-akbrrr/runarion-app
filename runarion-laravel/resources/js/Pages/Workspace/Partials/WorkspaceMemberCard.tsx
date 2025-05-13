@@ -1,5 +1,5 @@
 import { Checkbox } from "@/Components/ui/checkbox";
-import { WorkspaceMember } from "@/types/workspace";
+import { WorkspaceMember } from "@/types";
 
 export default function WorkspaceMemberCard({
     member,

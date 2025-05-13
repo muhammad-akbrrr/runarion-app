@@ -7,7 +7,7 @@ import {
     DropdownMenuTrigger,
 } from "@/Components/ui/dropdown-menu";
 import { Label } from "@/Components/ui/label";
-import { Workspace } from "@/types/workspace";
+import { Workspace } from "@/types";
 import { Transition } from "@headlessui/react";
 import { useForm } from "@inertiajs/react";
 import { FormEventHandler } from "react";

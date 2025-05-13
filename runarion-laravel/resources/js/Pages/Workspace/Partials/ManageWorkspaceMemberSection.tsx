@@ -1,5 +1,5 @@
 import { Label } from "@/Components/ui/label";
-import { WorkspaceMember } from "@/types/workspace";
+import { WorkspaceMember } from "@/types";
 import { useState } from "react";
 import AddWorkspaceMemberButton from "./AddWorkspaceMemberButton";
 import RemoveWorkspaceMemberButton from "./RemoveWorkspaceMemberButton";

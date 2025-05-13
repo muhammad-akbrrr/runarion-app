@@ -1,7 +1,7 @@
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
-import { Workspace, WorkspaceField } from "@/types/workspace";
+import { Workspace, WorkspaceField } from "@/types";
 import { Transition } from "@headlessui/react";
 import { useForm } from "@inertiajs/react";
 import { FormEventHandler } from "react";

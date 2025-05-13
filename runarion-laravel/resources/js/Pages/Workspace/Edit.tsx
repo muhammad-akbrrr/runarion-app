@@ -1,7 +1,6 @@
 import { Card, CardContent } from "@/Components/ui/card";
 import AuthenticatedLayout from "@/Layouts/AuthenticatedLayout";
-import { PageProps } from "@/types";
-import { Workspace, WorkspaceMember } from "@/types/workspace";
+import { PageProps, Workspace, WorkspaceMember } from "@/types";
 import { Head, usePage } from "@inertiajs/react";
 import DeleteWorkspaceSection from "./Partials/DeleteWorkspaceSection";
 import LeaveWorkspaceSection from "./Partials/LeaveWorkspaceSection";
