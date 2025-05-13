@@ -2,9 +2,7 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * WorkspaceInvitation Model
@@ -25,20 +23,4 @@ class WorkspaceInvitation extends Model
         'role' => 'string',
         'expired_at' => 'datetime',
     ];
-
-    /**
-     * Get the workspace that owns the invitation
-     */
-    public function workspace(): BelongsTo
-    {
-        return $this->belongsTo(Workspace::class);
-    }
-
-    /**
-     * Check if the invitation has expired
-     */
-    public function isExpired(): bool
-    {
-        return $this->expired_at->isPast();
-    }
 }
