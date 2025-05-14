@@ -2,7 +2,6 @@
 
 namespace App\Notifications;
 
-use App\Models\Workspace;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
@@ -17,7 +16,7 @@ class WorkspaceInvitationNotification extends Notification
      * Create a new notification instance.
      */
     public function __construct(
-        protected Workspace $workspace,
+        protected string $workspaceName,
         protected string $acceptUrl,
         protected string $role,
         protected bool $userExists
@@ -39,8 +38,8 @@ class WorkspaceInvitationNotification extends Notification
         $roleText = $this->role === 'admin' ? 'an admin' : 'a member';
         
         return (new MailMessage)
-            ->subject("Invitation to {$this->workspace->name} workspace")
-            ->line("You've been invited to be {$roleText} of the {$this->workspace->name} workspace.")
+            ->subject("Invitation to {$this->workspaceName} workspace")
+            ->line("You've been invited to be {$roleText} of the {$this->workspaceName} workspace.")
             ->lineIf(!$this->userExists, 'Since you are not registered, PLEASE REGISTER first before accepting the invitation.')
             ->action('Accept Invitation', $this->acceptUrl)
             ->line('If you did not expect to receive this invitation, you can safely ignore this email.');

@@ -3,64 +3,45 @@
 namespace App\Http\Controllers;
 
 use App\Models\Workspace;
-use App\Models\WorkspaceMember;
-use App\Models\WorkspaceInvitation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class WorkspaceController extends Controller
 {
-    private function getWorkspace(int $workspaceId): Workspace
+    private function getUserRole(int $workspaceId, int $userId): ?string
     {
-        /** @var \App\Models\Workspace $workspace */
-        $workspace = Workspace::find($workspaceId);
-
-        if (!$workspace) {
-            abort(401, 'Workspace not found.');
-        }
-
-        return $workspace;
+        return DB::table('workspace_members')
+            ->where('workspace_id', $workspaceId)
+            ->where('user_id', $userId)
+            ->value('role');
     }
 
-    private function getViewableWorkspace(int $workspaceId, int $userId): Workspace
+    private function canView(int $workspaceId, int $userId): void
     {
-        $workspace = $this->getWorkspace($workspaceId);
-        $isUserMember = $workspace->hasMany(WorkspaceMember::class)
-            ->where('user_id', $userId)
-            ->exists();
-        if ($isUserMember) {
+        $userRole = $this->getUserRole($workspaceId, $userId);
+        if ($userRole === null) {
             abort(403, 'You are not authorized to view this workspace.');
         }
-        return $workspace;
     }
 
-    private function getUpdatableWorkspace(int $workspaceId, int $userId): Workspace
+    private function canUpdate(int $workspaceId, int $userId): void
     {
-        $workspace = $this->getWorkspace($workspaceId);
-        $isUserOwnerOrAdmin = $workspace->hasMany(WorkspaceMember::class)
-            ->where('user_id', $userId)
-            ->whereIn('role', ['owner', 'admin'])
-            ->exists();
-        if (!$isUserOwnerOrAdmin) {
+        $userRole = $this->getUserRole($workspaceId, $userId);
+        if ($userRole === 'member') {
             abort(403, 'You are not authorized to update this workspace.');
         }
-        return $workspace;
     }
 
-    private function getDestroyableWorkspace(int $workspaceId, int $userId): Workspace
+    private function canDestroy(int $workspaceId, int $userId): void
     {
-        $workspace = $this->getWorkspace($workspaceId);
-        $isUserOwner = $workspace->hasMany(WorkspaceMember::class)
-            ->where('user_id', $userId)
-            ->where('role', 'owner')
-            ->exists();
-        if (!$isUserOwner) {
+        $userRole = $this->getUserRole($workspaceId, $userId);
+        if ($userRole !== 'owner') {
             abort(403, 'You are not authorized to delete this workspace.');
         }
-        return $workspace;
     }
 
     /**
@@ -68,41 +49,16 @@ class WorkspaceController extends Controller
      */
     public function edit(Request $request, int $workspace_id): Response
     {
-        $workspace = $this->getViewableWorkspace($workspace_id, $request->user()->id);
+        $this->canView($workspace_id, $request->user()->id);
 
-        $workspaceMembers = $workspace->hasMany(WorkspaceMember::class)
-            ->with('user')
-            ->get()
-            ->map(fn  ($member) => [
-                'id' => $member->user->id,
-                'name' => $member->user->name,
-                'email' => $member->user->email,
-                'avatar_url' => $member->user->avatar_url,
-                'role' => $member->role,
-                'is_verified' => $member->user->isVerified(),
-            ])
-            ->toArray();
+        $workspace = Workspace::where('id', $workspace_id)->first();
+        if (!$workspace) {
+            abort(401, 'Workspace not found.');
+        }
 
-        $workspaceInvitedMembers = WorkspaceInvitation::where('workspace_id', $workspace->id)
-            ->get()    
-            ->map(fn ($invitation) => [
-                'id' => null,
-                'name' => null,
-                'email' => $invitation->user_email,
-                'avatar_url' => null,
-                'role' => $invitation->role,
-                'is_verified' => null,
-            ])
-            ->toArray();
-
-        $isUserAdmin = $workspace->hasMany(WorkspaceMember::class)
-            ->where('user_id', $request->user()->id)
-            ->where('role', 'admin')
-            ->exists();
-        $isUserOwner = $workspace->hasMany(WorkspaceMember::class)
-            ->where('user_id', $request->user()->id)
-            ->where('role', 'owner')
-            ->exists();
+        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        $isUserOwner = $userRole == 'owner';
+        $isUserAdmin = $userRole == 'admin';
         if (!$isUserAdmin && !$isUserOwner) {
             $workspace = $workspace->only([
                 'id',
@@ -117,6 +73,33 @@ class WorkspaceController extends Controller
             ]);
         }
 
+        $workspaceMembers = DB::table('workspace_members')
+            ->where('workspace_id', $workspace_id)
+            ->join('users', 'workspace_members.user_id', '=', 'users.id')
+            ->get()
+            ->map(fn ($member) => [
+                'id' => $member->user_id,
+                'name' => $member->name,
+                'email' => $member->email,
+                'avatar_url' => $member->avatar_url,
+                'role' => $member->role,
+                'is_verified' => $member->is_verified,
+            ])
+            ->toArray();
+
+        $workspaceInvitedMembers = DB::table('workspace_invitations')
+            ->where('workspace_id', $workspace_id)
+            ->get()    
+            ->map(fn ($invitation) => [
+                'id' => null,
+                'name' => null,
+                'email' => $invitation->user_email,
+                'avatar_url' => null,
+                'role' => $invitation->role,
+                'is_verified' => null,
+            ])
+            ->toArray();
+
         return Inertia::render('Workspace/Edit', [
             'workspace' => $workspace,
             'workspaceMembers' => array_merge($workspaceMembers, $workspaceInvitedMembers),
@@ -130,16 +113,16 @@ class WorkspaceController extends Controller
      */
     public function update(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getUpdatableWorkspace($workspace_id, $request->user()->id);
+        $this->canUpdate($workspace_id, $request->user()->id);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'string',
         ]);
 
-        $workspace->update($validated);
-
-        $workspace->save();
+        DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->update($validated);
 
         return Redirect::route('workspaces.edit', ['workspace_id' => $workspace_id]);
     }
@@ -149,7 +132,7 @@ class WorkspaceController extends Controller
      */
     public function updateSettings(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getUpdatableWorkspace($workspace_id, $request->user()->id);
+        $this->canUpdate($workspace_id, $request->user()->id);
 
         $validated = $request->validate([
             'theme' => 'string|max:255',
@@ -157,8 +140,14 @@ class WorkspaceController extends Controller
             'notifications.*' => 'boolean', 
         ]);
 
-        $workspace->settings = array_merge($workspace->settings ?? [], $validated);
-        $workspace->save();
+        $updates = [];
+        foreach ($validated as $key => $value) {
+            $updates["settings->{$key}"] = $value;
+        }
+
+        DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->update($updates);
 
         return Redirect::route('workspaces.edit', ['workspace_id' => $workspace_id]);
     }
@@ -168,7 +157,7 @@ class WorkspaceController extends Controller
      */
     public function updateBilling(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getUpdatableWorkspace($workspace_id, $request->user()->id);
+        $this->canUpdate($workspace_id, $request->user()->id);
 
         $request->validate([
             'billing_*' => 'string|max:255',
@@ -181,9 +170,10 @@ class WorkspaceController extends Controller
                 fn($key) => str_starts_with($key, 'billing_')
             )
         );
-        $workspace->update($data);
-
-        $workspace->save();
+        
+        DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->update($data);
 
         return Redirect::route('workspaces.edit', ['workspace_id' => $workspace_id]);
     }
@@ -193,9 +183,11 @@ class WorkspaceController extends Controller
      */
     public function destroy(Request $request, $workspace_id): RedirectResponse
     {
-        $workspace = $this->getDestroyableWorkspace($workspace_id, $request->user()->id);
+        $this->canDestroy($workspace_id, $request->user()->id);
 
-        $workspace->delete();
+        DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->delete();
 
         return Redirect::to('/');
     }

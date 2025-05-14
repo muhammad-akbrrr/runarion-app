@@ -2,14 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\User;
 use App\Models\Workspace;
-use App\Models\WorkspaceInvitation;
-use App\Models\WorkspaceMember;
 use App\Notifications\WorkspaceInvitationNotification;
 use Carbon\Carbon;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Str;
@@ -18,38 +16,40 @@ use Inertia\Response;
 
 class WorkspaceMemberController extends Controller
 {
+    private function getUserRole(int $workspaceId, int $userId): ?string
+    {
+        return DB::table('workspace_members')
+            ->where('workspace_id', $workspaceId)
+            ->where('user_id', $userId)
+            ->value('role');
+    }
+
     private function getModifiableWorkspace(int $workspaceId, int $userId, string $role, string $type): Workspace
     {
-        /** @var \App\Models\Workspace $workspace */
-        $workspace = Workspace::find($workspaceId);
+        $workspace = Workspace::where('id', $workspaceId)->first();
         if (!$workspace) {
             abort(401, 'Workspace not found.');
         }
 
-        if ($type == "assign") {
-            $message = "assign {$role} to this workspace";
-        } elseif ($type == "update") {
-            $message = "update role to {$role} in this workspace";
-        } elseif ($type == "remove") {
-            $message = "remove {$role} from this workspace";
-        } else {
-            $message = '';
-        }
+        $message = match ($type) {
+            "assign" => "assign {$role} to this workspace",
+            "update" => "update role to {$role} in this workspace",
+            "remove" => "remove {$role} from this workspace",
+            default => '',
+        };
 
-        $isUserOwner = $workspace->hasMany(WorkspaceMember::class)
-            ->where('user_id', $userId)
-            ->where('role', 'owner')
-            ->exists();
-        $isUserOwnerOrAdmin = $workspace->hasMany(WorkspaceMember::class)
-            ->where('user_id', $userId)
-            ->whereIn('role', ['owner', 'admin'])
-            ->exists();
+        $userRole = $this->getUserRole($workspaceId, $userId);
+
+        $isUserOwner = $userRole == 'owner';
+        $isUserOwnerOrAdmin = $userRole == 'admin' || $userRole == 'owner';
         $isAuthorized = $role == 'admin' ? 
             $isUserOwner :
             $isUserOwnerOrAdmin;
+
         if (!$isAuthorized) {
             abort(403, "You are not authorized to {$message}.");
         }
+
         return $workspace;
     }
 
@@ -66,12 +66,14 @@ class WorkspaceMemberController extends Controller
      */
     private function getExistAndMembershipStatus(array $emails, int $workspaceId): array
     {
-        $users = User::whereIn('email', $emails)
+        $users = DB::table('users')
+            ->whereIn('email', $emails)
             ->pluck('id', 'email');
 
         $userIds = array_map(fn ($email) => $users[$email] ?? null, $emails);
 
-        $workspaceUserIds = WorkspaceMember::where('workspace_id', $workspaceId)
+        $workspaceUserIds = DB::table('workspace_members')
+            ->where('workspace_id', $workspaceId)
             ->whereIn('user_id', array_filter($userIds))
             ->pluck('user_id')
             ->all();
@@ -92,13 +94,13 @@ class WorkspaceMemberController extends Controller
     /**
      * Sends an email invitation to a user to join a workspace
      */
-    private function sendInvitation(Workspace $workspace, string $userEmail, bool $userExists, string $role): void
+    private function sendInvitation(int $workspaceId, string $workspaceName, string $userEmail, bool $userExists, string $role): void
     {
         $token = Str::random(64);
         $expiredAt = Carbon::now()->addHours(24);
-        WorkspaceInvitation::updateOrCreate(
+        DB::table('workspace_invitations')->updateOrInsert(
             [
-                'workspace_id' => $workspace->id,
+                'workspace_id' => $workspaceId,
                 'user_email' => $userEmail,
             ],
             [
@@ -110,7 +112,7 @@ class WorkspaceMemberController extends Controller
 
         $acceptUrl = route('workspace-invitation.accept', ['token' => $token]);
         Notification::route('mail', $userEmail)
-            ->notify(new WorkspaceInvitationNotification($workspace, $acceptUrl, $role, $userExists));
+            ->notify(new WorkspaceInvitationNotification($workspaceName, $acceptUrl, $role, $userExists));
     }
 
     /**
@@ -121,11 +123,13 @@ class WorkspaceMemberController extends Controller
         $search = trim($request->query('search', ''));
         $limit = $request->query('limit', 10);
 
-        $userIds = WorkspaceMember::where('workspace_id', $workspaceId)
+        $userIds = DB::table('workspace_members')
+            ->where('workspace_id', $workspaceId)
             ->pluck('user_id')
             ->all();
 
-        $users = User::whereNotIn('id', $userIds)
+        $users = DB::table('users')
+            ->whereNotIn('id', $userIds)
             ->where('email', 'like', "%{$search}%")
             ->orderBy('email', 'asc')
             ->limit($limit)
@@ -160,7 +164,8 @@ class WorkspaceMemberController extends Controller
                 continue;
             }
             $this->sendInvitation(
-                $workspace,
+                $workspace->id,
+                $workspace->name,
                 $validated['user_emails'][$index], 
                 $status['is_exists'], 
                 $validated['role']
@@ -189,7 +194,8 @@ class WorkspaceMemberController extends Controller
             'update'
         );
 
-        WorkspaceMember::where('workspace_id', $workspace->id)
+        DB::table('workspace_members')
+            ->where('workspace_id', $workspace->id)
             ->whereIn('user_id', $validated['user_ids'])
             ->update(['role' => $validated['role']]);
         
@@ -218,12 +224,14 @@ class WorkspaceMemberController extends Controller
         );
 
         if (!empty($validated['user_ids'])) {
-            WorkspaceMember::where('workspace_id', $workspace->id)
+            DB::table('workspace_members')
+                ->where('workspace_id', $workspace->id)
                 ->whereIn('user_id', $validated['user_ids'])
                 ->delete();
         }
         if (!empty($validated['user_emails'])) {
-            WorkspaceInvitation::where('workspace_id', $workspace->id)
+            DB::table('workspace_invitations')
+                ->where('workspace_id', $workspace->id)
                 ->whereIn('user_email', $validated['user_emails'])
                 ->delete();
         }
@@ -236,23 +244,20 @@ class WorkspaceMemberController extends Controller
      */
     public function leave(Request $request, $workspaceId): RedirectResponse
     {
-        /** @var \App\Models\Workspace $workspace */
-        $workspace = Workspace::find($workspaceId);
-        if (!$workspace) {
-            abort(404, 'Workspace not found.');
+        $userId = $request->user()->id;
+
+        $userRole = $this->getUserRole($workspaceId, $userId);
+        if (!$userRole) {
+            abort(404, 'You are not a member of this workspace.');
         }
 
-        $user = $request->user();
-        $isOwner = $user->hasMany(WorkspaceMember::class)
-            ->where('workspace_id', $workspace->id)
-            ->where('role', 'owner')
-            ->exists();
-        if ($isOwner) {
+        if ($userRole == 'owner') {
             abort(400, 'You cannot leave a workspace you own.');
         }
 
-        WorkspaceMember::where('workspace_id', $workspace->id)
-            ->where('user_id', $user->id)
+        DB::table('workspace_members')
+            ->where('workspace_id', $workspaceId)
+            ->where('user_id', $userId)
             ->delete();
 
         return Redirect::to('/');
@@ -265,7 +270,8 @@ class WorkspaceMemberController extends Controller
     public function accept(Request $request, $token): Response
     {
         // Find invitation by token
-        $invitation = WorkspaceInvitation::where('token', $token)
+        $invitation = DB::table('workspace_invitations')
+            ->where('token', $token)
             ->where('expired_at', '>', Carbon::now())
             ->first();
         
@@ -275,23 +281,25 @@ class WorkspaceMemberController extends Controller
             ]);
         }
 
-        // Find user by email
-        $user = User::where('email', $invitation->user_email)->first();
-        if (!$user) {
+        // Find user id by email
+        $userId = DB::table('users')->where('email', $invitation->user_email)->value('id');
+        if (!$userId) {
             return Inertia::render('Workspace/Invitation', [
                 'status' => 'unregistered',
             ]);
         }
         
         // Add user to workspace
-        WorkspaceMember::create([
+        DB::table('workspace_members')->insert([
             'workspace_id' => $invitation->workspace_id,
-            'user_id' => $user->id,
+            'user_id' => $userId,
             'role' => $invitation->role,
         ]);
         
         // Delete the invitation
-        $invitation->delete();
+        DB::table('workspace_invitations')
+            ->where('id', $invitation->id)
+            ->delete();
         
         return Inertia::render('Workspace/Invitation', [
                 'status' => 'success',
