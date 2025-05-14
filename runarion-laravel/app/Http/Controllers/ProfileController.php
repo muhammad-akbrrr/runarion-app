@@ -41,6 +41,20 @@ class ProfileController extends Controller
     }
 
     /**
+     * Update the user's settings.
+     */
+    public function updateSettings(Request $request): RedirectResponse
+    {
+        $request->validate([]);
+
+        $user = $request->user();
+        $user->settings = array_merge($user->settings ?? [], $request->all());
+        $user->save();
+
+        return Redirect::route('profile.edit');
+    }
+
+    /**
      * Delete the user's account.
      */
     public function destroy(Request $request): RedirectResponse
