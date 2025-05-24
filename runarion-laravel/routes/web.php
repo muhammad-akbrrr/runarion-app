@@ -37,14 +37,16 @@ Route::middleware('auth')->group(function () {
     Route::patch('/workspaces/{workspace_id}/llm', [WorkspaceController::class, 'updateLLM'])->name('workspace.update.llm');
     Route::get('/workspaces/{workspace_id}/billing', [WorkspaceController::class, 'editBilling'])->name('workspace.edit.billing');
     Route::delete('/workspaces/{workspace_id}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');
+
+    Route::get('/workspaces/{workspace_id}/member', [WorkspaceMemberController::class, 'edit'])->name('workspace.edit.member');
 });
 
 Route::middleware('auth')->group(function () {
-    Route::get('/workspace-members/{workspace_id}/unassigned', [WorkspaceMemberController::class, 'unassigned'])->name('workspace-members.unassigned');
-    Route::post('/workspace-members', [WorkspaceMemberController::class, 'assign'])->name('workspace-members.assign');
-    Route::patch('/workspace-members', [WorkspaceMemberController::class, 'update'])->name('workspace-members.update');
-    Route::delete('/workspace-members', [WorkspaceMemberController::class, 'remove'])->name('workspace-members.remove');
-    Route::delete('/workspace-members/{workspace_id}', [WorkspaceMemberController::class, 'leave'])->name('workspace-members.leave');
+    Route::get('/workspace-members/{workspace_id}/unassigned', [WorkspaceMemberController::class, 'unassigned'])->name('workspace-member.unassigned');
+    Route::post('/workspace-members', [WorkspaceMemberController::class, 'assign'])->name('workspace-member.assign');
+    Route::patch('/workspace-members', [WorkspaceMemberController::class, 'update'])->name('workspace-member.update');
+    Route::delete('/workspace-members', [WorkspaceMemberController::class, 'remove'])->name('workspace-member.remove');
+    Route::delete('/workspace-members/{workspace_id}', [WorkspaceMemberController::class, 'leave'])->name('workspace-member.leave');
 });
 
 // Workspace invitation accept route (no auth required)
