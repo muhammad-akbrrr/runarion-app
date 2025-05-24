@@ -18,7 +18,7 @@ export default function Invitation({
             "You have successfully accepted the workspace invitation. Welcome aboard!",
         invalid: "The invitation link you used is invalid.",
         unregistered:
-            "It seems you are not registered. Please sign up to proceed.",
+            "It seems you are not registered. Please sign up to Runarion then try again.",
     };
 
     return (
