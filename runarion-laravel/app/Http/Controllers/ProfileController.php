@@ -2,12 +2,15 @@
 
 namespace App\Http\Controllers;
 
-use App\Http\Requests\ProfileUpdateRequest;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Validation\Rules\Password;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -27,29 +30,55 @@ class ProfileController extends Controller
     /**
      * Update the user's profile information.
      */
-    public function update(ProfileUpdateRequest $request): RedirectResponse
+    public function update(Request $request): RedirectResponse
     {
-        $request->user()->fill($request->validated());
+        $passwordFilled = $request->filled('password');
 
-        if ($request->user()->isDirty('email')) {
-            $request->user()->email_verified_at = null;
+        $validationRules = [
+            'name' => ['required', 'string', 'max:255'],
+            'email' => [
+                'required',
+                'string',
+                'lowercase',
+                'email',
+                'max:255',
+                'unique:users,email,' . $request->user()->id,
+            ],
+            'settings' => 'array',
+            'settings.notifications' => 'array',
+            'settings.notifications.*' => 'boolean',
+            'photo' => 'nullable|image|max:2048',
+        ];
+        if ($passwordFilled) {
+            $validationRules['current_password'] = ['required', 'current_password'];
+            $validationRules['password'] = ['required', Password::defaults()];
         }
 
-        $request->user()->save();
+        $validated = $request->validate($validationRules);
 
-        return Redirect::route('profile.edit');
-    }
+        if ($passwordFilled) {
+            $validated['password'] = Hash::make($validated['password']);
+        }
+        if ($request->user()->isDirty('email')) {
+            $validated['email_verified_at'] = null;
+        }
+        if ($request->hasFile('photo')) {
+            $prevAvatarUrl = DB::table('users')
+                ->where('id', $request->user()->id)
+                ->value('avatar_url');
+            if ($prevAvatarUrl) {
+                $prevAvatarUrl = substr($prevAvatarUrl, strlen('/storage/'));
+                Storage::disk('public')->delete($prevAvatarUrl);
+            }
+            $validated['avatar_url'] = '/storage/' . Storage::disk('public')
+                ->putFile('user_photos', $request->file('photo'));
+        }
+        unset($validated['current_password']);
+        unset($validated['photo']);
 
-    /**
-     * Update the user's settings.
-     */
-    public function updateSettings(Request $request): RedirectResponse
-    {
-        $request->validate([]);
-
-        $user = $request->user();
-        $user->settings = array_merge($user->settings ?? [], $request->all());
-        $user->save();
+        DB::table('users')
+            ->where('id', $request->user()->id)
+            ->update($validated);
 
         return Redirect::route('profile.edit');
     }
