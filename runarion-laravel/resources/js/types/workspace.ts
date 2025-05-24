@@ -4,18 +4,16 @@ export interface SimpleWorkspace {
     slug: string;
 }
 
-export interface WorkspaceSetting {
-    theme?: string;
-    notifications?: Record<string, boolean>;
-}
-
 export interface Workspace {
     id: number;
     name: string;
     slug: string;
     description: string | null;
     cover_image_url: string | null;
-    settings: WorkspaceSetting;
+    settings: {
+        timezone: string | null;
+        permissions: Record<string, string[]>;
+    };
     billing_email?: string | null;
     billing_name?: string | null;
     billing_address?: string | null;

@@ -33,6 +33,13 @@ class UserFactory extends Factory
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password123'),
+            'avatar_url' => fake()->imageUrl(1920, 1080, 'people'),
+            'settings' => [
+                'notifications' => [
+                    'email' => fake()->randomElement([true, false]),
+                    'desktop' => fake()->randomElement([true, false]),
+                ],
+            ],
             'remember_token' => Str::random(10),
         ];
     }
