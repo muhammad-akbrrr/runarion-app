@@ -31,10 +31,35 @@ class WorkspaceFactory extends Factory
       'description' => fake()->paragraph(),
       'cover_image_url' => fake()->imageUrl(1920, 1080, 'business'),
       'settings' => [
-        'theme' => fake()->randomElement(['light', 'dark']),
-        'notifications' => [
-          'email' => true,
-          'push' => true,
+        'timezone' => fake()->timezone(),
+        'permissions' => [
+          'create_projects' => ['admin'],
+          'delete_projects' => ['admin'],
+        ],
+        'cloud_storage' => [
+          'google_drive' => [
+            'enabled' => fake()->boolean(),
+          ],
+          'dropbox' => [
+            'enabled' => fake()->boolean(),
+          ],
+          'onedrive' => [
+            'enabled' => fake()->boolean(),
+          ],
+        ],
+        'llm' => [
+          'openai' => [
+            'enabled' => fake()->boolean(),
+            'api_key' => fake()->uuid(),
+          ],
+          'gemini' => [
+            'enabled' => fake()->boolean(),
+            'api_key' => fake()->uuid(),
+          ],
+          'deepseek' => [
+            'enabled' => fake()->boolean(),
+            'api_key' => fake()->uuid(),
+          ],
         ],
       ],
       'billing_email' => fake()->safeEmail(),
