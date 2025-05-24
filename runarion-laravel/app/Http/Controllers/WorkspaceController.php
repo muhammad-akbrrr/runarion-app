@@ -2,11 +2,12 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Workspace;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Storage;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -20,12 +21,13 @@ class WorkspaceController extends Controller
             ->value('role');
     }
 
-    private function canView(int $workspaceId, int $userId): void
+    private function getUserRoleCanView(int $workspaceId, int $userId): string
     {
         $userRole = $this->getUserRole($workspaceId, $userId);
         if ($userRole === null) {
             abort(403, 'You are not authorized to view this workspace.');
         }
+        return $userRole;
     }
 
     private function canUpdate(int $workspaceId, int $userId): void
@@ -45,71 +47,169 @@ class WorkspaceController extends Controller
     }
 
     /**
-     * Display the workspace's form.
+     * Display all workspaces for the authenticated user.
+     */
+    public function index(Request $request): Response
+    {
+        $workspaces = DB::table('workspaces')
+            ->join('workspace_members', 'workspaces.id', '=', 'workspace_members.workspace_id')
+            ->where('workspace_members.user_id', $request->user()->id)
+            ->select('workspaces.*', 'workspace_members.role')
+            ->get()
+            ->map(fn ($workspace) => [
+                'id' => $workspace->id,
+                'name' => $workspace->name,
+                'slug' => $workspace->slug,
+                'cover_image_url' => $workspace->cover_image_url,
+                'role' => $workspace->role,
+            ]);
+
+        return Inertia::render('Workspace/List', [
+            'workspaces' => $workspaces,
+        ]);
+    }
+
+    /**
+     * Display form to update the workspace.
      */
     public function edit(Request $request, int $workspace_id): Response
     {
-        $this->canView($workspace_id, $request->user()->id);
+        $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
+        $isUserOwner = $userRole == 'owner';
+        $isUserAdmin = $userRole == 'admin';
 
-        $workspace = Workspace::where('id', $workspace_id)->first();
+        $workspace = DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->first(['id', 'name', 'slug', 'description', 'cover_image_url', 'settings', 'is_active']);
         if (!$workspace) {
             abort(401, 'Workspace not found.');
         }
 
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
-        $isUserOwner = $userRole == 'owner';
-        $isUserAdmin = $userRole == 'admin';
-        if (!$isUserAdmin && !$isUserOwner) {
-            $workspace = $workspace->only([
-                'id',
-                'name', 
-                'slug',
-                'description',
-                'cover_image_url',
-                'settings',
-                'trial_ends_at',
-                'subscription_ends_at',
-                'is_active',
-            ]);
-        }
-
-        $workspaceMembers = DB::table('workspace_members')
-            ->where('workspace_id', $workspace_id)
-            ->join('users', 'workspace_members.user_id', '=', 'users.id')
-            ->get()
-            ->map(fn ($member) => [
-                'id' => $member->user_id,
-                'name' => $member->name,
-                'email' => $member->email,
-                'avatar_url' => $member->avatar_url,
-                'role' => $member->role,
-                'is_verified' => $member->is_verified,
-            ])
-            ->toArray();
-
-        $workspaceInvitedMembers = DB::table('workspace_invitations')
-            ->where('workspace_id', $workspace_id)
-            ->get()    
-            ->map(fn ($invitation) => [
-                'id' => null,
-                'name' => null,
-                'email' => $invitation->user_email,
-                'avatar_url' => null,
-                'role' => $invitation->role,
-                'is_verified' => null,
-            ])
-            ->toArray();
+        $workspace->settings = json_decode($workspace->settings, true);
+        $workspace->settings = [
+            'timezone' => $workspace->settings['timezone'] ?? null,
+            'permissions' => $workspace->settings['permissions'] ?? [],
+        ];
 
         return Inertia::render('Workspace/Edit', [
             'workspace' => $workspace,
-            'workspaceMembers' => array_merge($workspaceMembers, $workspaceInvitedMembers),
             'isUserAdmin' => $isUserAdmin,
             'isUserOwner' => $isUserOwner,
         ]);
     }
 
     /**
-     * Update the workspace's information.
+     * Display form to update cloud storage of the workspace.
+     */
+    public function editCloudStorage(Request $request, int $workspace_id): Response
+    {
+        $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
+        $isUserOwner = $userRole == 'owner';
+        $isUserAdmin = $userRole == 'admin';
+
+        $settings = DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->value('settings');
+        if ($settings) {
+            $settings = json_decode($settings, true);
+        }
+        
+        $cloudStorage = $settings
+            ? array_map(
+                fn($m) => [
+                    'enabled' => $m['enabled'],
+                ],
+                $settings['cloud_storage'] ?? []
+            )
+            : [];
+
+        return Inertia::render('Workspace/CloudStorage', [
+            'workspaceId' => $workspace_id,
+            'data' => $cloudStorage,
+            'isUserAdmin' => $isUserAdmin,
+            'isUserOwner' => $isUserOwner,
+        ]);
+    }
+
+    /**
+     * Display form to update LLM of the workspace.
+     */
+    public function editLLM(Request $request, int $workspace_id): Response
+    {
+        $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
+        $isUserOwner = $userRole == 'owner';
+        $isUserAdmin = $userRole == 'admin';
+
+        $settings = DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->value('settings');
+        if ($settings) {
+            $settings = json_decode($settings, true);
+        }
+        
+        $llm = [];
+        if ($settings) {
+            foreach ($settings['llm'] ?? [] as $key => $value) {
+                $apiKeyExists = isset($value['api_key']) && $value['api_key'] !== "";
+                $llm[$key] = [
+                    'enabled' => $value['enabled'] && $apiKeyExists,
+                    'api_key_exists' => $apiKeyExists,
+                ];
+            }
+        }
+
+        return Inertia::render('Workspace/LLM', [
+            'workspaceId' => $workspace_id,
+            'data' => $llm,
+            'isUserAdmin' => $isUserAdmin,
+            'isUserOwner' => $isUserOwner,
+        ]);
+    }
+
+    /**
+     * Display form to update billing of the workspace.
+     */
+    public function editBilling(Request $request, int $workspace_id): Response
+    {
+        return Inertia::render('Workspace/Billing', []);
+    }
+
+    /**
+     * Create a new workspace.
+     */
+    public function store(Request $request): RedirectResponse
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'description' => 'nullable|string',
+            'slug' => [
+                'required',
+                'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
+                'max:255',
+                'unique:workspaces,slug'
+            ],
+            'photo' => 'nullable|image|max:2048',
+        ]);
+
+        if ($request->hasFile('photo')) {
+            $validated['cover_image_url'] = '/storage/' . Storage::disk('public')
+                ->putFile('workspace_photos', $request->file('photo'));
+        }
+        unset($validated['photo']);
+
+        $workspaceId = DB::table('workspaces')->insertGetId($validated);
+
+        DB::table('workspace_members')->insert([
+            'workspace_id' => $workspaceId,
+            'user_id' => $request->user()->id,
+            'role' => 'owner',
+        ]);
+
+        return Redirect::route('workspace.index');
+    }
+
+    /**
+     * Update the workspace.
      */
     public function update(Request $request, $workspace_id): RedirectResponse
     {
@@ -118,64 +218,109 @@ class WorkspaceController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'string',
+            'settings' => 'array',
+            'settings.timezone' => 'string|max:255',
+            'settings.permissions' => 'array',
+            'settings.permissions.create_projects' => 'array',
+            'settings.permissions.delete_projects' => 'array',
+            'photo' => 'nullable|image|max:2048',
         ]);
+
+        $settings = DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->value('settings');
+        $settings = $settings ? json_decode($settings, true) : [];
+        $settings['timezone'] = $validated['settings']['timezone'] ?? $settings['timezone'] ?? null;
+        $settings['permissions'] = $validated['settings']['permissions'] ?? $settings['permissions'] ?? [];
+        $validated['settings'] = $settings;
+
+        if ($request->hasFile('photo')) {
+            $prevPhotoUrl = DB::table('workspaces')
+                ->where('id', $workspace_id)
+                ->value('cover_image_url');
+            if ($prevPhotoUrl) {
+                $prevPhotoUrl = substr($prevPhotoUrl, strlen('/storage/'));
+                Storage::disk('public')->delete($prevPhotoUrl);
+            }
+            $validated['cover_image_url'] = '/storage/' . Storage::disk('public')
+                ->putFile('workspace_photos', $request->file('photo'));
+        }
+        unset($validated['photo']);
 
         DB::table('workspaces')
             ->where('id', $workspace_id)
             ->update($validated);
 
-        return Redirect::route('workspaces.edit', ['workspace_id' => $workspace_id]);
+        return Redirect::route('workspace.edit', ['workspace_id' => $workspace_id]);
     }
 
     /**
-     * Update the workspace's settings.
+     * Update cloud storage of the workspace.
      */
-    public function updateSettings(Request $request, $workspace_id): RedirectResponse
+    public function updateCloudStorage(Request $request, $workspace_id): RedirectResponse
     {
         $this->canUpdate($workspace_id, $request->user()->id);
 
         $validated = $request->validate([
-            'theme' => 'string|max:255',
-            'notifications' => 'array', 
-            'notifications.*' => 'boolean', 
+            'cloud_storage' => 'array',
+            'cloud_storage.*' => 'array',
         ]);
 
-        $updates = [];
-        foreach ($validated as $key => $value) {
-            $updates["settings->{$key}"] = $value;
+        DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->update(['settings->cloud_storage' => $validated['cloud_storage']]);
+
+        return Redirect::route('workspace.edit.cloud-storage', ['workspace_id' => $workspace_id]);
+    }
+
+    /**
+     * Update LLM of the workspace.
+     */
+    public function updateLLM(Request $request, $workspace_id): RedirectResponse
+    {
+        $this->canUpdate($workspace_id, $request->user()->id);
+
+        $validated = $request->validate([
+            'llm_key' => 'required|string',
+            'enabled' => 'required|boolean',
+            'api_key' => 'nullable|string',
+            'delete_api_key' => 'nullable|boolean',
+        ]);
+
+        $llmKey = $validated['llm_key'];
+        $enabled = $validated['enabled'];
+        $apiKey = $validated['api_key'] ?? null;
+        $deleteApiKey = $validated['delete_api_key'] ?? null;
+
+        if ($enabled && $deleteApiKey) {
+            abort(400, 'Cannot enable LLM with deleted API key.');
+        }
+
+        if ($deleteApiKey) {
+            $updates = [
+                "settings->llm->{$llmKey}" => [
+                    'enabled' => false,
+                    'api_key' => null,
+                ]
+            ];
+        } elseif ($apiKey !== null && $apiKey !== '' && $enabled) {
+            $updates = [
+                "settings->llm->{$llmKey}" => [
+                    'enabled' => true,
+                    'api_key' => Crypt::encryptString($apiKey),
+                ]
+            ];
+        } else {
+            $updates = [
+                "settings->llm->{$llmKey}->enabled" => $enabled,
+            ];
         }
 
         DB::table('workspaces')
             ->where('id', $workspace_id)
             ->update($updates);
 
-        return Redirect::route('workspaces.edit', ['workspace_id' => $workspace_id]);
-    }
-
-    /**
-     * Update the workspace's billing information.
-     */
-    public function updateBilling(Request $request, $workspace_id): RedirectResponse
-    {
-        $this->canUpdate($workspace_id, $request->user()->id);
-
-        $request->validate([
-            'billing_*' => 'string|max:255',
-            'billing_email' => 'email',
-        ]);
-
-        $data = $request->only(
-            array_filter(
-                array_keys($request->all()),
-                fn($key) => str_starts_with($key, 'billing_')
-            )
-        );
-        
-        DB::table('workspaces')
-            ->where('id', $workspace_id)
-            ->update($data);
-
-        return Redirect::route('workspaces.edit', ['workspace_id' => $workspace_id]);
+        return Redirect::route('workspace.edit.llm', ['workspace_id' => $workspace_id]);
     }
 
     /**
@@ -189,6 +334,6 @@ class WorkspaceController extends Controller
             ->where('id', $workspace_id)
             ->delete();
 
-        return Redirect::to('/');
+        return Redirect::route('workspace.index');
     }
 }

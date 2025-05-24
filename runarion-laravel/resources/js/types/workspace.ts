@@ -4,6 +4,14 @@ export interface SimpleWorkspace {
     slug: string;
 }
 
+export interface SimpleWorkspaceWithRole {
+    id: number;
+    name: string;
+    slug: string;
+    cover_image_url: string | null;
+    role: string;
+}
+
 export interface Workspace {
     id: number;
     name: string;
@@ -14,26 +22,7 @@ export interface Workspace {
         timezone: string | null;
         permissions: Record<string, string[]>;
     };
-    billing_email?: string | null;
-    billing_name?: string | null;
-    billing_address?: string | null;
-    billing_city?: string | null;
-    billing_state?: string | null;
-    billing_postal_code?: string | null;
-    billing_country?: string | null;
-    billing_phone?: string | null;
-    billing_tax_id?: string | null;
-    stripe_customer_id?: string | null;
-    stripe_subscription_id?: string | null;
-    trial_ends_at: string | null;
-    subscription_ends_at: string | null;
     is_active: boolean;
-}
-
-export interface WorkspaceField {
-    name: keyof Workspace;
-    label: string;
-    type: "text" | "email" | "checkbox" | "tel";
 }
 
 export interface WorkspaceMember {
@@ -41,6 +30,6 @@ export interface WorkspaceMember {
     name: string | null;
     email: string;
     avatar_url: string | null;
-    role: string;
+    role: "member" | "owner" | "admin";
     is_verified: boolean | null;
 }

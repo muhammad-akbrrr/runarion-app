@@ -27,11 +27,16 @@ Route::middleware('auth')->group(function () {
 });
 
 Route::middleware('auth')->group(function () {
-    Route::get('/workspaces/{workspace_id}', [WorkspaceController::class, 'edit'])->name('workspaces.edit');
-    Route::patch('/workspaces/{workspace_id}', [WorkspaceController::class, 'update'])->name('workspaces.update');
-    Route::patch('/workspaces/{workspace_id}/settings', [WorkspaceController::class, 'updateSettings'])->name('workspaces.update.settings');
-    Route::patch('/workspaces/{workspace_id}/billing', [WorkspaceController::class, 'updateBilling'])->name('workspaces.update.billing');
-    Route::delete('/workspaces/{workspace_id}', [WorkspaceController::class, 'destroy'])->name('workspaces.destroy');
+    Route::get('/workspaces', [WorkspaceController::class, 'index'])->name('workspace.index');
+    Route::post('/workspaces', [WorkspaceController::class, 'store'])->name('workspace.store');
+    Route::get('/workspaces/{workspace_id}', [WorkspaceController::class, 'edit'])->name('workspace.edit');
+    Route::post('/workspaces/{workspace_id}', [WorkspaceController::class, 'update'])->name('workspace.update');
+    Route::get('/workspaces/{workspace_id}/cloud-storage', [WorkspaceController::class, 'editCloudStorage'])->name('workspace.edit.cloud-storage');
+    Route::patch('/workspaces/{workspace_id}/cloud-storage', [WorkspaceController::class, 'updateCloudStorage'])->name('workspace.update.cloud-storage');
+    Route::get('/workspaces/{workspace_id}/llm', [WorkspaceController::class, 'editLLM'])->name('workspace.edit.llm');
+    Route::patch('/workspaces/{workspace_id}/llm', [WorkspaceController::class, 'updateLLM'])->name('workspace.update.llm');
+    Route::get('/workspaces/{workspace_id}/billing', [WorkspaceController::class, 'editBilling'])->name('workspace.edit.billing');
+    Route::delete('/workspaces/{workspace_id}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');
 });
 
 Route::middleware('auth')->group(function () {
