@@ -1,3 +1,9 @@
+export interface SimpleWorkspace {
+    id: number;
+    name: string;
+    slug: string;
+}
+
 export interface WorkspaceSetting {
     theme?: string;
     notifications?: Record<string, boolean>;
