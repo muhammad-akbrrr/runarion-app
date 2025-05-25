@@ -8,7 +8,7 @@ import React, {
   HTMLAttributes,
 } from "react";
 import { NodeToolbar, NodeProps, NodeToolbarProps } from "@xyflow/react";
-import { BaseNode } from "@/Components/base-node";
+import { BaseNode } from "@/Components/react-flow/base-node";
 
 /* TOOLTIP CONTEXT ---------------------------------------------------------- */
 
