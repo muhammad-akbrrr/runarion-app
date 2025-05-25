@@ -1,4 +1,4 @@
-import { AvatarUpload } from "@/Components/ui/avatar-upload";
+import { AvatarUpload } from "@/Components/avatar-upload";
 import { Button } from "@/Components/ui/button";
 import {
     Card,

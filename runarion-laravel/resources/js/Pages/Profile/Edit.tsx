@@ -1,5 +1,5 @@
+import { AvatarUpload } from "@/Components/avatar-upload";
 import { Alert, AlertDescription } from "@/Components/ui/alert";
-import { AvatarUpload } from "@/Components/ui/avatar-upload";
 import { Button } from "@/Components/ui/button";
 import {
     Card,

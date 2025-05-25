@@ -1,8 +1,8 @@
+import { Avatar, AvatarFallback, AvatarImage } from "@/Components/ui/avatar";
+import { Button } from "@/Components/ui/button";
+import { Label } from "@/Components/ui/label";
 import { LucideProps } from "lucide-react";
 import { createElement, useRef, useState } from "react";
-import { Avatar, AvatarFallback, AvatarImage } from "./avatar";
-import { Button } from "./button";
-import { Label } from "./label";
 
 function AvatarUpload({
     label,
