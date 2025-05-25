@@ -88,10 +88,8 @@ export default function AuthenticatedLayout({
             (workspace) => workspace.id === selectedWorkspaceId
         );
         if (!exists) {
-            localStorage.setItem(
-                "selectedWorkspace",
-                workspaces[0].id.toString()
-            );
+            const selected = workspaces.length > 0 ? workspaces[0].id : 0;
+            localStorage.setItem("selectedWorkspace", selected.toString());
             router.reload();
         }
     }, [selectedWorkspaceId]);
