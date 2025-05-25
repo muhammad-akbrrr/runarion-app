@@ -18,7 +18,6 @@ import AuthenticatedLayout, {
 import { PageProps } from "@/types";
 import { Transition } from "@headlessui/react";
 import { Head, Link, useForm, usePage } from "@inertiajs/react";
-import { UserIcon } from "lucide-react";
 import { FormEventHandler, useState } from "react";
 import DeleteUserDialog from "./Partials/DeleteUserDialog";
 
@@ -100,7 +99,7 @@ export default function Edit({
                             label="Profile Photo"
                             src={user.avatar_url}
                             onChange={(file) => setData("photo", file)}
-                            fallback={UserIcon}
+                            alt={user.name}
                             error={errors.photo}
                             className="mb-2"
                         />

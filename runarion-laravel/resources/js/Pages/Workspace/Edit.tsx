@@ -18,7 +18,6 @@ import AuthenticatedLayout, {
 import { PageProps, Workspace } from "@/types";
 import { Transition } from "@headlessui/react";
 import { Head, useForm } from "@inertiajs/react";
-import { LayoutGrid } from "lucide-react";
 import { FormEventHandler, useState } from "react";
 import DeleteWorkspaceDialog from "./Partials/DeleteWorkspaceDialog";
 import LeaveWorkspaceDialog from "./Partials/LeaveWorkspaceDialog";
@@ -131,7 +130,7 @@ export default function Edit({
                             label="Workspace Photo"
                             src={workspace.cover_image_url}
                             onChange={(file) => setData("photo", file)}
-                            fallback={LayoutGrid}
+                            alt={workspace.name}
                             error={errors.photo}
                             className="mb-2"
                         />

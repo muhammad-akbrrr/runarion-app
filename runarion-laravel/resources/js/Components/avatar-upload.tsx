@@ -1,25 +1,21 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/Components/ui/avatar";
 import { Button } from "@/Components/ui/button";
 import { Label } from "@/Components/ui/label";
-import { LucideProps } from "lucide-react";
-import { createElement, useRef, useState } from "react";
+import { Image } from "lucide-react";
+import { useRef, useState } from "react";
 
 function AvatarUpload({
     label,
     src,
     onChange,
-    fallback,
+    alt,
     error,
     className,
 }: {
     label: string;
     src: string | null;
     onChange: (file: File) => void;
-    fallback?:
-        | string
-        | React.ForwardRefExoticComponent<
-              Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>
-          >;
+    alt?: string;
     error?: string;
     className?: string;
 }) {
@@ -35,6 +31,17 @@ function AvatarUpload({
         }
     };
 
+    const fallback = alt ? (
+        alt
+            .split(" ")
+            .map((n: string) => n[0])
+            .join("")
+            .substring(0, 2)
+            .toUpperCase()
+    ) : (
+        <Image className="w-8 h-8" />
+    );
+
     return (
         <div className={`flex flex-row items-center ${className}`}>
             <Label className="w-full" htmlFor="avatar_upload">
@@ -44,16 +51,10 @@ function AvatarUpload({
                 <Avatar className="w-16 h-16">
                     <AvatarImage
                         src={previewUrl ?? undefined}
-                        alt={label}
+                        alt={alt}
                         className="object-cover object-center"
                     />
-                    <AvatarFallback>
-                        {typeof fallback === "string" || fallback === undefined
-                            ? fallback ?? ""
-                            : createElement(fallback, {
-                                  className: "w-8 h-8",
-                              })}
-                    </AvatarFallback>
+                    <AvatarFallback>{fallback}</AvatarFallback>
                 </Avatar>
                 <div>
                     <Button

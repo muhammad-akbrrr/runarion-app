@@ -25,7 +25,7 @@ export default function WorkspaceCard({
               .split(" ")
               .map((n: string) => n[0])
               .join("")
-              .substring(0, 4)
+              .substring(0, 2)
               .toUpperCase()
         : "";
 

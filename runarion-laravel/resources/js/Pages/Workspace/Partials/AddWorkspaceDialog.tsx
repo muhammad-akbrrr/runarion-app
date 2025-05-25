@@ -11,7 +11,6 @@ import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
 import { Textarea } from "@/Components/ui/textarea";
 import { useForm } from "@inertiajs/react";
-import { LayoutGrid } from "lucide-react";
 import { FormEventHandler } from "react";
 
 export default function AddWorkspaceDialog({
@@ -63,7 +62,6 @@ export default function AddWorkspaceDialog({
                         label="Workspace Photo"
                         src={null}
                         onChange={(file) => setData("photo", file)}
-                        fallback={LayoutGrid}
                         error={errors.photo}
                         className="mb-2"
                     />
