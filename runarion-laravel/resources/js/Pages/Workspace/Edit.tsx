@@ -9,6 +9,13 @@ import {
 } from "@/Components/ui/card";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/Components/ui/select";
 import { Separator } from "@/Components/ui/separator";
 import { Switch } from "@/Components/ui/switch";
 import AuthenticatedLayout, {
@@ -18,6 +25,7 @@ import { PageProps, Workspace } from "@/types";
 import { Transition } from "@headlessui/react";
 import { Head, useForm } from "@inertiajs/react";
 import { FormEventHandler, useState } from "react";
+import { allTimezones, useTimezoneSelect } from "react-timezone-select";
 import DeleteWorkspaceDialog from "./Partials/DeleteWorkspaceDialog";
 import LeaveWorkspaceDialog from "./Partials/LeaveWorkspaceDialog";
 
@@ -33,6 +41,8 @@ export default function Edit({
     const isUserOwnerOrAdmin = isUserOwner || isUserAdmin;
 
     const [openDialog, setOpenDialog] = useState(false);
+
+    const { options: timezoneOptions } = useTimezoneSelect(allTimezones);
 
     const { data, setData, post, errors, processing, recentlySuccessful } =
         useForm({
@@ -102,7 +112,7 @@ export default function Edit({
             : currentPermissions.filter((r) => r !== role);
         setData("permissions", {
             ...data.permissions,
-                [permission]: newPermissions,
+            [permission]: newPermissions,
         });
     };
 
@@ -148,18 +158,31 @@ export default function Edit({
                         </div>
                         <div className="space-y-1">
                             <Label htmlFor="timezone">Timezone</Label>
-                            <Input
-                                id="timezone"
-                                value={data.settings.timezone ?? ""}
-                                onChange={(e) =>
-                                    setData("settings", {
-                                        ...data.settings,
-                                        timezone: e.target.value,
-                                    })
+                            <Select
+                                value={data.timezone ?? ""}
+                                onValueChange={(value) =>
+                                    setData("timezone", value)
                                 }
-                                required
                                 disabled={!isUserOwnerOrAdmin}
-                            />
+                            >
+                                <SelectTrigger
+                                    id="timezone"
+                                    size="default"
+                                    className="w-full hover:cursor-pointer"
+                                >
+                                    <SelectValue placeholder="Select a timezone" />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                    {timezoneOptions.map((option) => (
+                                        <SelectItem
+                                            key={option.value}
+                                            value={option.value}
+                                        >
+                                            {option.label}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <div className="text-sm text-destructive -mt-1.5">
                                 {errors.timezone || "\u00A0"}
                             </div>
