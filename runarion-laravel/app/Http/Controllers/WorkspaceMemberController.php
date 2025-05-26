@@ -67,7 +67,7 @@ class WorkspaceMemberController extends Controller
     private function sendInvitation(int $workspaceId, string $workspaceName, string $userEmail, bool $userExists, string $role): void
     {
         $token = Str::random(64);
-        $expiredAt = Carbon::now()->addHours(24);
+        $expiredAt = Carbon::now()->addHours(1);
         DB::table('workspace_invitations')->updateOrInsert(
             [
                 'workspace_id' => $workspaceId,
