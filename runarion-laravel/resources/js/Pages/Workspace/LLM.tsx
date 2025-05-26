@@ -23,7 +23,7 @@ import AuthenticatedLayout, {
 } from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
 import { Head, useForm } from "@inertiajs/react";
-import { FormEventHandler } from "react";
+import { FormEventHandler, useState } from "react";
 import ConnectionCard from "./Partials/ConnectionCard";
 
 interface LLMDataItem {
@@ -42,6 +42,8 @@ export default function LLM({
     isUserAdmin: boolean;
     isUserOwner: boolean;
 }>) {
+    const [apiKeyError, setApiKeyError] = useState<string | null>(null);
+
     const {
         data: formData,
         setData: setFormData,
@@ -62,6 +64,26 @@ export default function LLM({
     const closeModal = () => {
         clearErrors();
         reset();
+    };
+
+    const apiKeyPatterns: Record<string, RegExp> = {
+        openai: /^sk-[a-zA-Z0-9]{20,}$/,
+        gemini: /^AIza[a-zA-Z0-9\-_]{20,}$/,
+        deepseek: /^dsk-[a-zA-Z0-9]{20,}$/,
+    };
+
+    const handleChangeApiKey = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const value = e.target.value;
+        setFormData("api_key", value);
+
+        const pattern = apiKeyPatterns[formData.llm_key] || /^$/;
+        if (value && !pattern.test(value)) {
+            setApiKeyError(
+                "Invalid API key. Please check the key and try again."
+            );
+        } else {
+            setApiKeyError(null);
+        }
     };
 
     const handleSubmit: FormEventHandler = (e) => {
@@ -191,15 +213,12 @@ export default function LLM({
                                         type="password"
                                         required={!llm?.api_key_exists}
                                         value={formData.api_key}
-                                        onChange={(e) =>
-                                            setFormData(
-                                                "api_key",
-                                                e.target.value
-                                            )
-                                        }
+                                        onChange={handleChangeApiKey}
                                     />
-                                    <div className="text-sm text-destructive -mt-1.5">
-                                        {errors.api_key || "\u00A0"}
+                                    <div className="text-sm text-destructive -mt-1">
+                                        {apiKeyError ||
+                                            errors.api_key ||
+                                            "\u00A0"}
                                     </div>
                                 </div>
                             )}

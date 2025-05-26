@@ -277,29 +277,37 @@ class WorkspaceController extends Controller
             abort(400, 'Cannot enable LLM with deleted API key.');
         }
 
+        $llm = DB::table('workspaces')
+            ->where('id', $workspace_id)
+            ->value('llm');
+        $llm = $llm ? json_decode($llm, true) : [];
+
         if ($deleteApiKey) {
-            $updates = [
-                "llm->{$llmKey}" => [
-                    'enabled' => false,
-                    'api_key' => null,
-                ]
+            $llm[$llmKey] = [
+                'enabled' => false,
+                'api_key' => null,
             ];
         } elseif ($apiKey !== null && $apiKey !== '' && $enabled) {
-            $updates = [
-                "llm->{$llmKey}" => [
-                    'enabled' => true,
-                    'api_key' => Crypt::encryptString($apiKey),
-                ]
+            $llm[$llmKey] = [
+                'enabled' => true,
+                'api_key' => Crypt::encryptString($apiKey),
             ];
         } else {
-            $updates = [
-                "llm->{$llmKey}->enabled" => $enabled,
-            ];
+            if (!isset($llm[$llmKey])) {
+                $llm[$llmKey] = [
+                    'enabled' => $enabled,
+                    'api_key' => null,
+                ];
+            } else {
+                $llm[$llmKey]['enabled'] = $enabled;
+            }
         }
 
         DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->update($updates);
+            ->update([
+                'llm' => json_encode($llm),
+            ]);
 
         return Redirect::route('workspace.edit.llm', ['workspace_id' => $workspace_id]);
     }
