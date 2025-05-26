@@ -19,8 +19,7 @@ class FolderFactory extends Factory
 
   /**
    * Define the model's default state.
-   * membuat folder dengan informasi dasar termasuk nama, deskripsi,
-   * dan pengaturan. Folder memiliki peluang 30% untuk menjadi publik secara default.
+   * membuat folder dengan informasi dasar seperti nama
    * 
    * @return array<string, mixed>
    */
@@ -30,16 +29,6 @@ class FolderFactory extends Factory
       'workspace_id' => Workspace::factory(),
       'name' => fake()->words(3, true),
       'slug' => fn(array $attributes) => Str::slug($attributes['name']),
-      'description' => fake()->paragraph(),
-      'settings' => [
-        'theme' => fake()->randomElement(['light', 'dark']),
-        'visibility' => fake()->randomElement(['public', 'private']),
-        'notifications' => [
-          'email' => true,
-          'push' => true,
-        ],
-      ],
-      'is_public' => fake()->boolean(30), // 30% chance of being public
       'is_active' => true,
     ];
   }

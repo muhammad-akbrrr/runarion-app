@@ -21,9 +21,7 @@ class Projects extends Model
         'folder_id',
         'name',
         'slug',
-        'description',
         'settings',
-        'is_public',
         'is_active',
     ];
 

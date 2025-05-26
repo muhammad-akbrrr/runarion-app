@@ -21,15 +21,10 @@ class Folder extends Model
     'workspace_id',
     'name',
     'slug',
-    'description',
-    'settings',
-    'is_public',
     'is_active',
   ];
 
   protected $casts = [
-    'settings' => 'array',
-    'is_public' => 'boolean',
     'is_active' => 'boolean',
   ];
 
