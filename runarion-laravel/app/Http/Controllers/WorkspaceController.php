@@ -191,10 +191,13 @@ class WorkspaceController extends Controller
             'photo' => 'nullable|image|max:2048',
         ]);
 
-        if ($request->hasFile('photo')) {
-            $validated['cover_image_url'] = '/storage/' . Storage::disk('public')
-                ->putFile('workspace_photos', $request->file('photo'));
-        }
+        $validated['cover_image_url'] = ($request->hasFile('photo') 
+        ?   '/storage/' . Storage::disk('public')
+                ->putFile('workspace_photos', $request->file('photo'))
+        :   'https://ui-avatars.com/api/?' . http_build_query([
+                'name' => $validated['name'],
+                'background' => 'random',
+            ]));
         unset($validated['photo']);
 
         $workspaceId = DB::table('workspaces')->insertGetId($validated);

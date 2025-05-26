@@ -25,11 +25,18 @@ class WorkspaceFactory extends Factory
    */
   public function definition(): array
   {
+    $name = fake()->company();
+    $slug = Str::slug($name);
+    $imageUrl = 'https://ui-avatars.com/api/?' . http_build_query([
+      'name' => $name,
+      'background' => 'random',
+    ]);
+
     return [
-      'name' => fake()->company(),
-      'slug' => fn(array $attributes) => Str::slug($attributes['name']),
+      'name' => $name,
+      'slug' => $slug,
       'description' => fake()->paragraph(),
-      'cover_image_url' => fake()->imageUrl(1920, 1080, 'business'),
+      'cover_image_url' => $imageUrl,
       'settings' => [
         'timezone' => fake()->timezone(),
         'permissions' => [
