@@ -11,7 +11,6 @@ import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
 import { Separator } from "@/Components/ui/separator";
 import { Switch } from "@/Components/ui/switch";
-import { Textarea } from "@/Components/ui/textarea";
 import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
@@ -38,8 +37,8 @@ export default function Edit({
     const { data, setData, post, errors, processing, recentlySuccessful } =
         useForm({
             name: workspace.name,
-            description: workspace.description,
-            settings: workspace.settings,
+            timezone: workspace.timezone ?? "",
+            permissions: workspace.permissions,
             photo: null as File | null,
         });
 
@@ -97,16 +96,13 @@ export default function Edit({
         role: string,
         checked: boolean
     ) => {
-        const currentPermissions = data.settings.permissions[permission] || [];
+        const currentPermissions = data.permissions[permission] || [];
         const newPermissions = checked
             ? [...currentPermissions, role]
             : currentPermissions.filter((r) => r !== role);
-        setData("settings", {
-            ...data.settings,
-            permissions: {
-                ...data.settings.permissions,
+        setData("permissions", {
+            ...data.permissions,
                 [permission]: newPermissions,
-            },
         });
     };
 
@@ -151,22 +147,6 @@ export default function Edit({
                             </div>
                         </div>
                         <div className="space-y-1">
-                            <Label htmlFor="description">Description</Label>
-                            <Textarea
-                                id="description"
-                                value={data.description ?? ""}
-                                onChange={(e) =>
-                                    setData("description", e.target.value)
-                                }
-                                rows={3}
-                                placeholder="A short description of your workspace."
-                                disabled={!isUserOwnerOrAdmin}
-                            />
-                            <div className="text-sm text-destructive -mt-1.5">
-                                {errors.description || "\u00A0"}
-                            </div>
-                        </div>
-                        <div className="space-y-1">
                             <Label htmlFor="timezone">Timezone</Label>
                             <Input
                                 id="timezone"
@@ -181,10 +161,7 @@ export default function Edit({
                                 disabled={!isUserOwnerOrAdmin}
                             />
                             <div className="text-sm text-destructive -mt-1.5">
-                                {
-                                    // @ts-ignore
-                                    errors["settings.timezone"] || "\u00A0"
-                                }
+                                {errors.timezone || "\u00A0"}
                             </div>
                         </div>
                     </CardContent>
@@ -231,7 +208,7 @@ export default function Edit({
                                             className="w-24 flex items-center justify-center px-4 py-3 border-r last:border-r-0"
                                         >
                                             <Switch
-                                                checked={data.settings.permissions[
+                                                checked={data.permissions[
                                                     item.key
                                                 ]?.includes(role)}
                                                 onCheckedChange={(checked) =>

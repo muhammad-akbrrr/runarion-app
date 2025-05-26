@@ -80,16 +80,12 @@ class WorkspaceController extends Controller
 
         $workspace = DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->first(['id', 'name', 'slug', 'description', 'cover_image_url', 'settings', 'is_active']);
+            ->first(['id', 'name', 'slug', 'cover_image_url', 'is_active', 'timezone', 'permissions']);
         if (!$workspace) {
             abort(401, 'Workspace not found.');
         }
 
-        $workspace->settings = json_decode($workspace->settings, true);
-        $workspace->settings = [
-            'timezone' => $workspace->settings['timezone'] ?? null,
-            'permissions' => $workspace->settings['permissions'] ?? [],
-        ];
+        $workspace->permissions = json_decode($workspace->permissions ?? '{}', true);
 
         return Inertia::render('Workspace/Edit', [
             'workspace' => $workspace,
@@ -107,21 +103,18 @@ class WorkspaceController extends Controller
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
 
-        $settings = DB::table('workspaces')
+        $cloudStorage = DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->value('settings');
-        if ($settings) {
-            $settings = json_decode($settings, true);
-        }
+            ->value('cloud_storage');
         
-        $cloudStorage = $settings
-            ? array_map(
-                fn($m) => [
-                    'enabled' => $m['enabled'],
-                ],
-                $settings['cloud_storage'] ?? []
-            )
-            : [];
+        $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
+        
+        $cloudStorage = array_map(
+            fn($m) => [
+                'enabled' => $m['enabled'],
+            ],
+            $cloudStorage
+        );
 
         return Inertia::render('Workspace/CloudStorage', [
             'workspaceId' => $workspace_id,
@@ -140,22 +133,18 @@ class WorkspaceController extends Controller
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
 
-        $settings = DB::table('workspaces')
+        $llm = DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->value('settings');
-        if ($settings) {
-            $settings = json_decode($settings, true);
-        }
+            ->value('llm');
         
-        $llm = [];
-        if ($settings) {
-            foreach ($settings['llm'] ?? [] as $key => $value) {
-                $apiKeyExists = isset($value['api_key']) && $value['api_key'] !== "";
-                $llm[$key] = [
-                    'enabled' => $value['enabled'] && $apiKeyExists,
-                    'api_key_exists' => $apiKeyExists,
-                ];
-            }
+        $llm = $llm ? json_decode($llm, true) : [];
+        
+        foreach ($llm as $key => $value) {
+            $apiKeyExists = isset($value['api_key']) && $value['api_key'] !== "";
+            $llm[$key] = [
+                'enabled' => $value['enabled'] && $apiKeyExists,
+                'api_key_exists' => $apiKeyExists,
+            ];
         }
 
         return Inertia::render('Workspace/LLM', [
@@ -181,7 +170,6 @@ class WorkspaceController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'description' => 'nullable|string',
             'slug' => [
                 'required',
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
@@ -220,22 +208,12 @@ class WorkspaceController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'description' => 'string',
-            'settings' => 'array',
-            'settings.timezone' => 'string|max:255',
-            'settings.permissions' => 'array',
-            'settings.permissions.create_projects' => 'array',
-            'settings.permissions.delete_projects' => 'array',
+            'timezone' => 'string|max:255',
+            'permissions' => 'array',
+            'permissions.*' => 'array',
+            'permissions.*.*' => 'in:admin,member,guest',
             'photo' => 'nullable|image|max:2048',
         ]);
-
-        $settings = DB::table('workspaces')
-            ->where('id', $workspace_id)
-            ->value('settings');
-        $settings = $settings ? json_decode($settings, true) : [];
-        $settings['timezone'] = $validated['settings']['timezone'] ?? $settings['timezone'] ?? null;
-        $settings['permissions'] = $validated['settings']['permissions'] ?? $settings['permissions'] ?? [];
-        $validated['settings'] = $settings;
 
         if ($request->hasFile('photo')) {
             $prevPhotoUrl = DB::table('workspaces')
@@ -271,7 +249,7 @@ class WorkspaceController extends Controller
 
         DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->update(['settings->cloud_storage' => $validated['cloud_storage']]);
+            ->update($validated);
 
         return Redirect::route('workspace.edit.cloud-storage', ['workspace_id' => $workspace_id]);
     }
@@ -301,21 +279,21 @@ class WorkspaceController extends Controller
 
         if ($deleteApiKey) {
             $updates = [
-                "settings->llm->{$llmKey}" => [
+                "llm->{$llmKey}" => [
                     'enabled' => false,
                     'api_key' => null,
                 ]
             ];
         } elseif ($apiKey !== null && $apiKey !== '' && $enabled) {
             $updates = [
-                "settings->llm->{$llmKey}" => [
+                "llm->{$llmKey}" => [
                     'enabled' => true,
                     'api_key' => Crypt::encryptString($apiKey),
                 ]
             ];
         } else {
             $updates = [
-                "settings->llm->{$llmKey}->enabled" => $enabled,
+                "llm->{$llmKey}->enabled" => $enabled,
             ];
         }
 

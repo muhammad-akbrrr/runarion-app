@@ -19,7 +19,6 @@ class Workspace extends Model
     protected $fillable = [
         'name',
         'slug',
-        'description',
         'cover_image_url',
         'settings',
         'billing_email',
@@ -36,6 +35,10 @@ class Workspace extends Model
         'trial_ends_at',
         'subscription_ends_at',
         'is_active',
+        'timezone',
+        'permissions',
+        'cloud_storage',
+        'llm',
     ];
 
     protected $casts = [
@@ -43,5 +46,8 @@ class Workspace extends Model
         'trial_ends_at' => 'datetime',
         'subscription_ends_at' => 'datetime',
         'is_active' => 'boolean',
+        'permissions' => 'array',
+        'cloud_storage' => 'array',
+        'llm' => 'array',
     ];
 }

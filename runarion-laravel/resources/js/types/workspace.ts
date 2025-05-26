@@ -16,13 +16,10 @@ export interface Workspace {
     id: number;
     name: string;
     slug: string;
-    description: string | null;
     cover_image_url: string | null;
-    settings: {
-        timezone: string | null;
-        permissions: Record<string, string[]>;
-    };
     is_active: boolean;
+    timezone: string | null;
+    permissions: Record<string, string[]>;
 }
 
 export interface WorkspaceMember {

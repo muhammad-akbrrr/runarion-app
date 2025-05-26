@@ -35,40 +35,8 @@ class WorkspaceFactory extends Factory
     return [
       'name' => $name,
       'slug' => $slug,
-      'description' => fake()->paragraph(),
       'cover_image_url' => $imageUrl,
-      'settings' => [
-        'timezone' => fake()->timezone(),
-        'permissions' => [
-          'create_projects' => ['admin'],
-          'delete_projects' => ['admin'],
-        ],
-        'cloud_storage' => [
-          'google_drive' => [
-            'enabled' => fake()->boolean(),
-          ],
-          'dropbox' => [
-            'enabled' => fake()->boolean(),
-          ],
-          'onedrive' => [
-            'enabled' => fake()->boolean(),
-          ],
-        ],
-        'llm' => [
-          'openai' => [
-            'enabled' => fake()->boolean(),
-            'api_key' => fake()->uuid(),
-          ],
-          'gemini' => [
-            'enabled' => fake()->boolean(),
-            'api_key' => fake()->uuid(),
-          ],
-          'deepseek' => [
-            'enabled' => fake()->boolean(),
-            'api_key' => fake()->uuid(),
-          ],
-        ],
-      ],
+      'settings' => null,
       'billing_email' => fake()->safeEmail(),
       'billing_name' => fake()->company(),
       'billing_address' => fake()->streetAddress(),
@@ -83,6 +51,39 @@ class WorkspaceFactory extends Factory
       'trial_ends_at' => fake()->dateTimeBetween('now', '+14 days'),
       'subscription_ends_at' => fake()->dateTimeBetween('+15 days', '+1 year'),
       'is_active' => true,
+      'timezone' => fake()->timezone(),
+      'permissions' => [
+        'invite_members' => ['admin'],
+        'invite_guests' => ['admin'],
+        'manage_users' => ['admin'],
+        'create_projects' => ['member', 'admin'],
+        'delete_projects' => ['member', 'admin'],
+      ],
+      'cloud_storage' => [
+        'google_drive' => [
+          'enabled' => fake()->boolean(),
+        ],
+        'dropbox' => [
+          'enabled' => fake()->boolean(),
+        ],
+        'onedrive' => [
+          'enabled' => fake()->boolean(),
+        ],
+      ],
+      'llm' => [
+        'openai' => [
+          'enabled' => fake()->boolean(),
+          'api_key' => fake()->uuid(),
+        ],
+        'gemini' => [
+          'enabled' => fake()->boolean(),
+          'api_key' => fake()->uuid(),
+        ],
+        'deepseek' => [
+          'enabled' => fake()->boolean(),
+          'api_key' => fake()->uuid(),
+        ],
+      ],
     ];
   }
 

@@ -9,7 +9,6 @@ import {
 } from "@/Components/ui/dialog";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
-import { Textarea } from "@/Components/ui/textarea";
 import { useForm } from "@inertiajs/react";
 import { FormEventHandler } from "react";
 
@@ -23,7 +22,6 @@ export default function AddWorkspaceDialog({
     const { data, setData, post, processing, reset, errors, clearErrors } =
         useForm({
             name: "",
-            description: "",
             slug: "",
             photo: null as File | null,
         });
@@ -56,7 +54,6 @@ export default function AddWorkspaceDialog({
                 <DialogHeader>
                     <DialogTitle>Add New Workspace</DialogTitle>
                 </DialogHeader>
-
                 <form onSubmit={store} className="space-y-1">
                     <AvatarUpload
                         label="Workspace Photo"
@@ -96,22 +93,6 @@ export default function AddWorkspaceDialog({
                             {errors.slug || "\u00A0"}
                         </div>
                     </div>
-                    <div className="space-y-1">
-                        <Label htmlFor="description">Description</Label>
-                        <Textarea
-                            id="description"
-                            value={data.description ?? ""}
-                            onChange={(e) =>
-                                setData("description", e.target.value)
-                            }
-                            rows={3}
-                            placeholder="A short description of your workspace."
-                        />
-                        <div className="text-sm text-destructive -mt-1.5">
-                            {errors.description || "\u00A0"}
-                        </div>
-                    </div>
-
                     <DialogFooter>
                         <Button
                             type="button"
