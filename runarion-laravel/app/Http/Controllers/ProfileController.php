@@ -44,9 +44,8 @@ class ProfileController extends Controller
                 'max:255',
                 'unique:users,email,' . $request->user()->id,
             ],
-            'settings' => 'array',
-            'settings.notifications' => 'array',
-            'settings.notifications.*' => 'boolean',
+            'notifications' => 'nullable|array',
+            'notifications.*' => 'boolean',
             'photo' => 'nullable|image|max:2048',
         ];
         if ($passwordFilled) {
@@ -56,12 +55,34 @@ class ProfileController extends Controller
 
         $validated = $request->validate($validationRules);
 
-        if ($passwordFilled) {
-            $validated['password'] = Hash::make($validated['password']);
-        }
         if ($request->user()->isDirty('email')) {
             $validated['email_verified_at'] = null;
         }
+
+        if ($passwordFilled) {
+            $validated['password'] = Hash::make($validated['password']);
+        }
+        unset($validated['current_password']);
+
+        if (isset($validated['notifications'])) {
+            $validated['notifications'] = array_map(
+                function ($value) {
+                    $valType = gettype($value);
+                    if ($valType === 'boolean') {
+                        return $value;
+                    }
+                    if ($valType === 'string') {
+                        if ($value === 'true' || $value === '1') {
+                            return true;
+                        }
+                        return false;
+                    }
+                    return (bool) $value;
+                },
+                $validated['notifications']
+            );
+        };
+        
         if ($request->hasFile('photo')) {
             $prevAvatarUrl = DB::table('users')
                 ->where('id', $request->user()->id)
@@ -73,7 +94,6 @@ class ProfileController extends Controller
             $validated['avatar_url'] = '/storage/' . Storage::disk('public')
                 ->putFile('user_photos', $request->file('photo'));
         }
-        unset($validated['current_password']);
         unset($validated['photo']);
 
         DB::table('users')

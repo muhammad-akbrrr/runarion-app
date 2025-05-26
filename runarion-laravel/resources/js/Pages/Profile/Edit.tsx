@@ -36,7 +36,7 @@ export default function Edit({
         useForm({
             name: user.name,
             email: user.email,
-            settings: user.settings,
+            notifications: user.notifications || {},
             current_password: "",
             password: "",
             photo: null as File | null,
@@ -61,12 +61,9 @@ export default function Edit({
     const handleCheckNotification = (checked: boolean, key: string) => {
         setData((prev) => ({
             ...prev,
-            settings: {
-                ...prev.settings,
-                notifications: {
-                    ...prev.settings.notifications,
-                    [key]: checked,
-                },
+            notifications: {
+                ...prev.notifications,
+                [key]: checked,
             },
         }));
     };
@@ -211,10 +208,7 @@ export default function Edit({
                             </Label>
                             <Switch
                                 id="email_notification"
-                                checked={
-                                    data.settings.notifications["email"] ??
-                                    false
-                                }
+                                checked={data.notifications["email"] ?? false}
                                 onCheckedChange={(checked) =>
                                     handleCheckNotification(checked, "email")
                                 }
@@ -226,10 +220,7 @@ export default function Edit({
                             </Label>
                             <Switch
                                 id="desktop_notification"
-                                checked={
-                                    data.settings.notifications["desktop"] ??
-                                    false
-                                }
+                                checked={data.notifications["desktop"] ?? false}
                                 onCheckedChange={(checked) =>
                                     handleCheckNotification(checked, "desktop")
                                 }

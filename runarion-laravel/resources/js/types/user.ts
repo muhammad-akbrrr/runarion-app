@@ -4,7 +4,6 @@ export interface User {
     avatar_url: string | null;
     email: string;
     email_verified_at: string | null;
-    settings: {
-        notifications: Record<string, boolean>;
-    };
+    settings: Record<string, any> | null;
+    notifications: Record<string, boolean> | null;
 }

@@ -32,6 +32,7 @@ class User extends Authenticatable
         'password',
         'avatar_url',
         'settings',
+        'notifications'
     ];
 
     /**
@@ -55,6 +56,7 @@ class User extends Authenticatable
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
             'settings' => 'array',
+            'notifications' => 'array',
         ];
     }
 }
