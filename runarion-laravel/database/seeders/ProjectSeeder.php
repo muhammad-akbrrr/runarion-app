@@ -23,7 +23,6 @@ class ProjectSeeder extends Seeder
      * 1. Gets all folders in the workspace
      * 2. For each folder:
      *    - Creates 2-5 random projects
-     *    - First project in each folder is set as public
      *    - All projects are set as active
      *    - Projects are named sequentially (Project 1, Project 2, etc.)
      *    - Projects are associated with their parent folder and workspace
@@ -47,8 +46,6 @@ class ProjectSeeder extends Seeder
                         'folder_id' => $folder->id,
                         'name' => "Project " . ($i + 1) . " in " . $folder->name,
                         'slug' => "project-" . $workspace->id . "-" . $folder->id . "-" . ($i + 1),
-                        'description' => "A sample project in {$folder->name}",
-                        'is_public' => $i === 0, // First project is public
                         'is_active' => true,
                     ]);
                 }

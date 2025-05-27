@@ -25,16 +25,49 @@ class WorkspaceFactory extends Factory
    */
   public function definition(): array
   {
+    $name = fake()->company();
+    $slug = Str::slug($name);
+    $imageUrl = 'https://ui-avatars.com/api/?' . http_build_query([
+      'name' => $name,
+      'background' => 'random',
+    ]);
+
     return [
-      'name' => fake()->company(),
-      'slug' => fn(array $attributes) => Str::slug($attributes['name']),
-      'description' => fake()->paragraph(),
-      'cover_image_url' => fake()->imageUrl(1920, 1080, 'business'),
-      'settings' => [
-        'theme' => fake()->randomElement(['light', 'dark']),
-        'notifications' => [
-          'email' => true,
-          'push' => true,
+      'name' => $name,
+      'slug' => $slug,
+      'cover_image_url' => $imageUrl,
+      'timezone' => fake()->timezone(),
+      'settings' => null,
+      'permissions' => [
+        'invite_members' => ['admin'],
+        'invite_guests' => ['admin'],
+        'manage_users' => ['admin'],
+        'create_projects' => ['member', 'admin'],
+        'delete_projects' => ['member', 'admin'],
+      ],
+      'cloud_storage' => [
+        'google_drive' => [
+          'enabled' => fake()->boolean(),
+        ],
+        'dropbox' => [
+          'enabled' => fake()->boolean(),
+        ],
+        'onedrive' => [
+          'enabled' => fake()->boolean(),
+        ],
+      ],
+      'llm' => [
+        'openai' => [
+          'enabled' => fake()->boolean(),
+          'api_key' => fake()->uuid(),
+        ],
+        'gemini' => [
+          'enabled' => fake()->boolean(),
+          'api_key' => fake()->uuid(),
+        ],
+        'deepseek' => [
+          'enabled' => fake()->boolean(),
+          'api_key' => fake()->uuid(),
         ],
       ],
       'billing_email' => fake()->safeEmail(),

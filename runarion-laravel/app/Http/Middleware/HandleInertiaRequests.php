@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Inertia\Middleware;
 use Tighten\Ziggy\Ziggy;
 
@@ -30,9 +31,18 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
+        $user = $request->user();
+
+        $workspaces = $user ? DB::table('workspace_members')
+            ->where('user_id', $user->id)
+            ->join('workspaces', 'workspace_members.workspace_id', '=', 'workspaces.id')
+            ->select('workspaces.id', 'workspaces.name', 'workspaces.slug')
+            ->get() : [];
+
         $shared = array_merge(parent::share($request), [
             'auth' => [
-                'user' => $request->user(),
+                'user' => $user,
+                'workspaces' => $workspaces,
                 'csrf_token' => csrf_token(),
             ],
         ]);

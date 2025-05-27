@@ -52,7 +52,6 @@ class FolderSeeder extends Seeder
           'workspace_id' => $workspace->id,
           'name' => $folderName,
           'slug' => Str::slug($folderName),
-          'description' => "{$folderName} related projects and resources",
         ]);
       }
     });

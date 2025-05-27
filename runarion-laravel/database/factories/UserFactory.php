@@ -28,11 +28,24 @@ class UserFactory extends Factory
      */
     public function definition(): array
     {
+        $name = fake()->name();
+        $email = Str::slug($name) . '@example.com';
+        $avatarUrl = 'https://ui-avatars.com/api/?' . http_build_query([
+            'name' => $name,
+            'background' => 'random',
+        ]);
+
         return [
-            'name' => fake()->name(),
-            'email' => fake()->unique()->safeEmail(),
+            'name' => $name,
+            'email' => $email,
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password123'),
+            'avatar_url' => $avatarUrl,
+            'settings' => null,
+            'notifications' => [
+                'email' => fake()->randomElement([true, false]),
+                'desktop' => fake()->randomElement([true, false]),
+            ],
             'remember_token' => Str::random(10),
         ];
     }
