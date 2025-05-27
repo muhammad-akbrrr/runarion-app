@@ -80,7 +80,7 @@ class WorkspaceController extends Controller
 
         $workspace = DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->first(['id', 'name', 'slug', 'cover_image_url', 'is_active', 'timezone', 'permissions']);
+            ->first(['id', 'name', 'slug', 'cover_image_url', 'timezone', 'permissions', 'is_active']);
         if (!$workspace) {
             abort(401, 'Workspace not found.');
         }

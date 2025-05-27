@@ -42,11 +42,11 @@ class UserFactory extends Factory
             'password' => static::$password ??= Hash::make('password123'),
             'avatar_url' => $avatarUrl,
             'settings' => null,
-            'remember_token' => Str::random(10),
             'notifications' => [
                 'email' => fake()->randomElement([true, false]),
                 'desktop' => fake()->randomElement([true, false]),
             ],
+            'remember_token' => Str::random(10),
         ];
     }
 

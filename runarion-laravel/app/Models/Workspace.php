@@ -20,7 +20,11 @@ class Workspace extends Model
         'name',
         'slug',
         'cover_image_url',
+        'timezone',
         'settings',
+        'permissions',
+        'cloud_storage',
+        'llm',
         'billing_email',
         'billing_name',
         'billing_address',
@@ -35,19 +39,15 @@ class Workspace extends Model
         'trial_ends_at',
         'subscription_ends_at',
         'is_active',
-        'timezone',
-        'permissions',
-        'cloud_storage',
-        'llm',
     ];
 
     protected $casts = [
         'settings' => 'array',
-        'trial_ends_at' => 'datetime',
-        'subscription_ends_at' => 'datetime',
-        'is_active' => 'boolean',
         'permissions' => 'array',
         'cloud_storage' => 'array',
         'llm' => 'array',
+        'trial_ends_at' => 'datetime',
+        'subscription_ends_at' => 'datetime',
+        'is_active' => 'boolean',
     ];
 }

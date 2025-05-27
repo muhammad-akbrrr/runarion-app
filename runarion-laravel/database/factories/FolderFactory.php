@@ -45,27 +45,4 @@ class FolderFactory extends Factory
     ]);
   }
 
-  /**
-   * Set the folder as public.
-   * 
-   * @return self
-   */
-  public function public(): self
-  {
-    return $this->state(fn(array $attributes) => [
-      'is_public' => true,
-    ]);
-  }
-
-  /**
-   * Set the folder as private.
-   * 
-   * @return self
-   */
-  public function private(): self
-  {
-    return $this->state(fn(array $attributes) => [
-      'is_public' => false,
-    ]);
-  }
 }

@@ -27,7 +27,6 @@ class Projects extends Model
 
     protected $casts = [
         'settings' => 'array',
-        'is_public' => 'boolean',
         'is_active' => 'boolean',
     ];
 }
