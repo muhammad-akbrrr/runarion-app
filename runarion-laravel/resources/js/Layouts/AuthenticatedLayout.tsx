@@ -1,137 +1,349 @@
-import { PropsWithChildren } from "react";
-import ApplicationLogo from "@/Components/application-logo";
-import { Link } from "@inertiajs/react";
-import { Button } from "@/Components/ui/button";
-import { Sheet, SheetContent, SheetTrigger } from "@/Components/ui/sheet";
-import { Menu } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/Components/ui/avatar";
+import {
+    Breadcrumb,
+    BreadcrumbItem,
+    BreadcrumbLink,
+    BreadcrumbList,
+    BreadcrumbPage,
+    BreadcrumbSeparator,
+} from "@/Components/ui/breadcrumb";
 import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/Components/ui/dropdown-menu";
+import {
+    Sidebar,
+    SidebarContent,
+    SidebarFooter,
+    SidebarGroup,
+    SidebarGroupContent,
+    SidebarGroupLabel,
+    SidebarHeader,
+    SidebarInset,
+    SidebarMenu,
+    SidebarMenuButton,
+    SidebarMenuItem,
+    SidebarProvider,
+    SidebarRail,
+} from "@/Components/ui/sidebar";
+import { Link, router, usePage } from "@inertiajs/react";
+import {
+    Bot,
+    ChevronDown,
+    ChevronLeft,
+    Cloud,
+    DollarSign,
+    FileText,
+    Folder,
+    Home,
+    LayoutGrid,
+    Library,
+    LucideProps,
+    Settings,
+    Star,
+    User as UserIcon,
+    Users,
+} from "lucide-react";
+import React, { PropsWithChildren, useEffect } from "react";
+import { ParameterValue } from "../../../vendor/tightenco/ziggy/src/js";
 
-export default function Authenticated({
-    user,
-    header,
+export interface BreadcrumbItem {
+    label: string;
+    path: string;
+    param?: ParameterValue;
+}
+
+interface SidebarItem {
+    label: string;
+    icon: React.ForwardRefExoticComponent<
+        Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>
+    >;
+    path: string;
+    param?: ParameterValue;
+}
+
+export default function AuthenticatedLayout({
+    breadcrumbs,
     children,
-}: PropsWithChildren<{ user: any; header?: React.ReactNode }>) {
-    return (
-        <div className="min-h-screen bg-background">
-            <nav className="border-b">
-                <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-                    <div className="flex h-16 justify-between">
-                        <div className="flex flex-row items-center justify-start">
-                            <div className="flex shrink-0 items-center">
-                                <Link href="/">
-                                    <ApplicationLogo className="block h-9 w-auto fill-current text-muted-foreground" />
-                                </Link>
-                            </div>
+}: PropsWithChildren<{
+    breadcrumbs: BreadcrumbItem[];
+}>) {
+    const { auth } = usePage().props;
+    const user = auth.user;
+    const workspaces = auth.workspaces;
 
-                            <div className="hidden space-x-8 sm:-my-px sm:ml-10 sm:flex">
+    const openSettingsValue =
+        localStorage.getItem("openSidebarSettings") === "1";
+    const selectedWorkspaceId = parseInt(
+        localStorage.getItem("selectedWorkspace") || "0"
+    );
+
+    const [openSettings, setOpenSettings] = React.useState(openSettingsValue);
+
+    useEffect(() => {
+        const exists = workspaces.some(
+            (workspace) => workspace.id === selectedWorkspaceId
+        );
+        if (!exists) {
+            const selected = workspaces.length > 0 ? workspaces[0].id : 0;
+            localStorage.setItem("selectedWorkspace", selected.toString());
+            router.reload();
+        }
+    }, [selectedWorkspaceId]);
+
+    const handleSettings = (e: React.MouseEvent) => {
+        e.preventDefault();
+        setOpenSettings(!openSettings);
+        localStorage.setItem("openSidebarSettings", !openSettings ? "1" : "0");
+    };
+
+    const handleWorkspaceSelect = (id: number) => {
+        localStorage.setItem("selectedWorkspace", id.toString());
+        router.reload();
+    };
+
+    const selectedWorkspaceName = workspaces.find(
+        (workspace) => workspace.id === selectedWorkspaceId
+    )?.name;
+
+    const userInitials = user.name
+        .split(" ")
+        .map((n: string) => n[0])
+        .join("")
+        .substring(0, 2)
+        .toUpperCase();
+
+    const dashboardItems: SidebarItem[] = [
+        { label: "Home", icon: Home, path: "dashboard" },
+        { label: "Projects", icon: Library, path: "" },
+        { label: "File Manager", icon: Folder, path: "" },
+    ];
+
+    const dummyFavoriteItems: SidebarItem[] = [
+        { label: "The Three Musketeers" },
+        { label: "The Count of Monte Cristo" },
+    ].map((item) => ({
+        ...item,
+        icon: Star,
+        path: "",
+    }));
+
+    const mySettingsItems: SidebarItem[] = [
+        { label: "Profile", icon: UserIcon, path: "profile.edit" },
+        { label: "Workspaces", icon: LayoutGrid, path: "workspace.index" },
+    ];
+
+    const workspaceSettingsItems: SidebarItem[] = [
+        { label: "General", icon: Settings, path: "workspace.edit" },
+        { label: "Members", icon: Users, path: "workspace.edit.member" },
+        {
+            label: "Cloud Storage",
+            icon: Cloud,
+            path: "workspace.edit.cloud-storage",
+        },
+        { label: "LLM Integration", icon: Bot, path: "workspace.edit.llm" },
+        {
+            label: "Plans & Billing",
+            icon: DollarSign,
+            path: "workspace.edit.billing",
+        },
+    ].map((item) => ({
+        ...item,
+        param: selectedWorkspaceId,
+    }));
+
+    const renderSidebarGroup = (name: string, items: SidebarItem[]) => (
+        <SidebarGroup>
+            <SidebarGroupLabel>{name}</SidebarGroupLabel>
+            <SidebarGroupContent>
+                <SidebarMenu>
+                    {items.map((item) => (
+                        <SidebarMenuItem key={item.label}>
+                            <SidebarMenuButton
+                                asChild
+                                isActive={
+                                    item.path
+                                        ? route().current(item.path)
+                                        : false
+                                }
+                            >
                                 <Link
-                                    href={route("dashboard")}
-                                    className="text-sm text-muted-foreground hover:text-foreground"
+                                    href={
+                                        item.path
+                                            ? route(item.path, item.param)
+                                            : "#"
+                                    }
                                 >
-                                    Dashboard
+                                    <item.icon className="h-4 w-4" />
+                                    <span>{item.label}</span>
                                 </Link>
-                            </div>
-                        </div>
+                            </SidebarMenuButton>
+                        </SidebarMenuItem>
+                    ))}
+                </SidebarMenu>
+            </SidebarGroupContent>
+        </SidebarGroup>
+    );
 
-                        <div className="hidden sm:ml-6 sm:flex sm:items-center">
-                            <div className="ml-3 relative">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger>
-                                        <Button
-                                            variant="ghost"
-                                            className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-muted-foreground hover:text-foreground focus:outline-none transition ease-in-out duration-150"
-                                        >
+    return (
+        <SidebarProvider>
+            <Sidebar className="flex" collapsible="offcanvas">
+                <SidebarHeader>
+                    {openSettings ? (
+                        <div
+                            className="w-full h-12 flex items-center gap-2 rounded hover:bg-gray-100 cursor-pointer"
+                            onClick={handleSettings}
+                        >
+                            <ChevronLeft className="h-4 w-4 ml-1" />
+                            <div>Back</div>
+                        </div>
+                    ) : (
+                        <DropdownMenu>
+                            <DropdownMenuTrigger className="w-full h-12 rounded hover:bg-gray-100 cursor-pointer">
+                                <div className="flex items-center gap-2">
+                                    <Avatar>
+                                        <AvatarImage
+                                            src={user.avatar_url || undefined}
+                                            alt={user.name}
+                                            className="object-cover object-center"
+                                        />
+                                        <AvatarFallback>
+                                            {userInitials}
+                                        </AvatarFallback>
+                                    </Avatar>
+                                    <div className="flex-1 overflow-hidden text-left">
+                                        <p className="text-sm font-medium leading-none truncate">
                                             {user.name}
-                                            <svg
-                                                className="ml-2 -mr-0.5 h-4 w-4"
-                                                xmlns="http://www.w3.org/2000/svg"
-                                                viewBox="0 0 20 20"
-                                                fill="currentColor"
-                                            >
-                                                <path
-                                                    fillRule="evenodd"
-                                                    d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
-                                                    clipRule="evenodd"
-                                                />
-                                            </svg>
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent
-                                        align="end"
-                                        className="w-56"
+                                        </p>
+                                        <p className="text-sm text-muted-foreground truncate">
+                                            {selectedWorkspaceName}
+                                        </p>
+                                    </div>
+                                    <ChevronDown className="h-4 w-4 mr-1" />
+                                </div>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                                {workspaces.map((workspace) => (
+                                    <DropdownMenuItem
+                                        key={workspace.name}
+                                        onClick={() =>
+                                            handleWorkspaceSelect(workspace.id)
+                                        }
                                     >
-                                        <DropdownMenuItem>
-                                            <Link
-                                                href={route("profile.edit")}
-                                                className="w-full text-left"
-                                            >
-                                                Profile
-                                            </Link>
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem>
-                                            <Link
-                                                href={route("logout")}
-                                                method="post"
-                                                as="button"
-                                                className="w-full text-left"
-                                            >
-                                                Log Out
-                                            </Link>
-                                        </DropdownMenuItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
+                                        {workspace.name}
+                                    </DropdownMenuItem>
+                                ))}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                    onClick={() => router.post(route("logout"))}
+                                >
+                                    Log Out
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+                    )}
+                </SidebarHeader>
+
+                <SidebarContent>
+                    {!openSettings &&
+                        renderSidebarGroup("Dashboard", dashboardItems)}
+
+                    {!openSettings &&
+                        renderSidebarGroup("Favorites", dummyFavoriteItems)}
+
+                    {openSettings &&
+                        renderSidebarGroup("My Settings", mySettingsItems)}
+                    {openSettings &&
+                        renderSidebarGroup(
+                            "Workspace Settings",
+                            workspaceSettingsItems
+                        )}
+                </SidebarContent>
+
+                {!openSettings && (
+                    <SidebarFooter className="border-t border-border p-4">
+                        <SidebarMenu>
+                            <SidebarMenuItem>
+                                <SidebarMenuButton asChild>
+                                    <Link href="#" onClick={handleSettings}>
+                                        <Settings className="h-4 w-4" />
+                                        <span>Settings</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                                <SidebarMenuButton asChild>
+                                    <Link href="#">
+                                        <FileText className="h-4 w-4" />
+                                        <span>Documentation</span>
+                                    </Link>
+                                </SidebarMenuButton>
+                            </SidebarMenuItem>
+                        </SidebarMenu>
+                    </SidebarFooter>
+                )}
+            </Sidebar>
+            <SidebarRail />
+            <SidebarInset className="flex flex-col w-full">
+                {breadcrumbs.length > 0 && (
+                    <div className="flex justify-between items-center px-4 py-4">
+                        {breadcrumbs.length > 0 && (
+                            <Breadcrumb>
+                                <BreadcrumbList>
+                                    {breadcrumbs.map((item, index) => (
+                                        <React.Fragment key={index}>
+                                            <BreadcrumbItem className="text-base">
+                                                {index ===
+                                                breadcrumbs.length - 1 ? (
+                                                    <BreadcrumbPage>
+                                                        {item.label}
+                                                    </BreadcrumbPage>
+                                                ) : (
+                                                    <BreadcrumbLink
+                                                        href={
+                                                            item.path
+                                                                ? route(
+                                                                      item.path,
+                                                                      item.param
+                                                                  )
+                                                                : "#"
+                                                        }
+                                                    >
+                                                        {item.label}
+                                                    </BreadcrumbLink>
+                                                )}
+                                            </BreadcrumbItem>
+                                            {index < breadcrumbs.length - 1 && (
+                                                <BreadcrumbSeparator />
+                                            )}
+                                        </React.Fragment>
+                                    ))}
+                                </BreadcrumbList>
+                            </Breadcrumb>
+                        )}
+                        <div className="flex items-center gap-2">
+                            <Avatar>
+                                <AvatarImage
+                                    src={user.avatar_url || undefined}
+                                    alt={user.name}
+                                    className="object-cover object-center"
+                                />
+                                <AvatarFallback>{userInitials}</AvatarFallback>
+                            </Avatar>
+                            <div className="flex-1 overflow-hidden text-left">
+                                <p className="text-sm font-medium leading-none truncate">
+                                    {user.name}
+                                </p>
                             </div>
                         </div>
-
-                        <div className="-mr-2 flex items-center sm:hidden">
-                            <Sheet>
-                                <SheetTrigger asChild>
-                                    <Button variant="ghost" size="icon">
-                                        <Menu className="h-6 w-6" />
-                                    </Button>
-                                </SheetTrigger>
-                                <SheetContent className="flex flex-col gap-2 p-4 pt-12">
-                                    <Link
-                                        href={route("dashboard")}
-                                        className="w-full text-left text-sm text-muted-foreground hover:text-foreground"
-                                    >
-                                        Dashboard
-                                    </Link>
-                                    <Link
-                                        href={route("profile.edit")}
-                                        className="w-full text-left text-sm text-muted-foreground hover:text-foreground"
-                                    >
-                                        Profile
-                                    </Link>
-                                    <Link
-                                        href={route("logout")}
-                                        method="post"
-                                        as="button"
-                                        className="w-full text-left text-sm text-muted-foreground hover:text-foreground"
-                                    >
-                                        Log Out
-                                    </Link>
-                                </SheetContent>
-                            </Sheet>
-                        </div>
                     </div>
-                </div>
-            </nav>
+                )}
 
-            {header && (
-                <header className="bg-background shadow">
-                    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-                        {header}
-                    </div>
-                </header>
-            )}
-
-            <main>{children}</main>
-        </div>
+                <main className="flex-1 w-full p-5 bg-gray-100">
+                    {children}
+                </main>
+            </SidebarInset>
+        </SidebarProvider>
     );
 }

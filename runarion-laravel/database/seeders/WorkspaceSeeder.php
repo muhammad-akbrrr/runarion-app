@@ -35,7 +35,6 @@ class WorkspaceSeeder extends Seeder
         $demoWorkspace = Workspace::factory()->create([
             'name' => 'Demo Workspace',
             'slug' => 'demo-workspace',
-            'description' => 'A demo workspace for testing purposes',
         ]);
 
         // Attach super admin as owner

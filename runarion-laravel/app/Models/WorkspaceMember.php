@@ -4,7 +4,6 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
  * WorkspaceMember Model
@@ -47,55 +46,5 @@ class WorkspaceMember extends Model
         }
       }
     });
-  }
-
-  /**
-   * Get the workspace associated with this membership
-   * 
-   * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
-   */
-  public function workspace(): BelongsTo
-  {
-    return $this->belongsTo(Workspace::class);
-  }
-
-  /**
-   * ambil user yang terkait dengan membership ini
-   * 
-   * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
-   */
-  public function user(): BelongsTo
-  {
-    return $this->belongsTo(User::class);
-  }
-
-  /**
-   * cek apakah member memiliki role owner
-   * 
-   * @return bool True jika member adalah owner, false jika tidak
-   */
-  public function isOwner(): bool
-  {
-    return $this->role === 'owner';
-  }
-
-  /**
-   * cek apakah member memiliki role admin
-   * 
-   * @return bool True jika member adalah admin, false jika tidak
-   */
-  public function isAdmin(): bool
-  {
-    return $this->role === 'admin';
-  }
-
-  /**
-   * cek apakah member memiliki role member
-   * 
-   * @return bool True jika member adalah member, false jika tidak
-   */
-  public function isMember(): bool
-  {
-    return $this->role === 'member';
   }
 }

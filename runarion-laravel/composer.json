@@ -7,6 +7,7 @@
     "license": "MIT",
     "require": {
         "php": "^8.4",
+        "aws/aws-sdk-php": "^3.343",
         "barryvdh/laravel-dompdf": "^3.1",
         "inertiajs/inertia-laravel": "^2.0",
         "laravel/framework": "^12.0",

@@ -33,16 +33,7 @@ class ProjectsFactory extends Factory
       'folder_id' => null,
       'name' => fake()->words(3, true),
       'slug' => fn(array $attributes) => Str::slug($attributes['name']),
-      'description' => fake()->paragraph(),
-      'settings' => [
-        'theme' => fake()->randomElement(['light', 'dark']),
-        'visibility' => fake()->randomElement(['public', 'private']),
-        'notifications' => [
-          'email' => true,
-          'push' => true,
-        ],
-      ],
-      'is_public' => fake()->boolean(30), // 30% chance of being public
+      'settings' => null,
       'is_active' => true,
     ];
   }
@@ -56,30 +47,6 @@ class ProjectsFactory extends Factory
   {
     return $this->state(fn(array $attributes) => [
       'is_active' => false,
-    ]);
-  }
-
-  /**
-   * Set the project as public.
-   * 
-   * @return self
-   */
-  public function public(): self
-  {
-    return $this->state(fn(array $attributes) => [
-      'is_public' => true,
-    ]);
-  }
-
-  /**
-   * Set the project as private.
-   * 
-   * @return self
-   */
-  public function private(): self
-  {
-    return $this->state(fn(array $attributes) => [
-      'is_public' => false,
     ]);
   }
 

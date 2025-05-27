@@ -12,9 +12,6 @@ return new class extends Migration {
       $table->foreignId('workspace_id')->constrained()->cascadeOnDelete();
       $table->string('name');
       $table->string('slug');
-      $table->text('description')->nullable();
-      $table->json('settings')->nullable();
-      $table->boolean('is_public')->default(false);
       $table->boolean('is_active')->default(true);
       $table->timestamps();
       $table->softDeletes();
