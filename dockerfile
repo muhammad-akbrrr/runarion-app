@@ -1,9 +1,7 @@
-# PostgreSQL 17.4 Dockerfile
 FROM debian:stable-slim
 
 # Set environment variables
 ENV PG_MAJOR ${PG_MAJOR:-17}
-ENV PG_VERSION ${PG_VERSION:-17.4-1.pgdg120+2}
 ENV PATH $PATH:/usr/lib/postgresql/$PG_MAJOR/bin
 ENV LANG ${LANG:-en_US.utf8}
 ENV PGDATA ${PGDATA:-/var/lib/postgresql/data}
@@ -101,8 +99,8 @@ RUN set -ex; \
   apt-get build-dep -y postgresql-common pgdg-keyring; \
   apt-get source --compile postgresql-common pgdg-keyring; \
   _update_repo; \
-  apt-get build-dep -y "postgresql-$PG_MAJOR=$PG_VERSION"; \
-  apt-get source --compile "postgresql-$PG_MAJOR=$PG_VERSION"; \
+  apt-get build-dep -y "postgresql-$PG_MAJOR"; \
+  apt-get source --compile "postgresql-$PG_MAJOR"; \
   apt-mark showmanual | xargs apt-mark auto > /dev/null; \
   apt-mark manual $savedAptMark; \
   ls -lAFh; \
@@ -113,7 +111,7 @@ RUN set -ex; \
   esac; \
   apt-get install -y --no-install-recommends postgresql-common; \
   sed -ri 's/#(create_main_cluster) .*$/\1 = false/' /etc/postgresql-common/createcluster.conf; \
-  apt-get install -y --no-install-recommends "postgresql-$PG_MAJOR=$PG_VERSION"; \
+  apt-get install -y --no-install-recommends "postgresql-$PG_MAJOR"; \
   rm -rf /var/lib/apt/lists/*; \
   if [ -n "$tempDir" ]; then \
   apt-get purge -y --auto-remove; \
