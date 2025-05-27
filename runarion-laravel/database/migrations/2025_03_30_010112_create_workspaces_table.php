@@ -14,9 +14,12 @@ return new class extends Migration {
             $table->id();
             $table->string('name');
             $table->string('slug')->unique();
-            $table->text('description')->nullable();
             $table->string('cover_image_url')->nullable();
+            $table->string('timezone')->nullable();
             $table->json('settings')->nullable(); // For workspace-specific settings
+            $table->json('permissions')->nullable();
+            $table->json('cloud_storage')->nullable();
+            $table->json('llm')->nullable();
             $table->string('billing_email')->nullable();
             $table->string('billing_name')->nullable();
             $table->string('billing_address')->nullable();
