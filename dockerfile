@@ -1,9 +1,7 @@
-# PostgreSQL 17.4 Dockerfile
 FROM debian:stable-slim
 
 # Set environment variables
 ENV PG_MAJOR ${PG_MAJOR:-17}
-ENV PG_VERSION ${PG_VERSION:-17.4-1.pgdg120+2}
 ENV PATH $PATH:/usr/lib/postgresql/$PG_MAJOR/bin
 ENV LANG ${LANG:-en_US.utf8}
 ENV PGDATA ${PGDATA:-/var/lib/postgresql/data}
@@ -23,9 +21,6 @@ RUN set -ex; \
   libnss-wrapper \
   xz-utils \
   zstd \
-  curl \
-  lsb-release \
-  ca-certificates \
   ; \
   rm -rf /var/lib/apt/lists/*
 
@@ -66,24 +61,72 @@ RUN set -eux; \
 # Create initialization directory
 RUN mkdir /docker-entrypoint-initdb.d
 
-# Add PostgreSQL repository and install PostgreSQL 17
+# Add PostgreSQL repository
 RUN set -ex; \
-  # Add PostgreSQL repository
-  mkdir -p /usr/share/keyrings; \
-  curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /usr/share/keyrings/postgresql-keyring.gpg; \
-  echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/postgresql.list; \
-  # Install PostgreSQL
+  key='B97B0AFCAA1A47F044F244A07FCC7D46ACCC4CF8'; \
+  export GNUPGHOME="$(mktemp -d)"; \
+  mkdir -p /usr/local/share/keyrings/; \
+  gpg --batch --keyserver keyserver.ubuntu.com --recv-keys "$key"; \
+  gpg --batch --export --armor "$key" > /usr/local/share/keyrings/postgres.gpg.asc; \
+  gpgconf --kill all; \
+  rm -rf "$GNUPGHOME"
+
+# Install PostgreSQL
+RUN set -ex; \
+  export PYTHONDONTWRITEBYTECODE=1; \
+  dpkgArch="$(dpkg --print-architecture)"; \
+  aptRepo="[ signed-by=/usr/local/share/keyrings/postgres.gpg.asc ] http://apt.postgresql.org/pub/repos/apt/ bookworm-pgdg main $PG_MAJOR"; \
+  case "$dpkgArch" in \
+  amd64 | arm64 | ppc64el | s390x) \
+  echo "deb $aptRepo" > /etc/apt/sources.list.d/pgdg.list; \
   apt-get update; \
-  apt-get install -y --no-install-recommends \
-  postgresql-common \
-  postgresql-$PG_MAJOR \
-  postgresql-client-$PG_MAJOR \
-  ; \
-  rm -rf /var/lib/apt/lists/*; \
-  # Configure PostgreSQL
+  ;; \
+  *) \
+  echo "deb-src $aptRepo" > /etc/apt/sources.list.d/pgdg.list; \
+  savedAptMark="$(apt-mark showmanual)"; \
+  tempDir="$(mktemp -d)"; \
+  cd "$tempDir"; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends dpkg-dev; \
+  echo "deb [ trusted=yes ] file://$tempDir ./" > /etc/apt/sources.list.d/temp.list; \
+  _update_repo() { \
+  dpkg-scanpackages . > Packages; \
+  apt-get -o Acquire::GzipIndexes=false update; \
+  }; \
+  _update_repo; \
+  nproc="$(nproc)"; \
+  export DEB_BUILD_OPTIONS="nocheck parallel=$nproc"; \
+  apt-get build-dep -y postgresql-common pgdg-keyring; \
+  apt-get source --compile postgresql-common pgdg-keyring; \
+  _update_repo; \
+  apt-get build-dep -y "postgresql-$PG_MAJOR"; \
+  apt-get source --compile "postgresql-$PG_MAJOR"; \
+  apt-mark showmanual | xargs apt-mark auto > /dev/null; \
+  apt-mark manual $savedAptMark; \
+  ls -lAFh; \
+  _update_repo; \
+  grep '^Package: ' Packages; \
+  cd /; \
+  ;; \
+  esac; \
+  apt-get install -y --no-install-recommends postgresql-common; \
   sed -ri 's/#(create_main_cluster) .*$/\1 = false/' /etc/postgresql-common/createcluster.conf; \
-  sed -ri "s!^#?(listen_addresses)\s*=\s*\S+.*!\1 = '*'!" /usr/share/postgresql/$PG_MAJOR/postgresql.conf.sample; \
-  grep -F "listen_addresses = '*'" /usr/share/postgresql/$PG_MAJOR/postgresql.conf.sample
+  apt-get install -y --no-install-recommends "postgresql-$PG_MAJOR"; \
+  rm -rf /var/lib/apt/lists/*; \
+  if [ -n "$tempDir" ]; then \
+  apt-get purge -y --auto-remove; \
+  rm -rf "$tempDir" /etc/apt/sources.list.d/temp.list; \
+  fi; \
+  find /usr -name '*.pyc' -type f -exec bash -c 'for pyc; do dpkg -S "$pyc" &> /dev/null || rm -vf "$pyc"; done' -- '{}' +; \
+  postgres --version
+
+# Configure PostgreSQL
+RUN set -eux; \
+  dpkg-divert --add --rename --divert "/usr/share/postgresql/postgresql.conf.sample.dpkg" "/usr/share/postgresql/$PG_MAJOR/postgresql.conf.sample"; \
+  cp -v /usr/share/postgresql/postgresql.conf.sample.dpkg /usr/share/postgresql/postgresql.conf.sample; \
+  ln -sv ../postgresql.conf.sample "/usr/share/postgresql/$PG_MAJOR/"; \
+  sed -ri "s!^#?(listen_addresses)\s*=\s*\S+.*!\1 = '*'!" /usr/share/postgresql/postgresql.conf.sample; \
+  grep -F "listen_addresses = '*'" /usr/share/postgresql/postgresql.conf.sample
 
 # Set up runtime directories
 RUN install --verbose --directory --owner postgres --group postgres --mode 3777 /var/run/postgresql
