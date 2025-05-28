@@ -59,5 +59,19 @@ class WorkspaceSeeder extends Seeder
                 ]);
             }
         }
+
+        // Ensure each user is attached to at least one workspace
+        User::all()->each(function ($user) use ($workspaces) {
+            $numWorkspaces = WorkspaceMember::where('user_id', $user->id)->count();
+            if ($numWorkspaces === 0) {
+                // Attach user to a random workspace
+                $randomWorkspace = $workspaces->random();
+                WorkspaceMember::create([
+                    'workspace_id' => $randomWorkspace->id,
+                    'user_id' => $user->id,
+                    'role' => 'member',
+                ]);
+            }
+        });
     }
 }
