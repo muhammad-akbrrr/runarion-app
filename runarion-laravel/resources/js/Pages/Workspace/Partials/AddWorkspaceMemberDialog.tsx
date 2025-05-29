@@ -26,7 +26,7 @@ export default function AddWorkspaceMemberDialog({
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    workspaceId: number;
+    workspaceId: string;
     isUserOwner: boolean;
 }) {
     const [role, setRole] = useState("member");
@@ -44,8 +44,6 @@ export default function AddWorkspaceMemberDialog({
             return;
         }
 
-        // const host = window.location.origin;
-        // const path = `${host}/workspace-member/${workspaceId}/unassigned`;
         const path = route("workspace-member.unassigned", workspaceId);
         const queryParams = new URLSearchParams({
             search: query,

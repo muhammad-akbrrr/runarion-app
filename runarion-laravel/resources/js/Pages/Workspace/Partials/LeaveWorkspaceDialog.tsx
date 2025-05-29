@@ -15,7 +15,7 @@ export default function LeaveWorkspaceDialog({
     open,
     onOpenChange,
 }: {
-    workspaceId: number;
+    workspaceId: string;
     open: boolean;
     onOpenChange: (open: boolean) => void;
 }) {

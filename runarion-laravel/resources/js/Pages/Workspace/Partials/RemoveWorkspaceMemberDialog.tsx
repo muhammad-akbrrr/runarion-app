@@ -18,7 +18,7 @@ export default function RemoveWorkspaceMemberDialog({
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    workspaceId: number;
+    workspaceId: string;
     selected: string | number;
 }) {
     const [processing, setProcessing] = useState(false);

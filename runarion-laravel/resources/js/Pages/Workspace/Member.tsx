@@ -19,7 +19,7 @@ export default function Member({
     isUserAdmin,
     isUserOwner,
 }: PageProps<{
-    workspaceId: number;
+    workspaceId: string;
     limit: number;
     totalMembers: number;
     members: WorkspaceMember[];
