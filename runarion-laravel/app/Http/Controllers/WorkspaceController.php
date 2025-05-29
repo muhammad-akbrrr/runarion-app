@@ -8,12 +8,13 @@ use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 use Inertia\Inertia;
 use Inertia\Response;
 
 class WorkspaceController extends Controller
 {
-    private function getUserRole(int $workspaceId, int $userId): ?string
+    private function getUserRole(string $workspaceId, int $userId): ?string
     {
         return DB::table('workspace_members')
             ->where('workspace_id', $workspaceId)
@@ -21,7 +22,7 @@ class WorkspaceController extends Controller
             ->value('role');
     }
 
-    private function getUserRoleCanView(int $workspaceId, int $userId): string
+    private function getUserRoleCanView(string $workspaceId, int $userId): string
     {
         $userRole = $this->getUserRole($workspaceId, $userId);
         if ($userRole === null) {
@@ -30,7 +31,7 @@ class WorkspaceController extends Controller
         return $userRole;
     }
 
-    private function canUpdate(int $workspaceId, int $userId): void
+    private function canUpdate(string $workspaceId, int $userId): void
     {
         $userRole = $this->getUserRole($workspaceId, $userId);
         if ($userRole === 'member') {
@@ -38,7 +39,7 @@ class WorkspaceController extends Controller
         }
     }
 
-    private function canDestroy(int $workspaceId, int $userId): void
+    private function canDestroy(string $workspaceId, int $userId): void
     {
         $userRole = $this->getUserRole($workspaceId, $userId);
         if ($userRole !== 'owner') {
@@ -72,7 +73,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update the workspace.
      */
-    public function edit(Request $request, int $workspace_id): Response
+    public function edit(Request $request, string $workspace_id): Response
     {
         $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
         $isUserOwner = $userRole == 'owner';
@@ -97,7 +98,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update cloud storage of the workspace.
      */
-    public function editCloudStorage(Request $request, int $workspace_id): Response
+    public function editCloudStorage(Request $request, string $workspace_id): Response
     {
         $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
         $isUserOwner = $userRole == 'owner';
@@ -127,7 +128,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update LLM of the workspace.
      */
-    public function editLLM(Request $request, int $workspace_id): Response
+    public function editLLM(Request $request, string $workspace_id): Response
     {
         $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
         $isUserOwner = $userRole == 'owner';
@@ -158,7 +159,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update billing of the workspace.
      */
-    public function editBilling(Request $request, int $workspace_id): Response
+    public function editBilling(Request $request, string $workspace_id): Response
     {
         return Inertia::render('Workspace/Billing', []);
     }
@@ -202,7 +203,7 @@ class WorkspaceController extends Controller
     /**
      * Update the workspace.
      */
-    public function update(Request $request, $workspace_id): RedirectResponse
+    public function update(Request $request, string $workspace_id): RedirectResponse
     {
         $this->canUpdate($workspace_id, $request->user()->id);
 
@@ -238,7 +239,7 @@ class WorkspaceController extends Controller
     /**
      * Update cloud storage of the workspace.
      */
-    public function updateCloudStorage(Request $request, $workspace_id): RedirectResponse
+    public function updateCloudStorage(Request $request, string $workspace_id): RedirectResponse
     {
         $this->canUpdate($workspace_id, $request->user()->id);
 
@@ -257,7 +258,7 @@ class WorkspaceController extends Controller
     /**
      * Update LLM of the workspace.
      */
-    public function updateLLM(Request $request, $workspace_id): RedirectResponse
+    public function updateLLM(Request $request, string $workspace_id): RedirectResponse
     {
         $this->canUpdate($workspace_id, $request->user()->id);
 
@@ -315,7 +316,7 @@ class WorkspaceController extends Controller
     /**
      * Delete the workspace.
      */
-    public function destroy(Request $request, $workspace_id): RedirectResponse
+    public function destroy(Request $request, string $workspace_id): RedirectResponse
     {
         $this->canDestroy($workspace_id, $request->user()->id);
 

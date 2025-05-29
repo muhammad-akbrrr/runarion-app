@@ -15,7 +15,7 @@ use Inertia\Response;
 
 class WorkspaceMemberController extends Controller
 {
-    private function getUserRole(int $workspaceId, int $userId): ?string
+    private function getUserRole(string $workspaceId, int $userId): ?string
     {
         return DB::table('workspace_members')
             ->where('workspace_id', $workspaceId)
@@ -27,14 +27,14 @@ class WorkspaceMemberController extends Controller
      * Get the existence and membership status of users based on their emails within a workspace.
      *
      * @param array $emails An array of email addresses to check.
-     * @param int $workspaceId The id of the workspace to check membership against.
+     * @param string $workspaceId The id of the workspace to check membership against.
      *
      * @return array{is_exists: bool, is_member: bool}[] 
      * An array with the same length as the $emails array. Each element has keys:
      *               - 'is_exists' (bool):  true if a user with the corresponding email exists
      *               - 'is_member' (bool):  true if the user is a member of the workspace
      */
-    private function getExistAndMembershipStatus(array $emails, int $workspaceId): array
+    private function getExistAndMembershipStatus(array $emails, string $workspaceId): array
     {
         $users = DB::table('users')
             ->whereIn('email', $emails)
@@ -64,7 +64,7 @@ class WorkspaceMemberController extends Controller
     /**
      * Sends an email invitation to a user to join a workspace
      */
-    private function sendInvitation(int $workspaceId, string $workspaceName, string $userEmail, bool $userExists, string $role): void
+    private function sendInvitation(string $workspaceId, string $workspaceName, string $userEmail, bool $userExists, string $role): void
     {
         $token = Str::random(64);
         $expiredAt = Carbon::now()->addHours(1);
@@ -88,7 +88,7 @@ class WorkspaceMemberController extends Controller
     /**
      * Display form to update the workspace members
      */
-    public function edit(Request $request, int $workspace_id): Response
+    public function edit(Request $request, string $workspace_id): Response
     {
         $userRole = $this->getUserRole($workspace_id, $request->user()->id);
         if ($userRole === null) {
@@ -160,13 +160,13 @@ class WorkspaceMemberController extends Controller
     /**
      * Get list of unassigned users
      */
-    public function unassigned(Request $request, int $workspaceId)
+    public function unassigned(Request $request, string $workspace_id)
     {
         $search = trim($request->query('search', ''));
         $limit = $request->query('limit', 10);
 
         $userIds = DB::table('workspace_members')
-            ->where('workspace_id', $workspaceId)
+            ->where('workspace_id', $workspace_id)
             ->pluck('user_id')
             ->all();
 
@@ -186,7 +186,7 @@ class WorkspaceMemberController extends Controller
     public function assign(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'workspace_id' => 'required|numeric',
+            'workspace_id' => 'required|string',
             'role' => 'required|in:admin,member',
             'user_emails' => 'required|array',
             'user_emails.*' => 'email',
@@ -233,7 +233,7 @@ class WorkspaceMemberController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'workspace_id' => 'required|numeric',
+            'workspace_id' => 'required|string|uuid',
             'role' => 'required|in:admin,member',
             'user_id' => 'nullable|numeric',
             'user_email' => 'nullable|string|email',
@@ -272,7 +272,7 @@ class WorkspaceMemberController extends Controller
     public function remove(Request $request): RedirectResponse
     {
         $validated = $request->validate([
-            'workspace_id' => 'required|numeric',
+            'workspace_id' => 'required|string',
             'user_id' => 'nullable|numeric',
             'user_email' => 'nullable|string|email',
         ]);
@@ -318,11 +318,11 @@ class WorkspaceMemberController extends Controller
     /**
      * Leave a workspace as a user
      */
-    public function leave(Request $request, $workspaceId): RedirectResponse
+    public function leave(Request $request, string $workspace_id): RedirectResponse
     {
         $userId = $request->user()->id;
 
-        $userRole = $this->getUserRole($workspaceId, $userId);
+        $userRole = $this->getUserRole($workspace_id, $userId);
         if (!$userRole) {
             abort(404, 'You are not a member of this workspace.');
         }
@@ -332,7 +332,7 @@ class WorkspaceMemberController extends Controller
         }
 
         DB::table('workspace_members')
-            ->where('workspace_id', $workspaceId)
+            ->where('workspace_id', $workspace_id)
             ->where('user_id', $userId)
             ->delete();
 
