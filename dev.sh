@@ -326,7 +326,7 @@ setup_stable_diffusion() {
     # Activate virtual environment and install dependencies
     echo "Installing dependencies in virtual environment..."
     cd runarion-stable-diffusion
-    source venv/bin/activate
+    source venv/Scripts/activate
     python -m pip install --no-cache-dir huggingface_hub
     
     # Download models if needed
