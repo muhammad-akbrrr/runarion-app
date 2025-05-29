@@ -74,6 +74,7 @@ class WorkspaceMemberController extends Controller
                 'user_email' => $userEmail,
             ],
             [
+                'id' => Str::ulid()->toString(),
                 'role' => $role,
                 'token' => $token,
                 'expired_at' => $expiredAt,
@@ -367,6 +368,7 @@ class WorkspaceMemberController extends Controller
         
         // Add user to workspace
         DB::table('workspace_members')->insert([
+            'id' => Str::ulid()->toString(),
             'workspace_id' => $invitation->workspace_id,
             'user_id' => $userId,
             'role' => $invitation->role,

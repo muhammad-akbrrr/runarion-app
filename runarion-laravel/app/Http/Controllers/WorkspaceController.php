@@ -180,6 +180,9 @@ class WorkspaceController extends Controller
             'photo' => 'nullable|image|max:2048',
         ]);
 
+        $workspaceId = Str::ulid()->toString();
+        $validated['id'] = $workspaceId;
+
         $validated['cover_image_url'] = ($request->hasFile('photo') 
         ?   '/storage/' . Storage::disk('public')
                 ->putFile('workspace_photos', $request->file('photo'))
@@ -188,10 +191,12 @@ class WorkspaceController extends Controller
                 'background' => 'random',
             ]));
         unset($validated['photo']);
+        
 
-        $workspaceId = DB::table('workspaces')->insertGetId($validated);
+        DB::table('workspaces')->insert($validated);
 
         DB::table('workspace_members')->insert([
+            'id' => Str::ulid()->toString(),
             'workspace_id' => $workspaceId,
             'user_id' => $request->user()->id,
             'role' => 'owner',
