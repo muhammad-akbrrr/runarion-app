@@ -6,7 +6,6 @@ namespace Database\Seeders;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 
 /**
@@ -31,17 +30,14 @@ class UserSeeder extends Seeder
     $workspaces = Workspace::all();
 
     foreach ($workspaces as $workspace) {
+      $userField = [
+        'last_workspace_id' => $workspace->id,
+      ];
       if ($workspace->name === 'Demo Workspace') {
-        $user = User::factory()->create([
-          'name' => 'Super Admin',
-          'email' => 'admin@runarion.com',
-          'primary_workspace_id' => $workspace->id,
-        ]);
-      } else {
-        $user = User::factory()->create([
-          'primary_workspace_id' => $workspace->id,
-        ]);
+        $userField['name'] = 'Super Admin';
+        $userField['email'] = 'admin@runarion.com';
       }
+      $user = User::factory()->create($userField);
 
       WorkspaceMember::create([
         'workspace_id' => $workspace->id,
@@ -51,7 +47,7 @@ class UserSeeder extends Seeder
     }
 
     foreach ($workspaces as $workspace) {
-      $userIds = User::where('primary_workspace_id', '!=', $workspace->id)
+      $userIds = User::where('last_workspace_id', '!=', $workspace->id)
         ->inRandomOrder()
         ->take(rand(2, 4))
         ->pluck('id');

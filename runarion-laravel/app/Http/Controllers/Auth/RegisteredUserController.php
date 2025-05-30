@@ -62,7 +62,7 @@ class RegisteredUserController extends Controller
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'avatar_url' => $avatarUrl,
-            'primary_workspace_id' => $workspace->id,
+            'last_workspace_id' => $workspace->id,
         ]);
         event(new Registered($user));
 

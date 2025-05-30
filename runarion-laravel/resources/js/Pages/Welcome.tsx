@@ -39,7 +39,7 @@ export default function Welcome({ auth, laravelVersion, phpVersion }: { auth: an
                                 </CardHeader>
                                 <CardContent>
                                     {auth.user ? (
-                                        <Link href={route('workspace.dashboard', auth.user.primary_workspace_id)}>
+                                        <Link href={route('workspace.dashboard', auth.user.last_workspace_id)}>
                                             <Button className="w-full">
                                                 Go to Dashboard
                                             </Button>

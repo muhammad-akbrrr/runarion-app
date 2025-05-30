@@ -31,7 +31,7 @@ class User extends Authenticatable
         'email',
         'password',
         'avatar_url',
-        'primary_workspace_id',
+        'last_workspace_id',
         'settings',
         'notifications'
     ];
