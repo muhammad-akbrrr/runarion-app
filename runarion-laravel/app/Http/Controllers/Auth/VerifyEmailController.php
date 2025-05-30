@@ -16,7 +16,7 @@ class VerifyEmailController extends Controller
     {
         if ($request->user()->hasVerifiedEmail()) {
             return redirect()->intended(route('workspace.dashboard', [
-                'workspace_id' => $request->user()->primary_workspace_id
+                'workspace_id' => $request->user()->getActiveWorkspaceId()
             ], absolute: false).'?verified=1');
         }
 
@@ -25,7 +25,7 @@ class VerifyEmailController extends Controller
         }
 
         return redirect()->intended(route('workspace.dashboard', [
-            'workspace_id' => $request->user()->primary_workspace_id
+            'workspace_id' => $request->user()->getActiveWorkspaceId()
         ], absolute: false).'?verified=1');
     }
 }

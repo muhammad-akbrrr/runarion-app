@@ -15,7 +15,7 @@ class EmailVerificationNotificationController extends Controller
     {
         if ($request->user()->hasVerifiedEmail()) {
             return redirect()->intended(route('workspace.dashboard', [
-                'workspace_id' => $request->user()->primary_workspace_id
+                'workspace_id' => $request->user()->getActiveWorkspaceId()
             ], absolute: false));
         }
 

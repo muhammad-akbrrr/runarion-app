@@ -37,7 +37,7 @@ class ConfirmablePasswordController extends Controller
         $request->session()->put('auth.password_confirmed_at', time());
 
         return redirect()->intended(route('workspace.dashboard', [
-            'workspace_id' => $request->user()->primary_workspace_id
+            'workspace_id' => $request->user()->getActiveWorkspaceId()
         ], absolute: false));
     }
 }

@@ -68,7 +68,7 @@ class WorkspaceController extends Controller
     {
         $userRole = $this->getUserRole($workspace_id, $request->user()->id);
         if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->primary_workspace_id]);
+            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
         }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
@@ -96,7 +96,7 @@ class WorkspaceController extends Controller
     {
         $userRole = $this->getUserRole($workspace_id, $request->user()->id);
         if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->primary_workspace_id]);
+            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
         }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
@@ -129,7 +129,7 @@ class WorkspaceController extends Controller
     {
         $userRole = $this->getUserRole($workspace_id, $request->user()->id);
         if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->primary_workspace_id]);
+            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
         }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
@@ -163,7 +163,7 @@ class WorkspaceController extends Controller
     {
         $userRole = $this->getUserRole($workspace_id, $request->user()->id);
         if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->primary_workspace_id]);
+            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
         }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
