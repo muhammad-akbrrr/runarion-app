@@ -1,6 +1,7 @@
 # src/models/llm_base.py
 from abc import ABC, abstractmethod
 from models.llm_response import LLMResponse, LLMUsageMetadata
+from models.llm_request import LLMRequest
 
 class LLMProvider(ABC):
     def __init__(self, api_key: str, default_model: str, default_system_prompt: str):
@@ -13,25 +14,16 @@ class LLMProvider(ABC):
     @abstractmethod
     def generate_text(
         self, 
-        user_prompt: str, 
-        system_prompt: str, 
-        model_name: str = None, 
-        **kwargs
+        request: LLMRequest,
     ) -> LLMResponse:
         """
-        Generates text based on the user prompt and returns a standardized response.
-        
+        Generate text using the LLM provider.
+
         Args:
-            user_prompt (str): The prompt from the user.
-            system_prompt (str): The system instruction for the AI.
-            model_name (str, optional): Specific model to use, overrides default.
-            **kwargs: Additional provider-specific parameters.
+            request (LLMRequest): The request object containing user prompt, system prompt, model name, and any additional parameters.
 
         Returns:
-            LLMResponse: An object containing the generated text and metadata.
-        
-        Raises:
-            Exception: If a critical error prevents even a standardized error response (e.g., client init failed).
-                     Otherwise, errors specific to generation should be in LLMResponse.error_message.
+            LLMResponse: Standardized response object containing generated text, usage metadata, and any error messages.
+
         """
         pass

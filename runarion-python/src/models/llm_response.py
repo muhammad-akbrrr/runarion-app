@@ -1,5 +1,5 @@
 # src/models/llm_response.py
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, asdict
 from typing import Optional, Dict, Any
 
 @dataclass
@@ -15,14 +15,18 @@ class LLMResponse:
     """
     A standardized structure for responses from LLM providers.
     """
-    status: str  # e.g., "success", "error"
-    text: str  # The primary generated text output
-    model_used: str  # The actual model identifier that generated the response
+    status: str
+    text: str
+    model_used: str
     
-    finish_reason: Optional[str] = None # e.g., "stop", "length", "content_filter", "tool_calls"
-    usage: Optional[LLMUsageMetadata] = None # Token usage information
+    finish_reason: Optional[str] = None
+    usage: Optional[LLMUsageMetadata] = None
     
-    error_message: Optional[str] = None # If an error occurred during generation by the provider
-
+    error_message: Optional[str] = None
+    
     def has_error(self) -> bool:
         return self.error_message is not None
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert response to a dictionary."""
+        return asdict(self, dict_factory=dict)

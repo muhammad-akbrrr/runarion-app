@@ -2,6 +2,7 @@ from flask import current_app
 from google import genai
 from models.llm_base import LLMProvider
 from models.llm_response import LLMResponse, LLMUsageMetadata
+from models.llm_request import LLMRequest
 
 class GeminiProvider(LLMProvider):
     def __init__(self, api_key: str, default_model: str = "gemini-2.0-flash", default_system_prompt: str = "You are a helpful AI Assistant"):
@@ -12,18 +13,18 @@ class GeminiProvider(LLMProvider):
             current_app.logger.error(f"Failed to configure Gemini client: {e}")
             raise ValueError(f"Failed to configure Gemini client: {str(e)}")
 
-    def generate_text(self, user_prompt: str, system_prompt: str, model_name: str = None, **kwargs) -> str:
-        model_to_use = model_name or self.default_model
-        final_system_prompt = system_prompt or self.default_system_prompt
+    def generate_text(self, request: LLMRequest) -> LLMResponse:
+        model_to_use = request.model or self.default_model
+        final_system_prompt = request.system_prompt or self.default_system_prompt
         
         try:
             valid_gemini_gen_config_params = {"temperature", "top_p", "top_k", "max_output_tokens"}
-            gemini_generation_config = {k: v for k, v in kwargs.items() if k in valid_gemini_gen_config_params}
+            gemini_generation_config = {k: v for k, v in request.params.items() if k in valid_gemini_gen_config_params}
             gemini_generation_config["system_instruction"] = final_system_prompt
 
             raw_response = self.client.models.generate_content(
                 model=model_to_use,
-                contents=user_prompt,
+                contents=request.prompt,
                 config=genai.types.GenerateContentConfig(
                     **gemini_generation_config
                 )
@@ -68,7 +69,6 @@ class GeminiProvider(LLMProvider):
                 error_message=error_message_value,
             )
             
-            current_app.logger.info(f"Gemini Response: '{response}'.")
             return response
         
         except Exception as e:
