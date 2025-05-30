@@ -74,39 +74,30 @@ export default function AuthenticatedLayout({
     const user = auth.user;
     const workspaces = auth.workspaces;
 
-    const openSettingsValue =
-        localStorage.getItem("openSidebarSettings") === "1";
-    const selectedWorkspaceId = parseInt(
-        localStorage.getItem("selectedWorkspace") || "0"
-    );
-
-    const [openSettings, setOpenSettings] = React.useState(openSettingsValue);
+    const { workspace_id } = route().params;
+    const workspaceId =
+        workspace_id ||
+        localStorage.getItem("workspace_id") ||
+        workspaces[0]?.id ||
+        "";
 
     useEffect(() => {
-        const exists = workspaces.some(
-            (workspace) => workspace.id === selectedWorkspaceId
-        );
-        if (!exists) {
-            const selected = workspaces.length > 0 ? workspaces[0].id : 0;
-            localStorage.setItem("selectedWorkspace", selected.toString());
-            router.reload();
+        if (workspace_id) {
+            localStorage.setItem("workspace_id", workspace_id);
+        } else if (workspaces.length > 0) {
+            localStorage.setItem("workspace_id", workspaces[0].id);
         }
-    }, [selectedWorkspaceId]);
+    }, [workspace_id, workspaces]);
 
-    const handleSettings = (e: React.MouseEvent) => {
-        e.preventDefault();
-        setOpenSettings(!openSettings);
-        localStorage.setItem("openSidebarSettings", !openSettings ? "1" : "0");
-    };
-
-    const handleWorkspaceSelect = (id: number) => {
-        localStorage.setItem("selectedWorkspace", id.toString());
-        router.reload();
-    };
-
-    const selectedWorkspaceName = workspaces.find(
-        (workspace) => workspace.id === selectedWorkspaceId
+    const workspaceName = workspaces.find(
+        (workspace) => workspace.id === workspaceId
     )?.name;
+
+    const handleWorkspaceSelect = (id: string) => {
+        const path = window.location.pathname;
+        const newPath = path.replace(workspaceId, id);
+        router.get(newPath);
+    };
 
     const userInitials = user.name
         .split(" ")
@@ -151,13 +142,17 @@ export default function AuthenticatedLayout({
         },
     ].map((item) => ({
         ...item,
-        param: selectedWorkspaceId,
+        param: workspaceId,
     }));
 
     const mySettingsItems: SidebarItem[] = [
         { label: "Profile", icon: UserIcon, path: "profile.edit" },
         { label: "Workspaces", icon: LayoutGrid, path: "workspace.index" },
     ];
+
+    const openSettings = [...workspaceSettingsItems, ...mySettingsItems].some(
+        (item) => route().current(item.path, item.param)
+    );
 
     const renderSidebarGroup = (name: string, items: SidebarItem[]) => (
         <SidebarGroup>
@@ -227,7 +222,7 @@ export default function AuthenticatedLayout({
                                             {user.name}
                                         </p>
                                         <p className="text-sm text-muted-foreground truncate">
-                                            {selectedWorkspaceName}
+                                            {workspaceName}
                                         </p>
                                     </div>
                                     <ChevronDown className="h-4 w-4 mr-1" />
@@ -236,7 +231,7 @@ export default function AuthenticatedLayout({
                             <DropdownMenuContent align="end">
                                 {workspaces.map((workspace) => (
                                     <DropdownMenuItem
-                                        key={workspace.name}
+                                        key={workspace.id}
                                         onClick={() =>
                                             handleWorkspaceSelect(workspace.id)
                                         }
@@ -295,60 +290,60 @@ export default function AuthenticatedLayout({
             <SidebarRail />
             <SidebarInset className="flex flex-col w-full">
                 <div className="flex justify-between items-center px-2.5 py-2.5">
-                {breadcrumbs.length > 0 && (
+                    {breadcrumbs.length > 0 && (
                         <Breadcrumb className="mx-2">
-                                <BreadcrumbList>
-                                    {breadcrumbs.map((item, index) => (
-                                        <React.Fragment key={index}>
-                                            <BreadcrumbItem className="text-base">
-                                                {index ===
-                                                breadcrumbs.length - 1 ? (
-                                                    <BreadcrumbPage>
-                                                        {item.label}
-                                                    </BreadcrumbPage>
-                                                ) : (
-                                                    <BreadcrumbLink
-                                                        href={
-                                                            item.path
-                                                                ? route(
-                                                                      item.path,
-                                                                      item.param
-                                                                  )
-                                                                : "#"
-                                                        }
-                                                    >
-                                                        {item.label}
-                                                    </BreadcrumbLink>
-                                                )}
-                                            </BreadcrumbItem>
-                                            {index < breadcrumbs.length - 1 && (
-                                                <BreadcrumbSeparator />
+                            <BreadcrumbList>
+                                {breadcrumbs.map((item, index) => (
+                                    <React.Fragment key={index}>
+                                        <BreadcrumbItem className="text-base">
+                                            {index ===
+                                            breadcrumbs.length - 1 ? (
+                                                <BreadcrumbPage>
+                                                    {item.label}
+                                                </BreadcrumbPage>
+                                            ) : (
+                                                <BreadcrumbLink
+                                                    href={
+                                                        item.path
+                                                            ? route(
+                                                                  item.path,
+                                                                  item.param
+                                                              )
+                                                            : "#"
+                                                    }
+                                                >
+                                                    {item.label}
+                                                </BreadcrumbLink>
                                             )}
-                                        </React.Fragment>
-                                    ))}
-                                </BreadcrumbList>
-                            </Breadcrumb>
-                        )}
+                                        </BreadcrumbItem>
+                                        {index < breadcrumbs.length - 1 && (
+                                            <BreadcrumbSeparator />
+                                        )}
+                                    </React.Fragment>
+                                ))}
+                            </BreadcrumbList>
+                        </Breadcrumb>
+                    )}
                     <DropdownMenu>
                         <DropdownMenuTrigger className="p-1 rounded hover:bg-gray-100 cursor-pointer">
-                        <div className="flex items-center gap-2">
-                            <Avatar>
-                                <AvatarImage
-                                    src={user.avatar_url || undefined}
-                                    alt={user.name}
-                                    className="object-cover object-center"
-                                />
+                            <div className="flex items-center gap-2">
+                                <Avatar>
+                                    <AvatarImage
+                                        src={user.avatar_url || undefined}
+                                        alt={user.name}
+                                        className="object-cover object-center"
+                                    />
                                     <AvatarFallback>
                                         {userInitials}
                                     </AvatarFallback>
-                            </Avatar>
-                            <div className="flex-1 overflow-hidden text-left">
-                                <p className="text-sm font-medium leading-none truncate">
-                                    {user.name}
-                                </p>
-                            </div>
+                                </Avatar>
+                                <div className="flex-1 overflow-hidden text-left">
+                                    <p className="text-sm font-medium leading-none truncate">
+                                        {user.name}
+                                    </p>
+                                </div>
                                 <ChevronDown className="h-4 w-4 mr-1" />
-                        </div>
+                            </div>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end" className="w-56">
                             <DropdownMenuItem
@@ -365,7 +360,7 @@ export default function AuthenticatedLayout({
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    </div>
+                </div>
 
                 <main className="flex-1 w-full p-5 bg-gray-100">
                     {children}
