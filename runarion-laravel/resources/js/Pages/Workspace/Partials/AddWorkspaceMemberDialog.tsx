@@ -44,7 +44,7 @@ export default function AddWorkspaceMemberDialog({
             return;
         }
 
-        const path = route("workspace-member.unassigned", workspaceId);
+        const path = route("workspace.index.member.unassigned", workspaceId);
         const queryParams = new URLSearchParams({
             search: query,
             limit: "10",
@@ -111,9 +111,8 @@ export default function AddWorkspaceMemberDialog({
 
     const handleAdd = () =>
         router.post(
-            route("workspace-member.assign"),
+            route("workspace.assign.member", workspaceId),
             {
-                workspace_id: workspaceId,
                 role: role,
                 user_emails: selectedEmails.map((item) => item.email),
             },

@@ -22,7 +22,7 @@ export default function LeaveWorkspaceDialog({
     const [processing, setProcessing] = useState(false);
 
     const handleLeave = () =>
-        router.delete(route("workspace-member.leave", workspaceId), {
+        router.delete(route("workspace.leave", workspaceId), {
             preserveScroll: true,
             onSuccess: () => onOpenChange(false),
             onStart: () => setProcessing(true),

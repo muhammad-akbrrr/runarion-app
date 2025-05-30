@@ -117,7 +117,12 @@ export default function AuthenticatedLayout({
         .toUpperCase();
 
     const dashboardItems: SidebarItem[] = [
-        { label: "Home", icon: Home, path: "dashboard" },
+        {
+            label: "Home",
+            icon: Home,
+            path: "workspace.dashboard",
+            param: workspaceId,
+        },
         { label: "Projects", icon: Library, path: "" },
         { label: "File Manager", icon: Folder, path: "" },
     ];
@@ -195,10 +200,14 @@ export default function AuthenticatedLayout({
                     {openSettings ? (
                         <div
                             className="w-full h-12 flex items-center gap-2 rounded hover:bg-gray-100 cursor-pointer"
-                            onClick={handleSettings}
+                            onClick={() =>
+                                router.get(
+                                    route("workspace.dashboard", workspaceId)
+                                )
+                            }
                         >
                             <ChevronLeft className="h-4 w-4 ml-1" />
-                            <div>Back</div>
+                            <div>Back to Dashboard</div>
                         </div>
                     ) : (
                         <DropdownMenu>
@@ -268,7 +277,12 @@ export default function AuthenticatedLayout({
                         <SidebarMenu>
                             <SidebarMenuItem>
                                 <SidebarMenuButton asChild>
-                                    <Link href="#" onClick={handleSettings}>
+                                    <Link
+                                        href={route(
+                                            "workspace.edit",
+                                            workspaceId
+                                        )}
+                                    >
                                         <Settings className="h-4 w-4" />
                                         <span>Settings</span>
                                     </Link>
