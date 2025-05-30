@@ -11,7 +11,6 @@ import {
     DropdownMenu,
     DropdownMenuContent,
     DropdownMenuItem,
-    DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/Components/ui/dropdown-menu";
 import {
@@ -136,11 +135,6 @@ export default function AuthenticatedLayout({
         path: "",
     }));
 
-    const mySettingsItems: SidebarItem[] = [
-        { label: "Profile", icon: UserIcon, path: "profile.edit" },
-        { label: "Workspaces", icon: LayoutGrid, path: "workspace.index" },
-    ];
-
     const workspaceSettingsItems: SidebarItem[] = [
         { label: "General", icon: Settings, path: "workspace.edit" },
         { label: "Members", icon: Users, path: "workspace.edit.member" },
@@ -159,6 +153,11 @@ export default function AuthenticatedLayout({
         ...item,
         param: selectedWorkspaceId,
     }));
+
+    const mySettingsItems: SidebarItem[] = [
+        { label: "Profile", icon: UserIcon, path: "profile.edit" },
+        { label: "Workspaces", icon: LayoutGrid, path: "workspace.index" },
+    ];
 
     const renderSidebarGroup = (name: string, items: SidebarItem[]) => (
         <SidebarGroup>
@@ -245,12 +244,6 @@ export default function AuthenticatedLayout({
                                         {workspace.name}
                                     </DropdownMenuItem>
                                 ))}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem
-                                    onClick={() => router.post(route("logout"))}
-                                >
-                                    Log Out
-                                </DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                     )}
@@ -264,12 +257,13 @@ export default function AuthenticatedLayout({
                         renderSidebarGroup("Favorites", dummyFavoriteItems)}
 
                     {openSettings &&
-                        renderSidebarGroup("My Settings", mySettingsItems)}
-                    {openSettings &&
                         renderSidebarGroup(
                             "Workspace Settings",
                             workspaceSettingsItems
                         )}
+
+                    {openSettings &&
+                        renderSidebarGroup("My Settings", mySettingsItems)}
                 </SidebarContent>
 
                 {!openSettings && (
@@ -300,10 +294,9 @@ export default function AuthenticatedLayout({
             </Sidebar>
             <SidebarRail />
             <SidebarInset className="flex flex-col w-full">
+                <div className="flex justify-between items-center px-2.5 py-2.5">
                 {breadcrumbs.length > 0 && (
-                    <div className="flex justify-between items-center px-4 py-4">
-                        {breadcrumbs.length > 0 && (
-                            <Breadcrumb>
+                        <Breadcrumb className="mx-2">
                                 <BreadcrumbList>
                                     {breadcrumbs.map((item, index) => (
                                         <React.Fragment key={index}>
@@ -336,6 +329,8 @@ export default function AuthenticatedLayout({
                                 </BreadcrumbList>
                             </Breadcrumb>
                         )}
+                    <DropdownMenu>
+                        <DropdownMenuTrigger className="p-1 rounded hover:bg-gray-100 cursor-pointer">
                         <div className="flex items-center gap-2">
                             <Avatar>
                                 <AvatarImage
@@ -343,16 +338,34 @@ export default function AuthenticatedLayout({
                                     alt={user.name}
                                     className="object-cover object-center"
                                 />
-                                <AvatarFallback>{userInitials}</AvatarFallback>
+                                    <AvatarFallback>
+                                        {userInitials}
+                                    </AvatarFallback>
                             </Avatar>
                             <div className="flex-1 overflow-hidden text-left">
                                 <p className="text-sm font-medium leading-none truncate">
                                     {user.name}
                                 </p>
                             </div>
+                                <ChevronDown className="h-4 w-4 mr-1" />
                         </div>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-56">
+                            <DropdownMenuItem
+                                onClick={() =>
+                                    router.get(route("profile.edit"))
+                                }
+                            >
+                                Profile
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                                onClick={() => router.post(route("logout"))}
+                            >
+                                Log Out
+                            </DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                     </div>
-                )}
 
                 <main className="flex-1 w-full p-5 bg-gray-100">
                     {children}
