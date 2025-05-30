@@ -73,7 +73,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update the workspace.
      */
-    public function edit(Request $request, string $workspace_id): Response
+    public function edit(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
         $isUserOwner = $userRole == 'owner';
@@ -98,7 +98,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update cloud storage of the workspace.
      */
-    public function editCloudStorage(Request $request, string $workspace_id): Response
+    public function editCloudStorage(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
         $isUserOwner = $userRole == 'owner';
@@ -128,7 +128,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update LLM of the workspace.
      */
-    public function editLLM(Request $request, string $workspace_id): Response
+    public function editLLM(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
         $isUserOwner = $userRole == 'owner';
@@ -159,7 +159,7 @@ class WorkspaceController extends Controller
     /**
      * Display form to update billing of the workspace.
      */
-    public function editBilling(Request $request, string $workspace_id): Response
+    public function editBilling(Request $request, string $workspace_id): RedirectResponse|Response
     {
         return Inertia::render('Workspace/Billing', []);
     }
