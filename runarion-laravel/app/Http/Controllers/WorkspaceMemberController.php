@@ -93,7 +93,7 @@ class WorkspaceMemberController extends Controller
     {
         $userRole = $this->getUserRole($workspace_id, $request->user()->id);
         if ($userRole === null) {
-            abort(403, 'You are not authorized to view this workspace.');
+            return Redirect::route('dashboard');
         }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';

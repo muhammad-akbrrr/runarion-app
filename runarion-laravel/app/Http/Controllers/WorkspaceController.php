@@ -22,15 +22,6 @@ class WorkspaceController extends Controller
             ->value('role');
     }
 
-    private function getUserRoleCanView(string $workspaceId, int $userId): string
-    {
-        $userRole = $this->getUserRole($workspaceId, $userId);
-        if ($userRole === null) {
-            abort(403, 'You are not authorized to view this workspace.');
-        }
-        return $userRole;
-    }
-
     private function canUpdate(string $workspaceId, int $userId): void
     {
         $userRole = $this->getUserRole($workspaceId, $userId);
@@ -75,7 +66,10 @@ class WorkspaceController extends Controller
      */
     public function edit(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
+        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        if (!$userRole) {
+            return Redirect::route('dashboard');
+        }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
 
@@ -100,7 +94,10 @@ class WorkspaceController extends Controller
      */
     public function editCloudStorage(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
+        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        if (!$userRole) {
+            return Redirect::route('dashboard');
+        }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
 
@@ -130,7 +127,10 @@ class WorkspaceController extends Controller
      */
     public function editLLM(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRoleCanView($workspace_id, $request->user()->id);
+        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        if (!$userRole) {
+            return Redirect::route('dashboard');
+        }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';
 
@@ -161,7 +161,18 @@ class WorkspaceController extends Controller
      */
     public function editBilling(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        return Inertia::render('Workspace/Billing', []);
+        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        if (!$userRole) {
+            return Redirect::route('dashboard');
+        }
+        $isUserOwner = $userRole == 'owner';
+        $isUserAdmin = $userRole == 'admin';
+
+        return Inertia::render('Workspace/Billing', [
+            'workspaceId' => $workspace_id,
+            'isUserAdmin' => $isUserAdmin,
+            'isUserOwner' => $isUserOwner,
+        ]);
     }
 
     /**
