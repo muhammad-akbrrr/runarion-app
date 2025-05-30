@@ -4,6 +4,7 @@ import os
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2 import pool
+from api.generation_routes import generate
 
 # Load environment variables
 load_dotenv()
@@ -35,7 +36,9 @@ required_env_vars = [
     'DB_PASSWORD',
     'GEMINI_API_KEY',
     'GOOGLE_API_KEY',
-    'OPENAI_API_KEY'
+    'OPENAI_API_KEY',
+    'OPENAI_MODEL_NAME',
+    'GEMINI_MODEL_NAME',
 ]
 
 missing_vars = [var for var in required_env_vars if not os.getenv(var)]
@@ -58,6 +61,7 @@ except Exception as e:
     app.logger.error(f"Error creating database connection pool: {e}")
     connection_pool = None
 
+app.register_blueprint(generate, url_prefix='/api')
 
 @app.route('/health', methods=['GET'])
 def health_check():
