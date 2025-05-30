@@ -25,6 +25,7 @@ class DashboardController extends Controller
             ->where('user_id', $request->user()->id)
             ->where('workspace_id', $workspace_id)
             ->exists();
+            
         if (!$isMember) {
             $workspaceId = $this->getDefaultWorkspaceId($request->user()->id);
             return Redirect::route('workspace.dashboard', ['workspace_id' => $workspaceId]);

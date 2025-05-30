@@ -93,7 +93,7 @@ class WorkspaceMemberController extends Controller
     {
         $userRole = $this->getUserRole($workspace_id, $request->user()->id);
         if ($userRole === null) {
-            return Redirect::route('dashboard');
+            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->primary_workspace_id]);
         }
         $isUserOwner = $userRole == 'owner';
         $isUserAdmin = $userRole == 'admin';

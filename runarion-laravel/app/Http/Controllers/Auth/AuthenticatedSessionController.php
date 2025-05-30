@@ -33,7 +33,9 @@ class AuthenticatedSessionController extends Controller
 
         $request->session()->regenerate();
 
-        return redirect()->intended(route('dashboard', absolute: false));
+        return redirect()->intended(route('workspace.dashboard', [
+            'workspace_id' => $request->user()->primary_workspace_id
+        ], absolute: false));
     }
 
     /**

@@ -44,18 +44,7 @@ class RegisteredUserController extends Controller
             'background' => 'random',
         ]);
 
-        $user = User::create([
-            'name' => $name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'avatar_url' => $avatarUrl,
-        ]);
-
-        event(new Registered($user));
-
-        Auth::login($user);
-
-        $workspaceName = explode(' ', $user->name)[0] . "'s Workspace";
+        $workspaceName = explode(' ', $name)[0] . "'s Workspace";
         $workspaceSlug = Str::slug($workspaceName);
         $imageUrl = 'https://ui-avatars.com/api/?' . http_build_query([
             'name' => $workspaceName,
@@ -67,12 +56,26 @@ class RegisteredUserController extends Controller
             'cover_image_url' => $imageUrl,
         ]);
 
+
+        $user = User::create([
+            'name' => $name,
+            'email' => $request->email,
+            'password' => Hash::make($request->password),
+            'avatar_url' => $avatarUrl,
+            'primary_workspace_id' => $workspace->id,
+        ]);
+        event(new Registered($user));
+
         WorkspaceMember::create([
             'workspace_id' => $workspace->id,
             'user_id' => $user->id,
             'role' => 'owner',
         ]);
 
-        return redirect(route('dashboard', absolute: false));
+        Auth::login($user);
+
+        return redirect()->intended(route('workspace.dashboard', [
+            'workspace_id' => $workspace->id
+        ], absolute: false));
     }
 }
