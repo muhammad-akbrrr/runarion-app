@@ -31,47 +31,37 @@ class WorkspaceSeeder extends Seeder
      */
     public function run(): void
     {
-        // Create a demo workspace for the super admin
-        $demoWorkspace = Workspace::factory()->create([
-            'name' => 'Demo Workspace',
-            'slug' => 'demo-workspace',
-        ]);
+        // Create a workspace for each user and set as owner
+        $user_workspace_pairs = [];
+        User::all()->each(function ($user) use (&$user_workspace_pairs) {
+            $workspace = $user->email === 'admin@runarion.com' ? Workspace::factory()->create([
+                'name' => 'Demo Workspace',
+                'slug' => 'demo-workspace',
+            ]) : Workspace::factory()->create();
+            
+            $user_workspace_pairs[] = [
+                'user_id' => $user->id,
+                'workspace_id' => $workspace->id,
+            ];
 
-        // Attach super admin as owner
-        WorkspaceMember::create([
-            'workspace_id' => $demoWorkspace->id,
-            'user_id' => User::where('email', 'admin@runarion.com')->first()->id,
-            'role' => 'owner',
-        ]);
+            WorkspaceMember::create([
+                'workspace_id' => $workspace->id,
+                'user_id' => $user->id,
+                'role' => 'owner',
+            ]);
+        });
 
-        // Create some random workspaces
-        $workspaces = Workspace::factory(5)->create();
-
-        // For each workspace, attach 2-5 random users as members
-        foreach ($workspaces as $workspace) {
-            $users = User::inRandomOrder()->limit(fake()->numberBetween(2, 5))->get();
+        // Assign 1-4 random users to each workspace as admin or member
+        foreach ($user_workspace_pairs as $pair) {
+            $users = User::where('id', '!=', $pair['user_id'])->inRandomOrder()->take(rand(1, 4))->get();
 
             foreach ($users as $index => $user) {
                 WorkspaceMember::create([
-                    'workspace_id' => $workspace->id,
+                    'workspace_id' => $pair['workspace_id'],
                     'user_id' => $user->id,
-                    'role' => $index === 0 ? 'owner' : ($index === 1 ? 'admin' : 'member'),
+                    'role' => $index === 0 ? 'admin' : 'member',
                 ]);
             }
         }
-
-        // Ensure each user is attached to at least one workspace
-        User::all()->each(function ($user) use ($workspaces) {
-            $numWorkspaces = WorkspaceMember::where('user_id', $user->id)->count();
-            if ($numWorkspaces === 0) {
-                // Attach user to a random workspace
-                $randomWorkspace = $workspaces->random();
-                WorkspaceMember::create([
-                    'workspace_id' => $randomWorkspace->id,
-                    'user_id' => $user->id,
-                    'role' => 'member',
-                ]);
-            }
-        });
     }
 }
