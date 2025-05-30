@@ -1,9 +1,7 @@
-# PostgreSQL 17.4 Dockerfile
 FROM debian:stable-slim
 
 # Set environment variables
 ENV PG_MAJOR ${PG_MAJOR:-17}
-ENV PG_VERSION ${PG_VERSION:-17.4-1.pgdg120+2}
 ENV PATH $PATH:/usr/lib/postgresql/$PG_MAJOR/bin
 ENV LANG ${LANG:-en_US.utf8}
 ENV PGDATA ${PGDATA:-/var/lib/postgresql/data}
@@ -74,11 +72,38 @@ RUN set -ex; \
   echo "deb [signed-by=/usr/share/keyrings/postgresql-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" > /etc/apt/sources.list.d/postgresql.list; \
   # Install PostgreSQL
   apt-get update; \
-  apt-get install -y --no-install-recommends \
-  postgresql-common \
-  postgresql-$PG_MAJOR \
-  postgresql-client-$PG_MAJOR \
-  ; \
+  ;; \
+  *) \
+  echo "deb-src $aptRepo" > /etc/apt/sources.list.d/pgdg.list; \
+  savedAptMark="$(apt-mark showmanual)"; \
+  tempDir="$(mktemp -d)"; \
+  cd "$tempDir"; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends dpkg-dev; \
+  echo "deb [ trusted=yes ] file://$tempDir ./" > /etc/apt/sources.list.d/temp.list; \
+  _update_repo() { \
+  dpkg-scanpackages . > Packages; \
+  apt-get -o Acquire::GzipIndexes=false update; \
+  }; \
+  _update_repo; \
+  nproc="$(nproc)"; \
+  export DEB_BUILD_OPTIONS="nocheck parallel=$nproc"; \
+  apt-get build-dep -y postgresql-common pgdg-keyring; \
+  apt-get source --compile postgresql-common pgdg-keyring; \
+  _update_repo; \
+  apt-get build-dep -y "postgresql-$PG_MAJOR"; \
+  apt-get source --compile "postgresql-$PG_MAJOR"; \
+  apt-mark showmanual | xargs apt-mark auto > /dev/null; \
+  apt-mark manual $savedAptMark; \
+  ls -lAFh; \
+  _update_repo; \
+  grep '^Package: ' Packages; \
+  cd /; \
+  ;; \
+  esac; \
+  apt-get install -y --no-install-recommends postgresql-common; \
+  sed -ri 's/#(create_main_cluster) .*$/\1 = false/' /etc/postgresql-common/createcluster.conf; \
+  apt-get install -y --no-install-recommends "postgresql-$PG_MAJOR"; \
   rm -rf /var/lib/apt/lists/*; \
   # Configure PostgreSQL
   sed -ri 's/#(create_main_cluster) .*$/\1 = false/' /etc/postgresql-common/createcluster.conf; \
