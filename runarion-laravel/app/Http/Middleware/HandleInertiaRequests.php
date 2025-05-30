@@ -37,6 +37,8 @@ class HandleInertiaRequests extends Middleware
             ->where('user_id', $user->id)
             ->join('workspaces', 'workspace_members.workspace_id', '=', 'workspaces.id')
             ->select('workspaces.id', 'workspaces.name', 'workspaces.slug')
+            ->orderByRaw("CASE WHEN workspace_members.role = 'owner' THEN 1 ELSE 2 END")
+            ->orderBy('workspaces.name')
             ->get() : [];
 
         $shared = array_merge(parent::share($request), [
