@@ -11,14 +11,6 @@ use Inertia\Response;
 
 class DashboardController extends Controller
 {
-    private function getDefaultWorkspaceId(int $userId): ?string
-    {
-        return DB::table('workspace_members')
-            ->where('user_id', $userId)
-            ->where('role', 'owner')
-            ->value('workspace_id');
-    }
-
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $isMember = DB::table('workspace_members')
@@ -27,19 +19,11 @@ class DashboardController extends Controller
             ->exists();
             
         if (!$isMember) {
-            $workspaceId = $this->getDefaultWorkspaceId($request->user()->id);
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $workspaceId]);
+            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
         }
 
         return Inertia::render('Dashboard', [
             'workspaceId' => $workspace_id,
         ]);
-    }
-
-    public function redirect(Request $request): RedirectResponse
-    {
-        $workspaceId = $this->getDefaultWorkspaceId($request->user()->id);
-
-        return Redirect::route('workspace.dashboard', ['workspace_id' => $workspaceId]);
     }
 }
