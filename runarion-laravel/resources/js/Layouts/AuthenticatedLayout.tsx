@@ -77,15 +77,15 @@ export default function AuthenticatedLayout({
     const { workspace_id } = route().params;
     const workspaceId =
         workspace_id ||
-        localStorage.getItem("workspace_id") ||
+        sessionStorage.getItem("workspace_id") ||
         workspaces[0]?.id ||
         "";
 
     useEffect(() => {
         if (workspace_id) {
-            localStorage.setItem("workspace_id", workspace_id);
+            sessionStorage.setItem("workspace_id", workspace_id);
         } else if (workspaces.length > 0) {
-            localStorage.setItem("workspace_id", workspaces[0].id);
+            sessionStorage.setItem("workspace_id", workspaces[0].id);
         }
     }, [workspace_id, workspaces]);
 
