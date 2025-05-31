@@ -46,7 +46,7 @@ import {
     User as UserIcon,
     Users,
 } from "lucide-react";
-import React, { PropsWithChildren, useEffect } from "react";
+import React, { PropsWithChildren } from "react";
 import { ParameterValue } from "../../../vendor/tightenco/ziggy/src/js";
 
 export interface BreadcrumbItem {
@@ -72,22 +72,8 @@ export default function AuthenticatedLayout({
 }>) {
     const { auth } = usePage().props;
     const user = auth.user;
+    const workspaceId = user.last_workspace_id;
     const workspaces = auth.workspaces;
-
-    const { workspace_id } = route().params;
-    const workspaceId =
-        workspace_id ||
-        sessionStorage.getItem("workspace_id") ||
-        workspaces[0]?.id ||
-        "";
-
-    useEffect(() => {
-        if (workspace_id) {
-            sessionStorage.setItem("workspace_id", workspace_id);
-        } else if (workspaces.length > 0) {
-            sessionStorage.setItem("workspace_id", workspaces[0].id);
-        }
-    }, [workspace_id, workspaces]);
 
     const workspaceName = workspaces.find(
         (workspace) => workspace.id === workspaceId
