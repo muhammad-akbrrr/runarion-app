@@ -1,15 +1,18 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
-import os
 from dotenv import load_dotenv
+import os
 import psycopg2
 from psycopg2 import pool
-from api.generation_routes import generate
+from api.generation import generate
 
-# Load environment variables
+# Load environment variables from .env
 load_dotenv()
 
+# --- App Initialization ---
 app = Flask(__name__)
+
+# --- CORS Configuration ---
 CORS(app, resources={
     r"/*": {
         "origins": ["http://localhost:8000", "http://localhost:5173"],
@@ -18,65 +21,50 @@ CORS(app, resources={
     }
 })
 
-# Database configuration
-db_config = {
-    'host': os.getenv('DB_HOST'),
-    'port': os.getenv('DB_PORT'),
-    'database': os.getenv('DB_DATABASE'),
-    'user': os.getenv('DB_USER'),
-    'password': os.getenv('DB_PASSWORD')
-}
-
-# Validate required environment variables
-required_env_vars = [
-    'DB_HOST',
-    'DB_PORT',
-    'DB_DATABASE',
-    'DB_USER',
-    'DB_PASSWORD',
-    'GEMINI_API_KEY',
-    'GOOGLE_API_KEY',
-    'OPENAI_API_KEY',
-    'OPENAI_MODEL_NAME',
-    'GEMINI_MODEL_NAME',
+# --- Environment Validation ---
+REQUIRED_ENV_VARS = [
+    'DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USER', 'DB_PASSWORD',
+    'OPENAI_API_KEY', 'OPENAI_MODEL_NAME',
+    'GEMINI_API_KEY', 'GEMINI_MODEL_NAME',
+    'DEEPSEEK_API_KEY', 'DEEPSEEK_MODEL_NAME'
 ]
 
-missing_vars = [var for var in required_env_vars if not os.getenv(var)]
+missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
 if missing_vars:
-    raise ValueError(
-        f"Missing required environment variables: {', '.join(missing_vars)}")
+    raise EnvironmentError(f"Missing environment variables: {', '.join(missing_vars)}")
 
-# Create connection pool
+# --- Database Connection Pool ---
 try:
     connection_pool = psycopg2.pool.SimpleConnectionPool(
-        1, 10,
-        host=db_config['host'],
-        port=db_config['port'],
-        database=db_config['database'],
-        user=db_config['user'],
-        password=db_config['password']
+        minconn=1,
+        maxconn=10,
+        host=os.getenv('DB_HOST'),
+        port=os.getenv('DB_PORT'),
+        database=os.getenv('DB_DATABASE'),
+        user=os.getenv('DB_USER'),
+        password=os.getenv('DB_PASSWORD')
     )
-    app.logger.info("Database connection pool created successfully")
+    app.logger.info("Database connection pool initialized.")
 except Exception as e:
-    app.logger.error(f"Error creating database connection pool: {e}")
+    app.logger.error(f"Database connection pool initialization failed: {e}")
     connection_pool = None
 
+# --- Blueprint Registration ---
 app.register_blueprint(generate, url_prefix='/api')
 
+# --- Health Check ---
 @app.route('/health', methods=['GET'])
 def health_check():
     db_status = "connected"
 
-    # Check database connection
     if connection_pool:
         try:
             conn = connection_pool.getconn()
-            cursor = conn.cursor()
-            cursor.execute('SELECT 1')
-            cursor.close()
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
             connection_pool.putconn(conn)
         except Exception as e:
-            app.logger.error(f"Database connection error: {e}")
+            app.logger.error(f"Database health check failed: {e}")
             db_status = f"error: {str(e)}"
     else:
         db_status = "not configured"
@@ -87,14 +75,14 @@ def health_check():
         "database": db_status
     })
 
-
+# --- Root Endpoint ---
 @app.route('/', methods=['GET'])
-def home():
+def root():
     return jsonify({
         "service": "Runarion Python API",
         "status": "running"
     })
 
-
+# --- Run Server ---
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
