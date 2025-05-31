@@ -70,16 +70,16 @@ export default function AuthenticatedLayout({
 }: PropsWithChildren<{
     breadcrumbs: BreadcrumbItem[];
 }>) {
-    const { auth } = usePage().props;
+    const { auth, workspaces } = usePage().props;
     const user = auth.user;
     const workspaceId = user.last_workspace_id;
-    const workspaces = auth.workspaces;
 
     const workspaceName = workspaces.find(
         (workspace) => workspace.id === workspaceId
     )?.name;
 
     const handleWorkspaceSelect = (id: string) => {
+        if (id === workspaceId) return;
         const path = window.location.pathname;
         const newPath = path.replace(workspaceId, id);
         router.get(newPath);
