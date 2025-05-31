@@ -14,25 +14,17 @@ use Inertia\Response;
 
 class WorkspaceController extends Controller
 {
-    private function getUserRole(string $workspaceId, int $userId): ?string
+    private function canUpdate(Request $request): void
     {
-        return DB::table('workspace_members')
-            ->where('workspace_id', $workspaceId)
-            ->where('user_id', $userId)
-            ->value('role');
-    }
-
-    private function canUpdate(string $workspaceId, int $userId): void
-    {
-        $userRole = $this->getUserRole($workspaceId, $userId);
-        if ($userRole === 'member') {
+        $userRole = $request->attributes->get('user_role');
+        if ($userRole !== 'owner' && $userRole !== 'admin') {
             abort(403, 'You are not authorized to update this workspace.');
         }
     }
 
-    private function canDestroy(string $workspaceId, int $userId): void
+    private function canDestroy(Request $request): void
     {
-        $userRole = $this->getUserRole($workspaceId, $userId);
+        $userRole = $request->attributes->get('user_role');
         if ($userRole !== 'owner') {
             abort(403, 'You are not authorized to delete this workspace.');
         }
@@ -66,12 +58,9 @@ class WorkspaceController extends Controller
      */
     public function edit(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
-        if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
-        }
-        $isUserOwner = $userRole == 'owner';
-        $isUserAdmin = $userRole == 'admin';
+        $userRole = $request->attributes->get('user_role');
+        $isUserOwner = $userRole === 'owner';
+        $isUserAdmin = $userRole === 'admin';
 
         $workspace = DB::table('workspaces')
             ->where('id', $workspace_id)
@@ -94,12 +83,9 @@ class WorkspaceController extends Controller
      */
     public function editCloudStorage(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
-        if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
-        }
-        $isUserOwner = $userRole == 'owner';
-        $isUserAdmin = $userRole == 'admin';
+        $userRole = $request->attributes->get('user_role');
+        $isUserOwner = $userRole === 'owner';
+        $isUserAdmin = $userRole === 'admin';
 
         $cloudStorage = DB::table('workspaces')
             ->where('id', $workspace_id)
@@ -127,12 +113,9 @@ class WorkspaceController extends Controller
      */
     public function editLLM(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
-        if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
-        }
-        $isUserOwner = $userRole == 'owner';
-        $isUserAdmin = $userRole == 'admin';
+        $userRole = $request->attributes->get('user_role');
+        $isUserOwner = $userRole === 'owner';
+        $isUserAdmin = $userRole === 'admin';
 
         $llm = DB::table('workspaces')
             ->where('id', $workspace_id)
@@ -161,12 +144,9 @@ class WorkspaceController extends Controller
      */
     public function editBilling(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
-        if (!$userRole) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
-        }
-        $isUserOwner = $userRole == 'owner';
-        $isUserAdmin = $userRole == 'admin';
+        $userRole = $request->attributes->get('user_role');
+        $isUserOwner = $userRole === 'owner';
+        $isUserAdmin = $userRole === 'admin';
 
         return Inertia::render('Workspace/Billing', [
             'workspaceId' => $workspace_id,
@@ -221,7 +201,7 @@ class WorkspaceController extends Controller
      */
     public function update(Request $request, string $workspace_id): RedirectResponse
     {
-        $this->canUpdate($workspace_id, $request->user()->id);
+        $this->canUpdate($request);
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
@@ -257,7 +237,7 @@ class WorkspaceController extends Controller
      */
     public function updateCloudStorage(Request $request, string $workspace_id): RedirectResponse
     {
-        $this->canUpdate($workspace_id, $request->user()->id);
+        $this->canUpdate($request);
 
         $validated = $request->validate([
             'cloud_storage' => 'array',
@@ -276,7 +256,7 @@ class WorkspaceController extends Controller
      */
     public function updateLLM(Request $request, string $workspace_id): RedirectResponse
     {
-        $this->canUpdate($workspace_id, $request->user()->id);
+        $this->canUpdate($request);
 
         $validated = $request->validate([
             'llm_key' => 'required|string',
@@ -334,7 +314,7 @@ class WorkspaceController extends Controller
      */
     public function destroy(Request $request, string $workspace_id): RedirectResponse
     {
-        $this->canDestroy($workspace_id, $request->user()->id);
+        $this->canUpdate($request);
 
         DB::table('workspaces')
             ->where('id', $workspace_id)

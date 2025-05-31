@@ -15,14 +15,6 @@ use Inertia\Response;
 
 class WorkspaceMemberController extends Controller
 {
-    private function getUserRole(string $workspaceId, int $userId): ?string
-    {
-        return DB::table('workspace_members')
-            ->where('workspace_id', $workspaceId)
-            ->where('user_id', $userId)
-            ->value('role');
-    }
-
     /**
      * Get the existence and membership status of users based on their emails within a workspace.
      *
@@ -91,12 +83,9 @@ class WorkspaceMemberController extends Controller
      */
     public function edit(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
-        if ($userRole === null) {
-            return Redirect::route('workspace.dashboard', ['workspace_id' => $request->user()->getActiveWorkspaceId()]);
-        }
-        $isUserOwner = $userRole == 'owner';
-        $isUserAdmin = $userRole == 'admin';
+        $userRole = $request->attributes->get('user_role');
+        $isUserOwner = $userRole === 'owner';
+        $isUserAdmin = $userRole === 'admin';
 
         $limit = $request->query('limit', 10);
         $offset = $request->query('offset', 0);
@@ -199,7 +188,7 @@ class WorkspaceMemberController extends Controller
             abort(401, 'Workspace not found.');
         }
 
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        $userRole = $request->attributes->get('user_role');
 
         $isAuthorized = $targetUserRole === 'admin' ? 
             $userRole === 'owner' : 
@@ -240,9 +229,9 @@ class WorkspaceMemberController extends Controller
         $targetUserId = $validated['user_id'] ?? null;
         $targetUserEmail = $validated['user_email'] ?? null;
 
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        $userRole = $request->attributes->get('user_role');
 
-        if ($userRole === null || $userRole !== 'owner') {
+        if ($userRole !== 'owner') {
             abort(403, 'You are not authorized to update member roles in this workspace.');
         }
 
@@ -275,9 +264,9 @@ class WorkspaceMemberController extends Controller
         $targetUserId = $validated['user_id'] ?? null;
         $targetUserEmail = $validated['user_email'] ?? null;
 
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
+        $userRole = $request->attributes->get('user_role');
         
-        if ($userRole === null || $userRole == 'member') {
+        if ($userRole !== 'owner' && $userRole !== 'admin') {
             abort(403, 'You are not authorized to remove members from this workspace.');
         }
 
@@ -301,7 +290,7 @@ class WorkspaceMemberController extends Controller
         if ($targetUserRole == 'owner') {
             abort(400, 'You cannot remove the owner of a workspace.');
         }
-        if ($targetUserRole == 'admin' && $userRole != 'owner') {
+        if ($targetUserRole == 'admin' && $userRole !== 'owner') {
             abort(403, 'You are not authorized to remove an admin.');
         }
 
@@ -317,12 +306,9 @@ class WorkspaceMemberController extends Controller
     {
         $userId = $request->user()->id;
 
-        $userRole = $this->getUserRole($workspace_id, $userId);
-        if (!$userRole) {
-            abort(404, 'You are not a member of this workspace.');
-        }
+        $userRole = $request->attributes->get('user_role');
 
-        if ($userRole == 'owner') {
+        if ($userRole === 'owner') {
             abort(400, 'You cannot leave a workspace you own.');
         }
 
