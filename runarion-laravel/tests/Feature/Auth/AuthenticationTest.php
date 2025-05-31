@@ -17,7 +17,9 @@ test('users can authenticate using the login screen', function () {
     ]);
 
     $this->assertAuthenticated();
-    $response->assertRedirect(route('dashboard', absolute: false));
+    $response->assertRedirect(route('workspace.dashboard', [
+        'workspace_id' => $user->getActiveWorkspaceId()
+    ], absolute: false));
 });
 
 test('users can not authenticate with invalid password', function () {

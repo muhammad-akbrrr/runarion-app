@@ -18,15 +18,14 @@ export default function RemoveWorkspaceMemberDialog({
 }: {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    workspaceId: number;
+    workspaceId: string;
     selected: string | number;
 }) {
     const [processing, setProcessing] = useState(false);
 
     const handleRemove = () =>
-        router.delete(route("workspace-member.remove"), {
+        router.delete(route("workspace.remove.member", workspaceId), {
             data: {
-                workspace_id: workspaceId,
                 user_id: typeof selected === "number" ? selected : null,
                 user_email: typeof selected === "string" ? selected : null,
             },

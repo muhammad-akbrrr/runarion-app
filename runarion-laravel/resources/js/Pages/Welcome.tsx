@@ -1,6 +1,6 @@
-import { Head, Link } from '@inertiajs/react';
 import { Button } from "@/Components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/Components/ui/card";
+import { Head, Link } from '@inertiajs/react';
 
 export default function Welcome({ auth, laravelVersion, phpVersion }: { auth: any, laravelVersion: string, phpVersion: string }) {
     return (
@@ -39,7 +39,7 @@ export default function Welcome({ auth, laravelVersion, phpVersion }: { auth: an
                                 </CardHeader>
                                 <CardContent>
                                     {auth.user ? (
-                                        <Link href={route('dashboard')}>
+                                        <Link href={route('workspace.dashboard', auth.user.last_workspace_id)}>
                                             <Button className="w-full">
                                                 Go to Dashboard
                                             </Button>

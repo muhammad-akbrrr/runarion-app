@@ -8,6 +8,6 @@ export type PageProps<
 > = T & {
     auth: {
         user: User;
-        workspaces: SimpleWorkspace[];
     };
+    workspaces: SimpleWorkspace[];
 };

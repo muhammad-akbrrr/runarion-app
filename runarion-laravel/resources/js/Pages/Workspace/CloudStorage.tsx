@@ -23,7 +23,7 @@ export default function CloudStorage({
     isUserAdmin,
     isUserOwner,
 }: PageProps<{
-    workspaceId: number;
+    workspaceId: string;
     data: Record<string, CloudStorageDataItem>;
     isUserAdmin: boolean;
     isUserOwner: boolean;
