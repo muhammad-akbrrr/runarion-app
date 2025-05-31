@@ -17,8 +17,10 @@ Route::get('/', function () {
     ]);
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
+
+    Route::get('/dashboard', fn () => '')->name('raw.workspace.dashboard');
 });
 
 Route::middleware('auth')->group(function () {
@@ -30,6 +32,9 @@ Route::middleware('auth')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::get('/workspaces', [WorkspaceController::class, 'index'])->name('workspace.index');
     Route::post('/workspaces', [WorkspaceController::class, 'store'])->name('workspace.store');
+});
+
+Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/settings', [WorkspaceController::class, 'edit'])->name('workspace.edit');
     Route::post('/{workspace_id}/settings', [WorkspaceController::class, 'update'])->name('workspace.update');
     Route::get('/{workspace_id}/settings/cloud-storage', [WorkspaceController::class, 'editCloudStorage'])->name('workspace.edit.cloud-storage');
@@ -38,15 +43,22 @@ Route::middleware('auth')->group(function () {
     Route::patch('/{workspace_id}/settings/llm', [WorkspaceController::class, 'updateLLM'])->name('workspace.update.llm');
     Route::get('/{workspace_id}/settings/billing', [WorkspaceController::class, 'editBilling'])->name('workspace.edit.billing');
     Route::delete('/{workspace_id}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');
+
+    Route::get('/settings', fn () => '')->name('raw.workspace.edit');
+    Route::get('/settings/cloud-storage', fn () => '')->name('raw.workspace.edit.cloud-storage');
+    Route::get('/settings/llm', fn () => '')->name('raw.workspace.edit.llm');
+    Route::get('/settings/billing', fn () => '')->name('raw.workspace.edit.billing');
 });
 
-Route::middleware('auth')->group(function () {
+Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/settings/members', [WorkspaceMemberController::class, 'edit'])->name('workspace.edit.member');
     Route::get('/{workspace_id}/settings/members/unassigned', [WorkspaceMemberController::class, 'unassigned'])->name('workspace.index.member.unassigned');
     Route::post('/{workspace_id}/settings/members', [WorkspaceMemberController::class, 'assign'])->name('workspace.assign.member');
     Route::patch('/{workspace_id}/settings/members', [WorkspaceMemberController::class, 'update'])->name('workspace.update.member');
     Route::delete('/{workspace_id}/settings/members', [WorkspaceMemberController::class, 'remove'])->name('workspace.remove.member');
     Route::delete('/{workspace_id}/leave', [WorkspaceMemberController::class, 'leave'])->name('workspace.leave');
+
+    Route::get('/settings/members', fn () => '')->name('raw.workspace.edit.member');
 });
 
 // Workspace invitation accept route (no auth required)

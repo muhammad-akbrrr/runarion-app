@@ -74,7 +74,7 @@ class User extends Authenticatable
             ->value('workspace_id');
         
         $this->last_workspace_id = $ownedWorkspaceId;
-        $this->save();
+        $this->saveQuietly();
         
         return $ownedWorkspaceId;
     }
