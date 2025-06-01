@@ -15,26 +15,18 @@ use Inertia\Response;
 
 class WorkspaceMemberController extends Controller
 {
-    private function getUserRole(int $workspaceId, int $userId): ?string
-    {
-        return DB::table('workspace_members')
-            ->where('workspace_id', $workspaceId)
-            ->where('user_id', $userId)
-            ->value('role');
-    }
-
     /**
      * Get the existence and membership status of users based on their emails within a workspace.
      *
      * @param array $emails An array of email addresses to check.
-     * @param int $workspaceId The id of the workspace to check membership against.
+     * @param string $workspaceId The id of the workspace to check membership against.
      *
      * @return array{is_exists: bool, is_member: bool}[] 
      * An array with the same length as the $emails array. Each element has keys:
      *               - 'is_exists' (bool):  true if a user with the corresponding email exists
      *               - 'is_member' (bool):  true if the user is a member of the workspace
      */
-    private function getExistAndMembershipStatus(array $emails, int $workspaceId): array
+    private function getExistAndMembershipStatus(array $emails, string $workspaceId): array
     {
         $users = DB::table('users')
             ->whereIn('email', $emails)
@@ -64,7 +56,7 @@ class WorkspaceMemberController extends Controller
     /**
      * Sends an email invitation to a user to join a workspace
      */
-    private function sendInvitation(int $workspaceId, string $workspaceName, string $userEmail, bool $userExists, string $role): void
+    private function sendInvitation(string $workspaceId, string $workspaceName, string $userEmail, bool $userExists, string $role): void
     {
         $token = Str::random(64);
         $expiredAt = Carbon::now()->addHours(1);
@@ -74,6 +66,7 @@ class WorkspaceMemberController extends Controller
                 'user_email' => $userEmail,
             ],
             [
+                'id' => Str::ulid()->toString(),
                 'role' => $role,
                 'token' => $token,
                 'expired_at' => $expiredAt,
@@ -88,14 +81,11 @@ class WorkspaceMemberController extends Controller
     /**
      * Display form to update the workspace members
      */
-    public function edit(Request $request, int $workspace_id): Response
+    public function edit(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $userRole = $this->getUserRole($workspace_id, $request->user()->id);
-        if ($userRole === null) {
-            abort(403, 'You are not authorized to view this workspace.');
-        }
-        $isUserOwner = $userRole == 'owner';
-        $isUserAdmin = $userRole == 'admin';
+        $userRole = $request->attributes->get('user_role');
+        $isUserOwner = $userRole === 'owner';
+        $isUserAdmin = $userRole === 'admin';
 
         $limit = $request->query('limit', 10);
         $offset = $request->query('offset', 0);
@@ -160,13 +150,13 @@ class WorkspaceMemberController extends Controller
     /**
      * Get list of unassigned users
      */
-    public function unassigned(Request $request, int $workspaceId)
+    public function unassigned(Request $request, string $workspace_id)
     {
         $search = trim($request->query('search', ''));
         $limit = $request->query('limit', 10);
 
         $userIds = DB::table('workspace_members')
-            ->where('workspace_id', $workspaceId)
+            ->where('workspace_id', $workspace_id)
             ->pluck('user_id')
             ->all();
 
@@ -183,24 +173,22 @@ class WorkspaceMemberController extends Controller
     /**
      * Assign users to a workspace via email invitation
      */
-    public function assign(Request $request): RedirectResponse
+    public function assign(Request $request, string $workspace_id): RedirectResponse
     {
         $validated = $request->validate([
-            'workspace_id' => 'required|numeric',
             'role' => 'required|in:admin,member',
             'user_emails' => 'required|array',
             'user_emails.*' => 'email',
         ]);
-        $workspaceId = $validated['workspace_id'];
         $targetUserRole = $validated['role'];
         $targetUserEmails = $validated['user_emails'];
         
-        $workspace = DB::table('workspaces')->where('id', $workspaceId)->first();
+        $workspace = DB::table('workspaces')->where('id', $workspace_id)->first();
         if (!$workspace) {
             abort(401, 'Workspace not found.');
         }
 
-        $userRole = $this->getUserRole($workspaceId, $request->user()->id);
+        $userRole = $request->attributes->get('user_role');
 
         $isAuthorized = $targetUserRole === 'admin' ? 
             $userRole === 'owner' : 
@@ -209,14 +197,14 @@ class WorkspaceMemberController extends Controller
             abort(403, "You are not authorized to assign {$targetUserRole} to this workspace.");
         }
 
-        $userStatus = $this->getExistAndMembershipStatus($targetUserEmails, $workspaceId);
+        $userStatus = $this->getExistAndMembershipStatus($targetUserEmails, $workspace_id);
 
         foreach ($userStatus as $index => $status) {
             if ($status['is_member']) {
                 continue;
             }
             $this->sendInvitation(
-                $workspaceId,
+                $workspace_id,
                 $workspace->name,
                 $targetUserEmails[$index], 
                 $status['is_exists'], 
@@ -224,38 +212,36 @@ class WorkspaceMemberController extends Controller
             );
         }
         
-        return Redirect::route('workspace.edit.member', ['workspace_id' => $workspaceId]);
+        return Redirect::route('workspace.edit.member', ['workspace_id' => $workspace_id]);
     }
 
     /**
      * Update user roles in a workspace
      */
-    public function update(Request $request): RedirectResponse
+    public function update(Request $request, string $workspace_id): RedirectResponse
     {
         $validated = $request->validate([
-            'workspace_id' => 'required|numeric',
             'role' => 'required|in:admin,member',
             'user_id' => 'nullable|numeric',
             'user_email' => 'nullable|string|email',
         ]);
-        $workspaceId = $validated['workspace_id'];
         $targetUserRole = $validated['role'];
         $targetUserId = $validated['user_id'] ?? null;
         $targetUserEmail = $validated['user_email'] ?? null;
 
-        $userRole = $this->getUserRole($workspaceId, $request->user()->id);
+        $userRole = $request->attributes->get('user_role');
 
-        if ($userRole === null || $userRole !== 'owner') {
+        if ($userRole !== 'owner') {
             abort(403, 'You are not authorized to update member roles in this workspace.');
         }
 
         if ($targetUserId !== null) {
             $query = DB::table('workspace_members')
-                ->where('workspace_id', $workspaceId)
+                ->where('workspace_id', $workspace_id)
                 ->where('user_id', $targetUserId);
         } else if ($targetUserEmail !== null) {
             $query = DB::table('workspace_invitations')
-                ->where('workspace_id', $workspaceId)
+                ->where('workspace_id', $workspace_id)
                 ->where('user_email', $targetUserEmail);
         } else {
             abort(400, 'Either user_id or user_email must be provided.');
@@ -263,36 +249,34 @@ class WorkspaceMemberController extends Controller
 
         $query->update(['role' => $targetUserRole]);
         
-        return Redirect::route('workspace.edit.member', ['workspace_id' => $workspaceId]);
+        return Redirect::route('workspace.edit.member', ['workspace_id' => $workspace_id]);
     }
 
     /**
      * Remove users from a workspace
      */
-    public function remove(Request $request): RedirectResponse
+    public function remove(Request $request, string $workspace_id): RedirectResponse
     {
         $validated = $request->validate([
-            'workspace_id' => 'required|numeric',
             'user_id' => 'nullable|numeric',
             'user_email' => 'nullable|string|email',
         ]);
-        $workspaceId = $validated['workspace_id'];
         $targetUserId = $validated['user_id'] ?? null;
         $targetUserEmail = $validated['user_email'] ?? null;
 
-        $userRole = $this->getUserRole($workspaceId, $request->user()->id);
+        $userRole = $request->attributes->get('user_role');
         
-        if ($userRole === null || $userRole == 'member') {
+        if ($userRole !== 'owner' && $userRole !== 'admin') {
             abort(403, 'You are not authorized to remove members from this workspace.');
         }
 
         if ($targetUserId !== null) {
             $query = DB::table('workspace_members')
-                ->where('workspace_id', $workspaceId)
+                ->where('workspace_id', $workspace_id)
                 ->where('user_id', $targetUserId);
         } else if ($targetUserEmail !== null) {
             $query = DB::table('workspace_invitations')
-                ->where('workspace_id', $workspaceId)
+                ->where('workspace_id', $workspace_id)
                 ->where('user_email', $targetUserEmail);
         } else {
             abort(400, 'Either user_id or user_email must be provided.');
@@ -306,33 +290,30 @@ class WorkspaceMemberController extends Controller
         if ($targetUserRole == 'owner') {
             abort(400, 'You cannot remove the owner of a workspace.');
         }
-        if ($targetUserRole == 'admin' && $userRole != 'owner') {
+        if ($targetUserRole == 'admin' && $userRole !== 'owner') {
             abort(403, 'You are not authorized to remove an admin.');
         }
 
         $query->delete();
 
-        return Redirect::route('workspace.edit.member', ['workspace_id' => $workspaceId]);
+        return Redirect::route('workspace.edit.member', ['workspace_id' => $workspace_id]);
     }
 
     /**
      * Leave a workspace as a user
      */
-    public function leave(Request $request, $workspaceId): RedirectResponse
+    public function leave(Request $request, string $workspace_id): RedirectResponse
     {
         $userId = $request->user()->id;
 
-        $userRole = $this->getUserRole($workspaceId, $userId);
-        if (!$userRole) {
-            abort(404, 'You are not a member of this workspace.');
-        }
+        $userRole = $request->attributes->get('user_role');
 
-        if ($userRole == 'owner') {
+        if ($userRole === 'owner') {
             abort(400, 'You cannot leave a workspace you own.');
         }
 
         DB::table('workspace_members')
-            ->where('workspace_id', $workspaceId)
+            ->where('workspace_id', $workspace_id)
             ->where('user_id', $userId)
             ->delete();
 
@@ -367,6 +348,7 @@ class WorkspaceMemberController extends Controller
         
         // Add user to workspace
         DB::table('workspace_members')->insert([
+            'id' => Str::ulid()->toString(),
             'workspace_id' => $invitation->workspace_id,
             'user_id' => $userId,
             'role' => $invitation->role,

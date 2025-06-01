@@ -4,16 +4,25 @@ import { Separator } from "@/Components/ui/separator";
 import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
+import { PageProps } from "@/types";
 import { Head } from "@inertiajs/react";
 import { CircleCheck, Info } from "lucide-react";
 
-export default function Billing() {
+export default function Billing({
+    workspaceId,
+    isUserAdmin,
+    isUserOwner,
+}: PageProps<{
+    workspaceId: string;
+    isUserAdmin: boolean;
+    isUserOwner: boolean;
+}>) {
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Workspace Settings", path: "workspace.edit" },
         { label: "Plans & Billing", path: "workspace.edit.billing" },
     ].map((item) => ({
         ...item,
-        param: parseInt(localStorage.getItem("selectedWorkspace") || "0"),
+        param: workspaceId,
     }));
 
     const planDetails = {

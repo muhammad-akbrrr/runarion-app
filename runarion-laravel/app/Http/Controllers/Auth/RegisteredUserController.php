@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Auth;
 
 use App\Http\Controllers\Controller;
 use App\Models\User;
+use App\Models\Workspace;
+use App\Models\WorkspaceMember;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rules;
 use Inertia\Inertia;
 use Inertia\Response;
@@ -41,17 +44,38 @@ class RegisteredUserController extends Controller
             'background' => 'random',
         ]);
 
+        $workspaceName = explode(' ', $name)[0] . "'s Workspace";
+        $workspaceSlug = Str::slug($workspaceName);
+        $imageUrl = 'https://ui-avatars.com/api/?' . http_build_query([
+            'name' => $workspaceName,
+            'background' => 'random',
+        ]);
+        $workspace = Workspace::create([
+            'name' => $workspaceName,
+            'slug' => $workspaceSlug,
+            'cover_image_url' => $imageUrl,
+        ]);
+
+
         $user = User::create([
             'name' => $name,
             'email' => $request->email,
             'password' => Hash::make($request->password),
             'avatar_url' => $avatarUrl,
+            'last_workspace_id' => $workspace->id,
         ]);
-
         event(new Registered($user));
+
+        WorkspaceMember::create([
+            'workspace_id' => $workspace->id,
+            'user_id' => $user->id,
+            'role' => 'owner',
+        ]);
 
         Auth::login($user);
 
-        return redirect(route('dashboard', absolute: false));
+        return redirect()->intended(route('workspace.dashboard', [
+            'workspace_id' => $workspace->id
+        ], absolute: false));
     }
 }
