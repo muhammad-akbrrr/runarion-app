@@ -59,8 +59,13 @@ check_env_vars() {
         
         # API Keys
         "GEMINI_API_KEY"
-        "GOOGLE_API_KEY"
         "OPENAI_API_KEY"
+        "DEEPSEEK_API_KEY"
+
+        # Default Model
+        "GEMINI_MODEL_NAME"
+        "DEEPSEEK_MODEL_NAME"
+        "OPENAI_MODEL_NAME"
         
         # Application URLs
         "APP_URL"
@@ -137,7 +142,6 @@ check_env_vars() {
         "POSTGRES_INITDB_WALDIR"
         "POSTGRES_INITDB_ARGS"
         "PG_MAJOR"
-        "PG_VERSION"
         "PGDATA"
         "POSTGRES_GID"
         "POSTGRES_UID"
@@ -160,7 +164,6 @@ check_env_vars() {
                 "POSTGRES_INITDB_WALDIR") export POSTGRES_INITDB_WALDIR="" ;;
                 "POSTGRES_INITDB_ARGS") export POSTGRES_INITDB_ARGS="" ;;
                 "PG_MAJOR") export PG_MAJOR="17" ;;
-                "PG_VERSION") export PG_VERSION="17.4-1.pgdg120+2" ;;
                 "PGDATA") export PGDATA="/var/lib/postgresql/data" ;;
                 "POSTGRES_GID") export POSTGRES_GID="999" ;;
                 "POSTGRES_UID") export POSTGRES_UID="999" ;;
@@ -320,13 +323,26 @@ setup_stable_diffusion() {
     # Create and activate virtual environment if it doesn't exist
     if [ ! -d "runarion-stable-diffusion/venv" ]; then
         echo "Creating virtual environment..."
-        cd runarion-stable-diffusion && python3 -m venv venv --clear && cd ..
+        cd runarion-stable-diffusion
+        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+            python -m venv venv --clear
+        else
+            python3 -m venv venv --clear
+        fi
+        cd ..
     fi
     
     # Activate virtual environment and install dependencies
     echo "Installing dependencies in virtual environment..."
     cd runarion-stable-diffusion
-    source venv/bin/activate
+    
+    # OS-specific virtual environment activation
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        source venv/Scripts/activate
+    else
+        source venv/bin/activate
+    fi
+    
     python -m pip install --no-cache-dir huggingface_hub
     
     # Download models if needed

@@ -16,23 +16,23 @@ class DatabaseSeeder extends Seeder
     /**
      * Seed the application's database.
      * 
-     * Calls all individual seeders in the correct order:
-     * 1. UserSeeder - Creates users
-     * 2. WorkspaceSeeder - Creates workspaces and memberships
+     * The seeding process follows this order:
+     * 1. WorkspaceSeeder - Creates workspaces
+     * 2. UserSeeder - Creates users and assigns them to workspaces
      * 3. FolderSeeder - Creates folders within workspaces
      * 4. ProjectSeeder - Creates projects within folders
+     * 5. UpdateProjectRelations - Updates project authors and highlighted projects
      * 
      * @return void
      */
     public function run(): void
     {
-        // additional seeders will be added to the array below
-
         $this->call([
             WorkspaceSeeder::class,
             UserSeeder::class,
             FolderSeeder::class,
-            ProjectSeeder::class
+            ProjectSeeder::class,
+            UpdateProjectRelations::class,
         ]);
     }
 }

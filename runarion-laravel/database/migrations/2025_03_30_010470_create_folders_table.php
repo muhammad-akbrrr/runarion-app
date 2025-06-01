@@ -12,12 +12,14 @@ return new class extends Migration {
       $table->ulid('workspace_id');
       $table->string('name');
       $table->string('slug');
+      $table->unsignedBigInteger('original_author')->nullable();
       $table->boolean('is_active')->default(true);
       $table->timestamps();
       $table->softDeletes();
 
-      $table->unique(['workspace_id', 'slug']);
+      $table->unique(['workspace_id', 'slug', 'is_active']);
       $table->foreign('workspace_id')->references('id')->on('workspaces')->onDelete('cascade');
+      $table->foreign('original_author')->references('id')->on('users')->onDelete('set null');
     });
   }
 

@@ -4,6 +4,7 @@ namespace Database\Factories;
 
 use App\Models\Folder;
 use App\Models\Workspace;
+use App\Models\WorkspaceMember;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -29,8 +30,28 @@ class FolderFactory extends Factory
       'workspace_id' => Workspace::factory(),
       'name' => fake()->words(3, true),
       'slug' => fn(array $attributes) => Str::slug($attributes['name']),
+      'original_author' => null,
       'is_active' => true,
     ];
+  }
+
+  /**
+   * Configure the model factory.
+   */
+  public function configure()
+  {
+    return $this->afterCreating(function (Folder $folder) {
+      // Get workspace owner
+      $owner = WorkspaceMember::where('workspace_id', $folder->workspace_id)
+        ->where('role', 'owner')
+        ->with('user')
+        ->first();
+
+      if ($owner && $owner->user) {
+        $folder->original_author = $owner->user->id;
+        $folder->save();
+      }
+    });
   }
 
   /**
