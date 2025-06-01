@@ -4,7 +4,7 @@ from flask import current_app
 from typing import Literal
 from models.request import GenerationRequest
 from models.response import GenerationResponse, UsageMetadata, QuotaMetadata
-from services.instruction_builder import InstructionBuilder
+from utils.instruction_builder import InstructionBuilder
 
 class BaseProvider(ABC):
     def __init__(self, request: GenerationRequest):

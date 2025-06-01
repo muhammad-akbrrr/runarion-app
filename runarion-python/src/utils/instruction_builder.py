@@ -1,4 +1,4 @@
-# runarion-python/src/services/prompt_builder.py
+# runarion-python/src/utils/prompt_builder.py
 
 from models.request import PromptConfig
 

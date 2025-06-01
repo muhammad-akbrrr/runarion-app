@@ -5,7 +5,7 @@ from openai import OpenAI
 from models.request import GenerationRequest
 from models.response import GenerationResponse
 from providers.base_provider import BaseProvider
-
+from services.quota_manager import QuotaManager
 
 class OpenAIProvider(BaseProvider):
     def __init__(self, request: GenerationRequest):
@@ -16,6 +16,8 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             current_app.logger.error(f"Failed to initialize OpenAI client: {e}")
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
+        
+        self.quota_manager = QuotaManager()
 
     def generate(self) -> GenerationResponse:
         # Prepare parameters
@@ -36,8 +38,18 @@ class OpenAIProvider(BaseProvider):
 
         start_time = time.time()
         # TODO: implement proper request ID and quota generation count
-        request_id = str(uuid.uuid4())  # Optional but recommended
+        request_id = str(uuid.uuid4())
         quota_generation_count = 1  # Stub for now
+        
+        # Check quota before making the API call
+        # try:
+        #     remaining = self.quota_manager.fetch(self.request.caller)
+        #     current_app.logger.info(f"Workspace has {remaining} remaining monthly generations.")
+        # except ValueError as e:
+        #     current_app.logger.error(f"Quota check failed for caller {self.request.caller} : {e}")
+        #     return self._build_error_response(
+        #         error_message=f"Quota Manager error: {str(e)}",
+        #     )
 
         try:
             # Call the OpenAI responses endpoint
@@ -53,6 +65,9 @@ class OpenAIProvider(BaseProvider):
             total_tokens = getattr(usage, "total_tokens", 0)
 
             processing_time_ms = int((time.time() - start_time) * 1000)
+            
+            # Update quota after successful generation
+            # self.quota_manager.update(self.request.caller, quota_generation_count)
 
             return self._build_response(
                 generated_text=generated_text,
