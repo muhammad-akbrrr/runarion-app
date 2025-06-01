@@ -161,6 +161,11 @@ export default function AuthenticatedLayout({
                                             ? route(item.path, item.param)
                                             : "#"
                                     }
+                                    onClick={(e) => {
+                                        if (!item.path) {
+                                            e.preventDefault();
+                                        }
+                                    }}
                                 >
                                     <item.icon className="h-4 w-4" />
                                     <span>{item.label}</span>
@@ -214,7 +219,10 @@ export default function AuthenticatedLayout({
                                     <ChevronDown className="h-4 w-4 mr-1" />
                                 </div>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
+                            <DropdownMenuContent
+                                align="start"
+                                className="w-[240px]"
+                            >
                                 {workspaces.map((workspace) => (
                                     <DropdownMenuItem
                                         key={workspace.id}
@@ -297,6 +305,11 @@ export default function AuthenticatedLayout({
                                                               )
                                                             : "#"
                                                     }
+                                                    onClick={(e) => {
+                                                        if (!item.path) {
+                                                            e.preventDefault();
+                                                        }
+                                                    }}
                                                 >
                                                     {item.label}
                                                 </BreadcrumbLink>
