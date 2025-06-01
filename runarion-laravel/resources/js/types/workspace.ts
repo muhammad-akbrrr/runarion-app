@@ -1,11 +1,11 @@
 export interface SimpleWorkspace {
-    id: number;
+    id: string;
     name: string;
     slug: string;
 }
 
 export interface SimpleWorkspaceWithRole {
-    id: number;
+    id: string;
     name: string;
     slug: string;
     cover_image_url: string | null;
@@ -13,7 +13,7 @@ export interface SimpleWorkspaceWithRole {
 }
 
 export interface Workspace {
-    id: number;
+    id: string;
     name: string;
     slug: string;
     cover_image_url: string | null;

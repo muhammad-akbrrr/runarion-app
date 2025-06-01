@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
@@ -31,6 +32,7 @@ class User extends Authenticatable
         'email',
         'password',
         'avatar_url',
+        'last_workspace_id',
         'settings',
         'notifications'
     ];
@@ -58,5 +60,22 @@ class User extends Authenticatable
             'settings' => 'array',
             'notifications' => 'array',
         ];
+    }
+
+    public function getActiveWorkspaceId(): string
+    {
+        if ($this->last_workspace_id) {
+            return $this->last_workspace_id;
+        }
+
+        $ownedWorkspaceId = DB::table('workspace_members')
+            ->where('user_id', $this->id)
+            ->where('role', 'owner')
+            ->value('workspace_id');
+        
+        $this->last_workspace_id = $ownedWorkspaceId;
+        $this->saveQuietly();
+        
+        return $ownedWorkspaceId;
     }
 }

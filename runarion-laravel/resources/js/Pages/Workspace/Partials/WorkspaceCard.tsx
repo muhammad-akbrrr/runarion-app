@@ -29,23 +29,12 @@ export default function WorkspaceCard({
               .toUpperCase()
         : "";
 
-    const getSetWorkspaceId = () => {
-        if (!workspace) {
-            return;
-        }
-        localStorage.setItem("selectedWorkspace", workspace.id.toString());
-        return workspace.id;
-    };
-
     const handleClickOpen = () => {
-        localStorage.setItem("openSidebarSettings", "0");
-        getSetWorkspaceId();
-        router.get(route("dashboard"));
+        workspace && router.get(route("workspace.dashboard", workspace.id));
     };
 
     const handleClickSettings = () => {
-        const workspaceId = getSetWorkspaceId();
-        router.get(route("workspace.edit", workspaceId));
+        workspace && router.get(route("workspace.edit", workspace.id));
     };
 
     return (

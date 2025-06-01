@@ -41,6 +41,7 @@ class UserFactory extends Factory
             'email_verified_at' => now(),
             'password' => static::$password ??= Hash::make('password123'),
             'avatar_url' => $avatarUrl,
+            'last_workspace_id' => null,
             'settings' => null,
             'notifications' => [
                 'email' => fake()->randomElement([true, false]),

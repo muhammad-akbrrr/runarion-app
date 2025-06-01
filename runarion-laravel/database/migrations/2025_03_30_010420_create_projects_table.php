@@ -11,9 +11,9 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::create('projects', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('workspace_id')->constrained()->onDelete('cascade');
-            $table->foreignId('folder_id')->nullable()->constrained()->nullOnDelete();
+            $table->ulid('id')->primary();
+            $table->ulid('workspace_id');
+            $table->ulid('folder_id')->nullable();
             $table->string('name');
             $table->string('slug')->unique();
             $table->json('settings')->nullable(); // For project-specific settings
@@ -22,6 +22,8 @@ return new class extends Migration {
             $table->softDeletes();
 
             $table->unique(['workspace_id', 'slug']);
+            $table->foreign('workspace_id')->references('id')->on('workspaces')->onDelete('cascade');
+            $table->foreign('folder_id')->references('id')->on('folders')->onDelete('set null');
         });
     }
 

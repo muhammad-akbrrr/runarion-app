@@ -37,7 +37,7 @@ export default function LLM({
     isUserAdmin,
     isUserOwner,
 }: PageProps<{
-    workspaceId: number;
+    workspaceId: string;
     data: Record<string, LLMDataItem>;
     isUserAdmin: boolean;
     isUserOwner: boolean;

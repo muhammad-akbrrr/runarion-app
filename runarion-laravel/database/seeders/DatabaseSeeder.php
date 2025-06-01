@@ -29,8 +29,8 @@ class DatabaseSeeder extends Seeder
         // additional seeders will be added to the array below
 
         $this->call([
-            UserSeeder::class,
             WorkspaceSeeder::class,
+            UserSeeder::class,
             FolderSeeder::class,
             ProjectSeeder::class
         ]);
