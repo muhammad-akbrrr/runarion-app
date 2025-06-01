@@ -16,6 +16,37 @@ PROVIDER_MAP = {
 
 @generate.route("/generate", methods=["POST"])
 def generate_text_route():
+    """
+    Endpoint to handle text generation requests.
+    Expects a JSON body with the following structure:
+    {
+        "prompt": "Your prompt here",
+        "provider": "openai",  # or "gemini", etc.
+        "model": "gpt-3.5-turbo",
+        "caller": {
+            "user_id": "user123",
+            "workspace_id": "workspace456",
+            "project_id": "project789",
+            "api_keys": {
+                "openai": "sk-...",
+                "gemini": "",
+                "deepseek": ""
+            }
+        },
+        "prompt_config": {
+            "author_profile": "",
+            "context": "",
+            "genre": "",
+            "tone": "",
+            "pov": ""
+        },
+        "generation_config": {
+            "temperature": 0.7,
+            "max_output_tokens": 200,
+            "top_p": 1.0,
+            "top_k": 0.0,
+            "repetition_penalty": 0.0
+    """
     try:
         json_data = request.get_json()
         req_obj = GenerationRequest(**json_data)

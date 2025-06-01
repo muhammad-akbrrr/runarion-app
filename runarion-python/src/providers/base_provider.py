@@ -68,7 +68,6 @@ class BaseProvider(ABC):
         """
         builder = InstructionBuilder(self.request.prompt_config)
         instruction = builder.build() if self.request.prompt.strip() else builder.build_from_scratch()
-        current_app.logger.debug(f"Built instruction:\n {instruction}, {"from scratch" if not self.request.prompt.strip() else "continuation"}")
         return instruction
 
     @abstractmethod
