@@ -28,7 +28,6 @@ class FolderSeeder extends Seeder
    * 
    * Each folder is created with:
    * - A name and corresponding slug
-   * - A descriptive description
    * - Association with its parent workspace
    * 
    * @return void

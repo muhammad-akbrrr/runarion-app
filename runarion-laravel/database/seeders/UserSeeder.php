@@ -3,8 +3,9 @@
 namespace Database\Seeders;
 
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Workspace;
+use App\Models\WorkspaceMember;
 use Illuminate\Database\Seeder;
-use Illuminate\Support\Facades\Hash;
 use App\Models\User;
 
 /**
@@ -19,23 +20,45 @@ class UserSeeder extends Seeder
   /**
    * Run the database seeds.
    * 
-   * Creates:
-   * 1. A super admin user with email 'admin@runarion.com' and password 'password'
-   * 2. 10 random users using the UserFactory
-   * 
+   * 1. Create Super Admin with email 'admin@runarion.com' as owner of the Demo Workspace
+   * 2. Create 10 random users using the UserFactory, each become owner of a workspace
+   * 3. For each workspace, assign 1 user as admin and 1-3 users as members
    * @return void
    */
   public function run(): void
   {
-    // Create a super admin user
-    User::create([
-      'name' => 'Super Admin',
-      'email' => 'admin@runarion.com',
-      'password' => Hash::make('password123'),
-      'email_verified_at' => now(),
-    ]);
+    $workspaces = Workspace::all();
 
-    // Create some regular users
-    User::factory(10)->create();
+    foreach ($workspaces as $workspace) {
+      $userField = [
+        'last_workspace_id' => $workspace->id,
+      ];
+      if ($workspace->name === 'Demo Workspace') {
+        $userField['name'] = 'Super Admin';
+        $userField['email'] = 'admin@runarion.com';
+      }
+      $user = User::factory()->create($userField);
+
+      WorkspaceMember::create([
+        'workspace_id' => $workspace->id,
+        'user_id' => $user->id,
+        'role' => 'owner',
+      ]);
+    }
+
+    foreach ($workspaces as $workspace) {
+      $userIds = User::where('last_workspace_id', '!=', $workspace->id)
+        ->inRandomOrder()
+        ->take(rand(2, 4))
+        ->pluck('id');
+
+      foreach ($userIds as $index => $userId) {
+        WorkspaceMember::create([
+          'workspace_id' => $workspace->id,
+          'user_id' => $userId,
+          'role' => $index === 0 ? 'admin' : 'member',
+        ]);
+      }
+    }
   }
 }

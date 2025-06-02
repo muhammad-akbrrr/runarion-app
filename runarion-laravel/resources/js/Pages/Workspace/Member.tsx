@@ -19,7 +19,7 @@ export default function Member({
     isUserAdmin,
     isUserOwner,
 }: PageProps<{
-    workspaceId: number;
+    workspaceId: string;
     limit: number;
     totalMembers: number;
     members: WorkspaceMember[];
@@ -65,9 +65,8 @@ export default function Member({
 
     const handleRoleChange = (member: WorkspaceMember, role: string) => {
         router.patch(
-            route("workspace-member.update"),
+            route("workspace.update.member", workspaceId),
             {
-                workspace_id: workspaceId,
                 role: role,
                 user_id: member.id,
                 user_email: member.email,

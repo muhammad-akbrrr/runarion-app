@@ -12,8 +12,8 @@ return new class extends Migration
     public function up(): void
     {
         Schema::create('workspace_invitations', function (Blueprint $table) {
-            $table->id();
-            $table->foreignId('workspace_id')->constrained()->onDelete('cascade');
+            $table->ulid('id')->primary();
+            $table->ulid('workspace_id');
             $table->string('user_email');
             $table->enum('role', ['owner', 'admin', 'member'])->default('member');
             $table->string('token', 100)->unique();
@@ -21,6 +21,7 @@ return new class extends Migration
             $table->timestamps();
 
             $table->unique(['workspace_id', 'user_email']);
+            $table->foreign('workspace_id')->references('id')->on('workspaces')->onDelete('cascade');
         });
     }
 

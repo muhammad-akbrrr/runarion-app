@@ -19,7 +19,7 @@ export default function WorkspaceMemberCard({
     onRoleChange,
     disabled = false,
 }: {
-    workspaceId: number;
+    workspaceId: string;
     userId: number | null;
     name: string | null;
     email: string;

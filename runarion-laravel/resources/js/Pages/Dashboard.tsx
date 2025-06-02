@@ -2,13 +2,21 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/Components/ui/card";
 import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
+import { PageProps } from "@/types";
 import { Head } from "@inertiajs/react";
 
-export default function Dashboard() {
+export default function Dashboard({
+    workspaceId,
+}: PageProps<{
+    workspaceId: string;
+}>) {
     const breadcrumbs: BreadcrumbItem[] = [
-        { label: "Dashboard", path: "dashboard" },
-        { label: "Home", path: "dashboard" },
-    ];
+        { label: "Dashboard", path: "workspace.dashboard" },
+        { label: "Home", path: "workspace.dashboard" },
+    ].map((item) => ({
+        ...item,
+        param: workspaceId,
+    }));
 
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>

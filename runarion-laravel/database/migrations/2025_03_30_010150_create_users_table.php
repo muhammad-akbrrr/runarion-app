@@ -17,10 +17,13 @@ return new class extends Migration {
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->string('avatar_url')->nullable();
+            $table->ulid('last_workspace_id')->nullable();
             $table->json('settings')->nullable();
             $table->json('notifications')->nullable();
             $table->rememberToken();
             $table->timestamps();
+
+            $table->foreign('last_workspace_id')->references('id')->on('workspaces')->onDelete('set null');
         });
 
         Schema::create('password_reset_tokens', function (Blueprint $table) {
