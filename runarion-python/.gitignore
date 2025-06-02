@@ -27,7 +27,6 @@ ENV/
 .env
 .env.*
 !.env.example
-localenv/
 
 # IDE and Editor files
 .idea/
