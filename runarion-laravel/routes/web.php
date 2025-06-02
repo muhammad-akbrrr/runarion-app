@@ -1,12 +1,13 @@
 <?php
 
+use Inertia\Inertia;
+use Illuminate\Support\Facades\Route;
+use Illuminate\Foundation\Application;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceMemberController;
-use Illuminate\Foundation\Application;
-use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
+use App\Http\Controllers\ProjectController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -19,8 +20,10 @@ Route::get('/', function () {
 
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
+    Route::get('/{workspace_id}/projects', [ProjectController::class, 'show'])->name('workspace.projects');
 
-    Route::get('/dashboard', fn () => '')->name('raw.workspace.dashboard');
+    Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
+    Route::get('/projects', fn() => '')->name('raw.workspace.projects');
 });
 
 Route::middleware('auth')->group(function () {
@@ -44,10 +47,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/settings/billing', [WorkspaceController::class, 'editBilling'])->name('workspace.edit.billing');
     Route::delete('/{workspace_id}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');
 
-    Route::get('/settings', fn () => '')->name('raw.workspace.edit');
-    Route::get('/settings/cloud-storage', fn () => '')->name('raw.workspace.edit.cloud-storage');
-    Route::get('/settings/llm', fn () => '')->name('raw.workspace.edit.llm');
-    Route::get('/settings/billing', fn () => '')->name('raw.workspace.edit.billing');
+    Route::get('/settings', fn() => '')->name('raw.workspace.edit');
+    Route::get('/settings/cloud-storage', fn() => '')->name('raw.workspace.edit.cloud-storage');
+    Route::get('/settings/llm', fn() => '')->name('raw.workspace.edit.llm');
+    Route::get('/settings/billing', fn() => '')->name('raw.workspace.edit.billing');
 });
 
 Route::middleware(['auth', 'workspace'])->group(function () {
@@ -58,10 +61,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::delete('/{workspace_id}/settings/members', [WorkspaceMemberController::class, 'remove'])->name('workspace.remove.member');
     Route::delete('/{workspace_id}/leave', [WorkspaceMemberController::class, 'leave'])->name('workspace.leave');
 
-    Route::get('/settings/members', fn () => '')->name('raw.workspace.edit.member');
+    Route::get('/settings/members', fn() => '')->name('raw.workspace.edit.member');
 });
 
 // Workspace invitation accept route (no auth required)
 Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
 
-require __DIR__.'/auth.php';
+require __DIR__ . '/auth.php';

@@ -99,7 +99,12 @@ export default function AuthenticatedLayout({
             path: "workspace.dashboard",
             param: workspaceId,
         },
-        { label: "Projects", icon: Library, path: "" },
+        {
+            label: "Projects",
+            icon: Library,
+            path: "workspace.projects",
+            param: workspaceId,
+        },
         { label: "File Manager", icon: Folder, path: "" },
     ];
 
@@ -197,7 +202,7 @@ export default function AuthenticatedLayout({
                     ) : (
                         <DropdownMenu>
                             <DropdownMenuTrigger className="w-full h-12 rounded hover:bg-gray-100 cursor-pointer">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 px-2">
                                     <Avatar>
                                         <AvatarImage
                                             src={user.avatar_url || undefined}
@@ -216,7 +221,7 @@ export default function AuthenticatedLayout({
                                             {workspaceName}
                                         </p>
                                     </div>
-                                    <ChevronDown className="h-4 w-4 mr-1" />
+                                    <ChevronDown className="h-4 w-4" />
                                 </div>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent
