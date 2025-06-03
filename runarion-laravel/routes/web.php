@@ -21,6 +21,8 @@ Route::get('/', function () {
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
     Route::get('/{workspace_id}/projects', [ProjectController::class, 'show'])->name('workspace.projects');
+    Route::post('/{workspace_id}/projects', [ProjectController::class, 'storeFolder'])->name('workspace.folders.store');
+    Route::get('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'openFolder'])->name('workspace.folders.open');
 
     Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
     Route::get('/projects', fn() => '')->name('raw.workspace.projects');
