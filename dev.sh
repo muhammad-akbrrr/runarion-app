@@ -61,6 +61,12 @@ check_env_vars() {
         "GEMINI_API_KEY"
         "GOOGLE_API_KEY"
         "OPENAI_API_KEY"
+        "DEEPSEEK_API_KEY"
+
+        # Default Model
+        "GEMINI_MODEL_NAME"
+        "DEEPSEEK_MODEL_NAME"
+        "OPENAI_MODEL_NAME"
         
         # Application URLs
         "APP_URL"
