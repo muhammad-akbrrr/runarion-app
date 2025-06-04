@@ -53,6 +53,55 @@ class ProjectController extends Controller
      */
     public function openFolder(Request $request, string $workspace_id, string $folder_id)
     {
+        $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
+        $selectedFolder = Folder::where('id', $folder_id)->first();
+        $projects = Projects::where('workspace_id', $workspace_id)
+            ->where('folder_id', $folder_id)
+            ->get(['id', 'name']);
 
+        return Inertia::render('Projects/ProjectList', [
+            'workspaceId' => $workspace_id,
+            'folders' => $folders,
+            'projects' => $projects,
+            'folder' => $selectedFolder,
+        ]);
+    }
+
+    /**
+     * Store a new project in the workspace.
+     */
+    public function storeProject(Request $request, string $workspace_id)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'folder_id' => 'nullable|string',
+        ]);
+        $project = new Projects();
+        $project->workspace_id = $workspace_id;
+        $project->name = $validated['name'];
+        $project->slug = Str::slug($validated['name']);
+        if (!empty($validated['folder_id'])) {
+            $project->folder_id = $validated['folder_id'];
+        }
+        $project->save();
+
+        // Redirect to the editor page for the new project
+        return redirect()->route('workspace.projects.editor', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project->id,
+        ]);
+    }
+
+    /**
+     * Show the project editor page for a specific project.
+     */
+    public function editor(Request $request, string $workspace_id, string $project_id)
+    {
+        $project = Projects::findOrFail($project_id);
+        return Inertia::render('Projects/Editor/Main', [
+            'workspaceId' => $workspace_id,
+            'projectId' => $project_id,
+            'projectName' => $project->name,
+        ]);
     }
 }
