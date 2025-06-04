@@ -20,13 +20,17 @@ Route::get('/', function () {
 
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
+
+    Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
+});
+
+Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/projects', [ProjectController::class, 'show'])->name('workspace.projects');
     Route::post('/{workspace_id}/projects', [ProjectController::class, 'storeFolder'])->name('workspace.folders.store');
     Route::post('/{workspace_id}/projects', [ProjectController::class, 'storeProject'])->name('workspace.projects.store');
     Route::get('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'openFolder'])->name('workspace.folders.open');
     Route::get('/{workspace_id}/projects/{project_id}/editor', [ProjectController::class, 'editor'])->name('workspace.projects.editor');
 
-    Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
     Route::get('/projects', fn() => '')->name('raw.workspace.projects');
     Route::get('/projects/folder/{folder_id}', fn() => '')->name('raw.workspace.folders.open');
     Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
@@ -74,3 +78,4 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
 
 require __DIR__ . '/auth.php';
+require __DIR__ . '/editor.php';

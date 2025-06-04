@@ -23,7 +23,7 @@ import {
     Keyboard,
     X,
 } from "lucide-react";
-
+import { Link, router } from "@inertiajs/react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -57,7 +57,11 @@ interface NavigationItem {
 
 interface EditableTextProps {
     initialValue: string;
-    onSave?: (value: string) => Promise<void>;
+    onSave?: (
+        value: string,
+        setIsSaving: (b: boolean) => void,
+        setIsSaved: (b: boolean) => void
+    ) => Promise<void>;
 }
 
 interface CommandDialogProps {
@@ -125,7 +129,7 @@ function EditableText({ initialValue, onSave }: EditableTextProps) {
         setIsSaved(false);
 
         try {
-            await onSave?.(value);
+            await onSave?.(value, setIsSaving, setIsSaved);
             setIsSaved(true);
             setTimeout(() => setIsSaved(true), 2000); // Show saved state for 2 seconds
         } catch (error) {
@@ -158,7 +162,7 @@ function EditableText({ initialValue, onSave }: EditableTextProps) {
                 onChange={(e) => setValue(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={handleKeyDown}
-                className="h-8 w-auto min-w-32 border-none bg-transparent p-0 text-base font-medium focus-visible:ring-0"
+                className="h-8 w-auto min-w-60 border-none bg-transparent px-2 text-base font-medium focus-visible:ring-0"
                 autoFocus
             />
         );
@@ -263,10 +267,16 @@ function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
 
 interface ProjectEditorLayoutProps {
     children?: React.ReactNode;
+    projectName: string;
+    projectId: string;
+    workspaceId: string;
 }
 
 export default function ProjectEditorLayout({
     children,
+    projectName,
+    projectId,
+    workspaceId,
 }: ProjectEditorLayoutProps) {
     // Command palette state
     const [commandOpen, setCommandOpen] = React.useState(false);
@@ -284,9 +294,31 @@ export default function ProjectEditorLayout({
     }, []);
 
     // Save handler for EditableText
-    const handleSave = async (value: string) => {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        console.log("Saved:", value);
+    const handleSave = async (
+        value: string,
+        setIsSaving: (b: boolean) => void,
+        setIsSaved: (b: boolean) => void
+    ) => {
+        setIsSaving(true);
+        router.patch(
+            route("editor.project.updateName", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            }),
+            {
+                name: value,
+            },
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsSaving(false);
+                    setIsSaved(true);
+                },
+                onError: () => {
+                    setIsSaving(false);
+                },
+            }
+        );
     };
 
     return (
@@ -307,7 +339,14 @@ export default function ProjectEditorLayout({
                                     className="w-48"
                                 >
                                     <DropdownMenuItem>
-                                        <span>Back to dashboard</span>
+                                        <Link
+                                            href={route(
+                                                "workspace.projects",
+                                                workspaceId
+                                            )}
+                                        >
+                                            <span>Back to dashboard</span>
+                                        </Link>
                                     </DropdownMenuItem>
                                     <DropdownMenuItem>
                                         <span>Project settings</span>
@@ -353,11 +392,11 @@ export default function ProjectEditorLayout({
             </Sidebar>
             <SidebarInset className="flex flex-col w-full">
                 {/* Header area: TopBar features (unchanged) */}
-                <div className="flex justify-between items-center px-4 py-2 border-b bg-white">
+                <div className="grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
                     {/* Left: Project title */}
                     <div className="flex items-center">
                         <EditableText
-                            initialValue="Draft Project #1"
+                            initialValue={projectName}
                             onSave={handleSave}
                         />
                     </div>
@@ -365,7 +404,7 @@ export default function ProjectEditorLayout({
                     <div className="flex justify-center">
                         <Button
                             variant="outline"
-                            className="w-64 justify-between items-center text-muted-foreground h-9 px-2"
+                            className="w-96 justify-between items-center text-muted-foreground h-9 px-2"
                             onClick={() => setCommandOpen(true)}
                         >
                             <div className="flex items-center gap-2">
