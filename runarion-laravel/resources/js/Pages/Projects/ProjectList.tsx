@@ -14,16 +14,12 @@ import AuthenticatedLayout, {
 import { PageProps } from "@/types";
 import { Head, router } from "@inertiajs/react";
 import { Badge } from "@/Components/ui/badge";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-    DialogDescription,
-    DialogFooter,
-} from "@/Components/ui/dialog";
 import { useState } from "react";
 import { Link } from "@inertiajs/react";
+import AddFolderDialog from "./Partials/AddFolderDialog";
+import DeleteFolderDialog from "./Partials/DeleteFolderDialog";
+import AddProjectDialog from "./Partials/AddProjectDialog";
+import DeleteProjectDialog from "./Partials/DeleteProjectDialog";
 
 export default function ProjectList({
     workspaceId,
@@ -33,7 +29,7 @@ export default function ProjectList({
 }: PageProps<{
     workspaceId: string;
     folders: { id: string; name: string }[];
-    projects: { id: string; name: string }[];
+    projects: { id: string; name: string; folder_id?: string }[];
     folder?: { id: string; name: string } | null;
 }>) {
     const [open, setOpen] = useState(false);
@@ -45,6 +41,18 @@ export default function ProjectList({
     const [projectName, setProjectName] = useState("");
     const [projectLoading, setProjectLoading] = useState(false);
 
+    // Delete project modal state
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
+    const [deleteProjectName, setDeleteProjectName] = useState("");
+    const [deleteProjectInput, setDeleteProjectInput] = useState("");
+    const [deleteLoading, setDeleteLoading] = useState(false);
+
+    // Delete folder modal state
+    const [deleteFolderDialogOpen, setDeleteFolderDialogOpen] = useState(false);
+    const [deleteFolderId, setDeleteFolderId] = useState<string | null>(null);
+    const [deleteFolderLoading, setDeleteFolderLoading] = useState(false);
+
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Dashboard", path: "workspace.dashboard" },
         { label: "Projects", path: "workspace.projects" },
@@ -52,6 +60,11 @@ export default function ProjectList({
         ...item,
         param: workspaceId,
     }));
+
+    const handleDropdownTriggerClick = (e: React.MouseEvent) => {
+        e.preventDefault();
+        e.stopPropagation();
+    };
 
     const handleAddFolder = async () => {
         if (!folderName.trim()) return;
@@ -90,85 +103,96 @@ export default function ProjectList({
         );
     };
 
+    // Handle delete project
+    const openDeleteDialog = (projectId: string, projectName: string) => {
+        setDeleteProjectId(projectId);
+        setDeleteProjectName(projectName);
+        setDeleteProjectInput("");
+        setDeleteDialogOpen(true);
+    };
+
+    const handleDeleteProject = async () => {
+        if (!deleteProjectId) return;
+        setDeleteLoading(true);
+        router.delete(
+            route("workspace.projects.destroy", {
+                workspace_id: workspaceId,
+                project_id: deleteProjectId,
+            }),
+            {
+                preserveScroll: true,
+                onFinish: () => {
+                    setDeleteLoading(false);
+                    setDeleteDialogOpen(false);
+                    setDeleteProjectId(null);
+                    setDeleteProjectName("");
+                    setDeleteProjectInput("");
+                },
+            }
+        );
+    };
+
+    const openDeleteFolderDialog = (folderId: string) => {
+        setDeleteFolderId(folderId);
+        setDeleteFolderDialogOpen(true);
+    };
+
+    const handleDeleteFolder = async () => {
+        if (!deleteFolderId) return;
+        setDeleteFolderLoading(true);
+        router.delete(
+            route("workspace.folders.destroy", {
+                workspace_id: workspaceId,
+                folder_id: deleteFolderId,
+            }),
+            {
+                preserveScroll: true,
+                onFinish: () => {
+                    setDeleteFolderLoading(false);
+                    setDeleteFolderDialogOpen(false);
+                    setDeleteFolderId(null);
+                },
+            }
+        );
+    };
+
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Project Overview" />
-            <Dialog open={open} onOpenChange={setOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>Add Folder</DialogTitle>
-                        <DialogDescription>
-                            Enter a name for your new folder.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-4">
-                        <Input
-                            type="text"
-                            placeholder="Folder name"
-                            value={folderName}
-                            onChange={(e) => setFolderName(e.target.value)}
-                            autoFocus
-                        />
-                        <DialogFooter className="flex flex-row gap-2 justify-end">
-                            <Button
-                                variant="secondary"
-                                type="button"
-                                onClick={() => setOpen(false)}
-                                disabled={loading}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                variant="default"
-                                type="button"
-                                disabled={!folderName.trim() || loading}
-                                onClick={handleAddFolder}
-                            >
-                                Add
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            <AddFolderDialog
+                open={open}
+                setOpen={setOpen}
+                folderName={folderName}
+                setFolderName={setFolderName}
+                loading={loading}
+                handleAddFolder={handleAddFolder}
+            />
 
-            {/* New Project Modal */}
-            <Dialog open={projectModalOpen} onOpenChange={setProjectModalOpen}>
-                <DialogContent>
-                    <DialogHeader>
-                        <DialogTitle>New Project</DialogTitle>
-                        <DialogDescription>
-                            Enter a name for your new project.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="flex flex-col gap-4">
-                        <Input
-                            type="text"
-                            placeholder="Project name"
-                            value={projectName}
-                            onChange={(e) => setProjectName(e.target.value)}
-                            autoFocus
-                        />
-                        <DialogFooter className="flex flex-row gap-2 justify-end">
-                            <Button
-                                variant="secondary"
-                                type="button"
-                                onClick={() => setProjectModalOpen(false)}
-                                disabled={projectLoading}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                variant="default"
-                                type="button"
-                                disabled={!projectName.trim() || projectLoading}
-                                onClick={handleCreateProject}
-                            >
-                                Create
-                            </Button>
-                        </DialogFooter>
-                    </div>
-                </DialogContent>
-            </Dialog>
+            <AddProjectDialog
+                open={projectModalOpen}
+                setOpen={setProjectModalOpen}
+                projectName={projectName}
+                setProjectName={setProjectName}
+                loading={projectLoading}
+                handleAddProject={handleCreateProject}
+            />
+
+            <DeleteProjectDialog
+                open={deleteDialogOpen}
+                setOpen={setDeleteDialogOpen}
+                projectName={deleteProjectName}
+                confirmationInput={deleteProjectInput}
+                setConfirmationInput={setDeleteProjectInput}
+                loading={deleteLoading}
+                handleDelete={handleDeleteProject}
+            />
+
+            <DeleteFolderDialog
+                open={deleteFolderDialogOpen}
+                setOpen={setDeleteFolderDialogOpen}
+                loading={deleteFolderLoading}
+                handleDelete={handleDeleteFolder}
+            />
 
             <div>
                 <div className="w-full flex flex-col gap-6 items-stretch justify-start">
@@ -217,47 +241,87 @@ export default function ProjectList({
                         <div className="flex flex-col items-stretch justify-start gap-4">
                             <p className="text-xl">Folders</p>
                             <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
-                                {folders.map((folderItem) => (
-                                    <Link
-                                        key={folderItem.id}
-                                        href={route("workspace.folders.open", {
-                                            workspace_id: workspaceId,
-                                            folder_id: folderItem.id,
-                                        })}
-                                        className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer"
-                                    >
-                                        <div className="flex flex-row gap-2 justify-between items-start">
-                                            <div className="flex flex-col justify-start items-start gap-1">
-                                                <p className="text-base">
-                                                    {folderItem.name}
-                                                </p>
-                                                <p className="text-xs text-gray-500">
-                                                    Created by Author
-                                                </p>
+                                {folders.map((folderItem) => {
+                                    const projectCount = projects.filter(
+                                        (p) => p.folder_id === folderItem.id
+                                    ).length;
+                                    return (
+                                        <div
+                                            key={folderItem.id}
+                                            className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer relative"
+                                        >
+                                            <Link
+                                                href={route(
+                                                    "workspace.folders.open",
+                                                    {
+                                                        workspace_id:
+                                                            workspaceId,
+                                                        folder_id:
+                                                            folderItem.id,
+                                                    }
+                                                )}
+                                                className="absolute inset-0 z-0 w-full h-full"
+                                            />
+                                            <div className="flex flex-row gap-2 justify-between items-start">
+                                                <div className="flex flex-col justify-start items-start gap-1">
+                                                    <Link
+                                                        href={route(
+                                                            "workspace.folders.open",
+                                                            {
+                                                                workspace_id:
+                                                                    workspaceId,
+                                                                folder_id:
+                                                                    folderItem.id,
+                                                            }
+                                                        )}
+                                                        className="text-base"
+                                                    >
+                                                        {folderItem.name}
+                                                    </Link>
+                                                    <p className="text-xs text-gray-500">
+                                                        Created by Author
+                                                    </p>
+                                                </div>
+                                                <DropdownMenu>
+                                                    <DropdownMenuTrigger>
+                                                        <div
+                                                            className="cursor-pointer relative z-20 p-2 m-[-8px]"
+                                                            onClick={
+                                                                handleDropdownTriggerClick
+                                                            }
+                                                        >
+                                                            <Ellipsis className="h-4 w-4" />
+                                                        </div>
+                                                    </DropdownMenuTrigger>
+                                                    <DropdownMenuContent align="end">
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                openDeleteFolderDialog(
+                                                                    folderItem.id
+                                                                )
+                                                            }
+                                                        >
+                                                            <span>
+                                                                Delete folder
+                                                            </span>
+                                                        </DropdownMenuItem>
+                                                    </DropdownMenuContent>
+                                                </DropdownMenu>
                                             </div>
-                                            <DropdownMenu>
-                                                <DropdownMenuTrigger>
-                                                    <div className="cursor-pointer">
-                                                        <Ellipsis className="h-4 w-4" />
-                                                    </div>
-                                                </DropdownMenuTrigger>
-                                                <DropdownMenuContent align="end">
-                                                    <DropdownMenuItem>
-                                                        <span>
-                                                            Delete folder
-                                                        </span>
-                                                    </DropdownMenuItem>
-                                                </DropdownMenuContent>
-                                            </DropdownMenu>
+                                            <div className="flex flex-row gap-2 justify-between items-center">
+                                                <p className="text-sm">
+                                                    21d ago
+                                                </p>
+                                                <Badge variant="secondary">
+                                                    {projectCount} Project
+                                                    {projectCount === 1
+                                                        ? ""
+                                                        : "s"}
+                                                </Badge>
+                                            </div>
                                         </div>
-                                        <div className="flex flex-row gap-2 justify-between items-center">
-                                            <p className="text-sm">21d ago</p>
-                                            <Badge variant="secondary">
-                                                0 Projects
-                                            </Badge>
-                                        </div>
-                                    </Link>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}
@@ -280,34 +344,61 @@ export default function ProjectList({
                                     </div>
                                 ) : (
                                     projects.map((project) => (
-                                        <Link
+                                        <div
                                             key={project.id}
-                                            href={route(
-                                                "workspace.projects.editor",
-                                                {
-                                                    workspace_id: workspaceId,
-                                                    project_id: project.id,
-                                                }
-                                            )}
-                                            className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer"
+                                            className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer relative"
                                         >
+                                            <Link
+                                                href={route(
+                                                    "workspace.projects.editor",
+                                                    {
+                                                        workspace_id:
+                                                            workspaceId,
+                                                        project_id: project.id,
+                                                    }
+                                                )}
+                                                className="absolute inset-0 z-0 w-full h-full"
+                                            />
                                             <div className="flex flex-row gap-2 justify-between items-start">
                                                 <div className="flex flex-col justify-start items-start gap-1">
-                                                    <p className="text-base">
+                                                    <Link
+                                                        href={route(
+                                                            "workspace.projects.editor",
+                                                            {
+                                                                workspace_id:
+                                                                    workspaceId,
+                                                                project_id:
+                                                                    project.id,
+                                                            }
+                                                        )}
+                                                        className="text-base"
+                                                    >
                                                         {project.name}
-                                                    </p>
+                                                    </Link>
                                                     <p className="text-xs text-gray-500">
                                                         Created by Author
                                                     </p>
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger>
-                                                        <div className="cursor-pointer">
+                                                        <div
+                                                            className="cursor-pointer relative z-20 p-2 m-[-8px]"
+                                                            onClick={
+                                                                handleDropdownTriggerClick
+                                                            }
+                                                        >
                                                             <Ellipsis className="h-4 w-4" />
                                                         </div>
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                openDeleteDialog(
+                                                                    project.id,
+                                                                    project.name
+                                                                )
+                                                            }
+                                                        >
                                                             <span>
                                                                 Delete project
                                                             </span>
@@ -328,7 +419,7 @@ export default function ProjectList({
                                                     Category Name
                                                 </Badge>
                                             </div>
-                                        </Link>
+                                        </div>
                                     ))
                                 )}
                             </div>
@@ -347,34 +438,61 @@ export default function ProjectList({
                                     </div>
                                 ) : (
                                     projects.map((project) => (
-                                        <Link
+                                        <div
                                             key={project.id}
-                                            href={route(
-                                                "workspace.projects.editor",
-                                                {
-                                                    workspace_id: workspaceId,
-                                                    project_id: project.id,
-                                                }
-                                            )}
-                                            className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer"
+                                            className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer relative"
                                         >
+                                            <Link
+                                                href={route(
+                                                    "workspace.projects.editor",
+                                                    {
+                                                        workspace_id:
+                                                            workspaceId,
+                                                        project_id: project.id,
+                                                    }
+                                                )}
+                                                className="absolute inset-0 z-0 w-full h-full"
+                                            />
                                             <div className="flex flex-row gap-2 justify-between items-start">
                                                 <div className="flex flex-col justify-start items-start gap-1">
-                                                    <p className="text-base">
+                                                    <Link
+                                                        href={route(
+                                                            "workspace.projects.editor",
+                                                            {
+                                                                workspace_id:
+                                                                    workspaceId,
+                                                                project_id:
+                                                                    project.id,
+                                                            }
+                                                        )}
+                                                        className="text-base"
+                                                    >
                                                         {project.name}
-                                                    </p>
+                                                    </Link>
                                                     <p className="text-xs text-gray-500">
                                                         Created by Author
                                                     </p>
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger>
-                                                        <div className="cursor-pointer">
+                                                        <div
+                                                            className="cursor-pointer relative z-20 p-2 m-[-8px]"
+                                                            onClick={
+                                                                handleDropdownTriggerClick
+                                                            }
+                                                        >
                                                             <Ellipsis className="h-4 w-4" />
                                                         </div>
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                openDeleteDialog(
+                                                                    project.id,
+                                                                    project.name
+                                                                )
+                                                            }
+                                                        >
                                                             <span>
                                                                 Delete project
                                                             </span>
@@ -395,7 +513,7 @@ export default function ProjectList({
                                                     Category Name
                                                 </Badge>
                                             </div>
-                                        </Link>
+                                        </div>
                                     ))
                                 )}
                             </div>

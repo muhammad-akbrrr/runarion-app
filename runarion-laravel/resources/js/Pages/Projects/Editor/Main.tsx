@@ -30,7 +30,8 @@ export default function ProjectEditorPage({
         let cancelled = false;
 
         async function fetchAllData() {
-            // --- Start of actual data fetching logic ---
+            // --- Start of data fetching logic ---
+
             // Simulate step 1: Fetch project metadata
             await new Promise((resolve) => setTimeout(resolve, 1300));
             setCompletedSteps(1);
@@ -43,8 +44,9 @@ export default function ProjectEditorPage({
             await new Promise((resolve) => setTimeout(resolve, 1500));
             setCompletedSteps(3);
 
+            // --- End of data fetching logic ---
+
             setLoading(false);
-            // --- End of actual data fetching logic ---
         }
 
         setCompletedSteps(0);

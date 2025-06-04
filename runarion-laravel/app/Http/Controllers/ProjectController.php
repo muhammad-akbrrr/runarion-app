@@ -15,12 +15,44 @@ class ProjectController extends Controller
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
-        $projects = Projects::where('workspace_id', $workspace_id)->get(['id', 'name']);
+        $projects = Projects::where('workspace_id', $workspace_id)->get(['id', 'name', 'folder_id']);
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
             'folders' => $folders,
             'projects' => $projects,
+        ]);
+    }
+
+    /**
+     * Show the project editor page for a specific project.
+     */
+    public function editor(Request $request, string $workspace_id, string $project_id)
+    {
+        $project = Projects::findOrFail($project_id);
+        return Inertia::render('Projects/Editor/Main', [
+            'workspaceId' => $workspace_id,
+            'projectId' => $project_id,
+            'projectName' => $project->name,
+        ]);
+    }
+
+    /**
+     * Opens up a specific folder.
+     */
+    public function openFolder(Request $request, string $workspace_id, string $folder_id)
+    {
+        $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
+        $selectedFolder = Folder::where('id', $folder_id)->first();
+        $projects = Projects::where('workspace_id', $workspace_id)
+            ->where('folder_id', $folder_id)
+            ->get(['id', 'name', 'folder_id']);
+
+        return Inertia::render('Projects/ProjectList', [
+            'workspaceId' => $workspace_id,
+            'folders' => $folders,
+            'projects' => $projects,
+            'folder' => $selectedFolder,
         ]);
     }
 
@@ -39,31 +71,12 @@ class ProjectController extends Controller
         $folder->save();
 
         $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
-        $projects = Projects::where('workspace_id', $workspace_id)->get(['id', 'name']);
+        $projects = Projects::where('workspace_id', $workspace_id)->get(['id', 'name', 'folder_id']);
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
             'folders' => $folders,
             'projects' => $projects,
-        ]);
-    }
-
-    /**
-     * Opens up a specific folder.
-     */
-    public function openFolder(Request $request, string $workspace_id, string $folder_id)
-    {
-        $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
-        $selectedFolder = Folder::where('id', $folder_id)->first();
-        $projects = Projects::where('workspace_id', $workspace_id)
-            ->where('folder_id', $folder_id)
-            ->get(['id', 'name']);
-
-        return Inertia::render('Projects/ProjectList', [
-            'workspaceId' => $workspace_id,
-            'folders' => $folders,
-            'projects' => $projects,
-            'folder' => $selectedFolder,
         ]);
     }
 
@@ -93,15 +106,29 @@ class ProjectController extends Controller
     }
 
     /**
-     * Show the project editor page for a specific project.
+     * Delete a project from the workspace.
      */
-    public function editor(Request $request, string $workspace_id, string $project_id)
+    public function destroyProject(Request $request, string $workspace_id, string $project_id)
     {
-        $project = Projects::findOrFail($project_id);
-        return Inertia::render('Projects/Editor/Main', [
-            'workspaceId' => $workspace_id,
-            'projectId' => $project_id,
-            'projectName' => $project->name,
-        ]);
+        $project = Projects::where('workspace_id', $workspace_id)->where('id', $project_id)->firstOrFail();
+        $project->delete();
+        return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+    }
+
+    /**
+     * Delete a folder and move its projects to the root of the workspace.
+     */
+    public function destroyFolder(Request $request, string $workspace_id, string $folder_id)
+    {
+        // Move all projects in this folder to the root (folder_id = null)
+        Projects::where('workspace_id', $workspace_id)
+            ->where('folder_id', $folder_id)
+            ->update(['folder_id' => null]);
+
+        // Delete the folder
+        $folder = Folder::where('workspace_id', $workspace_id)->where('id', $folder_id)->firstOrFail();
+        $folder->delete();
+
+        return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
     }
 }

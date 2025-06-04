@@ -31,7 +31,7 @@ export default function LoadingOverlay({
             maxAnimatedProgress.current
         );
         const targetValue = Math.max(progress, startValue);
-        const duration = 800; // duration for each step
+        const duration = 600; // duration for each step
         const animate = (timestamp: number) => {
             if (start === null) start = timestamp;
             const elapsed = timestamp - start;
