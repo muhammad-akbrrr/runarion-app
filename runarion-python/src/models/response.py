@@ -23,6 +23,7 @@ class GenerationResponse(BaseModel):
     model_used: str
     key_used: Literal["own", "default"]
     request_id: str
+    provider_request_id: Optional[str] = None
     metadata: UsageMetadata
     quota: QuotaMetadata
     error_message: Optional[str] = None

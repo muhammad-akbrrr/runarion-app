@@ -18,12 +18,13 @@ class GeminiProvider(BaseProvider):
             current_app.logger.error(f"Failed to initialize Gemini client: {e}")
             raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
         
-        self.quota_manager = QuotaManager()
+        self.quota_manager = self._get_quota_manager()
 
     def generate(self) -> GenerationResponse:
         # Prepare parameters
         model_to_use = self.model
         prompt = self.request.prompt or "<start writing from scratch>"
+        instruction = self.instruction
 
         gen_cfg = self.request.generation_config
         
@@ -32,7 +33,7 @@ class GeminiProvider(BaseProvider):
             "model": model_to_use,
             "contents": prompt,
             "config": genai.types.GenerateContentConfig(
-                system_instruction=self.build_instruction(),
+                system_instruction=instruction,
                 temperature=gen_cfg.temperature,
                 max_output_tokens=gen_cfg.max_output_tokens,
                 top_p=gen_cfg.top_p,
@@ -52,12 +53,15 @@ class GeminiProvider(BaseProvider):
         # except ValueError as e:
         #     current_app.logger.error(f"Quota check failed for caller {self.request.caller} : {e}")
         #     return self._build_error_response(
+        #         request_id=request_id,
+        #         provider_request_id="" if not provider_request_id else provider_request_id,
         #         error_message=f"Quota Manager error: {str(e)}",
         #     )
 
         try:
             # Call the Gemini generate_content endpoint
             raw_response = self.client.models.generate_content(**gemini_kwargs)
+            provider_request_id = getattr(raw_response, 'response_id', "")
             
             # Check for block reason
             if raw_response.prompt_feedback and raw_response.prompt_feedback.block_reason:
@@ -65,6 +69,8 @@ class GeminiProvider(BaseProvider):
                 error_message = f"Content generation blocked by Gemini. Reason: {reason_name}"
                 current_app.logger.warning(error_message)
                 return self._build_error_response(
+                    request_id=request_id,
+                    provider_request_id="" if not provider_request_id else provider_request_id,
                     error_message=error_message
                 )
                 
@@ -88,7 +94,7 @@ class GeminiProvider(BaseProvider):
             # Update quota after successful generation
             # self.quota_manager.update(self.request.caller, quota_generation_count)
 
-            return self._build_response(
+            response = self._build_response(
                 generated_text=generated_text,
                 finish_reason=finish_reason,
                 input_tokens=input_tokens,
@@ -96,11 +102,17 @@ class GeminiProvider(BaseProvider):
                 total_tokens=total_tokens,
                 processing_time_ms=processing_time_ms,
                 request_id=request_id,
+                provider_request_id=provider_request_id,
                 quota_generation_count=quota_generation_count,
             )
+            
+            self._log_generation_to_db(response)
+            return response
 
         except Exception as e:
             current_app.logger.error(f"Gemini API error with model {model_to_use}: {e}")
             return self._build_error_response(
+                request_id=request_id,
+                provider_request_id="" if not provider_request_id else provider_request_id,
                 error_message=f"Gemini API error: {str(e)}",
             )

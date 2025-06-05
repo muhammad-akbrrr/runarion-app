@@ -5,15 +5,20 @@ from typing import Literal
 from models.request import GenerationRequest
 from models.response import GenerationResponse, UsageMetadata, QuotaMetadata
 from utils.instruction_builder import InstructionBuilder
+from services.quota_manager import QuotaManager
 
 class BaseProvider(ABC):
     def __init__(self, request: GenerationRequest):
         self.request = request
+        self.instruction = self._build_instruction()
 
         # Determine which API key is actually used: own or default
         self.api_key, self.key_used = self._api_key_resolver()
-
         self.model = self._resolve_model()
+        self.quota_manager = self._get_quota_manager()
+        
+    def _get_quota_manager(self) -> QuotaManager:
+        return QuotaManager()
 
     def _api_key_resolver(self) -> tuple[str, Literal["own", "default"]]:
         key = self.request.caller.api_keys.get(self.request.provider)
@@ -62,13 +67,13 @@ class BaseProvider(ABC):
         current_app.logger.warning("No model name provided in request, using default model.")
         return default_model
     
-    def build_instruction(self) -> str:
+    def _build_instruction(self) -> str:
         """
         Build the instruction string based on the prompt configuration.
         """
         builder = InstructionBuilder(self.request.prompt_config)
         instruction = builder.build() if self.request.prompt.strip() else builder.build_from_scratch()
-        return instruction
+        return instruction.strip()
 
     @abstractmethod
     def generate(self) -> GenerationResponse:
@@ -81,6 +86,8 @@ class BaseProvider(ABC):
     
     def _build_error_response(
         self,
+        request_id: str,
+        provider_request_id: str = "",
         error_message: str = "An error occurred during generation.",
     ) -> GenerationResponse:
         """Helper to build an error response object."""
@@ -96,7 +103,7 @@ class BaseProvider(ABC):
         quota = QuotaMetadata(
             user_id=self.request.caller.user_id,
             workspace_id=self.request.caller.workspace_id,
-            project_id=self.request.caller.project_id,
+            project_id=self.request.caller.project_id, 
             generation_count=0,
         )
 
@@ -106,7 +113,8 @@ class BaseProvider(ABC):
             provider=self.request.provider,
             model_used=self.model,
             key_used=self.key_used,
-            request_id="",  # You can add a request ID generator or pass it from the controller
+            request_id=request_id,
+            provider_request_id=provider_request_id,
             metadata=metadata,
             quota=quota,
             error_message=error_message
@@ -123,6 +131,7 @@ class BaseProvider(ABC):
         processing_time_ms: int,
         request_id: str,
         quota_generation_count: int,
+        provider_request_id: str = "",
     ) -> GenerationResponse:
         """Helper to build the standardized response object."""
 
@@ -148,7 +157,59 @@ class BaseProvider(ABC):
             model_used=self.model,
             key_used=self.key_used,
             request_id=request_id,
+            provider_request_id=provider_request_id,
             metadata=metadata,
             quota=quota,
         )
         return response
+    
+    def _log_generation_to_db(self, response: GenerationResponse):
+        try:
+            with self.quota_manager.connection_pool.getconn() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("""
+                        INSERT INTO generation_logs (
+                            request_id,
+                            user_id,
+                            workspace_id,
+                            project_id,
+                            provider,
+                            model_used,
+                            key_used,
+                            prompt,
+                            instruction,
+                            generated_text,
+                            success,
+                            finish_reason,
+                            input_tokens,
+                            output_tokens,
+                            total_tokens,
+                            processing_time_ms,
+                            error_message,
+                            created_at
+                        ) VALUES (
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                        )
+                    """, (
+                        response.request_id,
+                        int(response.quota.user_id),
+                        response.quota.workspace_id,
+                        response.quota.project_id,
+                        response.provider,
+                        response.model_used,
+                        response.key_used,
+                        self.request.prompt or "",
+                        self.instruction or "",
+                        response.text or "",
+                        response.success,
+                        response.metadata.finish_reason,
+                        response.metadata.input_tokens,
+                        response.metadata.output_tokens,
+                        response.metadata.total_tokens,
+                        response.metadata.processing_time_ms,
+                        response.error_message
+                    ))
+                    conn.commit()
+        except Exception as e:
+            current_app.logger.error(f"Failed to log generation to DB: {e}")
+
