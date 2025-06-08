@@ -151,6 +151,15 @@ export default function ProjectList({
         );
     };
 
+    const openProjectSettings = (projectId: string) => {
+        router.get(
+            route("workspace.projects.edit", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            })
+        );
+    };
+
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Project Overview" />
@@ -388,7 +397,13 @@ export default function ProjectList({
                                                                 Delete project
                                                             </span>
                                                         </DropdownMenuItem>
-                                                        <DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                openProjectSettings(
+                                                                    project.id
+                                                                )
+                                                            }
+                                                        >
                                                             <span>
                                                                 Project settings
                                                             </span>
@@ -477,7 +492,13 @@ export default function ProjectList({
                                                                 Delete project
                                                             </span>
                                                         </DropdownMenuItem>
-                                                        <DropdownMenuItem>
+                                                        <DropdownMenuItem
+                                                            onClick={() =>
+                                                                openProjectSettings(
+                                                                    project.id
+                                                                )
+                                                            }
+                                                        >
                                                             <span>
                                                                 Project settings
                                                             </span>

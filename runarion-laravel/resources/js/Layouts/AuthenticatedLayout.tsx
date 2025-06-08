@@ -30,25 +30,21 @@ import {
 } from "@/Components/ui/sidebar";
 import { Link, router, usePage } from "@inertiajs/react";
 import {
-    Bot,
     ChevronDown,
     ChevronLeft,
-    Cloud,
-    DollarSign,
     FileText,
     Folder,
     Home,
-    LayoutGrid,
     Library,
     LucideProps,
     Settings,
     Star,
-    User as UserIcon,
-    Users,
 } from "lucide-react";
 import React, { PropsWithChildren } from "react";
 import { ParameterValue } from "../../../vendor/tightenco/ziggy/src/js";
 import LoadingOverlay from "@/Components/LoadingOverlay";
+import SettingsSidebar from "./Partials/SettingsSidebar";
+import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
 
 export interface BreadcrumbItem {
     label: string;
@@ -71,7 +67,7 @@ export default function AuthenticatedLayout({
 }: PropsWithChildren<{
     breadcrumbs: BreadcrumbItem[];
 }>) {
-    const { auth, workspaces } = usePage().props;
+    const { auth, workspaces, workspace_switching } = usePage().props;
     const user = auth.user;
     const workspaceId = user.last_workspace_id;
 
@@ -84,25 +80,34 @@ export default function AuthenticatedLayout({
     const TOTAL_STEPS = 3;
     const progress = (completedSteps / TOTAL_STEPS) * 100;
 
-    // Helper to simulate loading steps (can be replaced with real fetches)
-    const simulateWorkspaceSwitchLoading = async () => {
-        setLoading(true);
-        setCompletedSteps(0);
-        // Simulate step 1
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        setCompletedSteps(1);
-        // Simulate step 2
-        await new Promise((resolve) => setTimeout(resolve, 700));
-        setCompletedSteps(2);
-        // Simulate step 3
-        await new Promise((resolve) => setTimeout(resolve, 600));
-        setCompletedSteps(3);
-        setLoading(false);
-    };
+    // Effect to handle workspace switching animation
+    React.useEffect(() => {
+        if (workspace_switching) {
+            const simulateLoading = async () => {
+                setLoading(true);
+                setCompletedSteps(0);
 
-    const handleWorkspaceSelect = async (id: string) => {
+                // Simulate step 1
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                setCompletedSteps(1);
+
+                // Simulate step 2
+                await new Promise((resolve) => setTimeout(resolve, 700));
+                setCompletedSteps(2);
+
+                // Simulate step 3
+                await new Promise((resolve) => setTimeout(resolve, 600));
+                setCompletedSteps(3);
+
+                setLoading(false);
+            };
+
+            simulateLoading();
+        }
+    }, [workspace_switching]);
+
+    const handleWorkspaceSelect = (id: string) => {
         if (id === workspaceId) return;
-        await simulateWorkspaceSwitchLoading();
         const path = window.location.pathname;
         const newPath = path.replace(workspaceId, id);
         router.get(newPath);
@@ -140,33 +145,12 @@ export default function AuthenticatedLayout({
         path: "",
     }));
 
-    const workspaceSettingsItems: SidebarItem[] = [
-        { label: "General", icon: Settings, path: "workspace.edit" },
-        { label: "Members", icon: Users, path: "workspace.edit.member" },
-        {
-            label: "Cloud Storage",
-            icon: Cloud,
-            path: "workspace.edit.cloud-storage",
-        },
-        { label: "LLM Integration", icon: Bot, path: "workspace.edit.llm" },
-        {
-            label: "Plans & Billing",
-            icon: DollarSign,
-            path: "workspace.edit.billing",
-        },
-    ].map((item) => ({
-        ...item,
-        param: workspaceId,
-    }));
+    const openSettings =
+        route().current("workspace.edit*") ||
+        route().current("profile.edit") ||
+        route().current("workspace.index");
 
-    const mySettingsItems: SidebarItem[] = [
-        { label: "Profile", icon: UserIcon, path: "profile.edit" },
-        { label: "Workspaces", icon: LayoutGrid, path: "workspace.index" },
-    ];
-
-    const openSettings = [...workspaceSettingsItems, ...mySettingsItems].some(
-        (item) => route().current(item.path, item.param)
-    );
+    const openProjectSettings = route().current("workspace.projects.edit*");
 
     const renderSidebarGroup = (name: string, items: SidebarItem[]) => (
         <SidebarGroup>
@@ -215,17 +199,29 @@ export default function AuthenticatedLayout({
             />
             <Sidebar className="flex" collapsible="offcanvas">
                 <SidebarHeader>
-                    {openSettings ? (
+                    {openSettings || openProjectSettings ? (
                         <div
                             className="w-full h-12 flex items-center gap-2 rounded hover:bg-gray-100 cursor-pointer"
                             onClick={() =>
                                 router.get(
-                                    route("workspace.dashboard", workspaceId)
+                                    openProjectSettings
+                                        ? route(
+                                              "workspace.projects",
+                                              workspaceId
+                                          )
+                                        : route(
+                                              "workspace.dashboard",
+                                              workspaceId
+                                          )
                                 )
                             }
                         >
                             <ChevronLeft className="h-4 w-4 ml-1" />
-                            <div>Back to Dashboard</div>
+                            <div>
+                                {openProjectSettings
+                                    ? "All Projects"
+                                    : "Back to Dashboard"}
+                            </div>
                         </div>
                     ) : (
                         <DropdownMenu>
@@ -272,20 +268,21 @@ export default function AuthenticatedLayout({
                 </SidebarHeader>
 
                 <SidebarContent>
-                    {!openSettings &&
-                        renderSidebarGroup("Dashboard", dashboardItems)}
+                    {!openSettings && !openProjectSettings && (
+                        <>
+                            {renderSidebarGroup("Dashboard", dashboardItems)}
+                            {renderSidebarGroup(
+                                "Favorites",
+                                dummyFavoriteItems
+                            )}
+                        </>
+                    )}
 
-                    {!openSettings &&
-                        renderSidebarGroup("Favorites", dummyFavoriteItems)}
+                    {openSettings && (
+                        <SettingsSidebar workspaceId={workspaceId} />
+                    )}
 
-                    {openSettings &&
-                        renderSidebarGroup(
-                            "Workspace Settings",
-                            workspaceSettingsItems
-                        )}
-
-                    {openSettings &&
-                        renderSidebarGroup("My Settings", mySettingsItems)}
+                    {openProjectSettings && <ProjectSettingsSidebar />}
                 </SidebarContent>
 
                 {!openSettings && (

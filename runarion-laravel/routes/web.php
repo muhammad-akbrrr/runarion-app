@@ -18,12 +18,14 @@ Route::get('/', function () {
     ]);
 });
 
+// Dashboard Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
 
     Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
 });
 
+// Projects Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/projects', [ProjectController::class, 'show'])->name('workspace.projects');
     Route::post('/{workspace_id}/projects/folder', [ProjectController::class, 'storeFolder'])->name('workspace.folders.store');
@@ -38,17 +40,24 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
 });
 
+// Project Settings Routes
+Route::middleware(['auth', 'workspace'])->group(function () {
+    Route::get('/{workspace_id}/projects/{project_id}/settings', [ProjectController::class, 'settings'])->name('workspace.projects.edit');
+
+    Route::get('/projects/{project_id}/settings', fn() => '')->name('raw.workspace.projects.edit');
+});
+
+// User Settings Routes
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
     Route::post('/profile', [ProfileController::class, 'update'])->name('profile.update');
     Route::delete('/profile', [ProfileController::class, 'destroy'])->name('profile.destroy');
-});
 
-Route::middleware('auth')->group(function () {
     Route::get('/workspaces', [WorkspaceController::class, 'index'])->name('workspace.index');
     Route::post('/workspaces', [WorkspaceController::class, 'store'])->name('workspace.store');
 });
 
+// Workspace Settings Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/settings', [WorkspaceController::class, 'edit'])->name('workspace.edit');
     Route::post('/{workspace_id}/settings', [WorkspaceController::class, 'update'])->name('workspace.update');
@@ -65,6 +74,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/settings/billing', fn() => '')->name('raw.workspace.edit.billing');
 });
 
+// Workspace Members Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/settings/members', [WorkspaceMemberController::class, 'edit'])->name('workspace.edit.member');
     Route::get('/{workspace_id}/settings/members/unassigned', [WorkspaceMemberController::class, 'unassigned'])->name('workspace.index.member.unassigned');

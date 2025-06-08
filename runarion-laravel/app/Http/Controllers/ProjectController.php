@@ -143,4 +143,12 @@ class ProjectController extends Controller
 
         return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
     }
+
+    /**
+     * Show the settings page for a specific project.
+     */
+    public function settings(Request $request, string $workspace_id, string $project_id)
+    {
+
+    }
 }
