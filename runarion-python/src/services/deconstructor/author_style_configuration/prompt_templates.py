@@ -1,3 +1,4 @@
+# Prompt template for obtaining raw author style
 TEMPLATE_AUTHOR_STYLE = """
 {introduction}
 For each aspect:
@@ -50,18 +51,21 @@ The TEXT to analyze:
 {text} 
 """
 
+# Prompt template for obtaining raw partial author style from a single passage
 PARTIAL_AUTHOR_STYLE = TEMPLATE_AUTHOR_STYLE.format(
     introduction="The TEXT below is a passage of an author's work. Based on the TEXT, analyze the author's style!",
     instruction_for_example="Show relevant examples from the TEXT",
     text="{text}",
 )
 
+# Prompt template for obtaining raw combined author style from multiple partial author styles
 COMBINED_AUTHOR_STYLE = TEMPLATE_AUTHOR_STYLE.format(
     introduction="The TEXT below contains multiple style analyses. Each analysis examines the same aspects from the same author, but from different PASSAGEs and FILEs. Based on the TEXT, analyze the author's overall style on the same aspects!",
     instruction_for_example="Show relevant examples from different PASSAGEs and FILEs in the TEXT",
     text="{text}",
 )
 
+# Prompt template for obtaining structured author style from raw combined author style
 STRUCTURED_AUTHOR_STYLE = """
 The TEXT below contains unstructured analyses of an author's style. Based on the TEXT, extract structured information. Return a JSON object with the following structure:
 

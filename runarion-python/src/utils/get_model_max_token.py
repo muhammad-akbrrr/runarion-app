@@ -17,9 +17,12 @@ openai_model_max_tokens = {
 }
 
 
-# Call to Gemini API, cache the output
 @functools.lru_cache(maxsize=None)
 def list_gemini_model_max_token() -> dict[str, int]:
+    """
+    List the max token limit for all Gemini models using the Gemini API.
+    The output is cached to avoid repeated API calls.
+    """
     output = {}
     models = genai.list_models()  # type: ignore
     for model in models:
@@ -29,9 +32,12 @@ def list_gemini_model_max_token() -> dict[str, int]:
     return output
 
 
-# Create a tokenizer for the model to get its max token limit, cache it
 @functools.lru_cache(maxsize=64)
 def get_huggingface_model_max_token(model_name: str) -> int | None:
+    """
+    Get the max token limit for a Hugging Face model using the model's tokenizer.
+    The output is cached to avoid repeated loading of the tokenizer.
+    """
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     if hasattr(tokenizer, "model_max_length") and tokenizer.model_max_length < int(
         1e30
@@ -42,6 +48,10 @@ def get_huggingface_model_max_token(model_name: str) -> int | None:
 
 
 def get_model_max_token(provider: str, model_name: str) -> int:
+    """
+    Get the max token limit for a model based on the provider and model name.
+    The provider can be "openai", "gemini", or other (Hugging Face).
+    """
     if provider == "openai":
         max_token = openai_model_max_tokens.get(model_name)
     elif provider == "gemini":

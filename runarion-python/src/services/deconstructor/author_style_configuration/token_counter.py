@@ -9,7 +9,22 @@ from vertexai.tokenization._tokenizers import PreviewTokenizer
 
 
 class TokenCounter:
+    """
+    A class to count tokens in a given text based on the specified model provider and model name.
+    """
+
     def __init__(self, provider: str, model_name: str):
+        """
+        Initialize a tokenizer for counting tokens based on the specified provider and model name.
+        The tokenizer is resolved based on the provider:
+        - openai: `tiktoken`
+        - gemini: `tokenization` from `vertexai` if available, otherwise call gemini API
+        - other: `AutoTokenizer` from Hugging Face `transformers`
+
+        Args:
+            provider (str): The model provider (e.g., "openai", "gemini").
+            model_name (str): The name of the model to use for tokenization.
+        """
         if provider == "openai":
             self.tokenizer = tiktoken.encoding_for_model(model_name)
         elif provider == "gemini":
