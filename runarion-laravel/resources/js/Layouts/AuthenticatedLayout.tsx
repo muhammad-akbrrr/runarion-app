@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/Components/ui/avatar";
 import {
     Breadcrumb,
-    BreadcrumbItem as BreadcrumbItemComponent,
+    BreadcrumbItem,
     BreadcrumbLink,
     BreadcrumbList,
     BreadcrumbPage,
@@ -41,7 +41,7 @@ import {
     Star,
 } from "lucide-react";
 import React, { PropsWithChildren } from "react";
-import { ParameterValue } from "../../../vendor/tightenco/ziggy/src/js";
+import { RouteParams } from "../../../vendor/tightenco/ziggy/src/js";
 import LoadingOverlay from "@/Components/LoadingOverlay";
 import SettingsSidebar from "./Partials/SettingsSidebar";
 import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
@@ -49,12 +49,7 @@ import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
 export interface BreadcrumbItem {
     label: string;
     path: string;
-    param?: {
-        id?: string;
-        project_id?: string;
-        workspace_id?: string;
-        [key: string]: string | undefined;
-    };
+    param?: RouteParams<string>;
 }
 
 interface SidebarItem {
@@ -63,12 +58,7 @@ interface SidebarItem {
         Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>
     >;
     path: string;
-    param?: {
-        id?: string;
-        project_id?: string;
-        workspace_id?: string;
-        [key: string]: string | undefined;
-    };
+    param?: RouteParams<string>;
 }
 
 export default function AuthenticatedLayout({
@@ -332,7 +322,7 @@ export default function AuthenticatedLayout({
                             <BreadcrumbList>
                                 {breadcrumbs.map((item, index) => (
                                     <React.Fragment key={index}>
-                                        <BreadcrumbItemComponent className="text-base">
+                                        <BreadcrumbItem className="text-base">
                                             {index ===
                                             breadcrumbs.length - 1 ? (
                                                 <BreadcrumbPage>
@@ -357,7 +347,7 @@ export default function AuthenticatedLayout({
                                                     {item.label}
                                                 </BreadcrumbLink>
                                             )}
-                                        </BreadcrumbItemComponent>
+                                        </BreadcrumbItem>
                                         {index < breadcrumbs.length - 1 && (
                                             <BreadcrumbSeparator />
                                         )}

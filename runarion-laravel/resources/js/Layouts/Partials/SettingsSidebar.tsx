@@ -13,11 +13,11 @@ import {
     DollarSign,
     LayoutGrid,
     Settings,
-    User as UserIcon,
+    User as SingleUser,
     Users,
     LucideProps,
 } from "lucide-react";
-import { ParameterValue } from "../../../../vendor/tightenco/ziggy/src/js";
+import { RouteParams } from "../../../../vendor/tightenco/ziggy/src/js";
 
 interface SidebarItem {
     label: string;
@@ -25,7 +25,7 @@ interface SidebarItem {
         Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>
     >;
     path: string;
-    param?: ParameterValue;
+    param?: RouteParams<string>;
 }
 
 interface SettingsSidebarProps {
@@ -49,11 +49,11 @@ export default function SettingsSidebar({ workspaceId }: SettingsSidebarProps) {
         },
     ].map((item) => ({
         ...item,
-        param: workspaceId,
+        param: { workspace_id: workspaceId },
     }));
 
     const mySettingsItems: SidebarItem[] = [
-        { label: "Profile", icon: UserIcon, path: "profile.edit" },
+        { label: "Profile", icon: SingleUser, path: "profile.edit" },
         { label: "Workspaces", icon: LayoutGrid, path: "workspace.index" },
     ];
 

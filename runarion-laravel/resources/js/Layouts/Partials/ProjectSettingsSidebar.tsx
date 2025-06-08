@@ -14,6 +14,7 @@ import {
     Activity,
     LucideProps,
 } from "lucide-react";
+import { RouteParams } from "../../../../vendor/tightenco/ziggy/src/js";
 
 interface SidebarItem {
     label: string;
@@ -21,12 +22,7 @@ interface SidebarItem {
         Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>
     >;
     path: string;
-    param?: {
-        id?: string;
-        project_id?: string;
-        workspace_id?: string;
-        [key: string]: string | undefined;
-    };
+    param?: RouteParams<string>;
 }
 
 interface ProjectSettingsSidebarProps {
