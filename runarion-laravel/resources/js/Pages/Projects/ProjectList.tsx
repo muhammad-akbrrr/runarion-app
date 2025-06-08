@@ -205,7 +205,7 @@ export default function ProjectList({
                             <DropdownMenu>
                                 <DropdownMenuTrigger>
                                     <Button
-                                        variant="secondary"
+                                        variant="outline"
                                         className="bg-white flex flex-row gap-2 items-center justify-start"
                                     >
                                         Sort by

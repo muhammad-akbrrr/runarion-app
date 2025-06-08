@@ -83,11 +83,14 @@ export default function Member({
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Members" />
 
-            <Card className="w-full h-full ">
+            <Card className="w-full h-full gap-0">
                 <CardHeader>
                     <CardTitle className="text-2xl">Manage Members</CardTitle>
                 </CardHeader>
-                <Separator className="mx-6" style={{ width: "auto" }} />
+                <Separator
+                    className="mt-2 mb-4 mx-6"
+                    style={{ width: "auto" }}
+                />
                 <CardContent>
                     <div className="flex flex-col gap-4">
                         <div className="flex items-center justify-between">
@@ -99,7 +102,7 @@ export default function Member({
                                 </Button>
                             )}
                         </div>
-                        <div className="flex flex-col gap-1">
+                        <div className="flex flex-col">
                             {members.map((member) => (
                                 <WorkspaceMemberCard
                                     key={member.id}

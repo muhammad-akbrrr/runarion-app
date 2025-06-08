@@ -100,7 +100,7 @@ export default function Edit({
                             error={errors.photo}
                             className="mb-2"
                         />
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex flex-col gap-1">
                             <Label htmlFor="name">Name</Label>
                             <Input
                                 id="name"
@@ -115,7 +115,7 @@ export default function Edit({
                                 {errors.name || "\u00A0"}
                             </div>
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex flex-col gap-1">
                             <Label htmlFor="name">Email</Label>
                             <Input
                                 id="email"
@@ -158,7 +158,7 @@ export default function Edit({
                                 </Alert>
                             )}
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex flex-col gap-1">
                             <Label htmlFor="current_password">
                                 Current Password
                             </Label>
@@ -175,7 +175,7 @@ export default function Edit({
                                 {errors.current_password || "\u00A0"}
                             </div>
                         </div>
-                        <div className="space-y-1">
+                        <div className="space-y-1 flex flex-col gap-1">
                             <Label htmlFor="password">New Password</Label>
                             <Input
                                 id="password"
