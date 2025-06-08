@@ -33,7 +33,7 @@ export default function CloudStorage({
         { label: "Cloud Storage", path: "workspace.edit.cloud-storage" },
     ].map((item) => ({
         ...item,
-        param: workspaceId,
+        param: { workspace_id: workspaceId },
     }));
 
     const connections = [

@@ -11,14 +11,14 @@ interface Props
         project: Project;
     }> {}
 
-export default function ProjectSettings({
+export default function ProjectActivity({
     workspaceId,
     projectId,
     project,
 }: Props) {
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Project Settings", path: "workspace.projects.edit" },
-        { label: "General", path: "workspace.projects.edit" },
+        { label: "Activity", path: "workspace.projects.edit.activity" },
     ].map((item) => ({
         ...item,
         param: { project_id: projectId, workspace_id: workspaceId },
@@ -26,7 +26,7 @@ export default function ProjectSettings({
 
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
-            <Head title="Project Settings" />
+            <Head title="Project Activity" />
 
             <div></div>
         </AuthenticatedLayout>

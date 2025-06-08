@@ -31,20 +31,24 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::post('/{workspace_id}/projects/folder', [ProjectController::class, 'storeFolder'])->name('workspace.folders.store');
     Route::post('/{workspace_id}/projects', [ProjectController::class, 'storeProject'])->name('workspace.projects.store');
     Route::get('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'openFolder'])->name('workspace.folders.open');
-    Route::get('/{workspace_id}/projects/{project_id}/editor', [ProjectController::class, 'editor'])->name('workspace.projects.editor');
     Route::delete('/{workspace_id}/projects/{project_id}', [ProjectController::class, 'destroyProject'])->name('workspace.projects.destroy');
     Route::delete('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'destroyFolder'])->name('workspace.folders.destroy');
 
     Route::get('/projects', fn() => '')->name('raw.workspace.projects');
     Route::get('/projects/folder/{folder_id}', fn() => '')->name('raw.workspace.folders.open');
-    Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
 });
 
 // Project Settings Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/settings', [ProjectController::class, 'settings'])->name('workspace.projects.edit');
+    Route::get('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'access'])->name('workspace.projects.edit.access');
+    Route::get('/{workspace_id}/projects/{project_id}/settings/backups', [ProjectController::class, 'backups'])->name('workspace.projects.edit.backups');
+    Route::get('/{workspace_id}/projects/{project_id}/settings/activity', [ProjectController::class, 'activity'])->name('workspace.projects.edit.activity');
 
     Route::get('/projects/{project_id}/settings', fn() => '')->name('raw.workspace.projects.edit');
+    Route::get('/projects/{project_id}/settings/access', fn() => '')->name('raw.workspace.projects.edit.access');
+    Route::get('/projects/{project_id}/settings/backups', fn() => '')->name('raw.workspace.projects.edit.backups');
+    Route::get('/projects/{project_id}/settings/activity', fn() => '')->name('raw.workspace.projects.edit.activity');
 });
 
 // User Settings Routes

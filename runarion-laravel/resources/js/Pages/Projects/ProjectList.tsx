@@ -58,7 +58,7 @@ export default function ProjectList({
         { label: "Projects", path: "workspace.projects" },
     ].map((item) => ({
         ...item,
-        param: workspaceId,
+        param: { workspace_id: workspaceId },
     }));
 
     const handleAddFolder = async () => {

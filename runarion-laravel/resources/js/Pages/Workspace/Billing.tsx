@@ -22,7 +22,7 @@ export default function Billing({
         { label: "Plans & Billing", path: "workspace.edit.billing" },
     ].map((item) => ({
         ...item,
-        param: workspaceId,
+        param: { workspace_id: workspaceId },
     }));
 
     const planDetails = {

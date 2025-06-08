@@ -64,7 +64,7 @@ export default function Edit({
         { label: "General", path: "workspace.edit" },
     ].map((item) => ({
         ...item,
-        param: workspace.id,
+        param: { workspace_id: workspace.id },
     }));
 
     const permissions = [

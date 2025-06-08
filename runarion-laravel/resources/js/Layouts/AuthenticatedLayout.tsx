@@ -1,7 +1,7 @@
 import { Avatar, AvatarFallback, AvatarImage } from "@/Components/ui/avatar";
 import {
     Breadcrumb,
-    BreadcrumbItem,
+    BreadcrumbItem as BreadcrumbItemComponent,
     BreadcrumbLink,
     BreadcrumbList,
     BreadcrumbPage,
@@ -49,7 +49,12 @@ import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
 export interface BreadcrumbItem {
     label: string;
     path: string;
-    param?: ParameterValue;
+    param?: {
+        id?: string;
+        project_id?: string;
+        workspace_id?: string;
+        [key: string]: string | undefined;
+    };
 }
 
 interface SidebarItem {
@@ -58,7 +63,12 @@ interface SidebarItem {
         Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>
     >;
     path: string;
-    param?: ParameterValue;
+    param?: {
+        id?: string;
+        project_id?: string;
+        workspace_id?: string;
+        [key: string]: string | undefined;
+    };
 }
 
 export default function AuthenticatedLayout({
@@ -70,6 +80,7 @@ export default function AuthenticatedLayout({
     const { auth, workspaces, workspace_switching } = usePage().props;
     const user = auth.user;
     const workspaceId = user.last_workspace_id;
+    const projectId = route().params.project_id as string | undefined;
 
     const workspaceName = workspaces.find(
         (workspace) => workspace.id === workspaceId
@@ -125,13 +136,13 @@ export default function AuthenticatedLayout({
             label: "Home",
             icon: Home,
             path: "workspace.dashboard",
-            param: workspaceId,
+            param: { id: workspaceId },
         },
         {
             label: "Projects",
             icon: Library,
             path: "workspace.projects",
-            param: workspaceId,
+            param: { id: workspaceId },
         },
         { label: "File Manager", icon: Folder, path: "" },
     ];
@@ -205,14 +216,12 @@ export default function AuthenticatedLayout({
                             onClick={() =>
                                 router.get(
                                     openProjectSettings
-                                        ? route(
-                                              "workspace.projects",
-                                              workspaceId
-                                          )
-                                        : route(
-                                              "workspace.dashboard",
-                                              workspaceId
-                                          )
+                                        ? route("workspace.projects", {
+                                              workspace_id: workspaceId,
+                                          })
+                                        : route("workspace.dashboard", {
+                                              workspace_id: workspaceId,
+                                          })
                                 )
                             }
                         >
@@ -282,7 +291,12 @@ export default function AuthenticatedLayout({
                         <SettingsSidebar workspaceId={workspaceId} />
                     )}
 
-                    {openProjectSettings && <ProjectSettingsSidebar />}
+                    {openProjectSettings && projectId && (
+                        <ProjectSettingsSidebar
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                        />
+                    )}
                 </SidebarContent>
 
                 {!openSettings && (
@@ -291,10 +305,9 @@ export default function AuthenticatedLayout({
                             <SidebarMenuItem>
                                 <SidebarMenuButton asChild>
                                     <Link
-                                        href={route(
-                                            "workspace.edit",
-                                            workspaceId
-                                        )}
+                                        href={route("workspace.edit", {
+                                            workspace_id: workspaceId,
+                                        })}
                                     >
                                         <Settings className="h-4 w-4" />
                                         <span>Settings</span>
@@ -319,7 +332,7 @@ export default function AuthenticatedLayout({
                             <BreadcrumbList>
                                 {breadcrumbs.map((item, index) => (
                                     <React.Fragment key={index}>
-                                        <BreadcrumbItem className="text-base">
+                                        <BreadcrumbItemComponent className="text-base">
                                             {index ===
                                             breadcrumbs.length - 1 ? (
                                                 <BreadcrumbPage>
@@ -344,7 +357,7 @@ export default function AuthenticatedLayout({
                                                     {item.label}
                                                 </BreadcrumbLink>
                                             )}
-                                        </BreadcrumbItem>
+                                        </BreadcrumbItemComponent>
                                         {index < breadcrumbs.length - 1 && (
                                             <BreadcrumbSeparator />
                                         )}

@@ -39,7 +39,7 @@ export default function Member({
         { label: "Members", path: "workspace.edit.member" },
     ].map((item) => ({
         ...item,
-        param: workspaceId,
+        param: { workspace_id: workspaceId },
     }));
 
     const getStatus = (member: WorkspaceMember) => {

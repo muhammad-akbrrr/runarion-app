@@ -45,6 +45,7 @@ import { Dialog, DialogContent } from "@/Components/ui/dialog";
 import { Input } from "@/Components/ui/input";
 import { Button } from "@/Components/ui/button";
 import LoadingOverlay from "@/Components/LoadingOverlay";
+import { Project } from "@/types";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -264,14 +265,14 @@ function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
 
 interface ProjectEditorLayoutProps {
     children?: React.ReactNode;
-    projectName: string;
+    project: Project;
     projectId: string;
     workspaceId: string;
 }
 
 export default function ProjectEditorLayout({
     children,
-    projectName,
+    project,
     projectId,
     workspaceId,
 }: ProjectEditorLayoutProps) {
@@ -373,7 +374,7 @@ export default function ProjectEditorLayout({
             >
                 <SidebarProvider defaultOpen={false}>
                     <Sidebar collapsible="icon" className="border-r bg-white">
-                        {/* Sidebar Header: Menu Dropdown (unchanged) */}
+                        {/* Sidebar Header: Menu Dropdown */}
                         <SidebarHeader className="border-b flex items-center justify-center">
                             <SidebarMenu>
                                 <SidebarMenuItem>
@@ -391,7 +392,10 @@ export default function ProjectEditorLayout({
                                                 <Link
                                                     href={route(
                                                         "workspace.projects",
-                                                        workspaceId
+                                                        {
+                                                            workspace_id:
+                                                                workspaceId,
+                                                        }
                                                     )}
                                                 >
                                                     <span>
@@ -400,7 +404,21 @@ export default function ProjectEditorLayout({
                                                 </Link>
                                             </DropdownMenuItem>
                                             <DropdownMenuItem>
-                                                <span>Project settings</span>
+                                                <Link
+                                                    href={route(
+                                                        "workspace.projects.edit",
+                                                        {
+                                                            workspace_id:
+                                                                workspaceId,
+                                                            project_id:
+                                                                projectId,
+                                                        }
+                                                    )}
+                                                >
+                                                    <span>
+                                                        Project settings
+                                                    </span>
+                                                </Link>
                                             </DropdownMenuItem>
                                         </DropdownMenuContent>
                                     </DropdownMenu>
@@ -442,12 +460,12 @@ export default function ProjectEditorLayout({
                         </SidebarFooter>
                     </Sidebar>
                     <SidebarInset className="flex flex-col w-full">
-                        {/* Header area: TopBar features (unchanged) */}
+                        {/* Header area: TopBar features */}
                         <div className="grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
                             {/* Left: Project title */}
                             <div className="flex items-center">
                                 <EditableText
-                                    initialValue={projectName}
+                                    initialValue={project.name}
                                     onSave={handleSave}
                                 />
                             </div>
@@ -479,7 +497,7 @@ export default function ProjectEditorLayout({
                                 </Button>
                             </div>
                         </div>
-                        {/* Command Palette Dialog (unchanged) */}
+                        {/* Command Palette Dialog */}
                         <CommandDialog
                             open={commandOpen}
                             onOpenChange={setCommandOpen}

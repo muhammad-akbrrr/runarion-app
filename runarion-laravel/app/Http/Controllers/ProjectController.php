@@ -25,26 +25,6 @@ class ProjectController extends Controller
     }
 
     /**
-     * Show the project editor page for a specific project.
-     */
-    public function editor(Request $request, string $workspace_id, string $project_id)
-    {
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->first();
-
-        if (!$project) {
-            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
-        }
-
-        return Inertia::render('Projects/Editor/Main', [
-            'workspaceId' => $workspace_id,
-            'projectId' => $project_id,
-            'projectName' => $project->name,
-        ]);
-    }
-
-    /**
      * Opens up a specific folder.
      */
     public function openFolder(Request $request, string $workspace_id, string $folder_id)
@@ -149,6 +129,78 @@ class ProjectController extends Controller
      */
     public function settings(Request $request, string $workspace_id, string $project_id)
     {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
 
+        if (!$project) {
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+        }
+
+        return Inertia::render('Projects/Edit', [
+            'workspaceId' => $workspace_id,
+            'projectId' => $project_id,
+            'project' => $project,
+        ]);
+    }
+
+    /**
+     * Show the access settings page for a specific project.
+     */
+    public function access(Request $request, string $workspace_id, string $project_id)
+    {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (!$project) {
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+        }
+
+        return Inertia::render('Projects/Access', [
+            'workspaceId' => $workspace_id,
+            'projectId' => $project_id,
+            'project' => $project,
+        ]);
+    }
+
+    /**
+     * Show the backups settings page for a specific project.
+     */
+    public function backups(Request $request, string $workspace_id, string $project_id)
+    {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (!$project) {
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+        }
+
+        return Inertia::render('Projects/Backups', [
+            'workspaceId' => $workspace_id,
+            'projectId' => $project_id,
+            'project' => $project,
+        ]);
+    }
+
+    /**
+     * Show the activity settings page for a specific project.
+     */
+    public function activity(Request $request, string $workspace_id, string $project_id)
+    {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (!$project) {
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+        }
+
+        return Inertia::render('Projects/Activity', [
+            'workspaceId' => $workspace_id,
+            'projectId' => $project_id,
+            'project' => $project,
+        ]);
     }
 }

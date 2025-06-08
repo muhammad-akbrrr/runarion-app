@@ -1,21 +1,19 @@
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
-import { PageProps } from "@/types";
+import { PageProps, Project } from "@/types";
 import { Head } from "@inertiajs/react";
 
 export default function ProjectEditorPage({
     workspaceId,
     projectId,
-    projectName,
-    projectData, // Assume projectData contains all initial data from backend
+    project,
 }: PageProps<{
     workspaceId: string;
     projectId: string;
-    projectName?: string;
-    projectData?: any;
+    project: Project;
 }>) {
     return (
         <ProjectEditorLayout
-            projectName={projectName || "Untitled Project"}
+            project={project}
             projectId={projectId}
             workspaceId={workspaceId}
         >
