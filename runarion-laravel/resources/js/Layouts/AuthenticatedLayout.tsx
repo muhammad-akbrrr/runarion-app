@@ -48,6 +48,7 @@ import {
 } from "lucide-react";
 import React, { PropsWithChildren } from "react";
 import { ParameterValue } from "../../../vendor/tightenco/ziggy/src/js";
+import LoadingOverlay from "@/Components/LoadingOverlay";
 
 export interface BreadcrumbItem {
     label: string;
@@ -78,8 +79,30 @@ export default function AuthenticatedLayout({
         (workspace) => workspace.id === workspaceId
     )?.name;
 
-    const handleWorkspaceSelect = (id: string) => {
+    const [loading, setLoading] = React.useState(false);
+    const [completedSteps, setCompletedSteps] = React.useState(0);
+    const TOTAL_STEPS = 3;
+    const progress = (completedSteps / TOTAL_STEPS) * 100;
+
+    // Helper to simulate loading steps (can be replaced with real fetches)
+    const simulateWorkspaceSwitchLoading = async () => {
+        setLoading(true);
+        setCompletedSteps(0);
+        // Simulate step 1
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        setCompletedSteps(1);
+        // Simulate step 2
+        await new Promise((resolve) => setTimeout(resolve, 700));
+        setCompletedSteps(2);
+        // Simulate step 3
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        setCompletedSteps(3);
+        setLoading(false);
+    };
+
+    const handleWorkspaceSelect = async (id: string) => {
         if (id === workspaceId) return;
+        await simulateWorkspaceSwitchLoading();
         const path = window.location.pathname;
         const newPath = path.replace(workspaceId, id);
         router.get(newPath);
@@ -185,6 +208,11 @@ export default function AuthenticatedLayout({
 
     return (
         <SidebarProvider>
+            <LoadingOverlay
+                visible={loading}
+                progress={progress}
+                message={`Switching workspace... (${Math.round(progress)}%)`}
+            />
             <Sidebar className="flex" collapsible="offcanvas">
                 <SidebarHeader>
                     {openSettings ? (

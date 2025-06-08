@@ -61,11 +61,6 @@ export default function ProjectList({
         param: workspaceId,
     }));
 
-    const handleDropdownTriggerClick = (e: React.MouseEvent) => {
-        e.preventDefault();
-        e.stopPropagation();
-    };
-
     const handleAddFolder = async () => {
         if (!folderName.trim()) return;
         setLoading(true);
@@ -284,12 +279,7 @@ export default function ProjectList({
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger>
-                                                        <div
-                                                            className="cursor-pointer relative z-20 p-2 m-[-8px]"
-                                                            onClick={
-                                                                handleDropdownTriggerClick
-                                                            }
-                                                        >
+                                                        <div className="cursor-pointer relative z-20 p-2 m-[-8px]">
                                                             <Ellipsis className="h-4 w-4" />
                                                         </div>
                                                     </DropdownMenuTrigger>
@@ -381,12 +371,7 @@ export default function ProjectList({
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger>
-                                                        <div
-                                                            className="cursor-pointer relative z-20 p-2 m-[-8px]"
-                                                            onClick={
-                                                                handleDropdownTriggerClick
-                                                            }
-                                                        >
+                                                        <div className="cursor-pointer relative z-20 p-2 m-[-8px]">
                                                             <Ellipsis className="h-4 w-4" />
                                                         </div>
                                                     </DropdownMenuTrigger>
@@ -475,12 +460,7 @@ export default function ProjectList({
                                                 </div>
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger>
-                                                        <div
-                                                            className="cursor-pointer relative z-20 p-2 m-[-8px]"
-                                                            onClick={
-                                                                handleDropdownTriggerClick
-                                                            }
-                                                        >
+                                                        <div className="cursor-pointer relative z-20 p-2 m-[-8px]">
                                                             <Ellipsis className="h-4 w-4" />
                                                         </div>
                                                     </DropdownMenuTrigger>

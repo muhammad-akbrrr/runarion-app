@@ -60,7 +60,7 @@ export default function LoadingOverlay({
 
     return (
         <div
-            className={`fixed inset-0 z-[9999] flex items-center justify-center transition-opacity duration-300 bg-white/95 ${
+            className={`fixed inset-0 z-[9999] flex items-center justify-center transition-opacity duration-300 bg-white ${
                 visible
                     ? "opacity-100 pointer-events-auto"
                     : "opacity-0 pointer-events-none"

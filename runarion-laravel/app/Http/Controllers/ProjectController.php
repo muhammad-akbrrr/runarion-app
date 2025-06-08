@@ -29,7 +29,14 @@ class ProjectController extends Controller
      */
     public function editor(Request $request, string $workspace_id, string $project_id)
     {
-        $project = Projects::findOrFail($project_id);
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (!$project) {
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+        }
+
         return Inertia::render('Projects/Editor/Main', [
             'workspaceId' => $workspace_id,
             'projectId' => $project_id,
@@ -43,7 +50,12 @@ class ProjectController extends Controller
     public function openFolder(Request $request, string $workspace_id, string $folder_id)
     {
         $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
-        $selectedFolder = Folder::where('id', $folder_id)->first();
+        $selectedFolder = Folder::where('id', $folder_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+        if (!$selectedFolder) {
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+        }
         $projects = Projects::where('workspace_id', $workspace_id)
             ->where('folder_id', $folder_id)
             ->get(['id', 'name', 'folder_id']);

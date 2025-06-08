@@ -44,6 +44,7 @@ import {
 import { Dialog, DialogContent } from "@/Components/ui/dialog";
 import { Input } from "@/Components/ui/input";
 import { Button } from "@/Components/ui/button";
+import LoadingOverlay from "@/Components/LoadingOverlay";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -109,10 +110,6 @@ const quickLinks: ActionItem[] = [
 // EDITABLE TEXT COMPONENT
 // ============================================================================
 
-/**
- * @param initialValue - The initial text value
- * @param onSave - Async function called when saving (optional)
- */
 function EditableText({ initialValue, onSave }: EditableTextProps) {
     const [value, setValue] = React.useState(initialValue);
     const [isEditing, setIsEditing] = React.useState(false);
@@ -162,7 +159,7 @@ function EditableText({ initialValue, onSave }: EditableTextProps) {
                 onChange={(e) => setValue(e.target.value)}
                 onBlur={handleSave}
                 onKeyDown={handleKeyDown}
-                className="h-8 w-auto min-w-60 border-none bg-transparent px-2 text-base font-medium focus-visible:ring-0"
+                className="h-8 w-auto min-w-60 shadow-none outline-none border-none bg-transparent px-2 text-base font-medium focus-visible:ring-0"
                 autoFocus
             />
         );
@@ -278,6 +275,45 @@ export default function ProjectEditorLayout({
     projectId,
     workspaceId,
 }: ProjectEditorLayoutProps) {
+    // Loader logic (similar to AuthenticatedLayout)
+    const TOTAL_STEPS = 3;
+    const [loading, setLoading] = React.useState(true);
+    const [completedSteps, setCompletedSteps] = React.useState(0);
+    const prevProjectId = React.useRef<string | null>(null);
+    const progress = (completedSteps / TOTAL_STEPS) * 100;
+
+    React.useEffect(() => {
+        // Only play loader if projectId changes (from null or from one value to another)
+        if (prevProjectId.current === projectId) {
+            setLoading(false);
+            setCompletedSteps(TOTAL_STEPS);
+            return;
+        }
+        prevProjectId.current = projectId;
+        let cancelled = false;
+        async function simulateProjectLoading() {
+            setLoading(true);
+            setCompletedSteps(0);
+            // Simulate step 1
+            await new Promise((resolve) => setTimeout(resolve, 800));
+            if (cancelled) return;
+            setCompletedSteps(1);
+            // Simulate step 2
+            await new Promise((resolve) => setTimeout(resolve, 700));
+            if (cancelled) return;
+            setCompletedSteps(2);
+            // Simulate step 3
+            await new Promise((resolve) => setTimeout(resolve, 600));
+            if (cancelled) return;
+            setCompletedSteps(3);
+            setLoading(false);
+        }
+        simulateProjectLoading();
+        return () => {
+            cancelled = true;
+        };
+    }, [projectId]);
+
     // Command palette state
     const [commandOpen, setCommandOpen] = React.useState(false);
 
@@ -322,120 +358,139 @@ export default function ProjectEditorLayout({
     };
 
     return (
-        <SidebarProvider defaultOpen={false}>
-            <Sidebar collapsible="icon" className="border-r bg-white">
-                {/* Sidebar Header: Menu Dropdown (unchanged) */}
-                <SidebarHeader className="border-b flex items-center justify-center">
-                    <SidebarMenu>
-                        <SidebarMenuItem>
-                            <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                    <div className="m-0.5 w-8 h-8 flex items-center justify-center p-2 rounded-md cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
-                                        <Menu className="size-5" />
-                                    </div>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                    align="start"
-                                    className="w-48"
-                                >
-                                    <DropdownMenuItem>
-                                        <Link
-                                            href={route(
-                                                "workspace.projects",
-                                                workspaceId
-                                            )}
+        <>
+            <LoadingOverlay
+                visible={loading}
+                progress={progress}
+                message={`Loading project... (${Math.round(progress)}%)`}
+            />
+            <div
+                style={{
+                    visibility: loading ? "hidden" : "visible",
+                    opacity: loading ? 0 : 1,
+                    transition: "opacity 0.3s",
+                }}
+            >
+                <SidebarProvider defaultOpen={false}>
+                    <Sidebar collapsible="icon" className="border-r bg-white">
+                        {/* Sidebar Header: Menu Dropdown (unchanged) */}
+                        <SidebarHeader className="border-b flex items-center justify-center">
+                            <SidebarMenu>
+                                <SidebarMenuItem>
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <div className="m-0.5 w-8 h-8 flex items-center justify-center p-2 rounded-md cursor-pointer hover:bg-sidebar-accent hover:text-sidebar-accent-foreground">
+                                                <Menu className="size-5" />
+                                            </div>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                            align="start"
+                                            className="w-48"
                                         >
-                                            <span>Back to dashboard</span>
-                                        </Link>
-                                    </DropdownMenuItem>
-                                    <DropdownMenuItem>
-                                        <span>Project settings</span>
-                                    </DropdownMenuItem>
-                                </DropdownMenuContent>
-                            </DropdownMenu>
-                        </SidebarMenuItem>
-                    </SidebarMenu>
-                </SidebarHeader>
+                                            <DropdownMenuItem>
+                                                <Link
+                                                    href={route(
+                                                        "workspace.projects",
+                                                        workspaceId
+                                                    )}
+                                                >
+                                                    <span>
+                                                        Back to dashboard
+                                                    </span>
+                                                </Link>
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem>
+                                                <span>Project settings</span>
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                </SidebarMenuItem>
+                            </SidebarMenu>
+                        </SidebarHeader>
 
-                {/* Sidebar Navigation (unchanged) */}
-                <SidebarContent className="py-4 flex flex-col items-center">
-                    <SidebarMenu className="gap-4 flex flex-col items-center">
-                        {navigationItems.map((item) => (
-                            <SidebarMenuItem key={item.label}>
-                                <SidebarMenuButton
-                                    isActive={item.isActive}
-                                    tooltip={item.label}
-                                    className="w-8 h-8 flex items-center justify-center p-0"
-                                >
-                                    <item.icon className="size-5" />
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
-                    </SidebarMenu>
-                </SidebarContent>
+                        {/* Sidebar Navigation (unchanged) */}
+                        <SidebarContent className="py-4 flex flex-col items-center">
+                            <SidebarMenu className="flex flex-col items-center">
+                                {navigationItems.map((item) => (
+                                    <SidebarMenuItem key={item.label}>
+                                        <SidebarMenuButton
+                                            isActive={item.isActive}
+                                            tooltip={item.label}
+                                            className="w-8 h-8 flex items-center justify-center p-0"
+                                        >
+                                            <item.icon className="size-5" />
+                                        </SidebarMenuButton>
+                                    </SidebarMenuItem>
+                                ))}
+                            </SidebarMenu>
+                        </SidebarContent>
 
-                {/* Sidebar Footer (unchanged) */}
-                <SidebarFooter className="border-t py-4 flex flex-col items-center">
-                    <SidebarMenu className="gap-4 flex flex-col items-center">
-                        {footerItems.map((item) => (
-                            <SidebarMenuItem key={item.label}>
-                                <SidebarMenuButton
-                                    tooltip={item.label}
-                                    className="w-8 h-8 flex items-center justify-center p-0"
-                                >
-                                    <item.icon className="size-5" />
-                                </SidebarMenuButton>
-                            </SidebarMenuItem>
-                        ))}
-                    </SidebarMenu>
-                </SidebarFooter>
-            </Sidebar>
-            <SidebarInset className="flex flex-col w-full">
-                {/* Header area: TopBar features (unchanged) */}
-                <div className="grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
-                    {/* Left: Project title */}
-                    <div className="flex items-center">
-                        <EditableText
-                            initialValue={projectName}
-                            onSave={handleSave}
-                        />
-                    </div>
-                    {/* Center: Search/Command palette */}
-                    <div className="flex justify-center">
-                        <Button
-                            variant="outline"
-                            className="w-96 justify-between items-center text-muted-foreground h-9 px-2"
-                            onClick={() => setCommandOpen(true)}
-                        >
-                            <div className="flex items-center gap-2">
-                                <Search className="h-4 w-4" />
-                                Search
+                        {/* Sidebar Footer (unchanged) */}
+                        <SidebarFooter className="border-t py-4 flex flex-col items-center">
+                            <SidebarMenu className="flex flex-col items-center">
+                                {footerItems.map((item) => (
+                                    <SidebarMenuItem key={item.label}>
+                                        <SidebarMenuButton
+                                            tooltip={item.label}
+                                            className="w-8 h-8 flex items-center justify-center p-0"
+                                        >
+                                            <item.icon className="size-5" />
+                                        </SidebarMenuButton>
+                                    </SidebarMenuItem>
+                                ))}
+                            </SidebarMenu>
+                        </SidebarFooter>
+                    </Sidebar>
+                    <SidebarInset className="flex flex-col w-full">
+                        {/* Header area: TopBar features (unchanged) */}
+                        <div className="grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
+                            {/* Left: Project title */}
+                            <div className="flex items-center">
+                                <EditableText
+                                    initialValue={projectName}
+                                    onSave={handleSave}
+                                />
                             </div>
-                            <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1 font-mono text-sm font-medium text-muted-foreground opacity-100">
-                                <span className="text-xs">⌘</span>K
-                            </kbd>
-                        </Button>
-                    </div>
-                    {/* Right: Actions */}
-                    <div className="flex justify-end gap-2">
-                        <Button variant="outline">
-                            <MessageCircle className="mr-2 h-4 w-4" />
-                            Comment
-                        </Button>
-                        <Button>
-                            <Share className="mr-2 h-4 w-4" />
-                            Share
-                        </Button>
-                    </div>
-                </div>
-                {/* Command Palette Dialog (unchanged) */}
-                <CommandDialog
-                    open={commandOpen}
-                    onOpenChange={setCommandOpen}
-                />
-                {/* Main content area */}
-                <main className="flex-1 w-full bg-gray-100">{children}</main>
-            </SidebarInset>
-        </SidebarProvider>
+                            {/* Center: Search/Command palette */}
+                            <div className="flex justify-center">
+                                <Button
+                                    variant="outline"
+                                    className="w-96 justify-between items-center text-muted-foreground h-9 px-2"
+                                    onClick={() => setCommandOpen(true)}
+                                >
+                                    <div className="flex items-center gap-2">
+                                        <Search className="h-4 w-4" />
+                                        Search
+                                    </div>
+                                    <kbd className="pointer-events-none inline-flex h-5 select-none items-center gap-1 rounded border bg-muted px-1 font-mono text-sm font-medium text-muted-foreground opacity-100">
+                                        <span className="text-xs">⌘</span>K
+                                    </kbd>
+                                </Button>
+                            </div>
+                            {/* Right: Actions */}
+                            <div className="flex justify-end gap-2">
+                                <Button variant="outline">
+                                    <MessageCircle className="h-4 w-4" />
+                                    Comment
+                                </Button>
+                                <Button>
+                                    <Share className="h-4 w-4" />
+                                    Share
+                                </Button>
+                            </div>
+                        </div>
+                        {/* Command Palette Dialog (unchanged) */}
+                        <CommandDialog
+                            open={commandOpen}
+                            onOpenChange={setCommandOpen}
+                        />
+                        {/* Main content area */}
+                        <main className="flex-1 w-full bg-gray-100">
+                            {children}
+                        </main>
+                    </SidebarInset>
+                </SidebarProvider>
+            </div>
+        </>
     );
 }
