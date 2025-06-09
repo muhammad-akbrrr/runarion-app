@@ -20,6 +20,16 @@ class BaseProvider(ABC):
     def _get_quota_manager(self) -> QuotaManager:
         return QuotaManager()
 
+    def _check_quota(self):
+        self.remaining_quota = self.quota_manager.check_quota(self.caller)
+
+    def _update_quota(self, quota_generation_count: int):
+        self.quota_manager.update_quota(
+            caller=self.caller,
+            expected_quota=self.remaining_quota,
+            quota_generation_count=quota_generation_count
+        )
+
     def _api_key_resolver(self) -> tuple[str, Literal["own", "default"]]:
         key = self.request.caller.api_keys.get(self.request.provider)
         if key and key.strip():
