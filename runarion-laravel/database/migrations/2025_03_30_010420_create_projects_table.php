@@ -16,7 +16,11 @@ return new class extends Migration {
             $table->ulid('folder_id')->nullable();
             $table->string('name');
             $table->string('slug')->unique();
-            $table->json('settings')->nullable(); // For project-specific settings
+            $table->json('settings')->nullable()->comment('For in-project settings like LLM settings, etc');
+            $table->enum('category', ['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical'])->nullable();
+            $table->string('saved_in', 2)->default('01')->comment('01 = Server, 02 = GDrive, 03 = Dropbox, 04 = OneDrive');
+            $table->longText('description')->nullable();
+            $table->json('access')->nullable();
             $table->boolean('is_active')->default(true);
             $table->timestamps();
             $table->softDeletes();

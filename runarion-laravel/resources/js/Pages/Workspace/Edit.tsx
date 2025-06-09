@@ -18,6 +18,14 @@ import {
 } from "@/Components/ui/select";
 import { Separator } from "@/Components/ui/separator";
 import { Switch } from "@/Components/ui/switch";
+import {
+    Table,
+    TableBody,
+    TableCell,
+    TableHead,
+    TableHeader,
+    TableRow,
+} from "@/Components/ui/table";
 import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
@@ -48,7 +56,7 @@ export default function Edit({
         useForm({
             name: workspace.name,
             timezone: workspace.timezone ?? "",
-            permissions: workspace.permissions,
+            permissions: workspace.permissions ?? {},
             photo: null as File | null,
         });
 
@@ -198,55 +206,87 @@ export default function Edit({
                         style={{ width: "auto" }}
                     />
                     <CardContent className="mt-2">
-                        <div className="border rounded-md text-sm">
-                            <div className="flex font-medium border-b">
-                                <div className="flex-1 px-4 py-3 border-r">
-                                    Actions
-                                </div>
-                                {roles.map((role) => (
-                                    <div
-                                        key={role}
-                                        className="w-24 px-4 py-3 text-center capitalize border-r last:border-r-0"
-                                    >
-                                        {role}
-                                    </div>
-                                ))}
-                            </div>
-                            {permissions.map((item, idx) => (
-                                <div
-                                    key={idx}
-                                    className="flex items-stretch border-b last:border-b-0"
-                                >
-                                    <div className="flex-1 px-4 py-3 border-r">
-                                        <div className="font-medium">
-                                            {item.title}
-                                        </div>
-                                        <div className="text-muted-foreground text-xs">
-                                            {item.description}
-                                        </div>
-                                    </div>
-                                    {roles.map((role, rIdx) => (
-                                        <div
-                                            key={rIdx}
-                                            className="w-24 flex items-center justify-center px-4 py-3 border-r last:border-r-0"
+                        <div className="border rounded-md">
+                            <Table className="rounded-md  overflow-hidden">
+                                <TableHeader>
+                                    <TableRow className="border-b">
+                                        <TableHead className="border-r rounded-tl-md">
+                                            Actions
+                                        </TableHead>
+                                        {roles.map((role, index) => (
+                                            <TableHead
+                                                key={role}
+                                                className={`text-center capitalize border-r ${
+                                                    index === roles.length - 1
+                                                        ? "last:border-r-0 rounded-tr-md"
+                                                        : ""
+                                                }`}
+                                            >
+                                                {role}
+                                            </TableHead>
+                                        ))}
+                                    </TableRow>
+                                </TableHeader>
+                                <TableBody>
+                                    {permissions.map((item, index) => (
+                                        <TableRow
+                                            key={item.key}
+                                            className="border-b last:border-b-0"
                                         >
-                                            <Switch
-                                                checked={data.permissions[
-                                                    item.key
-                                                ]?.includes(role)}
-                                                onCheckedChange={(checked) =>
-                                                    handleCheckPermission(
-                                                        item.key,
-                                                        role,
-                                                        checked
-                                                    )
-                                                }
-                                                disabled={!isUserOwner}
-                                            />
-                                        </div>
+                                            <TableCell
+                                                className={`border-r ${
+                                                    index ===
+                                                    permissions.length - 1
+                                                        ? "rounded-bl-md"
+                                                        : ""
+                                                }`}
+                                            >
+                                                <div className="font-medium">
+                                                    {item.title}
+                                                </div>
+                                                <div className="text-muted-foreground text-xs">
+                                                    {item.description}
+                                                </div>
+                                            </TableCell>
+                                            {roles.map((role, rIndex) => (
+                                                <TableCell
+                                                    key={role}
+                                                    className={`text-center border-r ${
+                                                        rIndex ===
+                                                        roles.length - 1
+                                                            ? "last:border-r-0"
+                                                            : ""
+                                                    } ${
+                                                        index ===
+                                                            permissions.length -
+                                                                1 &&
+                                                        rIndex ===
+                                                            roles.length - 1
+                                                            ? "rounded-br-md"
+                                                            : ""
+                                                    }`}
+                                                >
+                                                    <Switch
+                                                        checked={data.permissions[
+                                                            item.key
+                                                        ]?.includes(role)}
+                                                        onCheckedChange={(
+                                                            checked
+                                                        ) =>
+                                                            handleCheckPermission(
+                                                                item.key,
+                                                                role,
+                                                                checked
+                                                            )
+                                                        }
+                                                        disabled={!isUserOwner}
+                                                    />
+                                                </TableCell>
+                                            ))}
+                                        </TableRow>
                                     ))}
-                                </div>
-                            ))}
+                                </TableBody>
+                            </Table>
                         </div>
                     </CardContent>
                     <CardFooter className="flex justify-between mt-6">

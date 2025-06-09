@@ -5,6 +5,7 @@ namespace Database\Factories;
 use App\Models\Folder;
 use App\Models\Projects;
 use App\Models\Workspace;
+use App\Models\WorkspaceMember;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -34,8 +35,65 @@ class ProjectsFactory extends Factory
       'name' => fake()->words(3, true),
       'slug' => fn(array $attributes) => Str::slug($attributes['name']),
       'settings' => null,
+      'category' => fake()->optional(0.8)->randomElement(['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical']),
+      'saved_in' => fake()->randomElement(['01', '02', '03', '04']),
+      'description' => fake()->optional(0.7)->paragraph(),
+      'access' => null,
       'is_active' => true,
     ];
+  }
+
+  /**
+   * Configure the model factory.
+   */
+  public function configure()
+  {
+    return $this->afterCreating(function (Projects $project) {
+      // Get all workspace members
+      $members = WorkspaceMember::where('workspace_id', $project->workspace_id)
+        ->with('user:id,name,email,avatar_url')
+        ->get();
+
+      if ($members->isNotEmpty()) {
+        $access = [];
+
+        foreach ($members as $member) {
+          // Skip if member has no user (shouldn't happen, but just in case)
+          if (!$member->user)
+            continue;
+
+          // Owner always has admin access
+          if ($member->role === 'owner') {
+            $access[] = [
+              'user' => [
+                'id' => $member->user->id,
+                'name' => $member->user->name,
+                'email' => $member->user->email,
+                'avatar_url' => $member->user->avatar_url,
+              ],
+              'role' => 'admin'
+            ];
+            continue;
+          }
+
+          // For other roles, 70% chance of having access
+          if (fake()->boolean(70)) {
+            $access[] = [
+              'user' => [
+                'id' => $member->user->id,
+                'name' => $member->user->name,
+                'email' => $member->user->email,
+                'avatar_url' => $member->user->avatar_url,
+              ],
+              'role' => fake()->randomElement(['editor', 'manager', 'admin'])
+            ];
+          }
+        }
+
+        $project->access = $access;
+        $project->save();
+      }
+    });
   }
 
   /**
@@ -47,6 +105,19 @@ class ProjectsFactory extends Factory
   {
     return $this->state(fn(array $attributes) => [
       'is_active' => false,
+    ]);
+  }
+
+  /**
+   * Set the project's storage location.
+   * 
+   * @param string $location Storage location code ('01' = Server, '02' = GDrive, '03' = Dropbox, '04' = OneDrive)
+   * @return self
+   */
+  public function storedIn(string $location): self
+  {
+    return $this->state(fn(array $attributes) => [
+      'saved_in' => $location,
     ]);
   }
 

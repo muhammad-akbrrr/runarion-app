@@ -2,6 +2,10 @@
 
 namespace Database\Factories;
 
+use App\Models\User;
+use App\Models\Projects;
+use App\Models\Workspace;
+use App\Models\WorkspaceMember;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
@@ -10,19 +14,15 @@ use Illuminate\Support\Str;
  * User Factory
  * 
  * Factory untuk membuat user test dengan data yang realistis
- * menyediakan metode untuk membuat user dengan berbagai keadaan (terverifikasi/tidak terverifikasi)
+ * menyediakan metode untuk membuat user dalam berbagai keadaan (verified/unverified)
  */
 class UserFactory extends Factory
 {
-    /**
-     * password yang sedang digunakan oleh factory.
-     * ini adalah properti statis untuk memastikan hashing password yang konsisten.
-     */
     protected static ?string $password;
+    protected $model = User::class;
 
     /**
      * Define the model's default state.
-     * membuat user dengan informasi dasar termasuk nama, email, dan password.
      * 
      * @return array<string, mixed>
      */
@@ -47,14 +47,44 @@ class UserFactory extends Factory
                 'email' => fake()->randomElement([true, false]),
                 'desktop' => fake()->randomElement([true, false]),
             ],
+            'highlighted_projects' => null,
             'remember_token' => Str::random(10),
         ];
     }
 
     /**
-     * Indikasi bahwa alamat email model harus tidak terverifikasi.
-     * 
-     * @return static
+     * Configure the model factory.
+     */
+    public function configure()
+    {
+        return $this->afterCreating(function (User $user) {
+            // Get all workspaces the user is a member of
+            $workspaces = WorkspaceMember::where('user_id', $user->id)
+                ->with('workspace.projects')
+                ->get()
+                ->pluck('workspace');
+
+            if ($workspaces->isNotEmpty()) {
+                // Randomly select 1-3 projects to highlight
+                $highlightedProjects = collect();
+                foreach ($workspaces as $workspace) {
+                    $projects = $workspace->projects->random(fake()->numberBetween(1, 3));
+                    foreach ($projects as $project) {
+                        $highlightedProjects->push([
+                            'created_at' => now()->toIso8601String(),
+                            'project_id' => $project->id,
+                            'workspace_id' => $workspace->id,
+                        ]);
+                    }
+                }
+                $user->highlighted_projects = $highlightedProjects->toArray();
+                $user->save();
+            }
+        });
+    }
+
+    /**
+     * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static
     {

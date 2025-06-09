@@ -20,6 +20,7 @@ import AddFolderDialog from "./Partials/AddFolderDialog";
 import DeleteFolderDialog from "./Partials/DeleteFolderDialog";
 import AddProjectDialog from "./Partials/AddProjectDialog";
 import DeleteProjectDialog from "./Partials/DeleteProjectDialog";
+import { Project } from "@/types/project";
 
 export default function ProjectList({
     workspaceId,
@@ -29,7 +30,7 @@ export default function ProjectList({
 }: PageProps<{
     workspaceId: string;
     folders: { id: string; name: string }[];
-    projects: { id: string; name: string; folder_id?: string }[];
+    projects: Project[];
     folder?: { id: string; name: string } | null;
 }>) {
     const [open, setOpen] = useState(false);
@@ -415,9 +416,14 @@ export default function ProjectList({
                                                 <p className="text-sm">
                                                     21d ago
                                                 </p>
-                                                <Badge variant="secondary">
-                                                    Category Name
-                                                </Badge>
+                                                {project.category && (
+                                                    <Badge
+                                                        variant="secondary"
+                                                        className="capitalize"
+                                                    >
+                                                        {project.category}
+                                                    </Badge>
+                                                )}
                                             </div>
                                         </div>
                                     ))
@@ -510,9 +516,14 @@ export default function ProjectList({
                                                 <p className="text-sm">
                                                     21d ago
                                                 </p>
-                                                <Badge variant="secondary">
-                                                    Category Name
-                                                </Badge>
+                                                {project.category && (
+                                                    <Badge
+                                                        variant="secondary"
+                                                        className="capitalize"
+                                                    >
+                                                        {project.category}
+                                                    </Badge>
+                                                )}
                                             </div>
                                         </div>
                                     ))

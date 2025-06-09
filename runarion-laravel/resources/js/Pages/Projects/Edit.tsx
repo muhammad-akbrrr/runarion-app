@@ -175,6 +175,16 @@ export default function ProjectSettings({
                         </div>
                     </CardContent>
                     <CardFooter className="flex justify-between mt-2">
+                        {/* Precondition if the role is admin then show this button if not dont */}
+                        <>
+                            <Button
+                                type="button"
+                                disabled={processing}
+                                variant="destructive"
+                            >
+                                Delete Project
+                            </Button>
+                        </>
                         <div className="flex items-center gap-4">
                             <Transition
                                 show={recentlySuccessful}

@@ -46,6 +46,9 @@ class ProjectSeeder extends Seeder
                         'folder_id' => $folder->id,
                         'name' => "Project " . ($i + 1) . " in " . $folder->name,
                         'slug' => "project-" . $workspace->id . "-" . $folder->id . "-" . ($i + 1),
+                        'category' => fake()->optional(0.8)->randomElement(['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical']),
+                        'saved_in' => fake()->randomElement(['01', '02', '03', '04']),
+                        'description' => fake()->optional(0.7)->paragraph(),
                         'is_active' => true,
                     ]);
                 }

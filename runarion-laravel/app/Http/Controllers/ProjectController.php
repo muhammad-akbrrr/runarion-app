@@ -15,7 +15,7 @@ class ProjectController extends Controller
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
-        $projects = Projects::where('workspace_id', $workspace_id)->get(['id', 'name', 'folder_id']);
+        $projects = Projects::where('workspace_id', $workspace_id)->get();
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
@@ -38,7 +38,7 @@ class ProjectController extends Controller
         }
         $projects = Projects::where('workspace_id', $workspace_id)
             ->where('folder_id', $folder_id)
-            ->get(['id', 'name', 'folder_id']);
+            ->get();
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
@@ -63,7 +63,7 @@ class ProjectController extends Controller
         $folder->save();
 
         $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name']);
-        $projects = Projects::where('workspace_id', $workspace_id)->get(['id', 'name', 'folder_id']);
+        $projects = Projects::where('workspace_id', $workspace_id)->get();
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
