@@ -37,8 +37,13 @@ export interface Project {
     saved_in: string;
     description: string | null;
     access: ProjectAccess[] | null;
+    current_user_access: ProjectAccess | null;
     is_active: boolean;
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
+    author?: {
+        id: number;
+        name: string;
+    } | null;
 }

@@ -22,6 +22,39 @@ import AddProjectDialog from "./Partials/AddProjectDialog";
 import DeleteProjectDialog from "./Partials/DeleteProjectDialog";
 import { Project } from "@/types/project";
 
+const formatTimeAgo = (dateString: string): string => {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) {
+        return `${diffInSeconds}s ago`;
+    }
+
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) {
+        return `${diffInMinutes}m ago`;
+    }
+
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) {
+        return `${diffInHours}h ago`;
+    }
+
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays < 30) {
+        return `${diffInDays}d ago`;
+    }
+
+    const diffInMonths = Math.floor(diffInDays / 30);
+    if (diffInMonths < 12) {
+        return `${diffInMonths}mo ago`;
+    }
+
+    const diffInYears = Math.floor(diffInMonths / 12);
+    return `${diffInYears}y ago`;
+};
+
 export default function ProjectList({
     workspaceId,
     folders = [],
@@ -29,9 +62,9 @@ export default function ProjectList({
     folder = null,
 }: PageProps<{
     workspaceId: string;
-    folders: { id: string; name: string }[];
+    folders: { id: string; name: string; created_at: string }[];
     projects: Project[];
-    folder?: { id: string; name: string } | null;
+    folder?: { id: string; name: string; created_at: string } | null;
 }>) {
     const [open, setOpen] = useState(false);
     const [folderName, setFolderName] = useState("");
@@ -310,7 +343,9 @@ export default function ProjectList({
                                             </div>
                                             <div className="flex flex-row gap-2 justify-between items-center">
                                                 <p className="text-sm">
-                                                    21d ago
+                                                    {formatTimeAgo(
+                                                        folderItem.created_at
+                                                    )}
                                                 </p>
                                                 <Badge variant="secondary">
                                                     {projectCount} Project
@@ -376,7 +411,9 @@ export default function ProjectList({
                                                         {project.name}
                                                     </Link>
                                                     <p className="text-xs text-gray-500">
-                                                        Created by Author
+                                                        Created by{" "}
+                                                        {project.author?.name ||
+                                                            "Unknown"}
                                                     </p>
                                                 </div>
                                                 <DropdownMenu>
@@ -414,7 +451,9 @@ export default function ProjectList({
                                             </div>
                                             <div className="flex flex-row gap-2 justify-between items-center">
                                                 <p className="text-sm">
-                                                    21d ago
+                                                    {formatTimeAgo(
+                                                        project.updated_at
+                                                    )}
                                                 </p>
                                                 {project.category && (
                                                     <Badge
@@ -476,7 +515,9 @@ export default function ProjectList({
                                                         {project.name}
                                                     </Link>
                                                     <p className="text-xs text-gray-500">
-                                                        Created by Author
+                                                        Created by{" "}
+                                                        {project.author?.name ||
+                                                            "Unknown"}
                                                     </p>
                                                 </div>
                                                 <DropdownMenu>
@@ -514,7 +555,9 @@ export default function ProjectList({
                                             </div>
                                             <div className="flex flex-row gap-2 justify-between items-center">
                                                 <p className="text-sm">
-                                                    21d ago
+                                                    {formatTimeAgo(
+                                                        project.updated_at
+                                                    )}
                                                 </p>
                                                 {project.category && (
                                                     <Badge

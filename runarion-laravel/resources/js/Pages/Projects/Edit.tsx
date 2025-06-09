@@ -21,9 +21,10 @@ import { Transition } from "@headlessui/react";
 import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
-import { PageProps, Project } from "@/types";
-import { Head, useForm } from "@inertiajs/react";
-import { FormEventHandler } from "react";
+import { PageProps, Project, ProjectCategory } from "@/types";
+import { Head, useForm, router } from "@inertiajs/react";
+import { FormEventHandler, useState } from "react";
+import DeleteProjectDialog from "./Partials/DeleteProjectDialog";
 
 interface Props
     extends PageProps<{
@@ -32,11 +33,52 @@ interface Props
         project: Project;
     }> {}
 
+interface FormData extends Record<string, string> {
+    name: string;
+    category: string;
+    description: string;
+    storageLocation: string;
+}
+
+const STORAGE_LOCATIONS = {
+    "01": "Server",
+    "02": "Google Drive",
+    "03": "Dropbox",
+    "04": "OneDrive",
+} as const;
+
+const CATEGORIES: ProjectCategory[] = [
+    "horror",
+    "sci-fi",
+    "fantasy",
+    "romance",
+    "thriller",
+    "mystery",
+    "adventure",
+    "comedy",
+    "dystopian",
+    "crime",
+    "fiction",
+    "biography",
+    "historical",
+];
+
+const formatCategory = (category: string): string => {
+    return category
+        .split("-")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+};
+
 export default function ProjectSettings({
     workspaceId,
     projectId,
     project,
 }: Props) {
+    const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+    const [deleteProjectInput, setDeleteProjectInput] = useState("");
+    const [deleteLoading, setDeleteLoading] = useState(false);
+
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Project Settings", path: "workspace.projects.edit" },
         { label: "General", path: "workspace.projects.edit" },
@@ -45,24 +87,57 @@ export default function ProjectSettings({
         param: { project_id: projectId, workspace_id: workspaceId },
     }));
 
-    const { data, setData, post, errors, processing, recentlySuccessful } =
-        useForm({
-            name: project.name,
-            description: "",
-            genre: "",
-            storageLocation: "",
+    const { data, setData, patch, errors, processing, recentlySuccessful } =
+        useForm<FormData>({
+            name: project.name || "",
+            category: project.category || "none",
+            description: project.description || "",
+            storageLocation: project.saved_in || "01",
         });
 
     const submit: FormEventHandler = (e) => {
         e.preventDefault();
-        post(route("placehoder.route.fornow", project.id), {
-            forceFormData: true,
-        });
+        patch(
+            route("workspace.projects.update", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            })
+        );
     };
+
+    const handleDeleteProject = async () => {
+        setDeleteLoading(true);
+        router.delete(
+            route("workspace.projects.destroy", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            }),
+            {
+                onFinish: () => {
+                    setDeleteLoading(false);
+                    setDeleteDialogOpen(false);
+                    setDeleteProjectInput("");
+                },
+            }
+        );
+    };
+
+    // Check if current user is admin using the current_user_access information
+    const isAdmin = project.current_user_access?.role === "admin";
 
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Project Settings" />
+
+            <DeleteProjectDialog
+                open={deleteDialogOpen}
+                setOpen={setDeleteDialogOpen}
+                projectName={project.name}
+                confirmationInput={deleteProjectInput}
+                setConfirmationInput={setDeleteProjectInput}
+                loading={deleteLoading}
+                handleDelete={handleDeleteProject}
+            />
 
             <Card className="w-full h-full ">
                 <form onSubmit={submit}>
@@ -93,32 +168,36 @@ export default function ProjectSettings({
                         </div>
 
                         <div className="space-y-1 flex flex-col gap-1">
-                            <Label htmlFor="genre">Project Genre</Label>
+                            <Label htmlFor="category">Project Category</Label>
                             <Select
-                                value={data.genre}
+                                value={data.category}
                                 onValueChange={(value) =>
-                                    setData("genre", value)
+                                    setData("category", value)
                                 }
                             >
                                 <SelectTrigger
-                                    id="genre"
+                                    id="category"
                                     size="default"
                                     className="w-full hover:cursor-pointer"
                                 >
-                                    <SelectValue placeholder="Select a genre" />
+                                    <SelectValue placeholder="Select a category" />
                                 </SelectTrigger>
                                 <SelectContent position="popper">
-                                    <SelectItem value="action">
-                                        Action
+                                    <SelectItem value="none">
+                                        Select a category
                                     </SelectItem>
-                                    <SelectItem value="comedy">
-                                        Comedy
-                                    </SelectItem>
-                                    <SelectItem value="drama">Drama</SelectItem>
+                                    {CATEGORIES.map((category) => (
+                                        <SelectItem
+                                            key={category}
+                                            value={category}
+                                        >
+                                            {formatCategory(category)}
+                                        </SelectItem>
+                                    ))}
                                 </SelectContent>
                             </Select>
                             <div className="text-sm text-destructive -mt-1.5">
-                                {errors.genre || "\u00A0"}
+                                {errors.category || "\u00A0"}
                             </div>
                         </div>
 
@@ -140,18 +219,13 @@ export default function ProjectSettings({
                                     <SelectValue placeholder="Select storage location" />
                                 </SelectTrigger>
                                 <SelectContent position="popper">
-                                    <SelectItem value="server">
-                                        Server
-                                    </SelectItem>
-                                    <SelectItem value="google-drive">
-                                        Google Drive
-                                    </SelectItem>
-                                    <SelectItem value="dropbox">
-                                        Dropbox
-                                    </SelectItem>
-                                    <SelectItem value="onedrive">
-                                        OneDrive
-                                    </SelectItem>
+                                    {Object.entries(STORAGE_LOCATIONS).map(
+                                        ([code, label]) => (
+                                            <SelectItem key={code} value={code}>
+                                                {label}
+                                            </SelectItem>
+                                        )
+                                    )}
                                 </SelectContent>
                             </Select>
                             <div className="text-sm text-destructive -mt-1.5">
@@ -175,16 +249,16 @@ export default function ProjectSettings({
                         </div>
                     </CardContent>
                     <CardFooter className="flex justify-between mt-2">
-                        {/* Precondition if the role is admin then show this button if not dont */}
-                        <>
+                        {isAdmin && (
                             <Button
                                 type="button"
                                 disabled={processing}
                                 variant="destructive"
+                                onClick={() => setDeleteDialogOpen(true)}
                             >
                                 Delete Project
                             </Button>
-                        </>
+                        )}
                         <div className="flex items-center gap-4">
                             <Transition
                                 show={recentlySuccessful}

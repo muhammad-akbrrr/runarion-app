@@ -46,6 +46,6 @@ export interface WorkspaceMember {
     name: string | null;
     email: string;
     avatar_url: string | null;
-    role: "member" | "owner" | "admin" | "viewer";
+    role: "member" | "owner" | "admin";
     is_verified: boolean | null;
 }

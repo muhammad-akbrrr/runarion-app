@@ -40,6 +40,14 @@ class Projects extends Model
     ];
 
     /**
+     * Get the author of the project.
+     */
+    public function author()
+    {
+        return $this->belongsTo(User::class, 'original_author');
+    }
+
+    /**
      * Get the validation rules that apply to the model.
      *
      * @return array<string, mixed>
