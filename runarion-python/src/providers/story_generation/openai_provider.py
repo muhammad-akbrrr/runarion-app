@@ -1,14 +1,15 @@
+# providers/story_generation/openai_provider.py
+
 import time
 import uuid
 from flask import current_app
 from openai import OpenAI
-from models.request import GenerationRequest
-from models.response import GenerationResponse
-from providers.base_provider import BaseProvider
+from models.story_generation.request import StoryGenerationRequest
+from models.story_generation.response import StoryGenerationResponse
+from providers.story_generation.base_provider import StoryGenerationBaseProvider
 
-
-class OpenAIProvider(BaseProvider):
-    def __init__(self, request: GenerationRequest):
+class StoryGenerationOpenAIProvider(StoryGenerationBaseProvider):
+    def __init__(self, request: StoryGenerationRequest):
         super().__init__(request)
 
         try:
@@ -16,11 +17,8 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             current_app.logger.error(f"Failed to initialize OpenAI client: {e}")
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
-        
-        self.caller = self.request.caller
-        self.quota_manager = self._get_quota_manager()
 
-    def generate(self) -> GenerationResponse:
+    def generate(self) -> StoryGenerationResponse:
         model_to_use = self.model
         prompt = self.request.prompt or "<start writing from scratch>"
         instruction = self.instruction
@@ -39,17 +37,16 @@ class OpenAIProvider(BaseProvider):
         quota_generation_count = 1
         request_id = str(uuid.uuid4())
         provider_request_id = None
-        
+
         try:
             self._check_quota()
         except Exception as e:
             current_app.logger.error(f"OpenAI Quota error with model {model_to_use}: {e}")
             response = self._build_error_response(
                 request_id=request_id,
-                provider_request_id="" if not provider_request_id else provider_request_id,
+                provider_request_id=provider_request_id or "",
                 error_message=f"OpenAI Quota error: {str(e)}",
             )
-            
             self._log_generation_to_db(response)
             return response
 
@@ -88,9 +85,8 @@ class OpenAIProvider(BaseProvider):
             current_app.logger.error(f"OpenAI API error with model {model_to_use}: {e}")
             response = self._build_error_response(
                 request_id=request_id,
-                provider_request_id="" if not provider_request_id else provider_request_id,
+                provider_request_id=provider_request_id or "",
                 error_message=f"OpenAI API error: {str(e)}",
             )
-            
             self._log_generation_to_db(response)
             return response
