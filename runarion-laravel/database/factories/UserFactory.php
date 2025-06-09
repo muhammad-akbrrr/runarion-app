@@ -53,37 +53,6 @@ class UserFactory extends Factory
     }
 
     /**
-     * Configure the model factory.
-     */
-    public function configure()
-    {
-        return $this->afterCreating(function (User $user) {
-            // Get all workspaces the user is a member of
-            $workspaces = WorkspaceMember::where('user_id', $user->id)
-                ->with('workspace.projects')
-                ->get()
-                ->pluck('workspace');
-
-            if ($workspaces->isNotEmpty()) {
-                // Randomly select 1-3 projects to highlight
-                $highlightedProjects = collect();
-                foreach ($workspaces as $workspace) {
-                    $projects = $workspace->projects->random(fake()->numberBetween(1, 3));
-                    foreach ($projects as $project) {
-                        $highlightedProjects->push([
-                            'created_at' => now()->toIso8601String(),
-                            'project_id' => $project->id,
-                            'workspace_id' => $workspace->id,
-                        ]);
-                    }
-                }
-                $user->highlighted_projects = $highlightedProjects->toArray();
-                $user->save();
-            }
-        });
-    }
-
-    /**
      * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static

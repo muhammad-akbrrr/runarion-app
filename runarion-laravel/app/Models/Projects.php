@@ -21,6 +21,7 @@ class Projects extends Model
     protected $fillable = [
         'workspace_id',
         'folder_id',
+        'original_author',
         'name',
         'slug',
         'settings',
@@ -35,6 +36,7 @@ class Projects extends Model
         'settings' => 'array',
         'access' => 'array',
         'is_active' => 'boolean',
+        'original_author' => 'integer',
     ];
 
     /**
@@ -47,6 +49,7 @@ class Projects extends Model
         return [
             'workspace_id' => ['required', 'ulid', 'exists:workspaces,id'],
             'folder_id' => ['nullable', 'ulid', 'exists:folders,id'],
+            'original_author' => ['nullable', 'integer', 'exists:users,id'],
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:projects,slug'],
             'settings' => ['nullable', 'array'],

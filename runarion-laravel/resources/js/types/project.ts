@@ -29,6 +29,7 @@ export interface Project {
     id: string;
     workspace_id: string;
     folder_id: string | null;
+    original_author: number | null;
     name: string;
     slug: string;
     settings: Record<string, any> | null;

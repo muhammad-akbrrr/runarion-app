@@ -6,6 +6,7 @@ use App\Models\Folder;
 use App\Models\Projects;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -32,6 +33,7 @@ class ProjectsFactory extends Factory
     return [
       'workspace_id' => Workspace::factory(),
       'folder_id' => null,
+      'original_author' => null, // Will be set in configure method
       'name' => fake()->words(3, true),
       'slug' => fn(array $attributes) => Str::slug($attributes['name']),
       'settings' => null,
@@ -56,6 +58,12 @@ class ProjectsFactory extends Factory
 
       if ($members->isNotEmpty()) {
         $access = [];
+        $owner = $members->firstWhere('role', 'owner');
+
+        // Set original author to workspace owner if available
+        if ($owner && $owner->user) {
+          $project->original_author = $owner->user->id;
+        }
 
         foreach ($members as $member) {
           // Skip if member has no user (shouldn't happen, but just in case)
