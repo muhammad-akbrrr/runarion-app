@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Validation\Rule;
 
 /**
  * WorkspaceMember Model
@@ -27,6 +28,20 @@ class WorkspaceMember extends Model
   ];
 
   /**
+   * Get the validation rules that apply to the model.
+   *
+   * @return array<string, mixed>
+   */
+  public static function rules(): array
+  {
+    return [
+      'workspace_id' => ['required', 'ulid', 'exists:workspaces,id'],
+      'user_id' => ['required', 'ulid', 'exists:users,id'],
+      'role' => ['required', 'string', Rule::in(['owner', 'admin', 'member'])],
+    ];
+  }
+
+  /**
    * load modelnya.
    * menambahkan constraint unik untuk mencegah beberapa owner pada workspace.
    */
@@ -47,5 +62,21 @@ class WorkspaceMember extends Model
         }
       }
     });
+  }
+
+  /**
+   * Get the user that owns the workspace membership.
+   */
+  public function user()
+  {
+    return $this->belongsTo(User::class);
+  }
+
+  /**
+   * Get the workspace that owns the membership.
+   */
+  public function workspace()
+  {
+    return $this->belongsTo(Workspace::class);
   }
 }

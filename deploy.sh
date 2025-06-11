@@ -41,7 +41,6 @@ check_env_vars() {
     local required_vars=(
         "DB_PASSWORD"
         "GEMINI_API_KEY"
-        "GOOGLE_API_KEY"
         "OPENAI_API_KEY"
         "APP_URL"
     )
@@ -60,13 +59,11 @@ create_secrets() {
     # Remove existing secrets if they exist
     docker secret rm db_password 2>/dev/null || true
     docker secret rm gemini_api_key 2>/dev/null || true
-    docker secret rm google_api_key 2>/dev/null || true
     docker secret rm openai_api_key 2>/dev/null || true
 
     # Create new secrets
     echo "$DB_PASSWORD" | docker secret create db_password -
     echo "$GEMINI_API_KEY" | docker secret create gemini_api_key -
-    echo "$GOOGLE_API_KEY" | docker secret create google_api_key -
     echo "$OPENAI_API_KEY" | docker secret create openai_api_key -
 }
 

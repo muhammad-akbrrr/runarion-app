@@ -15,7 +15,7 @@ export default function Dashboard({
         { label: "Home", path: "workspace.dashboard" },
     ].map((item) => ({
         ...item,
-        param: workspaceId,
+        param: { workspace_id: workspaceId },
     }));
 
     return (

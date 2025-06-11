@@ -16,7 +16,7 @@ use Laravel\Sanctum\HasApiTokens;
  * mewakili user pada sistem dengan fitur autentikasi dan manajemen workspace
  * meng extend class authenticatable laravel untuk fitur autentikasi
  */
-class User extends Authenticatable 
+class User extends Authenticatable
     // implements MustVerifyEmail
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
@@ -34,7 +34,8 @@ class User extends Authenticatable
         'avatar_url',
         'last_workspace_id',
         'settings',
-        'notifications'
+        'notifications',
+        'highlighted_projects'
     ];
 
     /**
@@ -59,6 +60,7 @@ class User extends Authenticatable
             'password' => 'hashed',
             'settings' => 'array',
             'notifications' => 'array',
+            'highlighted_projects' => 'array',
         ];
     }
 
@@ -72,10 +74,10 @@ class User extends Authenticatable
             ->where('user_id', $this->id)
             ->where('role', 'owner')
             ->value('workspace_id');
-        
+
         $this->last_workspace_id = $ownedWorkspaceId;
         $this->saveQuietly();
-        
+
         return $ownedWorkspaceId;
     }
 }

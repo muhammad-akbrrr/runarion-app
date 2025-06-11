@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 /**
  * Folder Model
@@ -22,12 +23,46 @@ class Folder extends Model
     'workspace_id',
     'name',
     'slug',
+    'original_author',
     'is_active',
   ];
 
   protected $casts = [
     'is_active' => 'boolean',
+    'original_author' => 'integer',
   ];
+
+  /**
+   * Get the validation rules that apply to the model.
+   *
+   * @return array<string, mixed>
+   */
+  public static function rules(): array
+  {
+    return [
+      'workspace_id' => ['required', 'ulid', 'exists:workspaces,id'],
+      'name' => ['required', 'string', 'max:255'],
+      'slug' => [
+        'required',
+        'string',
+        'max:255',
+        Rule::unique('folders')->where(function ($query) {
+          return $query->where('workspace_id', request()->route('workspace_id'))
+            ->where('is_active', true);
+        }),
+      ],
+      'original_author' => ['nullable', 'integer', 'exists:users,id'],
+      'is_active' => ['boolean'],
+    ];
+  }
+
+  /**
+   * Get the author of the folder.
+   */
+  public function author()
+  {
+    return $this->belongsTo(User::class, 'original_author');
+  }
 
   /**
    * load modelnya.

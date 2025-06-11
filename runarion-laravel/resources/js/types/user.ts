@@ -1,3 +1,9 @@
+export interface HighlightedProject {
+    created_at: string;
+    project_id: string;
+    workspace_id: string;
+}
+
 export interface User {
     id: string;
     name: string;
@@ -7,4 +13,5 @@ export interface User {
     last_workspace_id: string;
     settings: Record<string, any> | null;
     notifications: Record<string, boolean> | null;
+    highlighted_projects: HighlightedProject[] | null;
 }

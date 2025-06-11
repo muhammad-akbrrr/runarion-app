@@ -14,16 +14,25 @@ return new class extends Migration {
             $table->ulid('id')->primary();
             $table->ulid('workspace_id');
             $table->ulid('folder_id')->nullable();
+            $table->unsignedBigInteger('original_author')->nullable();
             $table->string('name');
-            $table->string('slug')->unique();
-            $table->json('settings')->nullable(); // For project-specific settings
+            $table->string('slug');
+            $table->json('settings')->nullable()->comment('For in-project settings like LLM settings, etc');
+            $table->enum('category', ['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical'])->nullable();
+            $table->string('saved_in', 2)->default('01')->comment('01 = Server, 02 = GDrive, 03 = Dropbox, 04 = OneDrive');
+            $table->text('description')->nullable();
+            $table->json('access')->nullable();
             $table->boolean('is_active')->default(true);
+            $table->enum('backup_frequency', ['daily', 'weekly', 'manual'])->default('daily');
+            $table->timestamp('last_backup_at')->nullable();
+            $table->timestamp('next_backup_at')->nullable();
             $table->timestamps();
             $table->softDeletes();
 
-            $table->unique(['workspace_id', 'slug']);
+            $table->unique(['workspace_id', 'slug', 'is_active']);
             $table->foreign('workspace_id')->references('id')->on('workspaces')->onDelete('cascade');
             $table->foreign('folder_id')->references('id')->on('folders')->onDelete('set null');
+            $table->foreign('original_author')->references('id')->on('users')->onDelete('set null');
         });
     }
 

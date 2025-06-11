@@ -101,7 +101,7 @@ export default function LLM({
         { label: "LLM Integration", path: "workspace.edit.llm" },
     ].map((item) => ({
         ...item,
-        param: workspaceId,
+        param: { workspace_id: workspaceId },
     }));
 
     const connections = [

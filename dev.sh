@@ -59,7 +59,6 @@ check_env_vars() {
         
         # API Keys
         "GEMINI_API_KEY"
-        "GOOGLE_API_KEY"
         "OPENAI_API_KEY"
         "DEEPSEEK_API_KEY"
 
@@ -324,13 +323,26 @@ setup_stable_diffusion() {
     # Create and activate virtual environment if it doesn't exist
     if [ ! -d "runarion-stable-diffusion/venv" ]; then
         echo "Creating virtual environment..."
-        cd runarion-stable-diffusion && python3 -m venv venv --clear && cd ..
+        cd runarion-stable-diffusion
+        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+            python -m venv venv --clear
+        else
+            python3 -m venv venv --clear
+        fi
+        cd ..
     fi
     
     # Activate virtual environment and install dependencies
     echo "Installing dependencies in virtual environment..."
     cd runarion-stable-diffusion
-    source venv/bin/activate
+    
+    # OS-specific virtual environment activation
+    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+        source venv/Scripts/activate
+    else
+        source venv/bin/activate
+    fi
+    
     python -m pip install --no-cache-dir huggingface_hub
     
     # Download models if needed

@@ -24,7 +24,7 @@ export default function List({
                 <CardHeader>
                     <CardTitle className="text-2xl">My Workspaces</CardTitle>
                 </CardHeader>
-                <CardContent className="flex flex-row flex-wrap gap-4">
+                <CardContent className="grid 2xl:grid-cols-5 lg:grid-cols-3 md:grid-cols-2 gap-4">
                     {workspaces.map((workspace) => (
                         <WorkspaceCard
                             key={workspace.id}

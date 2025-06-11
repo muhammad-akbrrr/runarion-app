@@ -30,29 +30,26 @@ import {
 } from "@/Components/ui/sidebar";
 import { Link, router, usePage } from "@inertiajs/react";
 import {
-    Bot,
     ChevronDown,
     ChevronLeft,
-    Cloud,
-    DollarSign,
     FileText,
     Folder,
     Home,
-    LayoutGrid,
     Library,
     LucideProps,
     Settings,
     Star,
-    User as UserIcon,
-    Users,
 } from "lucide-react";
 import React, { PropsWithChildren } from "react";
-import { ParameterValue } from "../../../vendor/tightenco/ziggy/src/js";
+import { RouteParams } from "../../../vendor/tightenco/ziggy/src/js";
+import LoadingOverlay from "@/Components/LoadingOverlay";
+import SettingsSidebar from "./Partials/SettingsSidebar";
+import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
 
 export interface BreadcrumbItem {
     label: string;
     path: string;
-    param?: ParameterValue;
+    param?: RouteParams<string>;
 }
 
 interface SidebarItem {
@@ -61,7 +58,7 @@ interface SidebarItem {
         Omit<LucideProps, "ref"> & React.RefAttributes<SVGSVGElement>
     >;
     path: string;
-    param?: ParameterValue;
+    param?: RouteParams<string>;
 }
 
 export default function AuthenticatedLayout({
@@ -70,13 +67,45 @@ export default function AuthenticatedLayout({
 }: PropsWithChildren<{
     breadcrumbs: BreadcrumbItem[];
 }>) {
-    const { auth, workspaces } = usePage().props;
+    const { auth, workspaces, workspace_switching } = usePage().props;
     const user = auth.user;
     const workspaceId = user.last_workspace_id;
+    const projectId = route().params.project_id as string | undefined;
 
     const workspaceName = workspaces.find(
         (workspace) => workspace.id === workspaceId
     )?.name;
+
+    const [loading, setLoading] = React.useState(false);
+    const [completedSteps, setCompletedSteps] = React.useState(0);
+    const TOTAL_STEPS = 3;
+    const progress = (completedSteps / TOTAL_STEPS) * 100;
+
+    // Effect to handle workspace switching animation
+    React.useEffect(() => {
+        if (workspace_switching) {
+            const simulateLoading = async () => {
+                setLoading(true);
+                setCompletedSteps(0);
+
+                // Simulate step 1
+                await new Promise((resolve) => setTimeout(resolve, 800));
+                setCompletedSteps(1);
+
+                // Simulate step 2
+                await new Promise((resolve) => setTimeout(resolve, 700));
+                setCompletedSteps(2);
+
+                // Simulate step 3
+                await new Promise((resolve) => setTimeout(resolve, 600));
+                setCompletedSteps(3);
+
+                setLoading(false);
+            };
+
+            simulateLoading();
+        }
+    }, [workspace_switching]);
 
     const handleWorkspaceSelect = (id: string) => {
         if (id === workspaceId) return;
@@ -97,9 +126,14 @@ export default function AuthenticatedLayout({
             label: "Home",
             icon: Home,
             path: "workspace.dashboard",
-            param: workspaceId,
+            param: { id: workspaceId },
         },
-        { label: "Projects", icon: Library, path: "" },
+        {
+            label: "Projects",
+            icon: Library,
+            path: "workspace.projects",
+            param: { id: workspaceId },
+        },
         { label: "File Manager", icon: Folder, path: "" },
     ];
 
@@ -112,33 +146,12 @@ export default function AuthenticatedLayout({
         path: "",
     }));
 
-    const workspaceSettingsItems: SidebarItem[] = [
-        { label: "General", icon: Settings, path: "workspace.edit" },
-        { label: "Members", icon: Users, path: "workspace.edit.member" },
-        {
-            label: "Cloud Storage",
-            icon: Cloud,
-            path: "workspace.edit.cloud-storage",
-        },
-        { label: "LLM Integration", icon: Bot, path: "workspace.edit.llm" },
-        {
-            label: "Plans & Billing",
-            icon: DollarSign,
-            path: "workspace.edit.billing",
-        },
-    ].map((item) => ({
-        ...item,
-        param: workspaceId,
-    }));
+    const openSettings =
+        route().current("workspace.edit*") ||
+        route().current("profile.edit") ||
+        route().current("workspace.index");
 
-    const mySettingsItems: SidebarItem[] = [
-        { label: "Profile", icon: UserIcon, path: "profile.edit" },
-        { label: "Workspaces", icon: LayoutGrid, path: "workspace.index" },
-    ];
-
-    const openSettings = [...workspaceSettingsItems, ...mySettingsItems].some(
-        (item) => route().current(item.path, item.param)
-    );
+    const openProjectSettings = route().current("workspace.projects.edit*");
 
     const renderSidebarGroup = (name: string, items: SidebarItem[]) => (
         <SidebarGroup>
@@ -180,24 +193,39 @@ export default function AuthenticatedLayout({
 
     return (
         <SidebarProvider>
+            <LoadingOverlay
+                visible={loading}
+                progress={progress}
+                message={`Switching workspace... (${Math.round(progress)}%)`}
+            />
             <Sidebar className="flex" collapsible="offcanvas">
                 <SidebarHeader>
-                    {openSettings ? (
+                    {openSettings || openProjectSettings ? (
                         <div
                             className="w-full h-12 flex items-center gap-2 rounded hover:bg-gray-100 cursor-pointer"
                             onClick={() =>
                                 router.get(
-                                    route("workspace.dashboard", workspaceId)
+                                    openProjectSettings
+                                        ? route("workspace.projects", {
+                                              workspace_id: workspaceId,
+                                          })
+                                        : route("workspace.dashboard", {
+                                              workspace_id: workspaceId,
+                                          })
                                 )
                             }
                         >
                             <ChevronLeft className="h-4 w-4 ml-1" />
-                            <div>Back to Dashboard</div>
+                            <div>
+                                {openProjectSettings
+                                    ? "All Projects"
+                                    : "Back to Dashboard"}
+                            </div>
                         </div>
                     ) : (
                         <DropdownMenu>
                             <DropdownMenuTrigger className="w-full h-12 rounded hover:bg-gray-100 cursor-pointer">
-                                <div className="flex items-center gap-2">
+                                <div className="flex items-center gap-2 px-2">
                                     <Avatar>
                                         <AvatarImage
                                             src={user.avatar_url || undefined}
@@ -216,7 +244,7 @@ export default function AuthenticatedLayout({
                                             {workspaceName}
                                         </p>
                                     </div>
-                                    <ChevronDown className="h-4 w-4 mr-1" />
+                                    <ChevronDown className="h-4 w-4" />
                                 </div>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent
@@ -239,20 +267,26 @@ export default function AuthenticatedLayout({
                 </SidebarHeader>
 
                 <SidebarContent>
-                    {!openSettings &&
-                        renderSidebarGroup("Dashboard", dashboardItems)}
+                    {!openSettings && !openProjectSettings && (
+                        <>
+                            {renderSidebarGroup("Dashboard", dashboardItems)}
+                            {renderSidebarGroup(
+                                "Favorites",
+                                dummyFavoriteItems
+                            )}
+                        </>
+                    )}
 
-                    {!openSettings &&
-                        renderSidebarGroup("Favorites", dummyFavoriteItems)}
+                    {openSettings && (
+                        <SettingsSidebar workspaceId={workspaceId} />
+                    )}
 
-                    {openSettings &&
-                        renderSidebarGroup(
-                            "Workspace Settings",
-                            workspaceSettingsItems
-                        )}
-
-                    {openSettings &&
-                        renderSidebarGroup("My Settings", mySettingsItems)}
+                    {openProjectSettings && projectId && (
+                        <ProjectSettingsSidebar
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                        />
+                    )}
                 </SidebarContent>
 
                 {!openSettings && (
@@ -261,10 +295,9 @@ export default function AuthenticatedLayout({
                             <SidebarMenuItem>
                                 <SidebarMenuButton asChild>
                                     <Link
-                                        href={route(
-                                            "workspace.edit",
-                                            workspaceId
-                                        )}
+                                        href={route("workspace.edit", {
+                                            workspace_id: workspaceId,
+                                        })}
                                     >
                                         <Settings className="h-4 w-4" />
                                         <span>Settings</span>

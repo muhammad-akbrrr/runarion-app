@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Folder;
 use App\Models\Workspace;
+use App\Models\WorkspaceMember;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Str;
 
@@ -36,6 +37,16 @@ class FolderSeeder extends Seeder
   {
     // Create folders for each workspace
     Workspace::all()->each(function ($workspace) {
+      // Get workspace owner
+      $owner = WorkspaceMember::where('workspace_id', $workspace->id)
+        ->where('role', 'owner')
+        ->with('user')
+        ->first();
+
+      if (!$owner || !$owner->user) {
+        return; // Skip if no owner found
+      }
+
       // Create root folders
       $folders = [
         'Development',
@@ -51,6 +62,7 @@ class FolderSeeder extends Seeder
           'workspace_id' => $workspace->id,
           'name' => $folderName,
           'slug' => Str::slug($folderName),
+          'original_author' => $owner->user->id,
         ]);
       }
     });
