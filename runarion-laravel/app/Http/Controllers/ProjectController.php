@@ -10,15 +10,29 @@ use App\Models\Folder;
 use App\Models\Projects;
 use App\Models\Workspace;
 use Illuminate\Support\Str;
+use App\Models\WorkspaceMember;
+use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
     {
-        $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name', 'created_at']);
-        $projects = Projects::where('workspace_id', $workspace_id)
+        $folders = Folder::where('workspace_id', $workspace_id)
+            ->where('is_active', true)
             ->with(['author:id,name'])
             ->get();
+
+        $projects = Projects::where('workspace_id', $workspace_id)
+            ->with(['author:id,name'])
+            ->get()
+            ->map(function ($project) {
+                if ($project->folder_id) {
+                    $project->folder = Folder::where('id', $project->folder_id)
+                        ->where('is_active', true)
+                        ->first(['id', 'name']);
+                }
+                return $project;
+            });
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
@@ -32,9 +46,14 @@ class ProjectController extends Controller
      */
     public function openFolder(Request $request, string $workspace_id, string $folder_id)
     {
-        $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name', 'created_at']);
+        $folders = Folder::where('workspace_id', $workspace_id)
+            ->where('is_active', true)
+            ->with(['author:id,name'])
+            ->get();
         $selectedFolder = Folder::where('id', $folder_id)
             ->where('workspace_id', $workspace_id)
+            ->where('is_active', true)
+            ->with(['author:id,name'])
             ->first();
         if (!$selectedFolder) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
@@ -60,20 +79,33 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'name' => 'required|string|max:255',
         ]);
+
+        // Check if user is a member of the workspace
+        $isMember = WorkspaceMember::where('workspace_id', $workspace_id)
+            ->where('user_id', $request->user()->id)
+            ->exists();
+
+        if (!$isMember) {
+            return back()->withErrors(['name' => 'You must be a member of this workspace to create folders.']);
+        }
+
         $folder = new Folder();
         $folder->workspace_id = $workspace_id;
         $folder->name = $validated['name'];
         $folder->slug = Str::slug($validated['name']);
+        $folder->original_author = $request->user()->id;
+
+        // Validate using model rules
+        $rules = Folder::rules();
+        $rules['workspace_id'] = ['required', 'ulid', 'exists:workspaces,id'];
+        $validator = \Validator::make($folder->toArray(), $rules);
+        if ($validator->fails()) {
+            return back()->withErrors($validator->errors());
+        }
+
         $folder->save();
 
-        $folders = Folder::where('workspace_id', $workspace_id)->get(['id', 'name', 'created_at']);
-        $projects = Projects::where('workspace_id', $workspace_id)->get();
-
-        return Inertia::render('Projects/ProjectList', [
-            'workspaceId' => $workspace_id,
-            'folders' => $folders,
-            'projects' => $projects,
-        ]);
+        return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
     }
 
     /**
@@ -83,16 +115,37 @@ class ProjectController extends Controller
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'folder_id' => 'nullable|string',
+            'folder_id' => 'nullable|string|exists:folders,id',
         ]);
+
+        // Check if user is a member of the workspace
+        $isMember = WorkspaceMember::where('workspace_id', $workspace_id)
+            ->where('user_id', $request->user()->id)
+            ->exists();
+
+        if (!$isMember) {
+            return back()->withErrors(['name' => 'You must be a member of this workspace to create projects.']);
+        }
+
+        // If folder_id is provided and not 'none', verify it exists and belongs to the workspace
+        if (!empty($validated['folder_id']) && $validated['folder_id'] !== null) {
+            $folder = Folder::where('id', $validated['folder_id'])
+                ->where('workspace_id', $workspace_id)
+                ->where('is_active', true)
+                ->first();
+
+            if (!$folder) {
+                return back()->withErrors(['folder_id' => 'Invalid folder selected.']);
+            }
+        }
+
         $project = new Projects();
         $project->workspace_id = $workspace_id;
         $project->name = $validated['name'];
         $project->slug = Str::slug($validated['name']);
         $project->original_author = $request->user()->id;
-        if (!empty($validated['folder_id'])) {
-            $project->folder_id = $validated['folder_id'];
-        }
+        $project->folder_id = empty($validated['folder_id']) || $validated['folder_id'] === null ? null : $validated['folder_id'];
+        $project->saved_in = '01'; // Default to server storage
 
         // Add initial access entry for the creator
         $project->access = [
@@ -106,6 +159,14 @@ class ProjectController extends Controller
                 'role' => 'admin'
             ]
         ];
+
+        // Validate using model rules
+        $rules = Projects::rules();
+        $rules['workspace_id'] = ['required', 'ulid', 'exists:workspaces,id'];
+        $validator = \Validator::make($project->toArray(), $rules);
+        if ($validator->fails()) {
+            return back()->withErrors($validator->errors());
+        }
 
         $project->save();
 
@@ -121,10 +182,31 @@ class ProjectController extends Controller
      */
     public function destroyProject(Request $request, string $workspace_id, string $project_id)
     {
-        $project = Projects::where('workspace_id', $workspace_id)->where('id', $project_id)->firstOrFail();
+        $project = Projects::where('workspace_id', $workspace_id)
+            ->where('id', $project_id)
+            ->firstOrFail();
+
+        // Check if user is the original author or has admin access
+        $isOriginalAuthor = (string) $project->original_author === (string) $request->user()->id;
+        $hasAdminAccess = false;
+
+        if ($project->access) {
+            $currentUserAccess = collect($project->access)->first(function ($access) use ($request) {
+                return (string) $access['user']['id'] === (string) $request->user()->id;
+            });
+            $hasAdminAccess = $currentUserAccess && $currentUserAccess['role'] === 'admin';
+        }
+
+        if (!$isOriginalAuthor && !$hasAdminAccess) {
+            return back()->withErrors(['project' => 'You do not have permission to delete this project.']);
+        }
+
+        // Update the slug to make it unique when soft deleted
+        $project->slug = $project->slug . '-' . Str::random(6);
         $project->is_active = false;
         $project->save();
         $project->delete();
+
         return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
     }
 
@@ -133,13 +215,30 @@ class ProjectController extends Controller
      */
     public function destroyFolder(Request $request, string $workspace_id, string $folder_id)
     {
+        $folder = Folder::where('workspace_id', $workspace_id)
+            ->where('id', $folder_id)
+            ->firstOrFail();
+
+        // Check if user is the original author
+        $isOriginalAuthor = (string) $folder->original_author === (string) $request->user()->id;
+
+        // Check if user is workspace owner
+        $isWorkspaceOwner = WorkspaceMember::where('workspace_id', $workspace_id)
+            ->where('user_id', $request->user()->id)
+            ->where('role', 'owner')
+            ->exists();
+
+        if (!$isOriginalAuthor && !$isWorkspaceOwner) {
+            return back()->withErrors(['folder' => 'You do not have permission to delete this folder.']);
+        }
+
         // Move all projects in this folder to the root (folder_id = null)
         Projects::where('workspace_id', $workspace_id)
             ->where('folder_id', $folder_id)
             ->update(['folder_id' => null]);
 
-        // Delete the folder
-        $folder = Folder::where('workspace_id', $workspace_id)->where('id', $folder_id)->firstOrFail();
+        // Update the slug to make it unique when soft deleted
+        $folder->slug = $folder->slug . '-' . Str::random(6);
         $folder->is_active = false;
         $folder->save();
         $folder->delete();
@@ -172,10 +271,16 @@ class ProjectController extends Controller
         // Add current user's access to the project data
         $project->current_user_access = $currentUserAccess;
 
+        // Get workspace folders
+        $folders = Folder::where('workspace_id', $workspace_id)
+            ->where('is_active', true)
+            ->get();
+
         return Inertia::render('Projects/Edit', [
             'workspaceId' => $workspace_id,
             'projectId' => $project_id,
             'project' => $project,
+            'folders' => $folders,
         ]);
     }
 
@@ -188,18 +293,48 @@ class ProjectController extends Controller
             ->where('id', $project_id)
             ->firstOrFail();
 
+        // Check if user is the original author or has admin access
+        $isOriginalAuthor = (string) $project->original_author === (string) $request->user()->id;
+        $hasAdminAccess = false;
+
+        if ($project->access) {
+            $currentUserAccess = collect($project->access)->first(function ($access) use ($request) {
+                return (string) $access['user']['id'] === (string) $request->user()->id;
+            });
+            $hasAdminAccess = $currentUserAccess && $currentUserAccess['role'] === 'admin';
+        }
+
+        if (!$isOriginalAuthor && !$hasAdminAccess) {
+            return back()->withErrors(['project' => 'You do not have permission to update this project.']);
+        }
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'category' => 'nullable|string',
             'description' => 'nullable|string',
             'storageLocation' => 'required|string|in:01,02,03,04',
+            'folder_id' => 'nullable|string|exists:folders,id',
         ]);
+
+        // If folder_id is provided, verify it exists and belongs to the workspace
+        if ($validated['folder_id'] !== 'none') {
+            $folder = Folder::where('id', $validated['folder_id'])
+                ->where('workspace_id', $workspace_id)
+                ->where('is_active', true)
+                ->first();
+
+            if (!$folder) {
+                return back()->withErrors(['folder_id' => 'Invalid folder selected.']);
+            }
+        }
 
         $project->name = $validated['name'];
         $project->slug = Str::slug($validated['name']);
         $project->category = $validated['category'] === 'none' ? null : $validated['category'];
         $project->description = $validated['description'];
         $project->saved_in = $validated['storageLocation'];
+        $project->folder_id = $validated['folder_id'] === 'none' ? null : $validated['folder_id'];
+
         $project->save();
 
         return back();
@@ -256,6 +391,11 @@ class ProjectController extends Controller
             'role' => 'required|string|in:editor,manager,admin',
         ]);
 
+        // Prevent changing original author's role
+        if ((string) $validated['user_id'] === (string) $project->original_author) {
+            return back()->withErrors(['user_id' => 'Cannot change the role of the original author.']);
+        }
+
         // Update the role in the access array
         $access = $project->access;
         foreach ($access as &$member) {
@@ -303,6 +443,11 @@ class ProjectController extends Controller
         $validated = $request->validate([
             'user_id' => 'required|integer|exists:users,id',
         ]);
+
+        // Prevent removing original author
+        if ((string) $validated['user_id'] === (string) $project->original_author) {
+            return back()->withErrors(['user_id' => 'Cannot remove the original author from the project.']);
+        }
 
         // Check if user is removing themselves
         $isSelfRemoval = (string) $request->user()->id === (string) $validated['user_id'];

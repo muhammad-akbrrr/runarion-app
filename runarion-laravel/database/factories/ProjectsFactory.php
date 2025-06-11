@@ -63,6 +63,17 @@ class ProjectsFactory extends Factory
         // Set original author to workspace owner if available
         if ($owner && $owner->user) {
           $project->original_author = $owner->user->id;
+
+          // Always add original author as admin
+          $access[] = [
+            'user' => [
+              'id' => $owner->user->id,
+              'name' => $owner->user->name,
+              'email' => $owner->user->email,
+              'avatar_url' => $owner->user->avatar_url,
+            ],
+            'role' => 'admin'
+          ];
         }
 
         foreach ($members as $member) {
@@ -70,19 +81,9 @@ class ProjectsFactory extends Factory
           if (!$member->user)
             continue;
 
-          // Owner always has admin access
-          if ($member->role === 'owner') {
-            $access[] = [
-              'user' => [
-                'id' => $member->user->id,
-                'name' => $member->user->name,
-                'email' => $member->user->email,
-                'avatar_url' => $member->user->avatar_url,
-              ],
-              'role' => 'admin'
-            ];
+          // Skip if this is the original author (already added above)
+          if ((string) $member->user->id === (string) $project->original_author)
             continue;
-          }
 
           // For other roles, 70% chance of having access
           if (fake()->boolean(70)) {

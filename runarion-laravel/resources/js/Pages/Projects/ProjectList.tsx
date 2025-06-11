@@ -62,9 +62,19 @@ export default function ProjectList({
     folder = null,
 }: PageProps<{
     workspaceId: string;
-    folders: { id: string; name: string; created_at: string }[];
+    folders: {
+        id: string;
+        name: string;
+        created_at: string;
+        author?: { id: number; name: string };
+    }[];
     projects: Project[];
-    folder?: { id: string; name: string; created_at: string } | null;
+    folder?: {
+        id: string;
+        name: string;
+        created_at: string;
+        author?: { id: number; name: string };
+    } | null;
 }>) {
     const [open, setOpen] = useState(false);
     const [folderName, setFolderName] = useState("");
@@ -317,7 +327,9 @@ export default function ProjectList({
                                                         {folderItem.name}
                                                     </Link>
                                                     <p className="text-xs text-gray-500">
-                                                        Created by Author
+                                                        Created by{" "}
+                                                        {folderItem.author
+                                                            ?.name || "Unknown"}
                                                     </p>
                                                 </div>
                                                 <DropdownMenu>

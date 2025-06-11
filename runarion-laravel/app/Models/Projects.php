@@ -59,13 +59,21 @@ class Projects extends Model
             'folder_id' => ['nullable', 'ulid', 'exists:folders,id'],
             'original_author' => ['nullable', 'integer', 'exists:users,id'],
             'name' => ['required', 'string', 'max:255'],
-            'slug' => ['required', 'string', 'max:255', 'unique:projects,slug'],
+            'slug' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('projects')->where(function ($query) {
+                    return $query->where('workspace_id', request()->route('workspace_id'))
+                        ->where('is_active', true);
+                }),
+            ],
             'settings' => ['nullable', 'array'],
             'category' => ['nullable', 'string', Rule::in(['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical'])],
             'saved_in' => ['required', 'string', 'size:2', Rule::in(['01', '02', '03', '04'])],
             'description' => ['nullable', 'string'],
             'access' => ['nullable', 'array'],
-            'access.*.user.id' => ['required', 'ulid', 'exists:users,id'],
+            'access.*.user.id' => ['required', 'integer', 'exists:users,id'],
             'access.*.user.name' => ['required', 'string'],
             'access.*.user.email' => ['required', 'email'],
             'access.*.user.avatar_url' => ['nullable', 'string', 'url'],
@@ -76,6 +84,7 @@ class Projects extends Model
 
     /**
      * Validate that users in access array are members of the workspace
+     * and that the original author's special status is maintained
      */
     public function validateAccess(): bool
     {
@@ -87,10 +96,25 @@ class Projects extends Model
             ->pluck('user_id')
             ->toArray();
 
+        // Check if original author exists in access array
+        $originalAuthorExists = false;
+        $originalAuthorHasAdminRole = false;
+
         foreach ($this->access as $access) {
             if (!in_array($access['user']['id'], $workspaceMemberIds)) {
                 return false;
             }
+
+            // Check original author's status
+            if ((string) $access['user']['id'] === (string) $this->original_author) {
+                $originalAuthorExists = true;
+                $originalAuthorHasAdminRole = $access['role'] === 'admin';
+            }
+        }
+
+        // Original author must exist in access array and have admin role
+        if ($this->original_author && (!$originalAuthorExists || !$originalAuthorHasAdminRole)) {
+            return false;
         }
 
         return true;

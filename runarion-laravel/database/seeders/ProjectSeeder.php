@@ -7,6 +7,7 @@ use Illuminate\Database\Seeder;
 use App\Models\Projects;
 use App\Models\Workspace;
 use App\Models\Folder;
+use App\Models\WorkspaceMember;
 
 /**
  * Project Seeder
@@ -36,12 +37,22 @@ class ProjectSeeder extends Seeder
             // Get all folders for this workspace
             $folders = Folder::where('workspace_id', $workspace->id)->get();
 
+            // Get workspace owner
+            $owner = WorkspaceMember::where('workspace_id', $workspace->id)
+                ->where('role', 'owner')
+                ->with('user')
+                ->first();
+
+            if (!$owner || !$owner->user) {
+                return; // Skip if no owner found
+            }
+
             // Create 2-5 projects per folder
             foreach ($folders as $folder) {
                 $projectCount = fake()->numberBetween(2, 5);
 
                 for ($i = 0; $i < $projectCount; $i++) {
-                    Projects::factory()->create([
+                    $project = Projects::factory()->create([
                         'workspace_id' => $workspace->id,
                         'folder_id' => $folder->id,
                         'name' => "Project " . ($i + 1) . " in " . $folder->name,
@@ -50,7 +61,33 @@ class ProjectSeeder extends Seeder
                         'saved_in' => fake()->randomElement(['01', '02', '03', '04']),
                         'description' => fake()->optional(0.7)->paragraph(),
                         'is_active' => true,
+                        'original_author' => $owner->user->id,
                     ]);
+
+                    // Ensure original author is in access array with admin role
+                    $access = $project->access ?? [];
+                    $hasOriginalAuthor = false;
+
+                    foreach ($access as $member) {
+                        if ((string) $member['user']['id'] === (string) $owner->user->id) {
+                            $hasOriginalAuthor = true;
+                            break;
+                        }
+                    }
+
+                    if (!$hasOriginalAuthor) {
+                        $access[] = [
+                            'user' => [
+                                'id' => (string) $owner->user->id,
+                                'name' => $owner->user->name,
+                                'email' => $owner->user->email,
+                                'avatar_url' => $owner->user->profile_photo_url ?? null,
+                            ],
+                            'role' => 'admin'
+                        ];
+                        $project->access = $access;
+                        $project->save();
+                    }
                 }
             }
         });

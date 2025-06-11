@@ -31,11 +31,16 @@ interface Props
         workspaceId: string;
         projectId: string;
         project: Project;
+        folders: Array<{
+            id: string;
+            name: string;
+        }>;
     }> {}
 
 interface FormData extends Record<string, string> {
     name: string;
     category: string;
+    folder_id: string;
     description: string;
     storageLocation: string;
 }
@@ -74,6 +79,7 @@ export default function ProjectSettings({
     workspaceId,
     projectId,
     project,
+    folders,
 }: Props) {
     const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
     const [deleteProjectInput, setDeleteProjectInput] = useState("");
@@ -91,6 +97,7 @@ export default function ProjectSettings({
         useForm<FormData>({
             name: project.name || "",
             category: project.category || "none",
+            folder_id: project.folder_id || "none",
             description: project.description || "",
             storageLocation: project.saved_in || "01",
         });
@@ -101,7 +108,11 @@ export default function ProjectSettings({
             route("workspace.projects.update", {
                 workspace_id: workspaceId,
                 project_id: projectId,
-            })
+            }),
+            {
+                onSuccess: () => {},
+                onError: (errors) => {},
+            }
         );
     };
 
@@ -122,8 +133,13 @@ export default function ProjectSettings({
         );
     };
 
+    const handleFolderChange = (value: string) => {
+        setData("folder_id", value);
+    };
+
     // Check if current user is admin using the current_user_access information
     const isAdmin = project.current_user_access?.role === "admin";
+    const canEdit = isAdmin;
 
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
@@ -145,6 +161,12 @@ export default function ProjectSettings({
                         <CardTitle className="text-2xl">
                             General Settings
                         </CardTitle>
+                        {!canEdit && (
+                            <p className="text-sm text-muted-foreground mt-2">
+                                You don't have permission to edit this project's
+                                settings.
+                            </p>
+                        )}
                     </CardHeader>
                     <Separator
                         className="mt-2 mb-6 mx-6"
@@ -198,6 +220,38 @@ export default function ProjectSettings({
                             </Select>
                             <div className="text-sm text-destructive -mt-1.5">
                                 {errors.category || "\u00A0"}
+                            </div>
+                        </div>
+
+                        <div className="space-y-1 flex flex-col gap-1">
+                            <Label htmlFor="folder_id">Project Folder</Label>
+                            <Select
+                                value={data.folder_id}
+                                onValueChange={handleFolderChange}
+                            >
+                                <SelectTrigger
+                                    id="folder_id"
+                                    size="default"
+                                    className="w-full hover:cursor-pointer"
+                                >
+                                    <SelectValue placeholder="Select a folder" />
+                                </SelectTrigger>
+                                <SelectContent position="popper">
+                                    <SelectItem value="none">
+                                        No Folder
+                                    </SelectItem>
+                                    {folders.map((folder) => (
+                                        <SelectItem
+                                            key={folder.id}
+                                            value={folder.id}
+                                        >
+                                            {folder.name}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <div className="text-sm text-destructive -mt-1.5">
+                                {errors.folder_id || "\u00A0"}
                             </div>
                         </div>
 
@@ -271,7 +325,15 @@ export default function ProjectSettings({
                                     Saved
                                 </p>
                             </Transition>
-                            <Button type="submit" disabled={processing}>
+                            <Button
+                                type="submit"
+                                disabled={processing || !canEdit}
+                                title={
+                                    !canEdit
+                                        ? "You don't have permission to edit this project"
+                                        : undefined
+                                }
+                            >
                                 Save Changes
                             </Button>
                         </div>
