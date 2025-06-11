@@ -49,6 +49,17 @@ export default function AddProjectMemberDialog({
         );
     });
 
+    // Get available roles based on current user's role
+    const getAvailableRoles = () => {
+        const currentUserRole = project.current_user_access?.role;
+        if (currentUserRole === "admin") {
+            return PROJECT_ROLES;
+        } else if (currentUserRole === "manager") {
+            return PROJECT_ROLES.filter((role) => role !== "admin");
+        }
+        return [];
+    };
+
     const handleRoleChange = (memberId: string, role: ProjectRole) => {
         setSelectedRoles((prev) => ({
             ...prev,
@@ -93,6 +104,7 @@ export default function AddProjectMemberDialog({
     };
 
     const selectedCount = Object.keys(selectedRoles).length;
+    const availableRoles = getAvailableRoles();
 
     return (
         <Dialog open={isOpen} onOpenChange={handleClose}>
@@ -106,41 +118,54 @@ export default function AddProjectMemberDialog({
                 </DialogHeader>
 
                 <ScrollArea className="h-[350px]">
-                    <div className="flex flex-col gap-2">
-                        {availableMembers.map((member) => (
-                            <div
-                                key={member.id}
-                                className="flex items-center justify-between p-2 border rounded-lg"
-                            >
-                                <div>
-                                    <p className="font-medium text-sm">
-                                        {member.name}
-                                    </p>
-                                    <p className="text-sm text-gray-500">
-                                        {member.email}
-                                    </p>
-                                </div>
-                                <Select
-                                    value={selectedRoles[member.id]}
-                                    onValueChange={(value: ProjectRole) =>
-                                        handleRoleChange(member.id, value)
-                                    }
+                    {availableMembers.length === 0 ? (
+                        <div className="flex items-center justify-center h-[350px]">
+                            <p className="text-muted-foreground">
+                                No available members
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col gap-2">
+                            {availableMembers.map((member) => (
+                                <div
+                                    key={member.id}
+                                    className="flex items-center justify-between p-2 border rounded-lg"
                                 >
-                                    <SelectTrigger className="w-32">
-                                        <SelectValue placeholder="Select one..." />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {PROJECT_ROLES.map((role) => (
-                                            <SelectItem key={role} value={role}>
-                                                {role.charAt(0).toUpperCase() +
-                                                    role.slice(1)}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
-                            </div>
-                        ))}
-                    </div>
+                                    <div>
+                                        <p className="font-medium text-sm">
+                                            {member.name}
+                                        </p>
+                                        <p className="text-sm text-gray-500">
+                                            {member.email}
+                                        </p>
+                                    </div>
+                                    <Select
+                                        value={selectedRoles[member.id]}
+                                        onValueChange={(value: ProjectRole) =>
+                                            handleRoleChange(member.id, value)
+                                        }
+                                    >
+                                        <SelectTrigger className="w-32">
+                                            <SelectValue placeholder="Select one..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {availableRoles.map((role) => (
+                                                <SelectItem
+                                                    key={role}
+                                                    value={role}
+                                                >
+                                                    {role
+                                                        .charAt(0)
+                                                        .toUpperCase() +
+                                                        role.slice(1)}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </ScrollArea>
 
                 <DialogFooter className="flex flex-row items-center !justify-between">

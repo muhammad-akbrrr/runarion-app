@@ -200,6 +200,7 @@ export default function ProjectAccess({
                             <h2 className="font-semibold">Project Members</h2>
                             <Button
                                 onClick={() => setAddMemberDialogOpen(true)}
+                                disabled={!isAdmin && !isManager}
                             >
                                 <CirclePlus />
                                 Add Members

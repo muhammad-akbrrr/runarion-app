@@ -496,11 +496,34 @@ class ProjectController extends Controller
             ->where('workspace_id', $workspace_id)
             ->firstOrFail();
 
+        // Get current user's access information
+        $currentUserAccess = null;
+        if ($project->access) {
+            $currentUserId = (string) $request->user()->id;
+            $currentUserAccess = collect($project->access)->first(function ($access) use ($currentUserId) {
+                return (string) $access['user']['id'] === $currentUserId;
+            });
+        }
+
+        // Check if user has permission to add members
+        if (!$currentUserAccess || !in_array($currentUserAccess['role'], ['admin', 'manager'])) {
+            return back()->withErrors(['permission' => 'You do not have permission to add members to this project.']);
+        }
+
         $validated = $request->validate([
             'members' => 'required|array',
             'members.*.user_id' => 'required|string',
             'members.*.role' => 'required|string|in:editor,manager,admin',
         ]);
+
+        // For managers, ensure they can't assign admin roles
+        if ($currentUserAccess['role'] === 'manager') {
+            foreach ($validated['members'] as $member) {
+                if ($member['role'] === 'admin') {
+                    return back()->withErrors(['role' => 'Managers cannot assign admin roles.']);
+                }
+            }
+        }
 
         // Get workspace members
         $workspace = Workspace::find($workspace_id);
@@ -546,15 +569,6 @@ class ProjectController extends Controller
         // Update project access
         $project->access = $currentAccess;
         $project->save();
-
-        // Get current user's access information
-        $currentUserAccess = null;
-        if ($project->access) {
-            $currentUserId = (string) $request->user()->id;
-            $currentUserAccess = collect($project->access)->first(function ($access) use ($currentUserId) {
-                return (string) $access['user']['id'] === $currentUserId;
-            });
-        }
 
         // Add current user's access to the project data
         $project->current_user_access = $currentUserAccess;
