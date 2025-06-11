@@ -44,6 +44,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::patch('/{workspace_id}/projects/{project_id}/settings', [ProjectController::class, 'update'])->name('workspace.projects.update');
     Route::get('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'access'])->name('workspace.projects.edit.access');
     Route::patch('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'updateMemberRole'])->name('workspace.projects.update.member.role');
+    Route::post('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'addMember'])->name('workspace.projects.add.members');
     Route::delete('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'removeMember'])->name('workspace.projects.remove.member');
     Route::get('/{workspace_id}/projects/{project_id}/settings/backups', [ProjectController::class, 'backups'])->name('workspace.projects.edit.backups');
     Route::get('/{workspace_id}/projects/{project_id}/settings/activity', [ProjectController::class, 'activity'])->name('workspace.projects.edit.activity');

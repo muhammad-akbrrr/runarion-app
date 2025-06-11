@@ -64,7 +64,7 @@ class Workspace extends Model
             'name' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:workspaces,slug'],
             'cover_image_url' => ['nullable', 'string', 'url'],
-            'timezone' => ['required', 'string', 'timezone'],
+            'timezone' => ['nullable', 'string', 'timezone'],
             'settings' => ['nullable', 'array'],
             'permissions' => ['nullable', 'array'],
             'cloud_storage' => ['nullable', 'array'],

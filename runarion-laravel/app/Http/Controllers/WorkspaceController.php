@@ -40,7 +40,7 @@ class WorkspaceController extends Controller
             ->where('workspace_members.user_id', $request->user()->id)
             ->select('workspaces.*', 'workspace_members.role')
             ->get()
-            ->map(fn ($workspace) => [
+            ->map(fn($workspace) => [
                 'id' => $workspace->id,
                 'name' => $workspace->name,
                 'slug' => $workspace->slug,
@@ -90,9 +90,9 @@ class WorkspaceController extends Controller
         $cloudStorage = DB::table('workspaces')
             ->where('id', $workspace_id)
             ->value('cloud_storage');
-        
+
         $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
-        
+
         $cloudStorage = array_map(
             fn($m) => [
                 'enabled' => $m['enabled'],
@@ -120,9 +120,9 @@ class WorkspaceController extends Controller
         $llm = DB::table('workspaces')
             ->where('id', $workspace_id)
             ->value('llm');
-        
+
         $llm = $llm ? json_decode($llm, true) : [];
-        
+
         foreach ($llm as $key => $value) {
             $apiKeyExists = isset($value['api_key']) && $value['api_key'] !== "";
             $llm[$key] = [
@@ -174,15 +174,15 @@ class WorkspaceController extends Controller
         $workspaceId = Str::ulid()->toString();
         $validated['id'] = $workspaceId;
 
-        $validated['cover_image_url'] = ($request->hasFile('photo') 
-        ?   '/storage/' . Storage::disk('public')
+        $validated['cover_image_url'] = ($request->hasFile('photo')
+            ? '/storage/' . Storage::disk('public')
                 ->putFile('workspace_photos', $request->file('photo'))
-        :   'https://ui-avatars.com/api/?' . http_build_query([
+            : 'https://ui-avatars.com/api/?' . http_build_query([
                 'name' => $validated['name'],
                 'background' => 'random',
             ]));
         unset($validated['photo']);
-        
+
 
         DB::table('workspaces')->insert($validated);
 
@@ -205,7 +205,7 @@ class WorkspaceController extends Controller
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'timezone' => 'string|max:255',
+            'timezone' => 'nullable|string|max:255',
             'permissions' => 'array',
             'permissions.*' => 'array',
             'permissions.*.*' => 'in:admin,member,guest',

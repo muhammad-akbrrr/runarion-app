@@ -55,7 +55,7 @@ export default function Edit({
     const { data, setData, post, errors, processing, recentlySuccessful } =
         useForm({
             name: workspace.name,
-            timezone: workspace.timezone ?? "",
+            timezone: workspace.timezone ?? null,
             permissions: workspace.permissions ?? {},
             photo: null as File | null,
         });
@@ -167,7 +167,7 @@ export default function Edit({
                         <div className="space-y-1 flex flex-col gap-1">
                             <Label htmlFor="timezone">Timezone</Label>
                             <Select
-                                value={data.timezone ?? ""}
+                                value={data.timezone ?? undefined}
                                 onValueChange={(value) =>
                                     setData("timezone", value)
                                 }
