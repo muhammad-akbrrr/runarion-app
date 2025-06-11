@@ -74,15 +74,12 @@ export default function ProjectBackups({
                                     <SelectValue placeholder="Select frequency" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="hourly">
-                                        Hourly
+                                    <SelectItem value="manual">
+                                        Manual
                                     </SelectItem>
                                     <SelectItem value="daily">Daily</SelectItem>
                                     <SelectItem value="weekly">
                                         Weekly
-                                    </SelectItem>
-                                    <SelectItem value="monthly">
-                                        Monthly
                                     </SelectItem>
                                 </SelectContent>
                             </Select>

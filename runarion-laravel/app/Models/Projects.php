@@ -30,6 +30,9 @@ class Projects extends Model
         'description',
         'access',
         'is_active',
+        'backup_frequency',
+        'last_backup_at',
+        'next_backup_at',
     ];
 
     protected $casts = [
@@ -37,6 +40,8 @@ class Projects extends Model
         'access' => 'array',
         'is_active' => 'boolean',
         'original_author' => 'integer',
+        'last_backup_at' => 'datetime',
+        'next_backup_at' => 'datetime',
     ];
 
     /**
@@ -118,5 +123,21 @@ class Projects extends Model
         }
 
         return true;
+    }
+
+    /**
+     * Get the backups for the project.
+     */
+    public function backups()
+    {
+        return $this->hasMany(ProjectBackup::class, 'project_id');
+    }
+
+    /**
+     * Get the logs for the project.
+     */
+    public function logs()
+    {
+        return $this->hasMany(ProjectLog::class, 'project_id');
     }
 }
