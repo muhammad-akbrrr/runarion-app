@@ -6,6 +6,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/Components/ui/select";
+import { Badge } from "@/Components/ui/badge";
 import { useState } from "react";
 import RemoveWorkspaceMemberDialog from "./RemoveWorkspaceMemberDialog";
 
@@ -56,11 +57,9 @@ export default function WorkspaceMemberCard({
                 <p className="text-sm text-gray-500">{email}</p>
             </div>
             <div className="flex items-center space-x-4">
-                <span
-                    className={`text-sm font-medium px-2 py-1 rounded ${statusStyles[status]}`}
-                >
+                <Badge className={`${statusStyles[status]}`}>
                     {statusTexts[status]}
-                </span>
+                </Badge>
                 <Select
                     value={role}
                     onValueChange={onRoleChange}
@@ -91,14 +90,6 @@ export default function WorkspaceMemberCard({
                 >
                     Remove
                 </Button>
-                {/* <DropdownMenu>
-                    <DropdownMenuTrigger className="hover:bg-gray-200 rounded-full p-0.5 cursor-pointer">
-                        <Ellipsis />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                        <DropdownMenuItem>Remove</DropdownMenuItem>
-                    </DropdownMenuContent>
-                </DropdownMenu> */}
             </div>
             <RemoveWorkspaceMemberDialog
                 open={openDialog}
