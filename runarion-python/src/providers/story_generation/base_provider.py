@@ -7,6 +7,7 @@ from models.response import UsageMetadata, QuotaMetadata
 from utils.instruction_builder import InstructionBuilder
 from services.quota_manager import QuotaManager
 from providers.base_provider import BaseProvider
+import uuid
 
 class StoryGenerationBaseProvider(BaseProvider):
     def __init__(self, request: StoryGenerationRequest):
@@ -102,16 +103,33 @@ class StoryGenerationBaseProvider(BaseProvider):
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO generation_logs (
-                            request_id, user_id, workspace_id, project_id, provider,
-                            model_used, key_used, prompt, instruction, generated_text,
-                            success, finish_reason, input_tokens, output_tokens, total_tokens,
-                            processing_time_ms, error_message, created_at
+                            request_id,
+                            provider_request_id,
+                            user_id,
+                            workspace_id,
+                            project_id,
+                            provider,
+                            model_used,
+                            key_used,
+                            prompt,
+                            instruction,
+                            generated_text,
+                            success,
+                            finish_reason,
+                            input_tokens,
+                            output_tokens,
+                            total_tokens,
+                            processing_time_ms,
+                            error_message,
+                            created_at
                         ) VALUES (
-                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, NOW()
+                            %s::UUID, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                         )
+                        ON CONFLICT (request_id) DO NOTHING
                     """, (
                         response.request_id,
+                        response.provider_request_id or None,
                         int(response.quota.user_id),
                         response.quota.workspace_id,
                         response.quota.project_id,
@@ -132,3 +150,4 @@ class StoryGenerationBaseProvider(BaseProvider):
                     conn.commit()
         except Exception as e:
             current_app.logger.error(f"Failed to log generation to DB: {e}")
+

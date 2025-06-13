@@ -81,9 +81,9 @@ class StoryGenerationGeminiProvider(StoryGenerationBaseProvider):
                     finish_reason = getattr(candidate.finish_reason, 'name', str(candidate.finish_reason))
 
             usage = getattr(raw_response, 'usage_metadata', None) or {}
-            input_tokens = getattr(usage, "prompt_token_count", 0)
-            output_tokens = getattr(usage, "candidates_token_count", 0)
-            total_tokens = getattr(usage, "total_token_count", 0)
+            input_tokens = getattr(usage, "prompt_token_count", 0) or 0
+            output_tokens = getattr(usage, "candidates_token_count", 0) or 0
+            total_tokens = getattr(usage, "total_token_count", 0) or 0
 
             processing_time_ms = int((time.time() - start_time) * 1000)
 

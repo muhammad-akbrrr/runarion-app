@@ -84,8 +84,8 @@ class WorkspaceFactory extends Factory
       'trial_ends_at' => fake()->dateTimeBetween('now', '+14 days'),
       'subscription_ends_at' => fake()->dateTimeBetween('+15 days', '+1 year'),
       'is_active' => true,
-      'monthly_quota' => 10,
-      'quota' => 10
+      'monthly_quota' => 50,
+      'quota' => 50
     ];
   }
 
