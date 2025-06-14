@@ -1,16 +1,16 @@
 from flask import Blueprint, request, jsonify, current_app
 from pydantic import ValidationError
-from models.request import GenerationRequest
-from models.response import GenerationResponse
-from providers.openai_provider import OpenAIProvider
-from providers.gemini_provider import GeminiProvider
-# from providers.deepseek_provider import DeepSeekProvider
+from models.story_generation.request import StoryGenerationRequest
+from models.story_generation.response import StoryGenerationResponse
+from providers.story_generation.openai_provider import StoryGenerationOpenAIProvider
+from providers.story_generation.gemini_provider import StoryGenerationGeminiProvider
+# from providers.story_generation.gemini_provider import DeepSeekProvider
 
 generate = Blueprint("generate", __name__)
 
 PROVIDER_MAP = {
-    "openai": OpenAIProvider,
-    "gemini": GeminiProvider,
+    "openai": StoryGenerationOpenAIProvider,
+    "gemini": StoryGenerationGeminiProvider,
     # "deepseek": DeepSeekProvider,
 }
 
@@ -49,7 +49,7 @@ def generate_text_route():
     """
     try:
         json_data = request.get_json()
-        req_obj = GenerationRequest(**json_data)
+        req_obj = StoryGenerationRequest(**json_data)
         current_app.logger.info(f"Received generation request: {req_obj.model_dump()}")
     except ValidationError as e:
         current_app.logger.warning(f"Validation error: {e.errors()}")
@@ -66,7 +66,7 @@ def generate_text_route():
 
     try:
         provider_instance = provider_class(req_obj)
-        response: GenerationResponse = provider_instance.generate()
+        response: StoryGenerationResponse = provider_instance.generate()
         return jsonify(response.model_dump()), 200
 
     except Exception as e:
