@@ -1,6 +1,6 @@
 # runarion-python/src/utils/prompt_builder.py
 
-from models.request import PromptConfig
+from models.story_generation.request import PromptConfig
 
 class InstructionBuilder:
     """Builds instructions for creative writing tasks based on the provided configuration."""

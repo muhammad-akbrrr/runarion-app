@@ -34,6 +34,8 @@ return new class extends Migration {
             $table->timestamp('trial_ends_at')->nullable();
             $table->timestamp('subscription_ends_at')->nullable();
             $table->boolean('is_active')->default(true);
+            $table->integer('monthly_quota')->default(10);
+            $table->integer('quota')->default(10);
             $table->timestamps();
             $table->softDeletes();
         });
