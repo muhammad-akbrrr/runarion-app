@@ -32,7 +32,7 @@ class ResolveWorkspace
         $userWorkspace = DB::table('workspaces')
             ->leftJoin('workspace_members', function ($join) use ($user) {
                 $join->on('workspaces.id', '=', 'workspace_members.workspace_id')
-                     ->where('workspace_members.user_id', '=', $user->id);
+                    ->where('workspace_members.user_id', '=', $user->id);
             })
             ->where('workspaces.id', $workspaceId)
             ->select('workspace_members.role')
@@ -48,15 +48,23 @@ class ResolveWorkspace
 
         $userRole = $userWorkspace->role;
 
-        if ($user->last_workspace_id !== $workspaceId) {
+        // Check if this is a workspace switch
+        $isWorkspaceSwitch = $user->last_workspace_id !== $workspaceId;
+
+        if ($isWorkspaceSwitch) {
             $user->last_workspace_id = $workspaceId;
             $user->saveQuietly();
 
+            // Set a session flag to indicate workspace switch
+            session(['workspace_switching' => true]);
+
+            // Share the updated user data with Inertia
             Inertia::share([
                 'auth' => [
                     'user' => $user,
                     'csrf_token' => csrf_token(),
                 ],
+                'workspace_switching' => true,
             ]);
         }
 

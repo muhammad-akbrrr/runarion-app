@@ -20,6 +20,7 @@ return new class extends Migration {
             $table->ulid('last_workspace_id')->nullable();
             $table->json('settings')->nullable();
             $table->json('notifications')->nullable();
+            $table->json('highlighted_projects')->nullable()->comment('{created_at: timestamp, project_id: ulid, workspace_id: ulid}');
             $table->rememberToken();
             $table->timestamps();
 

@@ -38,7 +38,7 @@ export default function WorkspaceCard({
     };
 
     return (
-        <div className="relative w-64 flex flex-col justify-between bg-slate-50 border border-slate-400 rounded-lg p-4 text-center hover:shadow-md">
+        <div className="relative w-full flex flex-col justify-between bg-slate-50 border border-slate-400 rounded-lg p-4 text-center hover:shadow-md">
             {workspace ? (
                 <>
                     <div className="absolute top-2 right-2">
