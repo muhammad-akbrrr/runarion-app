@@ -75,19 +75,22 @@ export default function LLM({
     const handleChangeApiKey = (e: React.ChangeEvent<HTMLInputElement>) => {
         const value = e.target.value;
         setFormData("api_key", value);
-
-        const pattern = apiKeyPatterns[formData.llm_key] || /^$/;
-        if (value && !pattern.test(value)) {
-            setApiKeyError(
-                "Invalid API key. Please check the key and try again."
-            );
-        } else {
-            setApiKeyError(null);
-        }
+        setApiKeyError(null); // Clear previous error
     };
 
     const handleSubmit: FormEventHandler = (e) => {
         e.preventDefault();
+
+        const pattern = apiKeyPatterns[formData.llm_key] || /^$/;
+
+        if (!llm?.enabled || (llm?.enabled && formData.api_key)) {
+            if (!pattern.test(formData.api_key)) {
+                setApiKeyError("Invalid API key. Please check the key and try again.");
+                return;
+            }
+        }
+
+        setApiKeyError(null); // clear error before submitting
 
         patch(route("workspace.update.llm", workspaceId), {
             preserveScroll: true,
