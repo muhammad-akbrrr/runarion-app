@@ -1,11 +1,10 @@
 import * as React from "react";
 import {
     Menu,
-    SquareStack,
+    BookOpenText,
     Database,
     Network,
-    Puzzle,
-    Layers,
+    Paintbrush,
     Settings,
     FileText,
     Search,
@@ -54,7 +53,8 @@ import { Project } from "@/types";
 interface NavigationItem {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
-    isActive: boolean;
+    path: string;
+    param?: { workspace_id: string; project_id: string };
 }
 
 interface EditableTextProps {
@@ -79,14 +79,6 @@ interface ActionItem {
 // ============================================================================
 // NAVIGATION DATA
 // ============================================================================
-
-const navigationItems: NavigationItem[] = [
-    { icon: SquareStack, label: "Pages", isActive: true },
-    { icon: Database, label: "Database", isActive: false },
-    { icon: Network, label: "API", isActive: false },
-    { icon: Puzzle, label: "Components", isActive: false },
-    { icon: Layers, label: "Layers", isActive: false },
-];
 
 const footerItems: ActionItem[] = [
     { icon: Settings, label: "Settings" },
@@ -358,6 +350,33 @@ export default function ProjectEditorLayout({
         );
     };
 
+    const navigationItems: NavigationItem[] = [
+        { 
+            icon: BookOpenText, 
+            label: "Main Editor", 
+            path: "workspace.projects.editor",
+            param: { workspace_id: workspaceId, project_id: projectId }
+        },
+        { 
+            icon: Database, 
+            label: "Database", 
+            path: "workspace.projects.editor.database",
+            param: { workspace_id: workspaceId, project_id: projectId }
+        },
+        { 
+            icon: Network, 
+            label: "Multi-Prompt", 
+            path: "workspace.projects.editor.multiprompt",
+            param: { workspace_id: workspaceId, project_id: projectId }
+        },
+        { 
+            icon: Paintbrush, 
+            label: "Image Editor", 
+            path: "workspace.projects.editor.image",
+            param: { workspace_id: workspaceId, project_id: projectId }
+        },
+    ];
+
     return (
         <>
             <LoadingOverlay
@@ -432,11 +451,14 @@ export default function ProjectEditorLayout({
                                 {navigationItems.map((item) => (
                                     <SidebarMenuItem key={item.label}>
                                         <SidebarMenuButton
-                                            isActive={item.isActive}
+                                            asChild
+                                            isActive={route().current(item.path)}
                                             tooltip={item.label}
                                             className="w-8 h-8 flex items-center justify-center p-0"
                                         >
-                                            <item.icon className="size-5" />
+                                            <Link href={route(item.path, item.param)}>
+                                                <item.icon className="size-5" />
+                                            </Link>
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>
                                 ))}
