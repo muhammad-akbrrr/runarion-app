@@ -22,7 +22,7 @@ import {
     Keyboard,
     X,
 } from "lucide-react";
-import { Link, router } from "@inertiajs/react";
+import { Link, router, usePage } from "@inertiajs/react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -268,44 +268,31 @@ export default function ProjectEditorLayout({
     projectId,
     workspaceId,
 }: ProjectEditorLayoutProps) {
-    // Loader logic (similar to AuthenticatedLayout)
+    const { workspace_switching, project_switching, force_project_editor_loader } = usePage().props;
+    const [showLoader, setShowLoader] = React.useState(
+        Boolean(workspace_switching) || Boolean(project_switching) || Boolean(force_project_editor_loader)
+    );
     const TOTAL_STEPS = 3;
-    const [loading, setLoading] = React.useState(true);
     const [completedSteps, setCompletedSteps] = React.useState(0);
-    const prevProjectId = React.useRef<string | null>(null);
     const progress = (completedSteps / TOTAL_STEPS) * 100;
 
+    // Only trigger loader when a switch flag or force flag is true
     React.useEffect(() => {
-        // Only play loader if projectId changes (from null or from one value to another)
-        if (prevProjectId.current === projectId) {
-            setLoading(false);
-            setCompletedSteps(TOTAL_STEPS);
-            return;
-        }
-        prevProjectId.current = projectId;
-        let cancelled = false;
-        async function simulateProjectLoading() {
-            setLoading(true);
+        if (workspace_switching || project_switching || force_project_editor_loader) {
+            setShowLoader(true);
             setCompletedSteps(0);
-            // Simulate step 1
-            await new Promise((resolve) => setTimeout(resolve, 800));
-            if (cancelled) return;
-            setCompletedSteps(1);
-            // Simulate step 2
-            await new Promise((resolve) => setTimeout(resolve, 700));
-            if (cancelled) return;
-            setCompletedSteps(2);
-            // Simulate step 3
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            if (cancelled) return;
-            setCompletedSteps(3);
-            setLoading(false);
+            const step1 = setTimeout(() => setCompletedSteps(1), 800);
+            const step2 = setTimeout(() => setCompletedSteps(2), 1500);
+            const step3 = setTimeout(() => setCompletedSteps(3), 2100);
+            const hide = setTimeout(() => setShowLoader(false), 2400);
+            return () => {
+                clearTimeout(step1);
+                clearTimeout(step2);
+                clearTimeout(step3);
+                clearTimeout(hide);
+            };
         }
-        simulateProjectLoading();
-        return () => {
-            cancelled = true;
-        };
-    }, [projectId]);
+    }, [workspace_switching, project_switching, force_project_editor_loader]);
 
     // Command palette state
     const [commandOpen, setCommandOpen] = React.useState(false);
@@ -380,14 +367,18 @@ export default function ProjectEditorLayout({
     return (
         <>
             <LoadingOverlay
-                visible={loading}
+                visible={showLoader}
                 progress={progress}
-                message={`Loading project... (${Math.round(progress)}%)`}
+                message={
+                    workspace_switching 
+                        ? `Switching workspace... (${Math.round(progress)}%)`
+                        : `Loading project... (${Math.round(progress)}%)`
+                }
             />
             <div
                 style={{
-                    visibility: loading ? "hidden" : "visible",
-                    opacity: loading ? 0 : 1,
+                    visibility: showLoader ? "hidden" : "visible",
+                    opacity: showLoader ? 0 : 1,
                     transition: "opacity 0.3s",
                 }}
             >
