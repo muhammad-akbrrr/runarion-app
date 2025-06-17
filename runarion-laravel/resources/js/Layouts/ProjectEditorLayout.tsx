@@ -268,9 +268,15 @@ export default function ProjectEditorLayout({
     projectId,
     workspaceId,
 }: ProjectEditorLayoutProps) {
-    const { workspace_switching, project_switching, force_project_editor_loader } = usePage().props;
+    const {
+        workspace_switching,
+        project_switching,
+        force_project_editor_loader,
+    } = usePage().props;
     const [showLoader, setShowLoader] = React.useState(
-        Boolean(workspace_switching) || Boolean(project_switching) || Boolean(force_project_editor_loader)
+        Boolean(workspace_switching) ||
+            Boolean(project_switching) ||
+            Boolean(force_project_editor_loader)
     );
     const TOTAL_STEPS = 3;
     const [completedSteps, setCompletedSteps] = React.useState(0);
@@ -278,7 +284,11 @@ export default function ProjectEditorLayout({
 
     // Only trigger loader when a switch flag or force flag is true
     React.useEffect(() => {
-        if (workspace_switching || project_switching || force_project_editor_loader) {
+        if (
+            workspace_switching ||
+            project_switching ||
+            force_project_editor_loader
+        ) {
             setShowLoader(true);
             setCompletedSteps(0);
             const step1 = setTimeout(() => setCompletedSteps(1), 800);
@@ -338,29 +348,29 @@ export default function ProjectEditorLayout({
     };
 
     const navigationItems: NavigationItem[] = [
-        { 
-            icon: BookOpenText, 
-            label: "Main Editor", 
+        {
+            icon: BookOpenText,
+            label: "Main Editor",
             path: "workspace.projects.editor",
-            param: { workspace_id: workspaceId, project_id: projectId }
+            param: { workspace_id: workspaceId, project_id: projectId },
         },
-        { 
-            icon: Database, 
-            label: "Database", 
+        {
+            icon: Database,
+            label: "Database",
             path: "workspace.projects.editor.database",
-            param: { workspace_id: workspaceId, project_id: projectId }
+            param: { workspace_id: workspaceId, project_id: projectId },
         },
-        { 
-            icon: Network, 
-            label: "Multi-Prompt", 
+        {
+            icon: Network,
+            label: "Multi-Prompt",
             path: "workspace.projects.editor.multiprompt",
-            param: { workspace_id: workspaceId, project_id: projectId }
+            param: { workspace_id: workspaceId, project_id: projectId },
         },
-        { 
-            icon: Paintbrush, 
-            label: "Image Editor", 
+        {
+            icon: Paintbrush,
+            label: "Image Editor",
             path: "workspace.projects.editor.image",
-            param: { workspace_id: workspaceId, project_id: projectId }
+            param: { workspace_id: workspaceId, project_id: projectId },
         },
     ];
 
@@ -370,7 +380,7 @@ export default function ProjectEditorLayout({
                 visible={showLoader}
                 progress={progress}
                 message={
-                    workspace_switching 
+                    workspace_switching
                         ? `Switching workspace... (${Math.round(progress)}%)`
                         : `Loading project... (${Math.round(progress)}%)`
                 }
@@ -443,11 +453,18 @@ export default function ProjectEditorLayout({
                                     <SidebarMenuItem key={item.label}>
                                         <SidebarMenuButton
                                             asChild
-                                            isActive={route().current(item.path)}
+                                            isActive={route().current(
+                                                item.path
+                                            )}
                                             tooltip={item.label}
                                             className="w-8 h-8 flex items-center justify-center p-0"
                                         >
-                                            <Link href={route(item.path, item.param)}>
+                                            <Link
+                                                href={route(
+                                                    item.path,
+                                                    item.param
+                                                )}
+                                            >
                                                 <item.icon className="size-5" />
                                             </Link>
                                         </SidebarMenuButton>
@@ -472,9 +489,9 @@ export default function ProjectEditorLayout({
                             </SidebarMenu>
                         </SidebarFooter>
                     </Sidebar>
-                    <SidebarInset className="flex flex-col w-full">
+                    <SidebarInset className="flex flex-col w-full h-screen">
                         {/* Header area: TopBar features */}
-                        <div className="grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
+                        <div className="sticky top-0 z-10 grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
                             {/* Left: Project title */}
                             <div className="flex items-center">
                                 <EditableText
@@ -516,7 +533,7 @@ export default function ProjectEditorLayout({
                             onOpenChange={setCommandOpen}
                         />
                         {/* Main content area */}
-                        <main className="flex-1 w-full bg-gray-100">
+                        <main className="flex-1 min-h-0 flex-col flex-grow overflow-hidden w-full bg-gray-100">
                             {children}
                         </main>
                     </SidebarInset>
