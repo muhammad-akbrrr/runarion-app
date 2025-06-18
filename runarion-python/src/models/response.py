@@ -1,5 +1,8 @@
-from pydantic import BaseModel, Field
+# models/response.py
+
+from pydantic import BaseModel
 from typing import Literal, Optional
+
 
 class UsageMetadata(BaseModel):
     finish_reason: str
@@ -16,13 +19,14 @@ class QuotaMetadata(BaseModel):
     generation_count: int
 
 
-class GenerationResponse(BaseModel):
+class BaseGenerationResponse(BaseModel):
     success: bool = True
     text: str
     provider: str
     model_used: str
     key_used: Literal["own", "default"]
     request_id: str
+    provider_request_id: Optional[str] = None
     metadata: UsageMetadata
     quota: QuotaMetadata
     error_message: Optional[str] = None

@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 import psycopg2
 from psycopg2 import pool
-from api.generation import generate
+from api.story_generation import generate
 
 # Load environment variables from .env
 load_dotenv()
@@ -31,7 +31,8 @@ REQUIRED_ENV_VARS = [
 
 missing_vars = [var for var in REQUIRED_ENV_VARS if not os.getenv(var)]
 if missing_vars:
-    raise EnvironmentError(f"Missing environment variables: {', '.join(missing_vars)}")
+    raise EnvironmentError(
+        f"Missing environment variables: {', '.join(missing_vars)}")
 
 # --- Database Connection Pool ---
 try:
@@ -53,6 +54,8 @@ except Exception as e:
 app.register_blueprint(generate, url_prefix='/api')
 
 # --- Health Check ---
+
+
 @app.route('/health', methods=['GET'])
 def health_check():
     db_status = "connected"
@@ -76,12 +79,15 @@ def health_check():
     })
 
 # --- Root Endpoint ---
+
+
 @app.route('/', methods=['GET'])
 def root():
     return jsonify({
         "service": "Runarion Python API",
         "status": "running"
     })
+
 
 # --- Run Server ---
 if __name__ == '__main__':
