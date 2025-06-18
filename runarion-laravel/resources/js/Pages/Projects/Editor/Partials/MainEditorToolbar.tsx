@@ -9,10 +9,10 @@ import {
     ChevronUp,
     RotateCcw,
     RotateCw,
-    Trash2,
     Send,
     Book,
     SlidersHorizontal,
+    RefreshCw,
 } from "lucide-react";
 
 export function EditorToolbar() {
@@ -57,8 +57,20 @@ export function EditorToolbar() {
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                         <RotateCw className="h-4 w-4" />
                     </Button>
+                    <DropdownMenu>
+                        <DropdownMenuTrigger>
+                            <span className="text-lg h-8 w-8 flex items-center justify-center rounded-md hover:bg-gray-100">
+                                0
+                            </span>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="center" side="top">
+                            <DropdownMenuItem>v1</DropdownMenuItem>
+                            <DropdownMenuItem>v2</DropdownMenuItem>
+                            <DropdownMenuItem>v3</DropdownMenuItem>
+                        </DropdownMenuContent>
+                    </DropdownMenu>
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Trash2 className="h-4 w-4" />
+                        <RefreshCw className="h-4 w-4" />
                     </Button>
                     <Button size="sm">
                         Send
