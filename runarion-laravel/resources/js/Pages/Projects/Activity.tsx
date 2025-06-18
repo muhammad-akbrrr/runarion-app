@@ -12,6 +12,7 @@ import {
     DropdownMenuTrigger,
     DropdownMenuContent,
     DropdownMenuItem,
+    DropdownMenuCheckboxItem,
 } from "@/Components/ui/dropdown-menu";
 import { ChevronDown, ArrowUpDown } from "lucide-react";
 import {
@@ -47,6 +48,7 @@ type Activity = {
     user: string;
     email: string;
     role: string;
+    severity: string;
     event: string;
 };
 
@@ -58,6 +60,7 @@ const data: Activity[] = [
         user: "John Doe",
         email: "john@example.com",
         role: "Admin",
+        severity: "Info",
         event: "Updated project settings",
     },
     {
@@ -67,6 +70,7 @@ const data: Activity[] = [
         user: "Jane Smith",
         email: "jane@example.com",
         role: "Member",
+        severity: "Warning",
         event: "Created a new backup",
     },
 ];
@@ -110,19 +114,11 @@ const columns: ColumnDef<Activity>[] = [
     },
     {
         accessorKey: "role",
-        header: ({ column }) => {
-            return (
-                <Button
-                    variant="ghost"
-                    onClick={() =>
-                        column.toggleSorting(column.getIsSorted() === "asc")
-                    }
-                >
-                    Role
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
-                </Button>
-            );
-        },
+        header: "Role",
+    },
+    {
+        accessorKey: "severity",
+        header: "Severity",
     },
     {
         accessorKey: "event",
@@ -135,7 +131,11 @@ export default function ProjectActivity({
     projectId,
     project,
 }: Props) {
+    // Sorting state
     const [sorting, setSorting] = useState<SortingState>([]);
+    const [sortRole, setSortRole] = useState(false);
+    const [sortSeverity, setSortSeverity] = useState(false);
+    const [sortEvent, setSortEvent] = useState(false);
 
     const table = useReactTable({
         data,
@@ -183,7 +183,24 @@ export default function ProjectActivity({
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
-                                <DropdownMenuItem></DropdownMenuItem>
+                            <DropdownMenuCheckboxItem
+                                checked={sortRole}
+                                onCheckedChange={setSortRole}
+                            >
+                                Role
+                            </DropdownMenuCheckboxItem>
+                            <DropdownMenuCheckboxItem
+                                checked={sortSeverity}
+                                onCheckedChange={setSortSeverity}
+                            >
+                                Severity
+                            </DropdownMenuCheckboxItem>
+                            <DropdownMenuCheckboxItem
+                                checked={sortEvent}
+                                onCheckedChange={setSortEvent}
+                            >
+                                Activity
+                            </DropdownMenuCheckboxItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                         <Input

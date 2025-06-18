@@ -11,6 +11,7 @@ export interface User {
     email: string;
     email_verified_at: string | null;
     last_workspace_id: string;
+    last_project_id: string | null;
     settings: Record<string, any> | null;
     notifications: Record<string, boolean> | null;
     highlighted_projects: HighlightedProject[] | null;

@@ -1,11 +1,10 @@
 import * as React from "react";
 import {
     Menu,
-    SquareStack,
+    BookOpenText,
     Database,
     Network,
-    Puzzle,
-    Layers,
+    Paintbrush,
     Settings,
     FileText,
     Search,
@@ -23,7 +22,7 @@ import {
     Keyboard,
     X,
 } from "lucide-react";
-import { Link, router } from "@inertiajs/react";
+import { Link, router, usePage } from "@inertiajs/react";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -54,7 +53,8 @@ import { Project } from "@/types";
 interface NavigationItem {
     icon: React.ComponentType<{ className?: string }>;
     label: string;
-    isActive: boolean;
+    path: string;
+    param?: { workspace_id: string; project_id: string };
 }
 
 interface EditableTextProps {
@@ -79,14 +79,6 @@ interface ActionItem {
 // ============================================================================
 // NAVIGATION DATA
 // ============================================================================
-
-const navigationItems: NavigationItem[] = [
-    { icon: SquareStack, label: "Pages", isActive: true },
-    { icon: Database, label: "Database", isActive: false },
-    { icon: Network, label: "API", isActive: false },
-    { icon: Puzzle, label: "Components", isActive: false },
-    { icon: Layers, label: "Layers", isActive: false },
-];
 
 const footerItems: ActionItem[] = [
     { icon: Settings, label: "Settings" },
@@ -276,44 +268,41 @@ export default function ProjectEditorLayout({
     projectId,
     workspaceId,
 }: ProjectEditorLayoutProps) {
-    // Loader logic (similar to AuthenticatedLayout)
+    const {
+        workspace_switching,
+        project_switching,
+        force_project_editor_loader,
+    } = usePage().props;
+    const [showLoader, setShowLoader] = React.useState(
+        Boolean(workspace_switching) ||
+            Boolean(project_switching) ||
+            Boolean(force_project_editor_loader)
+    );
     const TOTAL_STEPS = 3;
-    const [loading, setLoading] = React.useState(true);
     const [completedSteps, setCompletedSteps] = React.useState(0);
-    const prevProjectId = React.useRef<string | null>(null);
     const progress = (completedSteps / TOTAL_STEPS) * 100;
 
+    // Only trigger loader when a switch flag or force flag is true
     React.useEffect(() => {
-        // Only play loader if projectId changes (from null or from one value to another)
-        if (prevProjectId.current === projectId) {
-            setLoading(false);
-            setCompletedSteps(TOTAL_STEPS);
-            return;
-        }
-        prevProjectId.current = projectId;
-        let cancelled = false;
-        async function simulateProjectLoading() {
-            setLoading(true);
+        if (
+            workspace_switching ||
+            project_switching ||
+            force_project_editor_loader
+        ) {
+            setShowLoader(true);
             setCompletedSteps(0);
-            // Simulate step 1
-            await new Promise((resolve) => setTimeout(resolve, 800));
-            if (cancelled) return;
-            setCompletedSteps(1);
-            // Simulate step 2
-            await new Promise((resolve) => setTimeout(resolve, 700));
-            if (cancelled) return;
-            setCompletedSteps(2);
-            // Simulate step 3
-            await new Promise((resolve) => setTimeout(resolve, 600));
-            if (cancelled) return;
-            setCompletedSteps(3);
-            setLoading(false);
+            const step1 = setTimeout(() => setCompletedSteps(1), 800);
+            const step2 = setTimeout(() => setCompletedSteps(2), 1500);
+            const step3 = setTimeout(() => setCompletedSteps(3), 2100);
+            const hide = setTimeout(() => setShowLoader(false), 2400);
+            return () => {
+                clearTimeout(step1);
+                clearTimeout(step2);
+                clearTimeout(step3);
+                clearTimeout(hide);
+            };
         }
-        simulateProjectLoading();
-        return () => {
-            cancelled = true;
-        };
-    }, [projectId]);
+    }, [workspace_switching, project_switching, force_project_editor_loader]);
 
     // Command palette state
     const [commandOpen, setCommandOpen] = React.useState(false);
@@ -358,17 +347,50 @@ export default function ProjectEditorLayout({
         );
     };
 
+    const navigationItems: NavigationItem[] = [
+        {
+            icon: BookOpenText,
+            label: "Main Editor",
+            path: "workspace.projects.editor",
+            param: { workspace_id: workspaceId, project_id: projectId },
+        },
+        {
+            icon: Database,
+            label: "Database",
+            path: "workspace.projects.editor.database",
+            param: { workspace_id: workspaceId, project_id: projectId },
+        },
+        {
+            icon: Network,
+            label: "Multi-Prompt",
+            path: "workspace.projects.editor.multiprompt",
+            param: { workspace_id: workspaceId, project_id: projectId },
+        },
+        {
+            icon: Paintbrush,
+            label: "Image Editor",
+            path: "workspace.projects.editor.image",
+            param: { workspace_id: workspaceId, project_id: projectId },
+        },
+    ];
+
     return (
         <>
             <LoadingOverlay
-                visible={loading}
+                visible={showLoader}
                 progress={progress}
-                message={`Loading project... (${Math.round(progress)}%)`}
+                message={
+                    project_switching
+                        ? `Loading project... (${Math.round(progress)}%)`
+                        : workspace_switching
+                        ? `Switching workspace... (${Math.round(progress)}%)`
+                        : `Loading project... (${Math.round(progress)}%)`
+                }
             />
             <div
                 style={{
-                    visibility: loading ? "hidden" : "visible",
-                    opacity: loading ? 0 : 1,
+                    visibility: showLoader ? "hidden" : "visible",
+                    opacity: showLoader ? 0 : 1,
                     transition: "opacity 0.3s",
                 }}
             >
@@ -432,11 +454,21 @@ export default function ProjectEditorLayout({
                                 {navigationItems.map((item) => (
                                     <SidebarMenuItem key={item.label}>
                                         <SidebarMenuButton
-                                            isActive={item.isActive}
+                                            asChild
+                                            isActive={route().current(
+                                                item.path
+                                            )}
                                             tooltip={item.label}
                                             className="w-8 h-8 flex items-center justify-center p-0"
                                         >
-                                            <item.icon className="size-5" />
+                                            <Link
+                                                href={route(
+                                                    item.path,
+                                                    item.param
+                                                )}
+                                            >
+                                                <item.icon className="size-5" />
+                                            </Link>
                                         </SidebarMenuButton>
                                     </SidebarMenuItem>
                                 ))}
@@ -459,9 +491,9 @@ export default function ProjectEditorLayout({
                             </SidebarMenu>
                         </SidebarFooter>
                     </Sidebar>
-                    <SidebarInset className="flex flex-col w-full">
+                    <SidebarInset className="flex flex-col w-full h-screen">
                         {/* Header area: TopBar features */}
-                        <div className="grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
+                        <div className="sticky top-0 z-10 grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
                             {/* Left: Project title */}
                             <div className="flex items-center">
                                 <EditableText
@@ -503,7 +535,7 @@ export default function ProjectEditorLayout({
                             onOpenChange={setCommandOpen}
                         />
                         {/* Main content area */}
-                        <main className="flex-1 w-full bg-gray-100">
+                        <main className="flex-1 min-h-0 flex-col flex-grow overflow-hidden w-full bg-gray-100">
                             {children}
                         </main>
                     </SidebarInset>

@@ -3,6 +3,7 @@
 from pydantic import BaseModel
 from typing import Literal, Optional
 
+
 class UsageMetadata(BaseModel):
     finish_reason: str
     input_tokens: int
@@ -10,11 +11,13 @@ class UsageMetadata(BaseModel):
     total_tokens: int
     processing_time_ms: int
 
+
 class QuotaMetadata(BaseModel):
     user_id: str
     workspace_id: str
     project_id: str
     generation_count: int
+
 
 class BaseGenerationResponse(BaseModel):
     success: bool = True

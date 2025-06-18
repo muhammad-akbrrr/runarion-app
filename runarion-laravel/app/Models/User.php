@@ -33,6 +33,7 @@ class User extends Authenticatable
         'password',
         'avatar_url',
         'last_workspace_id',
+        'last_project_id',
         'settings',
         'notifications',
         'highlighted_projects'
@@ -79,5 +80,10 @@ class User extends Authenticatable
         $this->saveQuietly();
 
         return $ownedWorkspaceId;
+    }
+
+    public function getActiveProjectId(): ?string
+    {
+        return $this->last_project_id;
     }
 }

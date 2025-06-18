@@ -3,11 +3,14 @@
 from pydantic import BaseModel
 from typing import Optional, Dict
 
+
 class CallerInfo(BaseModel):
     user_id: str
     workspace_id: str
     project_id: str
-    api_keys: Dict[str, Optional[str]]  # e.g., {"openai": "", "gemini": "", "deepseek": "sk-..."}
+    # e.g., {"openai": "", "gemini": "", "deepseek": "sk-..."}
+    api_keys: Dict[str, Optional[str]]
+
 
 class BaseGenerationRequest(BaseModel):
     provider: str = "openai"
