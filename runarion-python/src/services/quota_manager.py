@@ -2,6 +2,7 @@ import os
 from psycopg2 import pool
 from models.request import CallerInfo
 
+
 class QuotaManager:
     def __init__(self):
         self.connection_pool = self._get_db_connection()
@@ -69,7 +70,8 @@ class QuotaManager:
                     )
 
                     if cursor.rowcount == 0:
-                        raise ValueError("Quota update failed due to concurrent modification")
+                        raise ValueError(
+                            "Quota update failed due to concurrent modification")
 
                     conn.commit()
             finally:
