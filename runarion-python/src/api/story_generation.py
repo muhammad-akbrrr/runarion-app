@@ -1,77 +1,33 @@
 from flask import Blueprint, request, jsonify, current_app
 from pydantic import ValidationError
-from models.story_generation.request import StoryGenerationRequest
-from models.story_generation.response import StoryGenerationResponse
-from providers.story_generation.openai_provider import StoryGenerationOpenAIProvider
-from providers.story_generation.gemini_provider import StoryGenerationGeminiProvider
-# from providers.story_generation.gemini_provider import DeepSeekProvider
+from models.request import BaseGenerationRequest
+from services.generation_engine import GenerationEngine
+from services.usecase_handler.mock_handler import MockHandler
+from services.usecase_handler.story_handler import StoryHandler
+from models.response import BaseGenerationResponse
 
-generate = Blueprint("generate", __name__)
+generate = Blueprint("generate" , __name__)
 
-PROVIDER_MAP = {
-    "openai": StoryGenerationOpenAIProvider,
-    "gemini": StoryGenerationGeminiProvider,
-    # "deepseek": DeepSeekProvider,
+USECASE_MAP = {
+    "mock" : MockHandler(),
+    "story": StoryHandler(),
+    # "summarizer": SummarizerHandler(),
 }
 
 @generate.route("/generate", methods=["POST"])
 def generate_text_route():
-    """
-    Endpoint to handle text generation requests.
-    Expects a JSON body with the following structure:
-    {
-        "prompt": "Your prompt here",
-        "provider": "openai",  # or "gemini", etc.
-        "model": "gpt-3.5-turbo",
-        "caller": {
-            "user_id": "user123",
-            "workspace_id": "workspace456",
-            "project_id": "project789",
-            "api_keys": {
-                "openai": "sk-...",
-                "gemini": "",
-                "deepseek": ""
-            }
-        },
-        "prompt_config": {
-            "author_profile": "",
-            "context": "",
-            "genre": "",
-            "tone": "",
-            "pov": ""
-        },
-        "generation_config": {
-            "temperature": 0.7,
-            "max_output_tokens": 200,
-            "top_p": 1.0,
-            "top_k": 0.0,
-            "repetition_penalty": 0.0
-    """
-    try:
-        json_data = request.get_json()
-        req_obj = StoryGenerationRequest(**json_data)
-        current_app.logger.info(f"Received generation request: {req_obj.model_dump()}")
-    except ValidationError as e:
-        current_app.logger.warning(f"Validation error: {e.errors()}")
-        return jsonify({"error": "Invalid request", "details": e.errors()}), 422
+    json_data = request.get_json()
+    usecase = json_data.get("usecase", "mock")
 
-    provider_name = req_obj.provider.lower()
-
-    provider_class = PROVIDER_MAP.get(provider_name)
-    if not provider_class:
-        return jsonify({
-            "error": f"Unsupported provider '{provider_name}'.",
-            "supported_providers": list(PROVIDER_MAP.keys())
-        }), 400
+    handler = USECASE_MAP.get(usecase)
+    if not handler:
+        return jsonify({"error": f"Unsupported usecase '{usecase}'."}), 400
 
     try:
-        provider_instance = provider_class(req_obj)
-        response: StoryGenerationResponse = provider_instance.generate()
+        req_obj = handler.build_request(json_data)
+        engine = GenerationEngine(req_obj)
+        response = engine.generate()
         return jsonify(response.model_dump()), 200
-
     except Exception as e:
-        current_app.logger.error(f"Generation error [{provider_name}]: {type(e).__name__} - {e}")
-        return jsonify({
-            "error": f"Failed to generate text with {provider_name}.",
-            "message": str(e)
-        }), 500
+        current_app.logger.error(f"Generation error: {type(e).__name__} - {e}")
+        return jsonify({"error": "Failed to generate text.", "message": str(e)}), 500

@@ -1,6 +1,6 @@
 # models/request.py
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Dict
 
 class CallerInfo(BaseModel):
@@ -9,7 +9,18 @@ class CallerInfo(BaseModel):
     project_id: str
     api_keys: Dict[str, Optional[str]]  # e.g., {"openai": "", "gemini": "", "deepseek": "sk-..."}
 
+class GenerationConfig(BaseModel):
+    temperature: float = Field(0.7, ge=0.0, le=1.0)
+    max_output_tokens: int = Field(200, ge=1)
+    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    top_k: float = Field(0.0, ge=0.0)
+    repetition_penalty: float = Field(0.0, ge=0.0)
+
 class BaseGenerationRequest(BaseModel):
+    usecase: str = "mock"
     provider: str = "openai"
     model: Optional[str] = None
+    prompt: Optional[str] = None
+    instruction: Optional[object] = None  # Can be a str or a dict representing custom JSON
+    generation_config: GenerationConfig
     caller: CallerInfo
