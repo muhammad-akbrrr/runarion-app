@@ -34,7 +34,7 @@ class GeminiProvider(BaseProvider):
                 system_instruction=self.instruction or "",
                 temperature=config.temperature,
                 max_output_tokens=config.max_output_tokens,
-                top_p=config.top_p,
+                top_p=config.nucleus_sampling,
                 top_k=config.top_k,
             ),
         }

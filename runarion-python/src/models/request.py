@@ -12,8 +12,13 @@ class CallerInfo(BaseModel):
 class GenerationConfig(BaseModel):
     temperature: float = Field(0.7, ge=0.0, le=1.0)
     max_output_tokens: int = Field(200, ge=1)
-    top_p: float = Field(1.0, ge=0.0, le=1.0)
+    nucleus_sampling: float = Field(1.0, ge=0.0, le=1.0)
+    tail_free_sampling: float = Field(1.0, ge=0.0, le=1.0)
     top_k: float = Field(0.0, ge=0.0)
+    top_a: float = Field(0.0, ge=0.0)
+    phrase_bias: float = Field(0.0, ge=0.0, le=1.0)
+    banned_tokens: Optional[list] = None
+    stop_sequences: Optional[list] = None
     repetition_penalty: float = Field(0.0, ge=0.0)
 
 class BaseGenerationRequest(BaseModel):
