@@ -34,13 +34,13 @@ export function EditorToolbar() {
                     </Button>
                     {/* Auto dropdown - opens upward */}
                     <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
+                        <DropdownMenuTrigger>
                             <Button variant="ghost" size="sm" className="h-8">
                                 Auto
-                                <ChevronUp className="ml-1 h-3 w-3" />
+                                <ChevronUp className="h-3 w-3" />
                             </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent side="top" align="start">
+                        <DropdownMenuContent align="start" side="top">
                             <DropdownMenuItem>Auto Mode On</DropdownMenuItem>
                             <DropdownMenuItem>Auto Mode Off</DropdownMenuItem>
                             <DropdownMenuItem>Custom Settings</DropdownMenuItem>

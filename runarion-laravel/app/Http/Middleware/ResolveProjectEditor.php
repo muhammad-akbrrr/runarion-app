@@ -88,10 +88,6 @@ class ResolveProjectEditor
         // Check if this is a project switch
         $isProjectSwitch = $user->last_project_id !== $projectId;
 
-        // Debug: Log the current and expected IDs
-        // \Log::info('Workspace switch?', ['user_last_workspace_id' => $user->last_workspace_id, 'route_workspace_id' => $workspaceId]);
-        // \Log::info('Project switch?', ['user_last_project_id' => $user->last_project_id, 'route_project_id' => $projectId]);
-
         if ($isWorkspaceSwitch || $isProjectSwitch) {
             if ($isWorkspaceSwitch) {
                 $user->last_workspace_id = $workspaceId;
@@ -104,11 +100,16 @@ class ResolveProjectEditor
             auth()->setUser($user);
 
             // Set session flags ONLY if a real switch happened
-            if ($isWorkspaceSwitch) {
-                session(['workspace_switching' => true]);
-            }
-            if ($isProjectSwitch) {
+            // If both workspace and project are switching, only set project_switching
+            if ($isWorkspaceSwitch && $isProjectSwitch) {
                 session(['project_switching' => true]);
+            } else {
+                if ($isWorkspaceSwitch) {
+                    session(['workspace_switching' => true]);
+                }
+                if ($isProjectSwitch) {
+                    session(['project_switching' => true]);
+                }
             }
         }
 
@@ -126,7 +127,6 @@ class ResolveProjectEditor
             session(['force_project_editor_loader' => true]);
         }
 
-        // Share the updated user data with Inertia
         Inertia::share([
             'auth' => [
                 'user' => $user,

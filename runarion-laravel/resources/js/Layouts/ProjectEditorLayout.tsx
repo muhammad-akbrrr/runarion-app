@@ -380,7 +380,9 @@ export default function ProjectEditorLayout({
                 visible={showLoader}
                 progress={progress}
                 message={
-                    workspace_switching
+                    project_switching
+                        ? `Loading project... (${Math.round(progress)}%)`
+                        : workspace_switching
                         ? `Switching workspace... (${Math.round(progress)}%)`
                         : `Loading project... (${Math.round(progress)}%)`
                 }

@@ -33,17 +33,14 @@ export default function ProjectEditorPage({
             <Head title="Project Editor" />
 
             <EditorSidebar>
-                <div
-                    className="
-                        flex items-center justify-between"
-                >
+                <div className="flex items-center justify-between">
                     {/* Left side - Menu items */}
                     <div
                         className="
                             flex items-center space-x-1
                             p-0.5
                             bg-white
-                            rounded-md border
+                            rounded-lg border
                         "
                     >
                         <Button variant="ghost" size="sm">
@@ -63,13 +60,13 @@ export default function ProjectEditorPage({
                     {/* Right side - Chapter management */}
                     <div className="flex items-center space-x-3">
                         <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
+                            <DropdownMenuTrigger>
                                 <Button variant="outline">
                                     Select Chapter
                                     <ChevronDown className="h-4 w-4" />
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent>
+                            <DropdownMenuContent align="start">
                                 <DropdownMenuItem>Chapter 1</DropdownMenuItem>
                                 <DropdownMenuItem>Chapter 2</DropdownMenuItem>
                                 <DropdownMenuItem>Chapter 3</DropdownMenuItem>

@@ -26,6 +26,7 @@ import {
     Plus,
     Trash2,
     X,
+    Book,
 } from "lucide-react";
 
 export function SidebarContent() {
@@ -35,6 +36,12 @@ export function SidebarContent() {
     const [outputLength, setOutputLength] = useState([300]);
     const [phraseBias, setPhraseBias] = useState([0]);
     const [minOutputToken, setMinOutputToken] = useState([50]);
+
+    // Sampling values
+    const [topP, setTopP] = useState([0.85]);
+    const [tailFree, setTailFree] = useState([0.85]);
+    const [topA, setTopA] = useState([0.85]);
+    const [topK, setTopK] = useState([0.85]);
 
     return (
         <div
@@ -80,14 +87,16 @@ export function SidebarContent() {
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select defaultValue="chatgpt-4.5">
+                <Select defaultValue="chatgpt-4o">
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="chatgpt-4.5">ChatGPT 4.5</SelectItem>
-                        <SelectItem value="chatgpt-4">ChatGPT 4</SelectItem>
-                        <SelectItem value="claude">Claude</SelectItem>
+                        <SelectItem value="chatgpt-4o">ChatGPT 4o</SelectItem>
+                        <SelectItem value="gemini-4.0">Gemini 4.0</SelectItem>
+                        <SelectItem value="deepseek-chat">
+                            DeepSeek V3
+                        </SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -161,18 +170,14 @@ export function SidebarContent() {
             {/* Story POV */}
             <div className="space-y-2">
                 <Label htmlFor="pov">Story POV</Label>
-                <div className="relative">
+                <div className="flex flex-row items-center gap-2">
                     <Input
                         id="pov"
                         placeholder="Search for an entry"
                         className="pr-8"
                     />
-                    <Button
-                        variant="ghost"
-                        size="sm"
-                        className="absolute top-1/2 right-2 -translate-y-1/2 h-6 w-6 p-0"
-                    >
-                        <Maximize2 className="h-3 w-3" />
+                    <Button variant="outline" className="h-9 w-9 p-0">
+                        <Book className="h-3 w-3" />
                     </Button>
                 </div>
             </div>
@@ -277,52 +282,64 @@ export function SidebarContent() {
                         <Label>Sampling</Label>
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
-                                <span className="text-sm">Nucleus: 0.85</span>
+                                <span className="text-sm">
+                                    Nucleus: {topP[0]}
+                                </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                defaultValue={[0.85]}
+                                value={topP}
+                                onValueChange={setTopP}
                                 max={1}
                                 min={0}
                                 step={0.01}
                             />
 
                             <div className="flex justify-between items-center">
-                                <span className="text-sm">Tail-Free: 0.85</span>
+                                <span className="text-sm">
+                                    Tail-Free: {tailFree[0]}
+                                </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                defaultValue={[0.85]}
+                                value={tailFree}
+                                onValueChange={setTailFree}
                                 max={1}
                                 min={0}
                                 step={0.01}
                             />
 
                             <div className="flex justify-between items-center">
-                                <span className="text-sm">Top-A: 0.85</span>
+                                <span className="text-sm">
+                                    Top-A: {topA[0]}
+                                </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                defaultValue={[0.85]}
+                                value={topA}
+                                onValueChange={setTopA}
                                 max={1}
                                 min={0}
                                 step={0.01}
                             />
 
                             <div className="flex justify-between items-center">
-                                <span className="text-sm">Top-K: 0.85</span>
+                                <span className="text-sm">
+                                    Top-K: {topK[0]}
+                                </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                defaultValue={[0.85]}
+                                value={topK}
+                                onValueChange={setTopK}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -338,49 +355,52 @@ export function SidebarContent() {
                             phrases
                         </p>
                         <div className="space-y-3">
-                            <Select defaultValue="none">
-                                <SelectTrigger className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="none">
-                                        Bias 0 | (none)
-                                    </SelectItem>
-                                    <SelectItem value="positive">
-                                        Positive Bias
-                                    </SelectItem>
-                                    <SelectItem value="negative">
-                                        Negative Bias
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
+                            <div className="flex flex-row items-center gap-2">
+                                <Select defaultValue="none">
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="none">
+                                            Bias 0 | (none)
+                                        </SelectItem>
+                                        <SelectItem value="positive">
+                                            Positive Bias
+                                        </SelectItem>
+                                        <SelectItem value="negative">
+                                            Negative Bias
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
 
-                            <div className="flex space-x-2">
                                 <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0"
+                                    variant="outline"
+                                    className="h-9 w-9 p-0"
                                 >
                                     <Plus className="h-4 w-4" />
                                 </Button>
                                 <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-8 w-8 p-0"
+                                    variant="outline"
+                                    className="h-9 w-9 p-0"
                                 >
                                     <Trash2 className="h-4 w-4" />
                                 </Button>
                             </div>
 
-                            <Input placeholder="Enter phrase you want to bias" />
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="w-full justify-start"
-                            >
-                                <Plus className="mr-2 h-4 w-4" />
-                                Add phrase
-                            </Button>
+                            <p className="text-xs text-gray-500">
+                                Type in the area below, then press enter to save
+                            </p>
+
+                            <div className="flex flex-row items-center gap-2">
+                                <Input placeholder="Enter phrase you want to bias" />
+
+                                <Button
+                                    variant="outline"
+                                    className="h-9 w-9 p-0"
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </div>
 
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
@@ -407,13 +427,9 @@ export function SidebarContent() {
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <Label>Phrases</Label>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs"
-                            >
+                            <p className="text-xs text-gray-500">
                                 Click the phrase to edit
-                            </Button>
+                            </p>
                         </div>
                         <div className="relative">
                             <Textarea
@@ -459,58 +475,50 @@ export function SidebarContent() {
                             Weigh the AI's chance of generating certain words or
                             phrases
                         </p>
-                        <Select defaultValue="empty">
-                            <SelectTrigger className="w-full">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                                <SelectItem value="empty">Empty</SelectItem>
-                                <SelectItem value="common">
-                                    Common Words
-                                </SelectItem>
-                                <SelectItem value="custom">
-                                    Custom List
-                                </SelectItem>
-                            </SelectContent>
-                        </Select>
-                        <div className="flex space-x-2">
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                            >
+                        <div className="flex flex-row items-center gap-2">
+                            <Select defaultValue="empty">
+                                <SelectTrigger className="w-full">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="empty">Empty</SelectItem>
+                                    <SelectItem value="common">
+                                        Common Words
+                                    </SelectItem>
+                                    <SelectItem value="custom">
+                                        Custom List
+                                    </SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            <Button variant="outline" className="h-9 w-9 p-0">
                                 <Plus className="h-4 w-4" />
                             </Button>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="h-8 w-8 p-0"
-                            >
+                            <Button variant="outline" className="h-9 w-9 p-0">
                                 <Trash2 className="h-4 w-4" />
                             </Button>
                         </div>
-                        <Input placeholder="Enter phrase you want to ban" />
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start"
-                        >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add phrase
-                        </Button>
+
+                        <p className="text-xs text-gray-500">
+                            Type in the area below, then press enter to save
+                        </p>
+
+                        <div className="flex flex-row items-center gap-2">
+                            <Input placeholder="Enter phrase you want to ban" />
+
+                            <Button variant="outline" className="h-9 w-9 p-0">
+                                <Plus className="h-4 w-4" />
+                            </Button>
+                        </div>
                     </div>
 
                     {/* Sequences */}
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <Label>Sequences</Label>
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-xs"
-                            >
+                            <p className="text-xs text-gray-500">
                                 Click the phrase to edit
-                            </Button>
+                            </p>
                         </div>
                         <div className="relative">
                             <Textarea
@@ -544,6 +552,15 @@ export function SidebarContent() {
                             Weigh the AI's chance of generating certain words or
                             phrases
                         </p>
+
+                        <div className="flex flex-row items-center gap-2">
+                            <Input placeholder="Enter phrase you want to ban" />
+
+                            <Button variant="outline" className="h-9 w-9 p-0">
+                                <Plus className="h-4 w-4" />
+                            </Button>
+                        </div>
+
                         <div className="space-y-2">
                             <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
                                 <span className="text-sm">
@@ -570,15 +587,6 @@ export function SidebarContent() {
                                 </Button>
                             </div>
                         </div>
-                        <Input placeholder="Enter phrase you want to ban" />
-                        <Button
-                            variant="ghost"
-                            size="sm"
-                            className="w-full justify-start"
-                        >
-                            <Plus className="mr-2 h-4 w-4" />
-                            Add phrase
-                        </Button>
 
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
