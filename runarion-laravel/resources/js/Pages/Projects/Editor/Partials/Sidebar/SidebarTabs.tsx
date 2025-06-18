@@ -23,7 +23,7 @@ export function SidebarTabs() {
 
                         {/* Tabs aligned to center vertically with opacity animation */}
                         <TabsList
-                            className={`grid w-full grid-cols-3 h-9 flex-1 p-1 transition-opacity duration-200 ease-in-out ${
+                            className={`grid w-full grid-cols-3 flex-1 !h-auto !p-1 transition-opacity duration-200 ease-in-out ${
                                 isCollapsed
                                     ? "opacity-0 pointer-events-none"
                                     : "opacity-100 pointer-events-auto"
@@ -31,19 +31,19 @@ export function SidebarTabs() {
                         >
                             <TabsTrigger
                                 value="settings"
-                                className="text-sm px-2 py-1"
+                                className="text-sm px-2 py-1 !shadow-none"
                             >
                                 Settings
                             </TabsTrigger>
                             <TabsTrigger
                                 value="advisor"
-                                className="text-sm px-2 py-1"
+                                className="text-sm px-2 py-1 !shadow-none"
                             >
                                 Advisor
                             </TabsTrigger>
                             <TabsTrigger
                                 value="summarize"
-                                className="text-sm px-2 py-1"
+                                className="text-sm px-2 py-1 !shadow-none"
                             >
                                 Summarize
                             </TabsTrigger>
