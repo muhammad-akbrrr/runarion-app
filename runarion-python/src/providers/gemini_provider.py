@@ -1,16 +1,16 @@
-# providers/story_generation/gemini_provider.py
+# providers/openai_provider.py
 
 import time
 import uuid
 from flask import current_app
 from google import genai
-from models.story_generation.request import StoryGenerationRequest
-from models.story_generation.response import StoryGenerationResponse
-from providers.story_generation.base_provider import StoryGenerationBaseProvider
 from google.genai.types import GenerateContentConfig
+from providers.base_provider import BaseProvider
+from models.request import BaseGenerationRequest
+from models.response import BaseGenerationResponse
 
-class StoryGenerationGeminiProvider(StoryGenerationBaseProvider):
-    def __init__(self, request: StoryGenerationRequest):
+class GeminiProvider(BaseProvider):
+    def __init__(self, request: BaseGenerationRequest):
         super().__init__(request)
 
         try:
@@ -19,36 +19,33 @@ class StoryGenerationGeminiProvider(StoryGenerationBaseProvider):
             current_app.logger.error(f"Failed to initialize Gemini client: {e}")
             raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
 
-    def generate(self) -> StoryGenerationResponse:
-        model_to_use = self.model
-        prompt = self.request.prompt or "<start writing from scratch>"
-        instruction = self.instruction
-        gen_cfg = self.request.generation_config
-
-        gemini_kwargs = {
-            "model": model_to_use,
-            "contents": prompt,
-            "config": GenerateContentConfig(
-                system_instruction=instruction,
-                temperature=gen_cfg.temperature,
-                max_output_tokens=gen_cfg.max_output_tokens,
-                top_p=gen_cfg.top_p,
-                top_k=gen_cfg.top_k,
-            ),
-        }
-
+    def generate(self) -> BaseGenerationResponse:
         start_time = time.time()
-        quota_generation_count = 1
         request_id = str(uuid.uuid4())
         provider_request_id = None
+        quota_generation_count = 1
+
+        config = self.request.generation_config
+
+        gemini_kwargs = {
+            "model": self.model,
+            "contents": self.request.prompt or "",
+            "config": GenerateContentConfig(
+                system_instruction=self.instruction or "",
+                temperature=config.temperature,
+                max_output_tokens=config.max_output_tokens,
+                top_p=config.top_p,
+                top_k=config.top_k,
+            ),
+        }
 
         try:
             self._check_quota()
         except Exception as e:
-            current_app.logger.error(f"Gemini Quota error with model {model_to_use}: {e}")
+            current_app.logger.error(f"Gemini Quota error with model {self.model}: {e}")
             response = self._build_error_response(
                 request_id=request_id,
-                provider_request_id="" if not provider_request_id else provider_request_id,
+                provider_request_id=provider_request_id or "",
                 error_message=f"Gemini Quota error: {str(e)}",
             )
             self._log_generation_to_db(response)
@@ -81,9 +78,9 @@ class StoryGenerationGeminiProvider(StoryGenerationBaseProvider):
                     finish_reason = getattr(candidate.finish_reason, 'name', str(candidate.finish_reason))
 
             usage = getattr(raw_response, 'usage_metadata', None) or {}
-            input_tokens = getattr(usage, "prompt_token_count", 0) or 0
-            output_tokens = getattr(usage, "candidates_token_count", 0) or 0
-            total_tokens = getattr(usage, "total_token_count", 0) or 0
+            input_tokens = getattr(usage, "prompt_token_count", 0)
+            output_tokens = getattr(usage, "candidates_token_count", 0)
+            total_tokens = getattr(usage, "total_token_count", 0)
 
             processing_time_ms = int((time.time() - start_time) * 1000)
 
@@ -105,7 +102,7 @@ class StoryGenerationGeminiProvider(StoryGenerationBaseProvider):
             return response
 
         except Exception as e:
-            current_app.logger.error(f"Gemini API error with model {model_to_use}: {e}")
+            current_app.logger.error(f"Gemini API error with model {self.model}: {e}")
             response = self._build_error_response(
                 request_id=request_id,
                 provider_request_id=provider_request_id or "",
