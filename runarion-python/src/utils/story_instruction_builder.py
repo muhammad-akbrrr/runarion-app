@@ -1,6 +1,6 @@
-# runarion-python/src/utils/prompt_builder.py
+# utils/story_instruction_builder.py
 
-from models.story_generation.request import PromptConfig
+from models.story_generation.prompt_config import PromptConfig
 
 
 class InstructionBuilder:
@@ -13,7 +13,7 @@ class InstructionBuilder:
         """Build instruction assuming this is a continuation of an existing work."""
         parts = ["You are an accomplished creative writer and storytelling expert. Your task is to seamlessly continue an existing story while maintaining consistency in style, tone, and narrative flow."]
         # Enforce no additional text
-        parts.append("DO NOT WRITE ANYTHING ELSE. DO NOT WRITE A TITLE. DO NOT WRITE A SUMMARY. DO NOT WRITE A SYNOPSIS. DO NOT WRITE A TAGLINE. JUST CONTINUE THE STORY.")
+        parts.append("DO NOT WRITE ANYTHING ELSE. DO NOT WRITE A TITLE. DO NOT WRITE A SUMMARY. DO NOT WRITE A SYNOPSIS. DO NOT WRITE A TAGLINE. DO NOT START WITH DOTS. JUST CONTINUE THE STORY.")
 
         if self.config.context:
             parts.append(
@@ -43,7 +43,7 @@ class InstructionBuilder:
         """Build instruction assuming the story is being generated from the beginning."""
         parts = ["You are an accomplished creative writer specializing in fiction. Create an engaging story opening based on the provided specifications."]
         # Enforce no additional text
-        parts.append("DO NOT WRITE ANYTHING ELSE. DO NOT WRITE A TITLE. DO NOT WRITE A SUMMARY. DO NOT WRITE A SYNOPSIS. DO NOT WRITE A TAGLINE. JUST START THE STORY BEGINNING.")
+        parts.append("DO NOT WRITE ANYTHING ELSE. DO NOT WRITE A TITLE. DO NOT WRITE A SUMMARY. DO NOT WRITE A SYNOPSIS. DO NOT WRITE A TAGLINE. DO NOT START WITH DOTS. JUST START THE STORY BEGINNING.")
 
         if self.config.context:
             parts.append(

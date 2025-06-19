@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 import psycopg2
 from psycopg2 import pool
-from api.story_generation import generate
+from api.generation import generate
 
 # Load environment variables from .env
 load_dotenv()
