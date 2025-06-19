@@ -3,6 +3,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, Dict
 
+
 class CallerInfo(BaseModel):
     user_id: str
     workspace_id: str
