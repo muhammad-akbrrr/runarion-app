@@ -30,6 +30,4 @@ class WorkspaceQuota(BaseModel):
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     deleted_at: Optional[datetime]
-    
-    # not implemented in the database, but used in the code
     quota: Optional[int] = 0
