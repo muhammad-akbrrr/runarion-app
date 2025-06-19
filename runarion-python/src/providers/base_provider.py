@@ -52,7 +52,8 @@ class BaseProvider(ABC):
 
         env_key = env_map.get(self.request.provider)
         if not env_key:
-            raise ValueError(f"No fallback API key mapping found for provider: {self.request.provider}")
+            raise ValueError(
+                f"No fallback API key mapping found for provider: {self.request.provider}")
 
         default_key = os.getenv(env_key)
         if not default_key:
@@ -60,7 +61,8 @@ class BaseProvider(ABC):
                 f"No API key provided in request and fallback environment variable '{env_key}' is not set."
             )
 
-        current_app.logger.warning("No API key provided in request, using default key.")
+        current_app.logger.warning(
+            "No API key provided in request, using default key.")
         return default_key, "default"
 
     def _resolve_model(self) -> str:
@@ -75,15 +77,16 @@ class BaseProvider(ABC):
 
         env_key = env_map.get(self.request.provider)
         if not env_key:
-            raise ValueError(f"No fallback model mapping found for provider: {self.request.provider}")
-
+            raise ValueError(
+                f"No fallback model mapping found for provider: {self.request.provider}")
         default_model = os.getenv(env_key)
         if not default_model:
             raise ValueError(
                 f"No default model provided in request and fallback environment variable '{env_key}' is not set."
             )
 
-        current_app.logger.warning("No model name provided in request, using default model.")
+        current_app.logger.warning(
+            "No model name provided in request, using default model.")
         return default_model
 
     def _format_instruction(self, instruction: Optional[object]) -> str:
