@@ -1,4 +1,5 @@
 import functools
+from typing import Optional
 
 import google.generativeai as genai
 from transformers import AutoTokenizer
@@ -33,7 +34,7 @@ def list_gemini_model_max_token() -> dict[str, int]:
 
 
 @functools.lru_cache(maxsize=64)
-def get_huggingface_model_max_token(model_name: str) -> int | None:
+def get_huggingface_model_max_token(model_name: str) -> Optional[int]:
     """
     Get the max token limit for a Hugging Face model using the model's tokenizer.
     The output is cached to avoid repeated loading of the tokenizer.

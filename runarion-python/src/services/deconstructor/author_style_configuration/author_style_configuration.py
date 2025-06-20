@@ -2,7 +2,7 @@ import json
 import os
 import time
 from math import ceil
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, Optional
 
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
@@ -48,9 +48,9 @@ class AuthorStyleConfiguration:
         paragraph_extractors: list[ParagraphExtractor],
         caller: CallerInfo,
         connection_pool: SimpleConnectionPool,
-        provider: str | None = "gemini",
-        model: str | None = None,
-        generation_config: GenerationConfig | None = None,
+        provider: Optional[str] = "gemini",
+        model: Optional[str] = None,
+        generation_config: Optional[GenerationConfig] = None,
         paragraph_overlap: bool = False,
         store_intermediate: bool = False,
     ):
@@ -59,9 +59,9 @@ class AuthorStyleConfiguration:
             paragraph_extractors (list[ParagraphExtractor]): List of paragraph extractors, each associated with a source file.
             caller (CallerInfo): Caller information.
             connection_pool (SimpleConnectionPool): Database connection pool for storing results.
-            provider (str): The model provider (e.g., "openai", "gemini").
-            model (str): The model name.
-            generation_config (GenerationConfig): Configuration for LLM generation.
+            provider (Optional[str]): The model provider (e.g., "openai", "gemini").
+            model (Optional[str]): The model name.
+            generation_config (Optional[GenerationConfig]): Configuration for LLM generation.
             paragraph_overlap (bool): Whether to allow overlaping paragraphs in the passages.
             store_intermediate (bool): Whether to store intermediate styles.
         """

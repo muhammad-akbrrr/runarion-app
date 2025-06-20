@@ -1,4 +1,4 @@
-from typing import Literal, TypedDict
+from typing import Literal, Optional, TypedDict
 
 from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
 from services.usecase_handler.base_handler import UseCaseHandler
@@ -124,8 +124,8 @@ The TEXT:
 
 class AuthorStyleRequest(TypedDict):
     mode: Literal["partial", "combined", "structured"]
-    provider: str | None
-    model: str | None
+    provider: Optional[str]
+    model: Optional[str]
     text: str
     generation_config: GenerationConfig
     caller: CallerInfo
