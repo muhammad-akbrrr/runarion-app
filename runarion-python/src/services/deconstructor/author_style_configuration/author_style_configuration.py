@@ -4,11 +4,11 @@ import time
 from math import ceil
 from typing import Literal, NamedTuple, Optional
 
+from models.deconstructor.author_style import AuthorStyle
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
-from src.models.deconstructor.author_style import AuthorStyle
-from src.services.generation_engine import GenerationEngine
+from services.generation_engine import GenerationEngine
 from ulid import ULID
 from usecase_handler.author_style_handler import (
     COMBINED_AUTHOR_STYLE,
