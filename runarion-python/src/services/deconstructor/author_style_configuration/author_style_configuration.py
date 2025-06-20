@@ -7,6 +7,7 @@ from typing import Literal, NamedTuple
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
+from src.models.deconstructor.author_style import AuthorStyle
 from src.services.generation_engine import GenerationEngine
 from ulid import ULID
 from usecase_handler.author_style_handler import (
@@ -352,7 +353,7 @@ class AuthorStyleConfiguration:
         # recursively handle the reduced_styles
         return self._handle_combined_style(reduced_styles, recursion_depth + 1)
 
-    def run(self) -> dict:
+    def run(self) -> AuthorStyle:
         """
         Executes the author style analysis process.
 
@@ -374,4 +375,4 @@ class AuthorStyleConfiguration:
         total_time_ms = int((time.monotonic() - start_time) * 1000)
         self._store_structured_style(data, start_at, total_time_ms)
 
-        return data
+        return AuthorStyle(**data)
