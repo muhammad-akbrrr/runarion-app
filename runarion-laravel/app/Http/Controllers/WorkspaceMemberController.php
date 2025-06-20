@@ -296,6 +296,12 @@ class WorkspaceMemberController extends Controller
 
         $query->delete();
 
+        if ($targetUserId !== null) {
+            DB::table('users')
+                ->where('id', $targetUserId)
+                ->update(['last_workspace_id' => null]);
+        }
+
         return Redirect::route('workspace.edit.member', ['workspace_id' => $workspace_id]);
     }
 
@@ -304,7 +310,7 @@ class WorkspaceMemberController extends Controller
      */
     public function leave(Request $request, string $workspace_id): RedirectResponse
     {
-        $userId = $request->user()->id;
+        $user = $request->user();
 
         $userRole = $request->attributes->get('user_role');
 
@@ -314,10 +320,13 @@ class WorkspaceMemberController extends Controller
 
         DB::table('workspace_members')
             ->where('workspace_id', $workspace_id)
-            ->where('user_id', $userId)
+            ->where('user_id', $user->id)
             ->delete();
 
-        return Redirect::to('/');
+        $user->last_workspace_id = null;
+        $defaultWorkspaceId = $user->getActiveWorkspaceId();
+
+        return Redirect::route('workspace.dashboard', ['workspace_id' => $defaultWorkspaceId]);
     }
 
     
