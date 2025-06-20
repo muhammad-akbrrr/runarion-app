@@ -1,3 +1,8 @@
+from typing import Literal, TypedDict
+
+from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
+from services.usecase_handler.base_handler import UseCaseHandler
+
 # Prompt template for obtaining raw author style
 TEMPLATE_AUTHOR_STYLE = """
 {introduction}
@@ -46,28 +51,23 @@ NARRATIVE VOICE
 - What sentence patterns do they use?
 - How do they control tone?
 [{instruction_for_example}]
-
-The TEXT to analyze:
-{text} 
 """
 
 # Prompt template for obtaining raw partial author style from a single passage
 PARTIAL_AUTHOR_STYLE = TEMPLATE_AUTHOR_STYLE.format(
-    introduction="The TEXT below is a passage of an author's work. Based on the TEXT, analyze the author's style!",
+    introduction="The TEXT is a passage of an author's work. Based on the TEXT, analyze the author's style!",
     instruction_for_example="Show relevant examples from the TEXT",
-    text="{text}",
 )
 
 # Prompt template for obtaining raw combined author style from multiple partial author styles
 COMBINED_AUTHOR_STYLE = TEMPLATE_AUTHOR_STYLE.format(
-    introduction="The TEXT below contains multiple style analyses. Each analysis examines the same aspects from the same author, but from different PASSAGEs and FILEs. Based on the TEXT, analyze the author's overall style on the same aspects!",
+    introduction="The TEXT contains multiple style analyses. Each analysis examines the same aspects from the same author, but from different PASSAGEs and FILEs. Based on the TEXT, analyze the author's overall style on the same aspects!",
     instruction_for_example="Show relevant examples from different PASSAGEs and FILEs in the TEXT",
-    text="{text}",
 )
 
 # Prompt template for obtaining structured author style from raw combined author style
 STRUCTURED_AUTHOR_STYLE = """
-The TEXT below contains unstructured analyses of an author's style. Based on the TEXT, extract structured information. Return a JSON object with the following structure:
+The TEXT contains unstructured analyses of an author's style. Based on the TEXT, extract structured information. Return a JSON object with the following structure:
 
 {
   "techniques": {
@@ -114,7 +114,43 @@ Extract ALL examples you can find, regardless of formatting. Look for:
 - Examples after "Example:" or similar markers
 - Descriptive explanations of techniques
 - Any text that demonstrates the technique being discussed
+"""
 
+INPUT_CONTENT = """
 The TEXT:
 {text}
 """
+
+
+class AuthorStyleRequest(TypedDict):
+    mode: Literal["partial", "combined", "structured"]
+    provider: str | None
+    model: str | None
+    text: str
+    generation_config: GenerationConfig
+    caller: CallerInfo
+
+
+class AuthorStyleHandler(UseCaseHandler):
+    """
+    A handler class to prepare generation requests for author style analysis.
+    """
+
+    def build_request(self, raw_json: AuthorStyleRequest) -> BaseGenerationRequest:
+        instructions = {
+            "partial": PARTIAL_AUTHOR_STYLE,
+            "combined": COMBINED_AUTHOR_STYLE,
+            "structured": STRUCTURED_AUTHOR_STYLE,
+        }
+        instruction = instructions[raw_json["mode"]]
+
+        prompt = INPUT_CONTENT.format(text=raw_json["text"])
+
+        return BaseGenerationRequest(
+            provider=raw_json.get("provider") or "openai",
+            model=raw_json.get("model"),
+            prompt=prompt,
+            instruction=instruction,
+            generation_config=raw_json["generation_config"],
+            caller=raw_json["caller"],
+        )

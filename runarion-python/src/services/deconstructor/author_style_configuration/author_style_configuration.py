@@ -2,22 +2,21 @@ import json
 import os
 import time
 from math import ceil
-from typing import NamedTuple, Type
+from typing import Literal, NamedTuple
 
-from api.generation import PROVIDER_MAP
-from models.request import CallerInfo, GenerationConfig, GenerationRequest, PromptConfig
-from models.response import GenerationResponse
-from providers.base_provider import BaseProvider
-from services.quota_manager import QuotaManager
+from models.request import CallerInfo, GenerationConfig
+from models.response import BaseGenerationResponse
+from psycopg2.pool import SimpleConnectionPool
+from src.services.generation_engine import GenerationEngine
 from ulid import ULID
+from usecase_handler.author_style_handler import (
+    COMBINED_AUTHOR_STYLE,
+    PARTIAL_AUTHOR_STYLE,
+    AuthorStyleHandler,
+)
 from utils.get_model_max_token import get_model_max_token
 
 from .paragraph_extractor import ParagraphExtractor
-from .prompt_templates import (
-    COMBINED_AUTHOR_STYLE,
-    PARTIAL_AUTHOR_STYLE,
-    STRUCTURED_AUTHOR_STYLE,
-)
 from .token_counter import TokenCounter
 
 
@@ -45,47 +44,40 @@ class AuthorStyleConfiguration:
 
     def __init__(
         self,
-        provider: str,
-        model_name: str,
         paragraph_extractors: list[ParagraphExtractor],
         caller: CallerInfo,
-        generation_config: GenerationConfig,
-        quota_manager: QuotaManager,
+        connection_pool: SimpleConnectionPool,
+        provider: str | None = "gemini",
+        model: str | None = None,
+        generation_config: GenerationConfig | None = None,
         paragraph_overlap: bool = False,
         store_intermediate: bool = False,
     ):
         """
         Args:
-            provider (str): The model provider (e.g., "openai", "gemini").
-            model_name (str): The model name.
             paragraph_extractors (list[ParagraphExtractor]): List of paragraph extractors, each associated with a source file.
             caller (CallerInfo): Caller information.
-            generation_config (GenerationConfig): Configuration for generation.
-            quota_manager (QuotaManager): Quota manager instance.
+            connection_pool (SimpleConnectionPool): Database connection pool for storing results.
+            provider (str): The model provider (e.g., "openai", "gemini").
+            model (str): The model name.
+            generation_config (GenerationConfig): Configuration for LLM generation.
             paragraph_overlap (bool): Whether to allow overlaping paragraphs in the passages.
             store_intermediate (bool): Whether to store intermediate styles.
         """
-        self.provider = provider
-        self.model_name = model_name
         self.paragraph_extractors = paragraph_extractors
         self.caller = caller
-        self.generation_config = generation_config
-        self.quota_manager = quota_manager
+        self.connection_pool = connection_pool
+        self.provider = provider or "gemini"
+        self.model = model or "gemini-2.5-flash"
+        self.generation_config = generation_config or GenerationConfig()  # type: ignore
         self.paragraph_overlap = paragraph_overlap
         self.store_intermediate = store_intermediate
 
-        provider_class = PROVIDER_MAP.get(provider)
-        if provider_class is None:
-            raise ValueError(
-                f"Unsupported provider: {provider}. Supported providers are: {list(PROVIDER_MAP.keys())}"
-            )
-        self.provider_class: Type[BaseProvider] = provider_class
-
         # calculate max token of content in partial and combined prompts
         RESERVED_TOKENS_FOR_SAFETY = 100
-        self.token_counter = TokenCounter(provider, model_name)
+        self.token_counter = TokenCounter(self.provider, self.model)
         model_max_token = (
-            get_model_max_token(provider, model_name) - RESERVED_TOKENS_FOR_SAFETY
+            get_model_max_token(self.provider, self.model) - RESERVED_TOKENS_FOR_SAFETY
         )
         partial_prompt_token = self.token_counter.count_tokens(PARTIAL_AUTHOR_STYLE)
         combined_prompt_token = self.token_counter.count_tokens(COMBINED_AUTHOR_STYLE)
@@ -94,9 +86,6 @@ class AuthorStyleConfiguration:
 
         # id for the structured style
         self.id = str(ULID())
-
-        # connection pool for database operations
-        self.connection_pool = self.quota_manager.connection_pool
 
         # list of source file names
         self.sources = [
@@ -166,36 +155,36 @@ class AuthorStyleConfiguration:
 
         return passages
 
-    def _call_llm(self, prompt: str) -> GenerationResponse:
+    def _call_llm(
+        self, prompt: str, mode: Literal["partial", "combined", "structured"]
+    ) -> BaseGenerationResponse:
         """
-        Calls the LLM with the given prompt.
+        Calls the LLM with the given prompt and mode.
 
         Args:
             prompt (str): The prompt to send to the LLM.
-
+            mode (Literal["partial", "combined", "structured"]): The mode of the request.
         Returns:
             GenerationResponse: The response from the LLM.
         """
-        remaining_quota = self.quota_manager.fetch(self.caller)
-        if remaining_quota <= 0:
-            raise RuntimeError("Insufficient quota for workspace.")
 
-        provider_instance = self.provider_class(
-            GenerationRequest(
-                prompt=prompt,
-                provider=self.provider,
-                model=self.model_name,
-                caller=self.caller,
-                prompt_config=PromptConfig(),
-                generation_config=self.generation_config,
-            )
+        request = AuthorStyleHandler().build_request(
+            {
+                "mode": mode,
+                "provider": self.provider,
+                "model": self.model,
+                "text": prompt,
+                "generation_config": self.generation_config,
+                "caller": self.caller,
+            }
         )
 
-        response = provider_instance.generate()
+        engine = GenerationEngine(request)
+
+        response = engine.generate()
+
         if not response.success:
             raise RuntimeError(f"LLM call failed: {response.error_message}")
-
-        self.quota_manager.update(self.caller)
 
         return response
 
@@ -290,8 +279,7 @@ class AuthorStyleConfiguration:
         Returns:
             Style: The analyzed style for the passage.
         """
-        prompt = PARTIAL_AUTHOR_STYLE.format(text=passage.text)
-        response = self._call_llm(prompt)
+        response = self._call_llm(passage.text, mode="partial")
 
         # title is useful for next LLM calls
         title = f"PASSAGE {passage.num} from FILE {passage.source}\n\n"
@@ -330,10 +318,9 @@ class AuthorStyleConfiguration:
         # if the total token count is within the limit,
         # perform combined style analysis and store the result
         if total_token < self.combined_max_token:
-            prompt = COMBINED_AUTHOR_STYLE.format(
-                text="\n\n".join([s.text for s in styles])
+            response = self._call_llm(
+                "\n\n".join([s.text for s in styles]), mode="combined"
             )
-            response = self._call_llm(prompt)
 
             # title can be useful for next LLM calls
             title = "Analyzed Author Style from Multiple (but possibly not all) PASSAGEs and FILEs\n\n"
@@ -379,8 +366,7 @@ class AuthorStyleConfiguration:
         partial_styles = [self._handle_partial_style(passage) for passage in passages]
         combined_style = self._handle_combined_style(partial_styles)
 
-        prompt = STRUCTURED_AUTHOR_STYLE.format(text=combined_style)
-        response = self._call_llm(prompt)
+        response = self._call_llm(combined_style.text, mode="structured")
 
         # response is expected to be a JSON string
         data = json.loads(response.text)
