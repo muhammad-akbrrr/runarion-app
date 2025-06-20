@@ -1,15 +1,16 @@
-# providers/story_generation/openai_provider.py
+# providers/openai_provider.py
 
 import time
 import uuid
+import openai
 from flask import current_app
 from openai import OpenAI
-from models.story_generation.request import StoryGenerationRequest
-from models.story_generation.response import StoryGenerationResponse
-from providers.story_generation.base_provider import StoryGenerationBaseProvider
+from providers.base_provider import BaseProvider
+from models.response import BaseGenerationResponse
+from models.request import BaseGenerationRequest
 
-class StoryGenerationOpenAIProvider(StoryGenerationBaseProvider):
-    def __init__(self, request: StoryGenerationRequest):
+class OpenAIProvider(BaseProvider):
+    def __init__(self, request: BaseGenerationRequest):
         super().__init__(request)
 
         try:
@@ -17,31 +18,28 @@ class StoryGenerationOpenAIProvider(StoryGenerationBaseProvider):
         except Exception as e:
             current_app.logger.error(f"Failed to initialize OpenAI client: {e}")
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
-
-    def generate(self) -> StoryGenerationResponse:
-        model_to_use = self.model
-        prompt = self.request.prompt or "<start writing from scratch>"
-        instruction = self.instruction
-        gen_cfg = self.request.generation_config
-
-        openai_kwargs = {
-            "model": model_to_use,
-            "input": prompt,
-            "instructions": instruction,
-            "temperature": gen_cfg.temperature,
-            "max_output_tokens": gen_cfg.max_output_tokens,
-            "top_p": gen_cfg.top_p,
-        }
-
+        
+    def generate(self) -> BaseGenerationResponse:
         start_time = time.time()
-        quota_generation_count = 1
         request_id = str(uuid.uuid4())
         provider_request_id = None
+        quota_generation_count = 1
+        
+        config = self.request.generation_config
+        
+        openai_kwargs = {
+            "model": self.model,
+            "input": self.request.prompt or "",
+            "instructions": self.instruction or "",
+            "temperature": config.temperature,
+            "max_output_tokens": config.max_output_tokens,
+            "top_p": config.nucleus_sampling,
+        }
 
         try:
             self._check_quota()
         except Exception as e:
-            current_app.logger.error(f"OpenAI Quota error with model {model_to_use}: {e}")
+            current_app.logger.error(f"OpenAI Quota error with model {self.model}: {e}")
             response = self._build_error_response(
                 request_id=request_id,
                 provider_request_id=provider_request_id or "",
@@ -82,7 +80,7 @@ class StoryGenerationOpenAIProvider(StoryGenerationBaseProvider):
             return response
 
         except Exception as e:
-            current_app.logger.error(f"OpenAI API error with model {model_to_use}: {e}")
+            current_app.logger.error(f"OpenAI API error with model {self.model}: {e}")
             response = self._build_error_response(
                 request_id=request_id,
                 provider_request_id=provider_request_id or "",
