@@ -36,8 +36,13 @@ class GeminiProvider(BaseProvider):
                 max_output_tokens=config.max_output_tokens,
                 top_p=config.nucleus_sampling,
                 top_k=config.top_k,
+                stop_sequences=config.stop_sequences or [],
+                presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
+                frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
             ),
         }
+        
+        current_app.logger.info(f"Gemini API request: {gemini_kwargs}")
 
         try:
             self._check_quota()
@@ -53,6 +58,7 @@ class GeminiProvider(BaseProvider):
 
         try:
             raw_response = self.client.models.generate_content(**gemini_kwargs)
+            current_app.logger.info(f"Gemini API response: {raw_response}")
             provider_request_id = getattr(raw_response, 'response_id', "")
 
             if raw_response.prompt_feedback and raw_response.prompt_feedback.block_reason:

@@ -20,27 +20,64 @@ export function EditorToolbar() {
     const { editorState } = useEditor();
 
     const handleSendClick = () => {
-        // Log all sidebar parameters to the console, including advanced parameters
-        console.log("Editor Parameters:", {
-            // Basic parameters
-            preset: editorState.preset,
-            authorProfile: editorState.authorProfile,
-            aiModel: editorState.aiModel,
-            memory: editorState.memory,
-            storyGenre: editorState.storyGenre,
-            storyTone: editorState.storyTone,
-            storyPOV: editorState.storyPOV,
-            
-            // Advanced parameters
-            temperature: editorState.temperature,
-            repetitionPenalty: editorState.repetitionPenalty,
-            outputLength: editorState.outputLength,
-            topP: editorState.topP, // Nucleus sampling
-            tailFree: editorState.tailFree,
-            topA: editorState.topA,
-            topK: editorState.topK,
-            minOutputToken: editorState.minOutputToken
-        });
+        // Map AI model to provider
+        let provider = "";
+        let model = "";
+        
+        if (editorState.aiModel.includes("chatgpt")) {
+            provider = "openai";
+            model = editorState.aiModel;
+        } else if (editorState.aiModel.includes("gemini")) {
+            provider = "gemini";
+            model = editorState.aiModel;
+        } else if (editorState.aiModel.includes("deepseek")) {
+            provider = "deepseek";
+            model = editorState.aiModel;
+        }
+        
+        // Get content from the editor
+        let prompt = document.getElementById("editor-content")?.textContent || "";
+        if (prompt.trim() === "Start typing here...") {
+            prompt = "";
+        }
+        
+        // Format the data according to the target JSON structure
+        const formattedData = {
+            "usecase": "story",
+            "provider": provider,
+            "model": model,
+            "prompt": prompt,
+            "instruction": "",
+            "generation_config": {
+                "temperature": editorState.temperature,
+                "repetition_penalty": editorState.repetitionPenalty,
+                "min_output_tokens": editorState.minOutputToken,
+                "max_output_tokens": editorState.outputLength,
+                "nucleus_sampling": editorState.topP,
+                "tail_free_sampling": editorState.tailFree,
+                "top_a": editorState.topA,
+                "top_k": editorState.topK,
+                "phrase_bias": editorState.phraseBias,
+                "banned_tokens": editorState.bannedTokens,
+                "stop_sequences": editorState.stopSequences
+            },
+            "prompt_config": {
+                "author_profile": editorState.authorProfile,
+                "context": editorState.memory,
+                "genre": editorState.storyGenre,
+                "tone": editorState.storyTone,
+                "pov": editorState.storyPOV,
+            },
+            "caller": {
+                "user_id": editorState.userId,
+                "workspace_id": editorState.workspaceId,
+                "project_id": editorState.projectId,
+                "api_keys": editorState.apiKeys
+            }
+        };
+        
+        // Log the formatted data to the console
+        console.log("Formatted Data:", formattedData);
     };
 
     return (

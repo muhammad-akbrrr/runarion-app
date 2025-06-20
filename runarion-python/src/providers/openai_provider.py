@@ -5,9 +5,10 @@ import uuid
 import openai
 from flask import current_app
 from openai import OpenAI
+from typing import Dict
 from providers.base_provider import BaseProvider
 from models.response import BaseGenerationResponse
-from models.request import BaseGenerationRequest
+from models.request import BaseGenerationRequest, GenerationConfig
 
 class OpenAIProvider(BaseProvider):
     def __init__(self, request: BaseGenerationRequest):
@@ -18,6 +19,43 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             current_app.logger.error(f"Failed to initialize OpenAI client: {e}")
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
+    
+    def _build_openai_kwargs(self, config: GenerationConfig) -> Dict:
+        """
+        Transforms the GenerationConfig into a dictionary of kwargs suitable for 
+        the OpenAI Chat Completions API.
+        """
+        messages = []
+        if self.instruction:
+            messages.append({"role": "system", "content": self.instruction})
+        if self.request.prompt:
+            messages.append({"role": "user", "content": self.request.prompt})
+            
+        logit_bias = {}    
+        if config.banned_tokens:
+            for token_id in config.banned_tokens:
+                logit_bias[str(token_id)] = -100
+        
+        if config.phrase_bias:
+            for item in config.phrase_bias:
+                for token_id_str, bias_value in item.items():
+                    int(token_id_str) 
+                    logit_bias[token_id_str] = bias_value
+                
+        openai_kwargs = {
+            "messages": messages,
+            "model" : self.model,
+            "frequency_penalty": config.repetition_penalty,
+            "presence_penalty": config.repetition_penalty,
+            "stop": config.stop_sequences if config.stop_sequences else None,
+            "temperature": config.temperature,
+            "top_p": config.nucleus_sampling,
+            "logit_bias": logit_bias if logit_bias else None,
+            "max_tokens": config.max_output_tokens, 
+            "stream": config.stream
+        }
+        
+        return {k: v for k, v in openai_kwargs.items() if v is not None}
         
     def generate(self) -> BaseGenerationResponse:
         start_time = time.time()
@@ -25,16 +63,8 @@ class OpenAIProvider(BaseProvider):
         provider_request_id = None
         quota_generation_count = 1
         
-        config = self.request.generation_config
-        
-        openai_kwargs = {
-            "model": self.model,
-            "input": self.request.prompt or "",
-            "instructions": self.instruction or "",
-            "temperature": config.temperature,
-            "max_output_tokens": config.max_output_tokens,
-            "top_p": config.nucleus_sampling,
-        }
+        openai_kwargs = self._build_openai_kwargs(self.request.generation_config)
+        current_app.logger.info(f"OpenAI API request: {openai_kwargs}")
 
         try:
             self._check_quota()
@@ -49,11 +79,17 @@ class OpenAIProvider(BaseProvider):
             return response
 
         try:
-            raw_response = self.client.responses.create(**openai_kwargs)
+            raw_response = self.client.chat.completions.create(**openai_kwargs)
+            current_app.logger.info(f"OpenAI API response: {raw_response}")
             provider_request_id = getattr(raw_response, 'id', "")
 
-            generated_text = getattr(raw_response, 'output_text', "")
-            finish_reason = getattr(raw_response, 'finish_reason', "")
+            generated_text = ""
+            finish_reason = ""
+
+            if raw_response.choices and len(raw_response.choices) > 0:
+                choice = raw_response.choices[0]
+                generated_text = choice.message.content or ""
+                finish_reason = choice.finish_reason or ""
 
             usage = getattr(raw_response, 'usage', None) or {}
             input_tokens = getattr(usage, "input_tokens", 0)

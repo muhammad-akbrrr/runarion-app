@@ -20,6 +20,21 @@ interface EditorState {
     topA: number;
     topK: number;
     minOutputToken: number;
+    
+    // Additional parameters for JSON structure
+    phraseBias: Array<{[key: string]: number}>;
+    bannedTokens: string[];
+    stopSequences: string[];
+    
+    // Caller information
+    userId: string;
+    workspaceId: string;
+    projectId: string;
+    apiKeys: {
+        openai: string;
+        gemini: string;
+        deepseek: string;
+    };
 }
 
 // Define the shape of our context
@@ -32,25 +47,50 @@ interface EditorContextType {
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
 // Create a provider component
-export function EditorProvider({ children }: { children: ReactNode }) {
+export function EditorProvider({ 
+    children, 
+    workspaceId, 
+    projectId,
+    userId 
+}: { 
+    children: ReactNode, 
+    workspaceId?: string, 
+    projectId?: string,
+    userId?: string
+}) {
     const [editorState, setEditorState] = useState<EditorState>({
         preset: 'story-telling',
-        authorProfile: 'tolkien',
-        aiModel: 'chatgpt-4o',
+        authorProfile: '',
+        aiModel: '',
         memory: '',
         storyGenre: '',
         storyTone: '',
         storyPOV: '',
         
         // Default values for advanced parameters
-        temperature: 1.35,
-        repetitionPenalty: 2.8,
-        outputLength: 300,
-        topP: 0.85,
-        tailFree: 0.85,
-        topA: 0.85,
-        topK: 0.85,
+        temperature: 0.7,
+        repetitionPenalty: 0,
+        outputLength: 200,
+        topP: 1.0,
+        tailFree: 1.0,
+        topA: 0.0,
+        topK: 0.0,
         minOutputToken: 50,
+        
+        // Additional parameters for JSON structure
+        phraseBias: [],
+        bannedTokens: [],
+        stopSequences: [],
+        
+        // Caller information
+        userId: userId || "1",
+        workspaceId: workspaceId || "",
+        projectId: projectId || "",
+        apiKeys: {
+            openai: "",
+            gemini: "",
+            deepseek: ""
+        }
     });
 
     const updateEditorState = <K extends keyof EditorState>(key: K, value: EditorState[K]) => {

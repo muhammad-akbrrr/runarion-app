@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Head } from "@inertiajs/react";
+import { Head, usePage } from "@inertiajs/react";
 import { ChevronDown } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
@@ -23,6 +23,8 @@ export default function ProjectEditorPage({
     projectId: string;
     project: Project;
 }>) {
+    const { auth } = usePage().props;
+    const userId = auth.user.id;
     const [content, setContent] = useState("");
 
     return (
@@ -33,7 +35,7 @@ export default function ProjectEditorPage({
         >
             <Head title="Project Editor" />
 
-            <EditorProvider>
+            <EditorProvider workspaceId={workspaceId} projectId={projectId} userId={userId}>
                 <EditorSidebar>
                     <div className="flex items-center justify-between">
                         {/* Left side - Menu items */}
@@ -110,6 +112,7 @@ export default function ProjectEditorPage({
                                         lineHeight: "1.6",
                                         fontSize: "16px",
                                     }}
+                                    id="editor-content"
                                 >
                                     {content === "" && (
                                         <span className="text-gray-400 pointer-events-none">
