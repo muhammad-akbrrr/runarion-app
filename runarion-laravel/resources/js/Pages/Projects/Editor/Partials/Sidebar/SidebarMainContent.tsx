@@ -28,20 +28,24 @@ import {
     X,
     Book,
 } from "lucide-react";
+import { useEditor } from "../../EditorContext";
 
 export function SidebarContent() {
+    const { editorState, updateEditorState } = useEditor();
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-    const [temperature, setTemperature] = useState([1.35]);
-    const [repetitionPenalty, setRepetitionPenalty] = useState([2.8]);
-    const [outputLength, setOutputLength] = useState([300]);
+    
+    // Use state from context for sliders, but keep as arrays for the Slider component
+    const [temperature, setTemperature] = useState([editorState.temperature]);
+    const [repetitionPenalty, setRepetitionPenalty] = useState([editorState.repetitionPenalty]);
+    const [outputLength, setOutputLength] = useState([editorState.outputLength]);
     const [phraseBias, setPhraseBias] = useState([0]);
-    const [minOutputToken, setMinOutputToken] = useState([50]);
+    const [minOutputToken, setMinOutputToken] = useState([editorState.minOutputToken]);
 
     // Sampling values
-    const [topP, setTopP] = useState([0.85]);
-    const [tailFree, setTailFree] = useState([0.85]);
-    const [topA, setTopA] = useState([0.85]);
-    const [topK, setTopK] = useState([0.85]);
+    const [topP, setTopP] = useState([editorState.topP]);
+    const [tailFree, setTailFree] = useState([editorState.tailFree]);
+    const [topA, setTopA] = useState([editorState.topA]);
+    const [topK, setTopK] = useState([editorState.topK]);
 
     return (
         <div
@@ -53,7 +57,10 @@ export function SidebarContent() {
             {/* Current Preset */}
             <div className="space-y-2">
                 <Label htmlFor="preset">Current Preset</Label>
-                <Select defaultValue="story-telling">
+                <Select 
+                    value={editorState.preset}
+                    onValueChange={(value) => updateEditorState('preset', value)}
+                >
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -72,7 +79,10 @@ export function SidebarContent() {
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select defaultValue="tolkien">
+                <Select 
+                    value={editorState.authorProfile}
+                    onValueChange={(value) => updateEditorState('authorProfile', value)}
+                >
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -87,7 +97,10 @@ export function SidebarContent() {
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select defaultValue="chatgpt-4o">
+                <Select 
+                    value={editorState.aiModel}
+                    onValueChange={(value) => updateEditorState('aiModel', value)}
+                >
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -112,6 +125,8 @@ export function SidebarContent() {
                         id="memory"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={editorState.memory}
+                        onChange={(e) => updateEditorState('memory', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -134,6 +149,8 @@ export function SidebarContent() {
                         id="genre"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={editorState.storyGenre}
+                        onChange={(e) => updateEditorState('storyGenre', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -156,6 +173,8 @@ export function SidebarContent() {
                         id="tone"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={editorState.storyTone}
+                        onChange={(e) => updateEditorState('storyTone', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -175,6 +194,8 @@ export function SidebarContent() {
                         id="pov"
                         placeholder="Search for an entry"
                         className="pr-8"
+                        value={editorState.storyPOV}
+                        onChange={(e) => updateEditorState('storyPOV', e.target.value)}
                     />
                     <Button variant="outline" className="h-9 w-9 p-0">
                         <Book className="h-3 w-3" />
@@ -218,7 +239,10 @@ export function SidebarContent() {
                             <span className="text-sm">{temperature[0]}</span>
                             <Slider
                                 value={temperature}
-                                onValueChange={setTemperature}
+                                onValueChange={(value) => {
+                                    setTemperature(value);
+                                    updateEditorState('temperature', value[0]);
+                                }}
                                 max={2}
                                 min={0}
                                 step={0.01}
@@ -244,7 +268,10 @@ export function SidebarContent() {
                             </span>
                             <Slider
                                 value={repetitionPenalty}
-                                onValueChange={setRepetitionPenalty}
+                                onValueChange={(value) => {
+                                    setRepetitionPenalty(value);
+                                    updateEditorState('repetitionPenalty', value[0]);
+                                }}
                                 max={5}
                                 min={1}
                                 step={0.1}
@@ -268,7 +295,10 @@ export function SidebarContent() {
                             <span className="text-sm">~{outputLength[0]}</span>
                             <Slider
                                 value={outputLength}
-                                onValueChange={setOutputLength}
+                                onValueChange={(value) => {
+                                    setOutputLength(value);
+                                    updateEditorState('outputLength', value[0]);
+                                }}
                                 max={1000}
                                 min={50}
                                 step={10}
@@ -291,7 +321,10 @@ export function SidebarContent() {
                             </div>
                             <Slider
                                 value={topP}
-                                onValueChange={setTopP}
+                                onValueChange={(value) => {
+                                    setTopP(value);
+                                    updateEditorState('topP', value[0]);
+                                }}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -307,7 +340,10 @@ export function SidebarContent() {
                             </div>
                             <Slider
                                 value={tailFree}
-                                onValueChange={setTailFree}
+                                onValueChange={(value) => {
+                                    setTailFree(value);
+                                    updateEditorState('tailFree', value[0]);
+                                }}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -323,7 +359,10 @@ export function SidebarContent() {
                             </div>
                             <Slider
                                 value={topA}
-                                onValueChange={setTopA}
+                                onValueChange={(value) => {
+                                    setTopA(value);
+                                    updateEditorState('topA', value[0]);
+                                }}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -339,7 +378,10 @@ export function SidebarContent() {
                             </div>
                             <Slider
                                 value={topK}
-                                onValueChange={setTopK}
+                                onValueChange={(value) => {
+                                    setTopK(value);
+                                    updateEditorState('topK', value[0]);
+                                }}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -599,7 +641,10 @@ export function SidebarContent() {
                             </div>
                             <Slider
                                 value={minOutputToken}
-                                onValueChange={setMinOutputToken}
+                                onValueChange={(value) => {
+                                    setMinOutputToken(value);
+                                    updateEditorState('minOutputToken', value[0]);
+                                }}
                                 max={100}
                                 min={1}
                                 step={1}

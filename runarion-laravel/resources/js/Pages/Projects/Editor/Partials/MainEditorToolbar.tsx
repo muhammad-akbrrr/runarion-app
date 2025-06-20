@@ -14,8 +14,35 @@ import {
     SlidersHorizontal,
     RefreshCw,
 } from "lucide-react";
+import { useEditor } from "../EditorContext";
 
 export function EditorToolbar() {
+    const { editorState } = useEditor();
+
+    const handleSendClick = () => {
+        // Log all sidebar parameters to the console, including advanced parameters
+        console.log("Editor Parameters:", {
+            // Basic parameters
+            preset: editorState.preset,
+            authorProfile: editorState.authorProfile,
+            aiModel: editorState.aiModel,
+            memory: editorState.memory,
+            storyGenre: editorState.storyGenre,
+            storyTone: editorState.storyTone,
+            storyPOV: editorState.storyPOV,
+            
+            // Advanced parameters
+            temperature: editorState.temperature,
+            repetitionPenalty: editorState.repetitionPenalty,
+            outputLength: editorState.outputLength,
+            topP: editorState.topP, // Nucleus sampling
+            tailFree: editorState.tailFree,
+            topA: editorState.topA,
+            topK: editorState.topK,
+            minOutputToken: editorState.minOutputToken
+        });
+    };
+
     return (
         <div
             className="
@@ -72,7 +99,7 @@ export function EditorToolbar() {
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                         <RefreshCw className="h-4 w-4" />
                     </Button>
-                    <Button size="sm">
+                    <Button size="sm" onClick={handleSendClick}>
                         Send
                         <Send className="h-4 w-4" />
                     </Button>
