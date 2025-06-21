@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Head, usePage } from "@inertiajs/react";
 import { ChevronDown } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
@@ -13,6 +13,15 @@ import {
 } from "@/Components/ui/dropdown-menu";
 import { PageProps, Project } from "@/types";
 import { EditorProvider } from "./EditorContext";
+import { toast } from "sonner";
+
+interface FlashData {
+    data?: {
+        success: boolean;
+        text?: string;
+        error_message?: string;
+    };
+}
 
 export default function ProjectEditorPage({
     workspaceId,
@@ -23,9 +32,52 @@ export default function ProjectEditorPage({
     projectId: string;
     project: Project;
 }>) {
-    const { auth } = usePage().props;
+    const page = usePage();
+    const { auth } = page.props;
     const userId = auth.user.id;
     const [content, setContent] = useState("");
+    
+    // Get the flash data from the page props
+    const flash = page.props.flash as FlashData;
+
+    // Handle flash messages for story generation
+    useEffect(() => {
+        console.log("Flash data:", flash);
+        
+        if (flash && flash.data) {
+            const data = flash.data;
+            
+            if (data.success) {
+                // Get the generated text
+                const generatedText = data.text;
+                
+                if (generatedText) {
+                    // Get the editor content element
+                    const editorContent = document.getElementById("editor-content");
+                    
+                    // Append the generated text to the existing content
+                    if (editorContent) {
+                        // If the editor is empty or has placeholder text, replace it
+                        if (editorContent.textContent?.trim() === "Start typing here..." || editorContent.textContent?.trim() === "") {
+                            editorContent.textContent = generatedText;
+                        } else {
+                            // Otherwise, append the generated text
+                            editorContent.textContent += "\n\n" + generatedText;
+                        }
+                        
+                        // Update the content state
+                        setContent(editorContent.textContent || "");
+                    }
+                    
+                    // Show success toast
+                    toast.success("Story generated successfully!");
+                }
+            } else if (data.error_message) {
+                // Show error toast
+                toast.error(data.error_message || "Failed to generate story");
+            }
+        }
+    }, [flash]);
 
     return (
         <ProjectEditorLayout

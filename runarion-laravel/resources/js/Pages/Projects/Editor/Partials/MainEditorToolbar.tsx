@@ -15,9 +15,13 @@ import {
     RefreshCw,
 } from "lucide-react";
 import { useEditor } from "../EditorContext";
+import { router } from "@inertiajs/react";
+import { useState } from "react";
+import { toast } from "sonner";
 
 export function EditorToolbar() {
     const { editorState } = useEditor();
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleSendClick = () => {
         // Map AI model to provider
@@ -33,6 +37,10 @@ export function EditorToolbar() {
         } else if (editorState.aiModel.includes("deepseek")) {
             provider = "deepseek";
             model = editorState.aiModel;
+        } else {
+            // Default to gemini if no model is selected
+            provider = "gemini";
+            model = "gemini-2.0-flash";
         }
         
         // Get content from the editor
@@ -69,7 +77,7 @@ export function EditorToolbar() {
                 "pov": editorState.storyPOV,
             },
             "caller": {
-                "user_id": editorState.userId,
+                "user_id": String(editorState.userId),
                 "workspace_id": editorState.workspaceId,
                 "project_id": editorState.projectId,
                 "api_keys": editorState.apiKeys
@@ -78,6 +86,30 @@ export function EditorToolbar() {
         
         // Log the formatted data to the console
         console.log("Formatted Data:", formattedData);
+        
+        // Set generating state
+        setIsGenerating(true);
+        
+        // Make the API call using Inertia
+        router.post(
+            route('workspace.projects.editor.generate', {
+                workspace_id: editorState.workspaceId,
+                project_id: editorState.projectId
+            }),
+            formattedData,
+            {
+                preserveScroll: true,
+                onSuccess: () => {
+                    setIsGenerating(false);
+                    // We'll handle the response in the Main.tsx component using useEffect
+                },
+                onError: (errors) => {
+                    setIsGenerating(false);
+                    console.error("Generation errors:", errors);
+                    toast.error("Failed to generate story. Please try again.");
+                }
+            }
+        );
     };
 
     return (
@@ -136,9 +168,13 @@ export function EditorToolbar() {
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                         <RefreshCw className="h-4 w-4" />
                     </Button>
-                    <Button size="sm" onClick={handleSendClick}>
-                        Send
-                        <Send className="h-4 w-4" />
+                    <Button 
+                        size="sm" 
+                        onClick={handleSendClick}
+                        disabled={isGenerating}
+                    >
+                        {isGenerating ? "Generating..." : "Send"}
+                        {!isGenerating && <Send className="h-4 w-4 ml-1" />}
                     </Button>
                 </div>
             </div>
