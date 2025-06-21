@@ -35,7 +35,7 @@ class GeminiProvider(BaseProvider):
                 temperature=config.temperature,
                 max_output_tokens=config.max_output_tokens,
                 top_p=config.nucleus_sampling,
-                top_k=config.top_k,
+                top_k=int(config.top_k),
                 stop_sequences=config.stop_sequences or [],
                 presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
                 frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,

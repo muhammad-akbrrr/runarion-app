@@ -1,6 +1,6 @@
 // ========================= Imports =========================
 // External libraries
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Label } from "@/Components/ui/label";
 import {
     Select,
@@ -33,12 +33,11 @@ import { useEditor } from "../../EditorContext";
 export function SidebarContent() {
     const { editorState, updateEditorState } = useEditor();
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-    
+
     // Use state from context for sliders, but keep as arrays for the Slider component
     const [temperature, setTemperature] = useState([editorState.temperature]);
     const [repetitionPenalty, setRepetitionPenalty] = useState([editorState.repetitionPenalty]);
     const [outputLength, setOutputLength] = useState([editorState.outputLength]);
-    const [phraseBias, setPhraseBias] = useState([0]);
     const [minOutputToken, setMinOutputToken] = useState([editorState.minOutputToken]);
 
     // Sampling values
@@ -46,6 +45,28 @@ export function SidebarContent() {
     const [tailFree, setTailFree] = useState([editorState.tailFree]);
     const [topA, setTopA] = useState([editorState.topA]);
     const [topK, setTopK] = useState([editorState.topK]);
+
+    // Phrase bias management
+    const [newPhrase, setNewPhrase] = useState("");
+    const [currentBiasValue, setCurrentBiasValue] = useState([0]);
+
+    // Banned tokens management
+    const [newBannedToken, setNewBannedToken] = useState("");
+
+    // Stop sequence management
+    const [newStopSequence, setNewStopSequence] = useState("");
+
+    // Initialize state from context on component mount
+    useEffect(() => {
+        setTemperature([editorState.temperature]);
+        setRepetitionPenalty([editorState.repetitionPenalty]);
+        setOutputLength([editorState.outputLength]);
+        setMinOutputToken([editorState.minOutputToken]);
+        setTopP([editorState.topP]);
+        setTailFree([editorState.tailFree]);
+        setTopA([editorState.topA]);
+        setTopK([editorState.topK]);
+    }, [editorState]);
 
     return (
         <div
@@ -57,7 +78,7 @@ export function SidebarContent() {
             {/* Current Preset */}
             <div className="space-y-2">
                 <Label htmlFor="preset">Current Preset</Label>
-                <Select 
+                <Select
                     value={editorState.preset}
                     onValueChange={(value) => updateEditorState('preset', value)}
                 >
@@ -79,17 +100,17 @@ export function SidebarContent() {
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select 
+                <Select
                     value={editorState.authorProfile}
                     onValueChange={(value) => updateEditorState('authorProfile', value)}
                 >
                     <SelectTrigger className="w-full">
-                        <SelectValue />
+                        <SelectValue placeholder="Select an author style" />
                     </SelectTrigger>
                     <SelectContent>
+                        <SelectItem value="shakespeare">Shakespeare</SelectItem>
                         <SelectItem value="tolkien">Tolkien</SelectItem>
                         <SelectItem value="hemingway">Hemingway</SelectItem>
-                        <SelectItem value="shakespeare">Shakespeare</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -97,7 +118,7 @@ export function SidebarContent() {
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select 
+                <Select
                     value={editorState.aiModel}
                     onValueChange={(value) => updateEditorState('aiModel', value)}
                 >
@@ -105,8 +126,8 @@ export function SidebarContent() {
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="gpt-4o-mini">ChatGPT 4o</SelectItem>
                         <SelectItem value="gemini-2.0-flash">Gemini 2.0</SelectItem>
+                        <SelectItem value="gpt-4o-mini">ChatGPT 4o</SelectItem>
                         <SelectItem value="deepseek-chat">DeepSeek V3</SelectItem>
                     </SelectContent>
                 </Select>
@@ -140,7 +161,7 @@ export function SidebarContent() {
             <div className="space-y-2">
                 <Label htmlFor="genre">Story Genre</Label>
                 <p className="text-xs text-gray-500">
-                    The AI will better remember info placed here
+                    The project category
                 </p>
                 <div className="relative">
                     <Textarea
@@ -164,7 +185,7 @@ export function SidebarContent() {
             <div className="space-y-2">
                 <Label htmlFor="tone">Story Tone</Label>
                 <p className="text-xs text-gray-500">
-                    The AI will better remember info placed here
+                    The AI will refer to this tone when writing
                 </p>
                 <div className="relative">
                     <Textarea
@@ -188,13 +209,18 @@ export function SidebarContent() {
             <div className="space-y-2">
                 <Label htmlFor="pov">Story POV</Label>
                 <div className="flex flex-row items-center gap-2">
-                    <Input
-                        id="pov"
-                        placeholder="Search for an entry"
-                        className="pr-8"
+                    <Select
                         value={editorState.storyPOV}
-                        onChange={(e) => updateEditorState('storyPOV', e.target.value)}
-                    />
+                        onValueChange={(value) => updateEditorState('storyPOV', value)}
+                    >
+                        <SelectTrigger className="w-full">
+                            <SelectValue placeholder="Select point of view" />
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="first-person">First Person</SelectItem>
+                            <SelectItem value="third-person">Third Person</SelectItem>
+                        </SelectContent>
+                    </Select>
                     <Button variant="outline" className="h-9 w-9 p-0">
                         <Book className="h-3 w-3" />
                     </Button>
@@ -227,7 +253,7 @@ export function SidebarContent() {
                         <div className="flex justify-between items-center">
                             <Label>Temperature</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 1.35
+                                Default: 1
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -254,7 +280,7 @@ export function SidebarContent() {
                         <div className="flex justify-between items-center">
                             <Label>Repetition Penalty</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 2.8
+                                Default: 0
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -270,8 +296,8 @@ export function SidebarContent() {
                                     setRepetitionPenalty(value);
                                     updateEditorState('repetitionPenalty', value[0]);
                                 }}
-                                max={5}
-                                min={1}
+                                max={2}
+                                min={-2}
                                 step={0.1}
                                 className="w-full"
                             />
@@ -311,7 +337,7 @@ export function SidebarContent() {
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Nucleus: {topP[0]}
+                                    Nucleus Sampling: {topP[0]}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
@@ -330,7 +356,7 @@ export function SidebarContent() {
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Tail-Free: {tailFree[0]}
+                                    Tail-Free Sampling: {tailFree[0]}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
@@ -349,7 +375,7 @@ export function SidebarContent() {
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Top-A: {topA[0]}
+                                    Top A Sampling: {topA[0]}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
@@ -368,7 +394,7 @@ export function SidebarContent() {
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Top-K: {topK[0]}
+                                    Top K Sampling: {topK[0]}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
@@ -391,8 +417,7 @@ export function SidebarContent() {
                     <div className="space-y-3">
                         <Label>Phrase Bias</Label>
                         <p className="text-xs text-gray-500">
-                            Weigh the AI's chance of generating certain words or
-                            phrases
+                            Weigh the AI's chance of generating certain words or phrases
                         </p>
                         <div className="space-y-3">
                             <div className="flex flex-row items-center gap-2">
@@ -430,36 +455,78 @@ export function SidebarContent() {
                             <p className="text-xs text-gray-500">
                                 Type in the area below, then press enter to save
                             </p>
-
+                            {/* Add new phrase bias */}
                             <div className="flex flex-row items-center gap-2">
-                                <Input placeholder="Enter phrase you want to bias" />
-
+                                <Input
+                                    placeholder="Enter phrase to bias"
+                                    value={newPhrase}
+                                    onChange={(e) => setNewPhrase(e.target.value)}
+                                />
                                 <Button
                                     variant="outline"
                                     className="h-9 w-9 p-0"
+                                    onClick={() => {
+                                        if (newPhrase.trim()) {
+                                            const updatedBias = [...editorState.phraseBias];
+                                            updatedBias.push({ [newPhrase]: currentBiasValue[0] });
+                                            updateEditorState('phraseBias', updatedBias);
+                                            setNewPhrase('');
+                                        }
+                                    }}
                                 >
                                     <Plus className="h-4 w-4" />
                                 </Button>
                             </div>
 
+                            {/* Bias value slider */}
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm">
-                                        Bias: {phraseBias[0]}
+                                        Bias Value: {currentBiasValue[0]}
                                     </span>
                                     <span className="text-sm text-gray-500">
                                         Default: 0
                                     </span>
                                 </div>
                                 <Slider
-                                    value={phraseBias}
-                                    onValueChange={setPhraseBias}
+                                    value={currentBiasValue}
+                                    onValueChange={setCurrentBiasValue}
                                     max={1}
                                     min={-1}
                                     step={0.01}
                                     className="w-full"
                                 />
                             </div>
+
+                            {/* List of phrase biases */}
+                            {editorState.phraseBias.length > 0 && (
+                                <div className="space-y-2 mt-2">
+                                    <Label>Current Phrase Biases:</Label>
+                                    {editorState.phraseBias.map((biasItem, index) => {
+                                        const phrase = Object.keys(biasItem)[0];
+                                        const biasValue = biasItem[phrase];
+                                        return (
+                                            <div key={index} className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
+                                                <span className="text-sm">
+                                                    "{phrase}" (Bias: {biasValue})
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0"
+                                                    onClick={() => {
+                                                        const updatedBias = [...editorState.phraseBias];
+                                                        updatedBias.splice(index, 1);
+                                                        updateEditorState('phraseBias', updatedBias);
+                                                    }}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -508,80 +575,121 @@ export function SidebarContent() {
                         </div>
                     </div>
 
-                    {/* Banned Tokens */}
+                    {/* Banned Phrases */}
                     <div className="space-y-3">
-                        <Label>Banned Tokens</Label>
+                        <Label>Banned Phrases</Label>
                         <p className="text-xs text-gray-500">
-                            Weigh the AI's chance of generating certain words or
-                            phrases
+                            Words or phrases the AI should avoid using
                         </p>
-                        <div className="flex flex-row items-center gap-2">
-                            <Select defaultValue="empty">
-                                <SelectTrigger className="w-full">
-                                    <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    <SelectItem value="empty">Empty</SelectItem>
-                                    <SelectItem value="common">
-                                        Common Words
-                                    </SelectItem>
-                                    <SelectItem value="custom">
-                                        Custom List
-                                    </SelectItem>
-                                </SelectContent>
-                            </Select>
+                        <div className="space-y-3">
+                            <div className="flex flex-row items-center gap-2">
+                                <Select defaultValue="empty">
+                                    <SelectTrigger className="w-full">
+                                        <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="empty">Empty</SelectItem>
+                                        <SelectItem value="common">
+                                            Common Words
+                                        </SelectItem>
+                                        <SelectItem value="custom">
+                                            Custom List
+                                        </SelectItem>
+                                    </SelectContent>
+                                </Select>
 
-                            <Button variant="outline" className="h-9 w-9 p-0">
-                                <Plus className="h-4 w-4" />
-                            </Button>
-                            <Button variant="outline" className="h-9 w-9 p-0">
-                                <Trash2 className="h-4 w-4" />
-                            </Button>
-                        </div>
+                                <Button variant="outline" className="h-9 w-9 p-0">
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                                <Button variant="outline" className="h-9 w-9 p-0">
+                                    <Trash2 className="h-4 w-4" />
+                                </Button>
+                            </div>
 
-                        <p className="text-xs text-gray-500">
-                            Type in the area below, then press enter to save
-                        </p>
-
-                        <div className="flex flex-row items-center gap-2">
-                            <Input placeholder="Enter phrase you want to ban" />
-
-                            <Button variant="outline" className="h-9 w-9 p-0">
-                                <Plus className="h-4 w-4" />
-                            </Button>
-                        </div>
-                    </div>
-
-                    {/* Sequences */}
-                    <div className="space-y-3">
-                        <div className="flex justify-between items-center">
-                            <Label>Sequences</Label>
                             <p className="text-xs text-gray-500">
-                                Click the phrase to edit
+                                Type in the area below, then press enter to save
                             </p>
-                        </div>
-                        <div className="relative">
-                            <Textarea
-                                placeholder="Type here..."
-                                className="min-h-[80px] pr-8"
-                            />
-                            <Button
-                                variant="ghost"
-                                size="sm"
-                                className="absolute top-2 right-2 h-6 w-6 p-0"
-                            >
-                                <Maximize2 className="h-3 w-3" />
-                            </Button>
-                        </div>
 
-                        <div className="flex items-center space-x-2">
-                            <Checkbox id="sequences-enabled" />
-                            <Label
-                                htmlFor="sequences-enabled"
-                                className="text-sm"
-                            >
-                                Enabled
-                            </Label>
+                            {/* Add new banned token */}
+                            <div className="flex flex-row items-center gap-2">
+                                <Input
+                                    placeholder="Enter phrase to ban"
+                                    value={newBannedToken}
+                                    onChange={(e) => setNewBannedToken(e.target.value)}
+                                />
+                                <Button
+                                    variant="outline"
+                                    className="h-9 w-9 p-0"
+                                    onClick={() => {
+                                        if (newBannedToken.trim()) {
+                                            const updatedTokens = [...editorState.bannedTokens, newBannedToken];
+                                            updateEditorState('bannedTokens', updatedTokens);
+                                            setNewBannedToken('');
+                                        }
+                                    }}
+                                >
+                                    <Plus className="h-4 w-4" />
+                                </Button>
+                            </div>
+
+                            {/* List of banned tokens */}
+                            {editorState.bannedTokens.length > 0 && (
+                                <div className="space-y-2 mt-2">
+                                    <Label>Current Banned Tokens:</Label>
+                                    <div className="flex flex-wrap gap-2">
+                                        {editorState.bannedTokens.map((token, index) => (
+                                            <div key={index} className="flex items-center bg-gray-100 px-2 py-1 rounded">
+                                                <span className="text-sm mr-1">{token}</span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-5 w-5 p-0"
+                                                    onClick={() => {
+                                                        const updatedTokens = [...editorState.bannedTokens];
+                                                        updatedTokens.splice(index, 1);
+                                                        updateEditorState('bannedTokens', updatedTokens);
+                                                    }}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Sequences */}
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center">
+                                    <Label>Sequences</Label>
+                                    <p className="text-xs text-gray-500">
+                                        Click the phrase to edit
+                                    </p>
+                                </div>
+                                <div className="relative">
+                                    <Textarea
+                                        placeholder="Type here..."
+                                        className="min-h-[80px] pr-8"
+                                    />
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="absolute top-2 right-2 h-6 w-6 p-0"
+                                    >
+                                        <Maximize2 className="h-3 w-3" />
+                                    </Button>
+                                </div>
+
+                                <div className="flex items-center space-x-2">
+                                    <Checkbox id="sequences-enabled" />
+                                    <Label
+                                        htmlFor="sequences-enabled"
+                                        className="text-sm"
+                                    >
+                                        Enabled
+                                    </Label>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -589,54 +697,70 @@ export function SidebarContent() {
                     <div className="space-y-3">
                         <Label>Stop Sequence</Label>
                         <p className="text-xs text-gray-500">
-                            Weigh the AI's chance of generating certain words or
-                            phrases
+                            Sequences that will cause the AI to stop generating text
                         </p>
-
-                        <div className="flex flex-row items-center gap-2">
-                            <Input placeholder="Enter phrase you want to ban" />
-
-                            <Button variant="outline" className="h-9 w-9 p-0">
-                                <Plus className="h-4 w-4" />
-                            </Button>
-                        </div>
-
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
-                                <span className="text-sm">
-                                    {"{while |a|k|bar}"}
-                                </span>
+                        <div className="space-y-3">
+                            {/* Add new stop sequence */}
+                            <div className="flex flex-row items-center gap-2">
+                                <Input
+                                    placeholder="Enter stop sequence"
+                                    value={newStopSequence}
+                                    onChange={(e) => setNewStopSequence(e.target.value)}
+                                />
                                 <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
+                                    variant="outline"
+                                    className="h-9 w-9 p-0"
+                                    onClick={() => {
+                                        if (newStopSequence.trim()) {
+                                            const updatedSequences = [...editorState.stopSequences, newStopSequence];
+                                            updateEditorState('stopSequences', updatedSequences);
+                                            setNewStopSequence('');
+                                        }
+                                    }}
                                 >
-                                    <X className="h-3 w-3" />
+                                    <Plus className="h-4 w-4" />
                                 </Button>
                             </div>
-                            <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
-                                <span className="text-sm">
-                                    {"{while |a|k|bar}"}
-                                </span>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                >
-                                    <X className="h-3 w-3" />
-                                </Button>
-                            </div>
-                        </div>
 
+                            {/* List of stop sequences */}
+                            {editorState.stopSequences.length > 0 && (
+                                <div className="space-y-2 mt-2">
+                                    <Label>Current Stop Sequences:</Label>
+                                    {editorState.stopSequences.map((sequence, index) => (
+                                        <div key={index} className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
+                                            <span className="text-sm">"{sequence}"</span>
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="h-6 w-6 p-0"
+                                                onClick={() => {
+                                                    const updatedSequences = [...editorState.stopSequences];
+                                                    updatedSequences.splice(index, 1);
+                                                    updateEditorState('stopSequences', updatedSequences);
+                                                }}
+                                            >
+                                                <X className="h-3 w-3" />
+                                            </Button>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Min Output Token */}
+                    <div className="space-y-3">
+                        <div className="flex justify-between items-center">
+                            <Label>Min Output Token</Label>
+                            <span className="text-sm text-gray-500">
+                                Default: 1
+                            </span>
+                        </div>
+                        <p className="text-xs text-gray-500">
+                            Minimum number of tokens to generate
+                        </p>
                         <div className="space-y-2">
-                            <div className="flex justify-between items-center">
-                                <span className="text-sm">
-                                    Min Output Token: {minOutputToken[0]}
-                                </span>
-                                <span className="text-sm text-gray-500">
-                                    Default: 1
-                                </span>
-                            </div>
+                            <span className="text-sm">{minOutputToken[0]}</span>
                             <Slider
                                 value={minOutputToken}
                                 onValueChange={(value) => {

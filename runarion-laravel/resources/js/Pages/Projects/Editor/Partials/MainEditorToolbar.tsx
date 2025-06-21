@@ -28,7 +28,7 @@ export function EditorToolbar() {
         let provider = "";
         let model = "";
         
-        if (editorState.aiModel.includes("chatgpt")) {
+        if (editorState.aiModel.includes("gpt")) {
             provider = "openai";
             model = editorState.aiModel;
         } else if (editorState.aiModel.includes("gemini")) {
@@ -62,9 +62,10 @@ export function EditorToolbar() {
                 "tail_free_sampling": editorState.tailFree,
                 "top_a": editorState.topA,
                 "top_k": editorState.topK,
-                "phrase_bias": editorState.phraseBias,
-                "banned_tokens": editorState.bannedTokens,
-                "stop_sequences": editorState.stopSequences
+                // TODO: implement word tokenization in python app to transform words to tokens, uses empty fields for now
+                "phrase_bias": [],
+                "banned_tokens": [],
+                "stop_sequences": []
             },
             "prompt_config": {
                 "author_profile": editorState.authorProfile,

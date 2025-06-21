@@ -60,22 +60,22 @@ export function EditorProvider({
 }) {
     const [editorState, setEditorState] = useState<EditorState>({
         preset: 'story-telling',
-        authorProfile: 'Tolkien',
-        aiModel: 'gpt-4o-mini',
+        authorProfile: '',
+        aiModel: 'gemini-2.0-flash',
         memory: '',
         storyGenre: '',
         storyTone: '',
         storyPOV: '',
         
         // Default values for advanced parameters
-        temperature: 0.7,
+        temperature: 1,
         repetitionPenalty: 0,
-        outputLength: 200,
-        topP: 1.0,
-        tailFree: 1.0,
-        topA: 0.0,
-        topK: 0.0,
-        minOutputToken: 50,
+        outputLength: 300,
+        topP: 0.85,
+        tailFree: 0.85,
+        topA: 0.85,
+        topK: 0.85,
+        minOutputToken: 1,
         
         // Additional parameters for JSON structure
         phraseBias: [],

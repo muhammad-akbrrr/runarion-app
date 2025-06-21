@@ -57,16 +57,18 @@ export default function ProjectEditorPage({
                     
                     // Append the generated text to the existing content
                     if (editorContent) {
-                        // If the editor is empty or has placeholder text, replace it
-                        if (editorContent.textContent?.trim() === "Start typing here..." || editorContent.textContent?.trim() === "") {
-                            editorContent.textContent = generatedText;
+                        const formattedText = generatedText.replace(/\n/g, "<br />");
+
+                        if (
+                            editorContent.innerText.trim() === "Start typing here..." ||
+                            editorContent.innerText.trim() === ""
+                        ) {
+                            editorContent.innerHTML = formattedText;
                         } else {
-                            // Otherwise, append the generated text
-                            editorContent.textContent += "\n\n" + generatedText;
+                            editorContent.innerHTML += formattedText;
                         }
-                        
-                        // Update the content state
-                        setContent(editorContent.textContent || "");
+
+                        setContent(editorContent.innerText || "");
                     }
                     
                     // Show success toast
