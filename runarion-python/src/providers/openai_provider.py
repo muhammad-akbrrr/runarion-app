@@ -39,7 +39,7 @@ class OpenAIProvider(BaseProvider):
         if config.phrase_bias:
             for item in config.phrase_bias:
                 for token_id_str, bias_value in item.items():
-                    int(token_id_str) 
+                    # Ensure token_id_str is a string
                     logit_bias[token_id_str] = bias_value
                 
         openai_kwargs = {

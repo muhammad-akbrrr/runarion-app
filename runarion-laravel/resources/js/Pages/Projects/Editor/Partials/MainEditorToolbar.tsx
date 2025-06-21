@@ -62,10 +62,12 @@ export function EditorToolbar() {
                 "tail_free_sampling": editorState.tailFree,
                 "top_a": editorState.topA,
                 "top_k": editorState.topK,
-                // TODO: implement word tokenization in python app to transform words to tokens, uses empty fields for now
-                "phrase_bias": [],
-                "banned_tokens": [],
-                "stop_sequences": []
+                // Send phrase bias as array of objects with string keys and number values
+                "phrase_bias": editorState.phraseBias,
+                // Send banned tokens as strings for tokenization in the backend
+                "banned_tokens": editorState.bannedTokens,
+                // Send stop sequences as strings
+                "stop_sequences": editorState.stopSequences
             },
             "prompt_config": {
                 "author_profile": editorState.authorProfile,

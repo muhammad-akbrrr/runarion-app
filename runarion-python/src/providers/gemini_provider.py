@@ -1,4 +1,4 @@
-# providers/openai_provider.py
+# providers/gemini_provider.py
 
 import time
 import uuid
@@ -27,6 +27,12 @@ class GeminiProvider(BaseProvider):
 
         config = self.request.generation_config
 
+        # Note: Gemini doesn't support logit_bias directly like OpenAI does
+        # We'll use stop_sequences for both banned tokens and stop sequences
+        all_stop_sequences = config.stop_sequences or []
+        if hasattr(config, 'banned_tokens') and config.banned_tokens:
+            all_stop_sequences.extend(config.banned_tokens)
+
         gemini_kwargs = {
             "model": self.model,
             "contents": self.request.prompt or "",
@@ -35,8 +41,8 @@ class GeminiProvider(BaseProvider):
                 temperature=config.temperature,
                 max_output_tokens=config.max_output_tokens,
                 top_p=config.nucleus_sampling,
-                top_k=int(config.top_k),
-                stop_sequences=config.stop_sequences or [],
+                top_k=int(config.top_k) if config.top_k > 0 else None,
+                stop_sequences=all_stop_sequences,
                 presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
                 frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
             ),
