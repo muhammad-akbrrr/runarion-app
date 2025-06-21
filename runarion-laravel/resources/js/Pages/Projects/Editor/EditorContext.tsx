@@ -60,8 +60,8 @@ export function EditorProvider({
 }) {
     const [editorState, setEditorState] = useState<EditorState>({
         preset: 'story-telling',
-        authorProfile: '',
-        aiModel: '',
+        authorProfile: 'Tolkien',
+        aiModel: 'gpt-4o-mini',
         memory: '',
         storyGenre: '',
         storyTone: '',

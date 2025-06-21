@@ -45,9 +45,6 @@ export function EditorToolbar() {
         
         // Get content from the editor
         let prompt = document.getElementById("editor-content")?.textContent || "";
-        if (prompt.trim() === "Start typing here...") {
-            prompt = "";
-        }
         
         // Format the data according to the target JSON structure
         const formattedData = {
@@ -89,6 +86,12 @@ export function EditorToolbar() {
         
         // Set generating state
         setIsGenerating(true);
+        
+        // Create a unique key for this workspace, project, and user
+        const interactionKey = `editorInteracted_${editorState.workspaceId}_${editorState.projectId}_${editorState.userId}`;
+        
+        // Mark that the user has interacted with the editor for this specific workspace/project/user
+        sessionStorage.setItem(interactionKey, 'true');
         
         // Make the API call using Inertia
         router.post(

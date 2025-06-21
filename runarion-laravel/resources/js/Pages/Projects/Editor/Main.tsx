@@ -147,27 +147,21 @@ export default function ProjectEditorPage({
                                     h-[200vh] p-6
                                 "
                             >
-                                <div
-                                    className="
-                                        w-full h-full
-                                        outline-none resize-none
-                                        text-gray-900 placeholder-gray-400
-                                    "
-                                    contentEditable
-                                    suppressContentEditableWarning={true}
-                                    onInput={(e) =>
-                                        setContent(
-                                            e.currentTarget.textContent || ""
-                                        )
-                                    }
-                                    style={{
-                                        lineHeight: "1.6",
-                                        fontSize: "16px",
-                                    }}
-                                    id="editor-content"
-                                >
-                                    {content === "" && (
-                                        <span className="text-gray-400 pointer-events-none">
+                                <div className="relative">
+                                    <div
+                                        id="editor-content"
+                                        className="relative w-full h-full outline-none resize-none text-gray-900 placeholder-gray-400"
+                                        contentEditable
+                                        suppressContentEditableWarning={true}
+                                        onInput={(e) => setContent(e.currentTarget.textContent || "")}
+                                        style={{
+                                            lineHeight: "1.6",
+                                            fontSize: "16px",
+                                        }}
+                                    />
+
+                                    {content.trim() === "" && (
+                                        <span className="absolute text-gray-400 pointer-events-none">
                                             Start typing here...
                                         </span>
                                     )}
