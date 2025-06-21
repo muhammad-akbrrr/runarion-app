@@ -5,14 +5,17 @@ import os
 import psycopg2
 from psycopg2 import pool
 from api.generation import generate
+from api.story_rewrite import story_rewrite
 
-# Load environment variables from .env
 load_dotenv()
 
-# --- App Initialization ---
 app = Flask(__name__)
 
+# Configure max content length for file uploads
+app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
+
 # --- CORS Configuration ---
+
 CORS(app, resources={
     r"/*": {
         "origins": ["http://localhost:8000", "http://localhost:5173"],
@@ -22,6 +25,7 @@ CORS(app, resources={
 })
 
 # --- Environment Validation ---
+
 REQUIRED_ENV_VARS = [
     'DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USER', 'DB_PASSWORD',
     'OPENAI_API_KEY', 'OPENAI_MODEL_NAME',
@@ -35,6 +39,7 @@ if missing_vars:
         f"Missing environment variables: {', '.join(missing_vars)}")
 
 # --- Database Connection Pool ---
+
 try:
     connection_pool = psycopg2.pool.SimpleConnectionPool(
         minconn=1,
@@ -46,12 +51,18 @@ try:
         password=os.getenv('DB_PASSWORD')
     )
     app.logger.info("Database connection pool initialized.")
+
+    # Make connection pool available to blueprints
+    app.config['connection_pool'] = connection_pool
+
 except Exception as e:
     app.logger.error(f"Database connection pool initialization failed: {e}")
     connection_pool = None
 
 # --- Blueprint Registration ---
+
 app.register_blueprint(generate, url_prefix='/api')
+app.register_blueprint(story_rewrite, url_prefix='/api')
 
 # --- Health Check ---
 
@@ -85,10 +96,16 @@ def health_check():
 def root():
     return jsonify({
         "service": "Runarion Python API",
-        "status": "running"
+        "status": "running",
+        "endpoints": {
+            "generation": "/api/generate",
+            "story_rewrite": "/api/story-rewrite",
+            "health": "/health"
+        }
     })
 
-
 # --- Run Server ---
+
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
