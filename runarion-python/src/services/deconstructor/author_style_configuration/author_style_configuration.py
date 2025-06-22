@@ -4,7 +4,7 @@ import time
 from math import ceil
 from typing import Literal, NamedTuple, Optional
 
-from models.deconstructor.author_style import AuthorStyle
+from models.deconstructor import AuthorStyle
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
