@@ -2,11 +2,11 @@
 
 namespace Database\Factories;
 
-use App\Models\Folder;
 use App\Models\Projects;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
-use App\Models\User;
+use App\Models\ProjectContent;
+use App\Models\ProjectNodeEditor;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -42,6 +42,8 @@ class ProjectsFactory extends Factory
       'description' => fake()->optional(0.7)->paragraph(),
       'access' => null,
       'is_active' => true,
+      'backup_frequency' => fake()->randomElement(['daily', 'weekly', 'manual']),
+      'completed_onboarding' => false,
     ];
   }
 
@@ -102,46 +104,17 @@ class ProjectsFactory extends Factory
         $project->access = $access;
         $project->save();
       }
+
+      // Create ProjectContent for this project
+      ProjectContent::factory()->create([
+        'project_id' => $project->id,
+        'last_edited_by' => $project->original_author,
+      ]);
+
+      // Create ProjectNodeEditor for this project
+      ProjectNodeEditor::factory()->create([
+        'project_id' => $project->id,
+      ]);
     });
-  }
-
-  /**
-   * Set the project as inactive.
-   * 
-   * @return self
-   */
-  public function inactive(): self
-  {
-    return $this->state(fn(array $attributes) => [
-      'is_active' => false,
-    ]);
-  }
-
-  /**
-   * Set the project's storage location.
-   * 
-   * @param string $location Storage location code ('01' = Server, '02' = GDrive, '03' = Dropbox, '04' = OneDrive)
-   * @return self
-   */
-  public function storedIn(string $location): self
-  {
-    return $this->state(fn(array $attributes) => [
-      'saved_in' => $location,
-    ]);
-  }
-
-  /**
-   * letakkan project dalam folder tertentu.
-   * secara otomatis mengatur workspace_id untuk sesuai dengan folder.
-   * 
-   * @param Folder $folder The folder to place the project in
-   * @return self
-   */
-  public function inFolder(Folder $folder): self
-  {
-    return $this->state(fn(array $attributes) => [
-      'folder_id' => $folder->id,
-      'workspace_id' => $folder->workspace_id,
-    ]);
   }
 }

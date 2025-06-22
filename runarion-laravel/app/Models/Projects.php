@@ -31,6 +31,7 @@ class Projects extends Model
         'access',
         'is_active',
         'backup_frequency',
+        'completed_onboarding',
         'last_backup_at',
         'next_backup_at',
     ];
@@ -40,6 +41,7 @@ class Projects extends Model
         'access' => 'array',
         'is_active' => 'boolean',
         'original_author' => 'integer',
+        'completed_onboarding' => 'boolean',
         'last_backup_at' => 'datetime',
         'next_backup_at' => 'datetime',
     ];
@@ -84,6 +86,8 @@ class Projects extends Model
             'access.*.user.avatar_url' => ['nullable', 'string', 'url'],
             'access.*.role' => ['required', 'string', Rule::in(['editor', 'manager', 'admin'])],
             'is_active' => ['boolean'],
+            'backup_frequency' => ['nullable', 'string', Rule::in(['daily', 'weekly', 'manual'])],
+            'completed_onboarding' => ['boolean'],
         ];
     }
 
@@ -139,5 +143,21 @@ class Projects extends Model
     public function logs()
     {
         return $this->hasMany(ProjectLog::class, 'project_id');
+    }
+
+    /**
+     * Get the content for the project.
+     */
+    public function content()
+    {
+        return $this->hasOne(ProjectContent::class, 'project_id');
+    }
+
+    /**
+     * Get the node editor data for the project.
+     */
+    public function nodeEditor()
+    {
+        return $this->hasOne(ProjectNodeEditor::class, 'project_id');
     }
 }

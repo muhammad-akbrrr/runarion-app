@@ -5,17 +5,17 @@ from math import ceil
 from typing import Literal, NamedTuple, Optional
 
 from models.deconstructor.author_style import AuthorStyle
-from models.deconstructor.content_rewrite import ContentRewriteConfig, RewrittenContent, WritingPerspective
+from models.deconstructor.story_rewrite import ContentRewriteConfig, RewrittenContent, WritingPerspective
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
 from services.generation_engine import GenerationEngine
 from ulid import ULID
-from services.deconstructor.content_rewrite_handler import ContentRewriteHandler
+from services.usecase_handler.content_rewrite_handler import ContentRewriteHandler
 from utils.get_model_max_token import get_model_max_token
 
-from .paragraph_extractor import ParagraphExtractor
-from .token_counter import TokenCounter
+from ..utils.paragraph_extractor import ParagraphExtractor
+from ..utils.token_counter import TokenCounter
 
 
 class ContentChunk(NamedTuple):
@@ -66,7 +66,7 @@ class ContentRewritePipeline:
         self.caller = caller
         self.connection_pool = connection_pool
         self.provider = provider or "gemini"
-        self.model = model or "gemini-2.5-flash"
+        self.model = model or "gemini-2.0-flash"
         self.generation_config = generation_config or GenerationConfig()  # type: ignore
         self.rewrite_config = rewrite_config or ContentRewriteConfig(
             author_style=author_style,

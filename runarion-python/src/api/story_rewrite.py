@@ -1,12 +1,12 @@
 import os
-import tempfile
 from flask import Blueprint, request, jsonify, current_app
 from werkzeug.utils import secure_filename
 from pydantic import ValidationError
-from models.deconstructor.story_rewrite_request import (
+from models.deconstructor.story_rewrite import (
     StoryRewriteRequest,
     NewAuthorStyleRequest,
-    ExistingAuthorStyleRequest
+    ExistingAuthorStyleRequest,
+    WritingPerspective
 )
 from models.request import CallerInfo, GenerationConfig
 from services.deconstructor.story_rewrite_pipeline import StoryRewritePipeline
@@ -16,8 +16,7 @@ story_rewrite = Blueprint("story_rewrite", __name__)
 
 # Configure file upload settings
 ALLOWED_EXTENSIONS = {'pdf'}
-UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(
-    tempfile.gettempdir(), 'runarion_uploads'))
+UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', '/app/uploads')
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
 
 # Ensure upload directory exists
@@ -129,32 +128,19 @@ def story_rewrite_route():
         if not perspective_type:
             return jsonify({"error": "writing_perspective_type is required"}), 400
 
-        from models.deconstructor.content_rewrite import WritingPerspective
         writing_perspective = WritingPerspective(
             type=perspective_type,
             narrator_voice=form_data.get('narrator_voice', ''),
             character_focus=form_data.get('character_focus', '')
         )
 
-        # Step 4: Optional configuration
-        rewrite_config = None
-        if form_data.get('target_genre') or form_data.get('target_tone'):
-            from models.deconstructor.content_rewrite import ContentRewriteConfig
-            rewrite_config = ContentRewriteConfig(
-                target_genre=form_data.get('target_genre', ''),
-                target_tone=form_data.get('target_tone', ''),
-                preserve_key_elements=form_data.get('preserve_elements', '').split(
-                    ',') if form_data.get('preserve_elements') else [],
-                target_length=form_data.get('target_length', 'similar'),
-                style_intensity=float(form_data.get('style_intensity', 0.7))
-            )
-
-        # Create the story rewrite request
+        # Step 4: Create the story rewrite request
+        # Note: rewrite_config will be created by the pipeline after author_style is available
         story_request = StoryRewriteRequest(
             rough_draft_file=rough_draft_path,
             author_style_request=author_style_request,
             writing_perspective=writing_perspective,
-            rewrite_config=rewrite_config,
+            rewrite_config=None,  # Will be created by pipeline
             store_intermediate=form_data.get(
                 'store_intermediate', 'false').lower() == 'true',
             chunk_overlap=form_data.get(
@@ -166,7 +152,7 @@ def story_rewrite_route():
             caller=caller,
             connection_pool=connection_pool,
             provider=form_data.get('provider', 'gemini'),
-            model=form_data.get('model', 'gemini-2.5-flash'),
+            model=form_data.get('model', 'gemini-2.0-flash'),
         )
 
         # Process the request

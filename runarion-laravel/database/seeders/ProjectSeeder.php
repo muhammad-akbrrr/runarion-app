@@ -5,6 +5,8 @@ namespace Database\Seeders;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Projects;
+use App\Models\ProjectContent;
+use App\Models\ProjectNodeEditor;
 use App\Models\Workspace;
 use App\Models\Folder;
 use App\Models\WorkspaceMember;
@@ -14,6 +16,7 @@ use App\Models\WorkspaceMember;
  * 
  * Seeds the projects table with initial data.
  * Creates sample projects within each folder of each workspace.
+ * Also creates corresponding ProjectContent and ProjectNodeEditor records.
  */
 class ProjectSeeder extends Seeder
 {
@@ -27,6 +30,8 @@ class ProjectSeeder extends Seeder
      *    - All projects are set as active
      *    - Projects are named sequentially (Project 1, Project 2, etc.)
      *    - Projects are associated with their parent folder and workspace
+     *    - Creates ProjectContent with realistic chapter data
+     *    - Creates ProjectNodeEditor for node editor functionality
      * 
      * @return void
      */
@@ -88,6 +93,17 @@ class ProjectSeeder extends Seeder
                         $project->access = $access;
                         $project->save();
                     }
+
+                    // Create ProjectContent for this project
+                    ProjectContent::factory()->create([
+                        'project_id' => $project->id,
+                        'last_edited_by' => $owner->user->id,
+                    ]);
+
+                    // Create ProjectNodeEditor for this project
+                    ProjectNodeEditor::factory()->create([
+                        'project_id' => $project->id,
+                    ]);
                 }
             }
         });

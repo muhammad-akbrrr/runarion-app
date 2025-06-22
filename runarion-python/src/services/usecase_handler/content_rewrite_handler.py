@@ -1,6 +1,6 @@
 from typing import Literal, Optional, TypedDict
 from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
-from models.deconstructor.content_rewrite import ContentRewriteConfig
+from models.deconstructor.story_rewrite import ContentRewriteConfig
 from services.usecase_handler.base_handler import UseCaseHandler
 
 # Prompt template for content rewriting

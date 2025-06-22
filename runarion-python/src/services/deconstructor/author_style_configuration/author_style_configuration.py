@@ -17,8 +17,8 @@ from usecase_handler.author_style_handler import (
 )
 from utils.get_model_max_token import get_model_max_token
 
-from .paragraph_extractor import ParagraphExtractor
-from .token_counter import TokenCounter
+from ..utils.paragraph_extractor import ParagraphExtractor
+from ..utils.token_counter import TokenCounter
 
 
 class Passage(NamedTuple):
@@ -62,7 +62,7 @@ class AuthorStyleConfiguration:
             connection_pool (SimpleConnectionPool): Database connection pool for storing results.
             author_name (str): Name for identifying the author style.
             provider (Optional[str]): The model provider, defaults to "gemini".
-            model (Optional[str]): The model name, defaults to "gemini-2.5-flash".
+            model (Optional[str]): The model name, defaults to "gemini-2.0-flash".
             generation_config (Optional[dict]): Override configuration for LLM generation.
             paragraph_overlap (Optional[bool]): Whether to allow overlaping paragraphs in the passages, defaults to False.
             store_intermediate (Optional[bool]): Whether to store intermediate styles, defaults to False.
@@ -85,7 +85,7 @@ class AuthorStyleConfiguration:
         self.connection_pool = connection_pool
         self.author_name = author_name
         self.provider = provider or "gemini"
-        self.model = model or "gemini-2.5-flash"
+        self.model = model or "gemini-2.0-flash"
         self.generation_config = GenerationConfig(
             **(default_generation_config | (generation_config or {}))
         )
@@ -96,10 +96,13 @@ class AuthorStyleConfiguration:
         RESERVED_TOKENS_FOR_SAFETY = 100
         self.token_counter = TokenCounter(self.provider, self.model)
         model_max_token = (
-            get_model_max_token(self.provider, self.model) - RESERVED_TOKENS_FOR_SAFETY
+            get_model_max_token(self.provider, self.model) -
+            RESERVED_TOKENS_FOR_SAFETY
         )
-        partial_prompt_token = self.token_counter.count_tokens(PARTIAL_AUTHOR_STYLE)
-        combined_prompt_token = self.token_counter.count_tokens(COMBINED_AUTHOR_STYLE)
+        partial_prompt_token = self.token_counter.count_tokens(
+            PARTIAL_AUTHOR_STYLE)
+        combined_prompt_token = self.token_counter.count_tokens(
+            COMBINED_AUTHOR_STYLE)
         self.partial_max_token = model_max_token - partial_prompt_token
         self.combined_max_token = model_max_token - combined_prompt_token
 
@@ -136,7 +139,8 @@ class AuthorStyleConfiguration:
 
         passages: list[Passage] = []
         for source in self.sources:
-            passage: list[str] = []  # list of paragraphs in the current passage
+            # list of paragraphs in the current passage
+            passage: list[str] = []
             token_count = 0  # token count of the current passage
             passage_num = 1  # current passage number
             index = 0  # index of paragraphs
@@ -330,7 +334,8 @@ class AuthorStyleConfiguration:
             Style: The combined style.
         """
         if recursion_depth > 5:
-            raise RuntimeError("Recursion depth exceeded while combining styles")
+            raise RuntimeError(
+                "Recursion depth exceeded while combining styles")
 
         total_token = sum(s.token for s in styles)
 
@@ -383,7 +388,8 @@ class AuthorStyleConfiguration:
         start_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         passages = self.construct_passages()
-        partial_styles = [self._handle_partial_style(passage) for passage in passages]
+        partial_styles = [self._handle_partial_style(
+            passage) for passage in passages]
         combined_style = self._handle_combined_style(partial_styles)
 
         response = self._call_llm(combined_style.text, mode="structured")

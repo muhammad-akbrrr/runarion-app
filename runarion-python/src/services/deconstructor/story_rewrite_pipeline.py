@@ -2,8 +2,10 @@ import time
 from typing import Optional, Union
 
 from models.deconstructor.author_style import AuthorStyle
-from models.deconstructor.content_rewrite import ContentRewriteConfig, RewrittenContent, WritingPerspective
-from models.deconstructor.story_rewrite_request import (
+from models.deconstructor.story_rewrite import (
+    ContentRewriteConfig,
+    RewrittenContent,
+    WritingPerspective,
     StoryRewriteRequest,
     StoryRewriteResponse,
     NewAuthorStyleRequest,
@@ -12,8 +14,8 @@ from models.deconstructor.story_rewrite_request import (
 from models.request import CallerInfo, GenerationConfig
 from psycopg2.pool import SimpleConnectionPool
 from services.deconstructor.author_style_configuration.author_style_configuration import AuthorStyleConfiguration
-from services.deconstructor.content_rewrite_pipeline import ContentRewritePipeline
-from services.deconstructor.author_style_configuration.paragraph_extractor import ParagraphExtractor
+from services.deconstructor.story_rewrite_configuration.story_rewrite_configuration import ContentRewritePipeline
+from services.deconstructor.utils.paragraph_extractor import ParagraphExtractor
 from ulid import ULID
 
 
@@ -45,7 +47,7 @@ class StoryRewritePipeline:
         self.caller = caller
         self.connection_pool = connection_pool
         self.provider = provider or "gemini"
-        self.model = model or "gemini-2.5-flash"
+        self.model = model or "gemini-2.0-flash"
         self.generation_config = generation_config or GenerationConfig()  # type: ignore
 
     def process_request(self, request: StoryRewriteRequest) -> StoryRewriteResponse:
@@ -255,6 +257,13 @@ class StoryRewritePipeline:
         Returns:
             list[RewrittenContent]: List of rewritten content chunks.
         """
+        # Create rewrite_config if not provided
+        if rewrite_config is None:
+            rewrite_config = ContentRewriteConfig(
+                author_style=author_style,
+                writing_perspective=writing_perspective
+            )
+
         # Create a temporary file-like extractor for the rough draft
         # This is a workaround since we already have the paragraphs
         class MemoryParagraphExtractor:

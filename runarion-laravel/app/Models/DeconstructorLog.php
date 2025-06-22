@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class DeconstructorLog extends Model
 {
@@ -38,4 +39,12 @@ class DeconstructorLog extends Model
     'requested_at' => 'datetime',
     'completed_at' => 'datetime',
   ];
+
+  /**
+   * Get the deconstructor response associated with this log.
+   */
+  public function deconstructorResponse(): HasOne
+  {
+    return $this->hasOne(DeconstructorResponse::class, 'request_id', 'request_id');
+  }
 }

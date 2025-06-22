@@ -24,6 +24,7 @@ return new class extends Migration {
             $table->json('access')->nullable();
             $table->boolean('is_active')->default(true);
             $table->enum('backup_frequency', ['daily', 'weekly', 'manual'])->default('daily');
+            $table->boolean('completed_onboarding')->default(false);
             $table->timestamp('last_backup_at')->nullable();
             $table->timestamp('next_backup_at')->nullable();
             $table->timestamps();
