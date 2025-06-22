@@ -16,7 +16,8 @@ story_rewrite = Blueprint("story_rewrite", __name__)
 
 # Configure file upload settings
 ALLOWED_EXTENSIONS = {'pdf'}
-UPLOAD_FOLDER = os.path.join(tempfile.gettempdir(), 'runarion_uploads')
+UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', os.path.join(
+    tempfile.gettempdir(), 'runarion_uploads'))
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
 
 # Ensure upload directory exists
