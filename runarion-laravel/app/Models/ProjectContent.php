@@ -17,14 +17,12 @@ class ProjectContent extends Model
      */
     protected $fillable = [
         'project_id',
-        'chapter_id',
         'content',
         'editor_state',
         'word_count',
         'character_count',
         'version',
         'last_edited_at',
-        'last_autosaved_at',
     ];
 
     /**
@@ -38,7 +36,6 @@ class ProjectContent extends Model
         'character_count' => 'integer',
         'version' => 'integer',
         'last_edited_at' => 'datetime',
-        'last_autosaved_at' => 'datetime',
     ];
 
     /**
@@ -99,14 +96,12 @@ class ProjectContent extends Model
     {
         return [
             'project_id' => ['required', 'ulid', 'exists:projects,id'],
-            'chapter_id' => ['required', 'string', 'max:255'],
             'content' => ['nullable', 'string'],
             'editor_state' => ['nullable', 'array'],
             'word_count' => ['integer', 'min:0'],
             'character_count' => ['integer', 'min:0'],
             'version' => ['integer', 'min:1'],
             'last_edited_at' => ['nullable', 'date'],
-            'last_autosaved_at' => ['nullable', 'date'],
         ];
     }
 }

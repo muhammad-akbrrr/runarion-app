@@ -28,16 +28,13 @@ class MainEditorController extends Controller
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
-        // Get the project content for the default chapter
-        $projectContent = ProjectContent::where('project_id', $project_id)
-            ->where('chapter_id', 'chapter_1')
-            ->first();
+        // Get the project content
+        $projectContent = ProjectContent::where('project_id', $project_id)->first();
 
         // If no content exists, create an empty one
         if (!$projectContent) {
             $projectContent = new ProjectContent([
                 'project_id' => $project_id,
-                'chapter_id' => 'chapter_1',
                 'content' => '',
                 'editor_state' => null,
                 'word_count' => 0,
@@ -86,7 +83,6 @@ class MainEditorController extends Controller
     {
         $validated = $request->validate([
             'content' => 'required|string',
-            'chapter_id' => 'required|string',
             'editor_state' => 'nullable|array',
         ]);
 
@@ -102,7 +98,6 @@ class MainEditorController extends Controller
         $projectContent = ProjectContent::updateOrCreate(
             [
                 'project_id' => $project_id,
-                'chapter_id' => $validated['chapter_id'],
             ],
             [
                 'content' => $validated['content'],
@@ -128,57 +123,16 @@ class MainEditorController extends Controller
     }
 
     /**
-     * Auto-save the project content.
-     */
-    public function autoSaveContent(Request $request, string $workspace_id, string $project_id)
-    {
-        $validated = $request->validate([
-            'content' => 'required|string',
-            'chapter_id' => 'required|string',
-            'editor_state' => 'nullable|array',
-        ]);
-
-        // Find or create project content
-        $projectContent = ProjectContent::updateOrCreate(
-            [
-                'project_id' => $project_id,
-                'chapter_id' => $validated['chapter_id'],
-            ],
-            [
-                'content' => $validated['content'],
-                'editor_state' => $validated['editor_state'],
-                'word_count' => ProjectContent::calculateWordCount($validated['content']),
-                'character_count' => ProjectContent::calculateCharacterCount($validated['content']),
-                'last_autosaved_at' => now(),
-            ]
-        );
-
-        // Always redirect back with flash data for Inertia
-        return redirect()->back()->with([
-            'success' => true,
-            'message' => 'Content auto-saved successfully',
-            'last_autosaved_at' => $projectContent->last_autosaved_at,
-        ]);
-    }
-
-    /**
-     * Load project content for a specific chapter.
+     * Load project content.
      */
     public function loadContent(Request $request, string $workspace_id, string $project_id)
     {
-        $validated = $request->validate([
-            'chapter_id' => 'required|string',
-        ]);
-
-        $projectContent = ProjectContent::where('project_id', $project_id)
-            ->where('chapter_id', $validated['chapter_id'])
-            ->first();
+        $projectContent = ProjectContent::where('project_id', $project_id)->first();
 
         if (!$projectContent) {
-            // Create a new empty content for this chapter
+            // Create a new empty content
             $projectContent = new ProjectContent([
                 'project_id' => $project_id,
-                'chapter_id' => $validated['chapter_id'],
                 'content' => '',
                 'editor_state' => null,
                 'word_count' => 0,
@@ -222,48 +176,6 @@ class MainEditorController extends Controller
                 // Ensure 'success' field exists
                 if (!isset($responseData['success'])) {
                     $responseData['success'] = true;
-                }
-
-                // If successful, update the project content
-                if ($responseData['success'] && isset($responseData['text'])) {
-                    $chapterId = $request->input('chapter_id', 'chapter_1');
-                    
-                    // Get the current project content
-                    $projectContent = ProjectContent::where('project_id', $project_id)
-                        ->where('chapter_id', $chapterId)
-                        ->first();
-                    
-                    // If no content exists, create a new one
-                    if (!$projectContent) {
-                        $projectContent = new ProjectContent([
-                            'project_id' => $project_id,
-                            'chapter_id' => $chapterId,
-                            'content' => $responseData['text'] ?? '',
-                            'editor_state' => $request->input('generation_config'),
-                            'word_count' => ProjectContent::calculateWordCount($responseData['text'] ?? ''),
-                            'character_count' => ProjectContent::calculateCharacterCount($responseData['text'] ?? ''),
-                            'version' => 1,
-                            'last_edited_at' => now(),
-                        ]);
-                    } else {
-                        // Append the generated text to the existing content
-                        $newContent = $projectContent->content . ($responseData['text'] ?? '');
-                        
-                        // Update the project content
-                        $projectContent->content = $newContent;
-                        $projectContent->word_count = ProjectContent::calculateWordCount($newContent);
-                        $projectContent->character_count = ProjectContent::calculateCharacterCount($newContent);
-                        $projectContent->version += 1;
-                        $projectContent->last_edited_at = now();
-                        
-                        // Update editor state if provided
-                        if ($request->has('generation_config')) {
-                            $projectContent->editor_state = $request->input('generation_config');
-                        }
-                    }
-                    
-                    // Save the project content
-                    $projectContent->save();
                 }
 
                 // Always redirect back with flash data for Inertia

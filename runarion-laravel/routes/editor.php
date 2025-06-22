@@ -14,7 +14,6 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     
     // Content management routes
     Route::post('/{workspace_id}/projects/{project_id}/editor/save', [MainEditorController::class, 'saveContent'])->name('workspace.projects.editor.save');
-    Route::post('/{workspace_id}/projects/{project_id}/editor/autosave', [MainEditorController::class, 'autoSaveContent'])->name('workspace.projects.editor.autosave');
     Route::get('/{workspace_id}/projects/{project_id}/editor/content', [MainEditorController::class, 'loadContent'])->name('workspace.projects.editor.content');
 
     Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
