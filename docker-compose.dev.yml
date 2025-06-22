@@ -34,6 +34,7 @@ services:
         source: ./runarion-laravel
         target: /var/www/html
         consistency: delegated
+      - deconstructor_uploads:/tmp/runarion_uploads
       - type: volume
         source: node_modules
         target: /var/www/html/node_modules
@@ -99,6 +100,7 @@ services:
       - ./runarion-python/tests:/app/tests
       - ./runarion-python/requirements.txt:/app/requirements.txt
       - python_venv:/app/venv
+      - deconstructor_uploads:/tmp/runarion_uploads
     networks:
       - runarion-network
     depends_on:
@@ -214,3 +216,4 @@ volumes:
   vendor:
   python_venv:
   sd_venv:
+  deconstructor_uploads:
