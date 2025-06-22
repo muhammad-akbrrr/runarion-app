@@ -5,11 +5,11 @@ use App\Http\Controllers\ProjectEditor\MainEditorController;
 use App\Http\Controllers\ProjectEditor\ProjectDatabaseController;
 use App\Http\Controllers\ProjectEditor\MultiPromptController;
 use App\Http\Controllers\ProjectEditor\ImageGeneratorController;
-use App\Http\Controllers\ProjectEditor\StoryGeneratorController;
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'editor'])->name('workspace.projects.editor');
     Route::patch('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'updateProjectName'])->name('editor.project.updateName');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/generate', [MainEditorController::class, 'generate'])->name('workspace.projects.editor.generate');
 
     Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
 });
@@ -30,8 +30,4 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/image', [ImageGeneratorController::class, 'imageGenerator'])->name('workspace.projects.editor.image');
 
     Route::get('/projects/{project_id}/editor/image', fn() => '')->name('raw.workspace.projects.editor.image');
-});
-
-Route::middleware(['auth', 'project-editor'])->group(function () {
-    Route::post('/{workspace_id}/projects/{project_id}/editor/generate', [StoryGeneratorController::class, 'generate'])->name('workspace.projects.editor.generate');
 });

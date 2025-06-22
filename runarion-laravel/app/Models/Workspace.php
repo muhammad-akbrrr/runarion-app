@@ -41,6 +41,8 @@ class Workspace extends Model
         'trial_ends_at',
         'subscription_ends_at',
         'is_active',
+        'monthly_quota',
+        'quota'
     ];
 
     protected $casts = [
@@ -51,6 +53,8 @@ class Workspace extends Model
         'trial_ends_at' => 'datetime',
         'subscription_ends_at' => 'datetime',
         'is_active' => 'boolean',
+        'monthly_quota' => 'integer',
+        'quota' => 'integer'
     ];
 
     /**
