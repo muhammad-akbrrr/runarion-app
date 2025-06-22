@@ -224,8 +224,8 @@ export default function AuthenticatedLayout({
                         </div>
                     ) : (
                         <DropdownMenu>
-                            <DropdownMenuTrigger className="w-full h-12 rounded hover:bg-gray-100 cursor-pointer">
-                                <div className="flex items-center gap-2 px-2">
+                            <DropdownMenuTrigger>
+                                <div className="w-full h-12 rounded flex items-center gap-2 px-2 cursor-pointer hover:bg-gray-100">
                                     <Avatar>
                                         <AvatarImage
                                             src={user.avatar_url || undefined}
