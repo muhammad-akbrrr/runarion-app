@@ -48,31 +48,49 @@ class AuthorStyleConfiguration:
         paragraph_extractors: list[ParagraphExtractor],
         caller: CallerInfo,
         connection_pool: SimpleConnectionPool,
-        provider: Optional[str] = "gemini",
+        author_name: str,
+        provider: Optional[str] = None,
         model: Optional[str] = None,
-        generation_config: Optional[GenerationConfig] = None,
-        paragraph_overlap: bool = False,
-        store_intermediate: bool = False,
+        generation_config: Optional[dict] = None,
+        paragraph_overlap: Optional[bool] = False,
+        store_intermediate: Optional[bool] = False,
     ):
         """
         Args:
             paragraph_extractors (list[ParagraphExtractor]): List of paragraph extractors, each associated with a source file.
             caller (CallerInfo): Caller information.
             connection_pool (SimpleConnectionPool): Database connection pool for storing results.
-            provider (Optional[str]): The model provider (e.g., "openai", "gemini").
-            model (Optional[str]): The model name.
-            generation_config (Optional[GenerationConfig]): Configuration for LLM generation.
-            paragraph_overlap (bool): Whether to allow overlaping paragraphs in the passages.
-            store_intermediate (bool): Whether to store intermediate styles.
+            author_name (str): Name for identifying the author style.
+            provider (Optional[str]): The model provider, defaults to "gemini".
+            model (Optional[str]): The model name, defaults to "gemini-2.5-flash".
+            generation_config (Optional[dict]): Override configuration for LLM generation.
+            paragraph_overlap (Optional[bool]): Whether to allow overlaping paragraphs in the passages, defaults to False.
+            store_intermediate (Optional[bool]): Whether to store intermediate styles, defaults to False.
         """
+        default_generation_config = {
+            "temperature": 0.7,
+            "max_output_tokens": 200,
+            "nucleus_sampling": 1.0,
+            "tail_free_sampling": 1.0,
+            "top_k": 0.0,
+            "top_a": 0.0,
+            "phrase_bias": None,
+            "banned_tokens": None,
+            "stop_sequences": None,
+            "repetition_penalty": 0.0,
+        }
+
         self.paragraph_extractors = paragraph_extractors
         self.caller = caller
         self.connection_pool = connection_pool
+        self.author_name = author_name
         self.provider = provider or "gemini"
         self.model = model or "gemini-2.5-flash"
-        self.generation_config = generation_config or GenerationConfig()  # type: ignore
-        self.paragraph_overlap = paragraph_overlap
-        self.store_intermediate = store_intermediate
+        self.generation_config = GenerationConfig(
+            **(default_generation_config | (generation_config or {}))
+        )
+        self.paragraph_overlap = paragraph_overlap or False
+        self.store_intermediate = store_intermediate or False
 
         # calculate max token of content in partial and combined prompts
         RESERVED_TOKENS_FOR_SAFETY = 100
@@ -234,18 +252,19 @@ class AuthorStyleConfiguration:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO structured_styles (id, user_id, workspace_id, project_id, style, started_at, total_time_ms, sources)
+                        INSERT INTO structured_styles (id, workspace_id, project_id, user_id, author_name, style, sources, started_at, total_time_ms)
                         VALUES (%s, %s, %s, %s)
                         """,
                         (
                             self.id,
-                            self.caller.user_id,
                             self.caller.workspace_id,
                             self.caller.project_id,
+                            self.caller.user_id,
+                            self.author_name,
                             json.dumps(data),
+                            ", ".join(self.sources),
                             started_at,
                             total_time_ms,
-                            ", ".join(self.sources),
                         ),
                     )
                     conn.commit()
