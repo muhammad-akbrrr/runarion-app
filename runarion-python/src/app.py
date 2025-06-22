@@ -4,6 +4,7 @@ from dotenv import load_dotenv
 import os
 from psycopg2 import pool
 from api.generation import generate
+from api.deconstructor import deconstructor
 
 # Load environment variables from .env
 load_dotenv()
@@ -60,6 +61,7 @@ app.config['UPLOAD_PATH'] = upload_path
 
 # --- Blueprint Registration ---
 app.register_blueprint(generate, url_prefix='/api')
+app.register_blueprint(deconstructor, url_prefix='/api/deconstructor')
 
 # --- Health Check ---
 
