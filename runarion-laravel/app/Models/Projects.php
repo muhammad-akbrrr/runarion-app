@@ -140,4 +140,28 @@ class Projects extends Model
     {
         return $this->hasMany(ProjectLog::class, 'project_id');
     }
+
+    /**
+     * Get the contents for the project.
+     */
+    public function contents()
+    {
+        return $this->hasMany(ProjectContent::class, 'project_id');
+    }
+
+    /**
+     * Get the generation logs for the project.
+     */
+    public function generationLogs()
+    {
+        return $this->hasMany(GenerationLog::class, 'project_id');
+    }
+
+    /**
+     * Get the workspace that owns the project.
+     */
+    public function workspace()
+    {
+        return $this->belongsTo(Workspace::class, 'workspace_id');
+    }
 }

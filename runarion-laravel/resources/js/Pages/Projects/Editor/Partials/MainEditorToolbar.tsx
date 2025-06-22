@@ -13,13 +13,26 @@ import {
     Book,
     SlidersHorizontal,
     RefreshCw,
+    Save,
 } from "lucide-react";
 import { useEditor } from "../EditorContext";
 import { router } from "@inertiajs/react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-export function EditorToolbar() {
+interface EditorToolbarProps {
+    currentChapter: string;
+    onSave: () => void;
+    isSaving: boolean;
+    lastSaved: Date | null;
+}
+
+export function EditorToolbar({ 
+    currentChapter, 
+    onSave, 
+    isSaving, 
+    lastSaved 
+}: EditorToolbarProps) {
     const { editorState } = useEditor();
     const [isGenerating, setIsGenerating] = useState(false);
 
@@ -53,6 +66,7 @@ export function EditorToolbar() {
             "model": model,
             "prompt": prompt,
             "instruction": "",
+            "chapter_id": currentChapter,
             "generation_config": {
                 "temperature": editorState.temperature,
                 "repetition_penalty": editorState.repetitionPenalty,
@@ -118,12 +132,52 @@ export function EditorToolbar() {
         );
     };
 
+    // Format the last saved time
+    const formatLastSaved = () => {
+        if (!lastSaved) return "Not saved yet";
+        
+        const now = new Date();
+        const diffMs = now.getTime() - lastSaved.getTime();
+        const diffMins = Math.round(diffMs / 60000);
+        
+        if (diffMins < 1) {
+            return "Just now";
+        } else if (diffMins === 1) {
+            return "1 minute ago";
+        } else if (diffMins < 60) {
+            return `${diffMins} minutes ago`;
+        } else {
+            const hours = Math.floor(diffMins / 60);
+            if (hours === 1) {
+                return "1 hour ago";
+            } else {
+                return `${hours} hours ago`;
+            }
+        }
+    };
+
+    // Calculate word count from editor content
+    const calculateWordCount = () => {
+        const editorContent = document.getElementById("editor-content");
+        if (!editorContent) return 0;
+        
+        const text = editorContent.textContent || "";
+        if (!text.trim()) return 0;
+        
+        return text.trim().split(/\s+/).length;
+    };
+
+    // Store editor state as a data attribute for access during save
+    const editorStateJson = JSON.stringify(editorState);
+
     return (
         <div
             className="
                 bg-white rounded-lg shadow-sm border
                 p-2
             "
+            data-editor-context
+            data-editor-state={editorStateJson}
         >
             <div className="flex items-center justify-between">
                 {/* Left side - Controls */}
@@ -148,7 +202,14 @@ export function EditorToolbar() {
                             <DropdownMenuItem>Custom Settings</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <span className="text-sm text-gray-500">0 Words</span>
+                    <span className="text-sm text-gray-500">
+                        {lastSaved && (
+                            <>Last saved: {formatLastSaved()}</>
+                        )}
+                    </span>
+                    <span className="text-sm text-gray-500 ml-2">
+                        {calculateWordCount()} words
+                    </span>
                 </div>
 
                 {/* Right side - Action buttons */}
@@ -171,8 +232,14 @@ export function EditorToolbar() {
                             <DropdownMenuItem>v3</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <RefreshCw className="h-4 w-4" />
+                    <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        className="h-8 w-8 p-0"
+                        onClick={onSave}
+                        disabled={isSaving}
+                    >
+                        <Save className="h-4 w-4" />
                     </Button>
                     <Button 
                         size="sm" 

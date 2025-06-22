@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Model Workspace
@@ -17,6 +18,10 @@ use Illuminate\Validation\Rule;
 class Workspace extends Model
 {
     use HasFactory, SoftDeletes, HasUlids;
+
+    // Constants for workspace limits
+    const DEFAULT_GENERATION_QUOTA = 50;
+    const DEFAULT_PROJECT_LIMIT = 30;
 
     protected $fillable = [
         'name',
@@ -122,5 +127,87 @@ class Workspace extends Model
     public function owner()
     {
         return $this->members()->where('role', 'owner')->first()?->user;
+    }
+
+    /**
+     * Get the generation logs for the workspace.
+     */
+    public function generationLogs()
+    {
+        return $this->hasMany(GenerationLog::class, 'workspace_id');
+    }
+
+    /**
+     * Check if the workspace has reached its project limit.
+     *
+     * @return bool
+     */
+    public function hasReachedProjectLimit()
+    {
+        $projectLimit = $this->settings['project_limit'] ?? self::DEFAULT_PROJECT_LIMIT;
+        $projectCount = $this->projects()->count();
+        
+        return $projectCount >= $projectLimit;
+    }
+
+    /**
+     * Check if the workspace has generation quota available.
+     *
+     * @return bool
+     */
+    public function hasGenerationQuotaAvailable()
+    {
+        return $this->quota > 0;
+    }
+
+    /**
+     * Decrement the generation quota by 1.
+     *
+     * @return bool
+     */
+    public function decrementGenerationQuota()
+    {
+        if ($this->quota <= 0) {
+            return false;
+        }
+
+        $this->quota -= 1;
+        return $this->save();
+    }
+
+    /**
+     * Reset the monthly generation quota.
+     *
+     * @return bool
+     */
+    public function resetMonthlyQuota()
+    {
+        $this->quota = $this->monthly_quota;
+        return $this->save();
+    }
+
+    /**
+     * Get the number of generations used this month.
+     *
+     * @return int
+     */
+    public function getGenerationsUsedThisMonth()
+    {
+        $startOfMonth = now()->startOfMonth();
+        
+        return $this->generationLogs()
+            ->where('created_at', '>=', $startOfMonth)
+            ->where('success', true)
+            ->count();
+    }
+
+    /**
+     * Get the remaining generation quota.
+     *
+     * @return int
+     */
+    public function getRemainingQuota()
+    {
+        return max(0, $this->quota);
     }
 }

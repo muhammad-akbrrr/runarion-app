@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
 
 // Define the shape of our editor state
 interface EditorState {
@@ -46,52 +46,82 @@ interface EditorContextType {
 // Create the context with a default value
 const EditorContext = createContext<EditorContextType | undefined>(undefined);
 
+// Default editor state
+const defaultEditorState: EditorState = {
+    preset: 'story-telling',
+    authorProfile: '',
+    aiModel: 'gemini-2.0-flash',
+    memory: '',
+    storyGenre: '',
+    storyTone: '',
+    storyPOV: '',
+    
+    // Default values for advanced parameters
+    temperature: 1,
+    repetitionPenalty: 0,
+    outputLength: 300,
+    topP: 0.85,
+    tailFree: 0.85,
+    topA: 0.85,
+    topK: 0.85,
+    minOutputToken: 1,
+    
+    // Additional parameters for JSON structure
+    phraseBias: [],
+    bannedTokens: [],
+    stopSequences: [],
+    
+    // Caller information
+    userId: "1",
+    workspaceId: "",
+    projectId: "",
+    apiKeys: {
+        openai: "",
+        gemini: "",
+        deepseek: ""
+    }
+};
+
 // Create a provider component
 export function EditorProvider({ 
     children, 
     workspaceId, 
     projectId,
-    userId 
+    userId,
+    initialEditorState
 }: { 
     children: ReactNode, 
     workspaceId?: string, 
     projectId?: string,
-    userId?: string
+    userId?: string,
+    initialEditorState?: any
 }) {
+    // Initialize with default state
     const [editorState, setEditorState] = useState<EditorState>({
-        preset: 'story-telling',
-        authorProfile: '',
-        aiModel: 'gemini-2.0-flash',
-        memory: '',
-        storyGenre: '',
-        storyTone: '',
-        storyPOV: '',
-        
-        // Default values for advanced parameters
-        temperature: 1,
-        repetitionPenalty: 0,
-        outputLength: 300,
-        topP: 0.85,
-        tailFree: 0.85,
-        topA: 0.85,
-        topK: 0.85,
-        minOutputToken: 1,
-        
-        // Additional parameters for JSON structure
-        phraseBias: [],
-        bannedTokens: [],
-        stopSequences: [],
-        
-        // Caller information
-        userId: userId || "1",
-        workspaceId: workspaceId || "",
-        projectId: projectId || "",
-        apiKeys: {
-            openai: "",
-            gemini: "",
-            deepseek: ""
-        }
+        ...defaultEditorState,
+        userId: userId || defaultEditorState.userId,
+        workspaceId: workspaceId || defaultEditorState.workspaceId,
+        projectId: projectId || defaultEditorState.projectId,
     });
+
+    // Update editor state with saved values if available
+    useEffect(() => {
+        if (initialEditorState) {
+            console.log("Loading saved editor state:", initialEditorState);
+            
+            // Create a new state object by merging the default state with the saved state
+            const mergedState = {
+                ...editorState,
+                ...initialEditorState,
+                // Ensure these values are always set correctly
+                userId: userId || editorState.userId,
+                workspaceId: workspaceId || editorState.workspaceId,
+                projectId: projectId || editorState.projectId,
+            };
+            
+            setEditorState(mergedState);
+        }
+    }, [initialEditorState]);
 
     const updateEditorState = <K extends keyof EditorState>(key: K, value: EditorState[K]) => {
         setEditorState(prevState => ({
