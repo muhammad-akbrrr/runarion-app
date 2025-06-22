@@ -6,7 +6,7 @@ from typing import Optional
 from flask import Blueprint, current_app, jsonify, request
 from models.request import CallerInfo
 from psycopg2.pool import SimpleConnectionPool
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ValidationError
 from services.deconstructor import (
     AuthorStyleConfiguration,
     ParagraphExtractor,
@@ -43,7 +43,7 @@ class AuthorStyleRequest(BaseModel):
     author_name: str
     caller: CallerData
     page_ranges: list[PageRangeItem]
-    config: ConfigData = Field(default_factory=dict)  # type: ignore
+    config: ConfigData = ConfigData()
 
 
 deconstructor = Blueprint("deconstructor", __name__)
@@ -51,6 +51,13 @@ deconstructor = Blueprint("deconstructor", __name__)
 
 @deconstructor.route("/analyze-author-style", methods=["POST"])
 def analyze_author_style():
+    """
+    Endpoint to analyze author style from uploaded PDF files.
+    It validates the request, stores the files, and runs the analysis.
+    It expects a multipart/form-data request with fields:
+    - files: List of PDF files to analyze.
+    - data: JSON string that follows the AuthorStyleRequest model
+    """
     try:
         # Handle file upload first
         if "files" not in request.files:
@@ -112,7 +119,7 @@ def analyze_author_style():
             if pdf_file.filename:
                 filename = secure_filename(pdf_file.filename)
             else:
-                filename = f"unnamed_file_{i}.pdf"
+                filename = "unnamed.pdf"
             unique_filename = f"{ULID()}_{filename}"
             file_path = os.path.join(upload_dir, unique_filename)
             pdf_file.save(file_path)
