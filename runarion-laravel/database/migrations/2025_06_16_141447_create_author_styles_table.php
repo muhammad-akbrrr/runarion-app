@@ -39,6 +39,9 @@ return new class extends Migration
             $table->ulid('workspace_id');
             $table->ulid('project_id');
             $table->foreignId('user_id')->constrained()->nullOnDelete();
+            
+            // Author name as identifier
+            $table->text('author_name');
 
             // Final structured author style
             $table->json('style');
@@ -56,6 +59,9 @@ return new class extends Migration
             // Foreign key constraints
             $table->foreign('workspace_id')->references('id')->on('workspaces')->cascade();
             $table->foreign('project_id')->references('id')->on('projects')->cascade();
+
+            // Unique index for author name in the context of workspace
+            $table->unique(['workspace_id', 'author_name'], 'unique_workspace_author_name');
         });
     }
 

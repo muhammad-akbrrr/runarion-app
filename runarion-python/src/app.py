@@ -2,9 +2,9 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
-import psycopg2
 from psycopg2 import pool
 from api.generation import generate
+from api.deconstructor import deconstructor
 
 # Load environment variables from .env
 load_dotenv()
@@ -36,7 +36,7 @@ if missing_vars:
 
 # --- Database Connection Pool ---
 try:
-    connection_pool = psycopg2.pool.SimpleConnectionPool(
+    connection_pool = pool.SimpleConnectionPool(
         minconn=1,
         maxconn=10,
         host=os.getenv('DB_HOST'),
@@ -49,9 +49,19 @@ try:
 except Exception as e:
     app.logger.error(f"Database connection pool initialization failed: {e}")
     connection_pool = None
+app.config['CONNECTION_POOL'] = connection_pool
+
+
+# --- Upload Location ---
+default_upload_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, 'uploads'))
+upload_path = os.getenv('UPLOAD_PATH') or default_upload_path
+os.makedirs(upload_path, exist_ok=True)
+app.config['UPLOAD_PATH'] = upload_path
+
 
 # --- Blueprint Registration ---
 app.register_blueprint(generate, url_prefix='/api')
+app.register_blueprint(deconstructor, url_prefix='/api/deconstructor')
 
 # --- Health Check ---
 
