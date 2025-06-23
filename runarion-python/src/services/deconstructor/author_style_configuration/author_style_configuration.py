@@ -10,7 +10,7 @@ from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
 from services.generation_engine import GenerationEngine
 from ulid import ULID
-from usecase_handler.author_style_handler import (
+from services.usecase_handler.author_style_handler import (
     COMBINED_AUTHOR_STYLE,
     PARTIAL_AUTHOR_STYLE,
     AuthorStyleHandler,
@@ -200,7 +200,7 @@ class AuthorStyleConfiguration:
 
         engine = GenerationEngine(request)
 
-        response = engine.generate()
+        response = engine.generate(skip_quota=True)
 
         if not response.success:
             raise RuntimeError(f"LLM call failed: {response.error_message}")

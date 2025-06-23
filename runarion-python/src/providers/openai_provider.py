@@ -19,11 +19,13 @@ class OpenAIProvider(BaseProvider):
             current_app.logger.error(f"Failed to initialize OpenAI client: {e}")
             raise ValueError(f"Failed to initialize OpenAI client: {str(e)}")
         
-    def generate(self) -> BaseGenerationResponse:
+    def generate(self, skip_quota: bool = False) -> BaseGenerationResponse:
         start_time = time.time()
         request_id = str(uuid.uuid4())
         provider_request_id = None
-        quota_generation_count = 1
+        
+        # Set quota_generation_count to 0 if skip_quota is True
+        quota_generation_count = 0 if skip_quota else 1
         
         config = self.request.generation_config
         
@@ -36,17 +38,20 @@ class OpenAIProvider(BaseProvider):
             "top_p": config.nucleus_sampling,
         }
 
-        try:
-            self._check_quota()
-        except Exception as e:
-            current_app.logger.error(f"OpenAI Quota error with model {self.model}: {e}")
-            response = self._build_error_response(
-                request_id=request_id,
-                provider_request_id=provider_request_id or "",
-                error_message=f"OpenAI Quota error: {str(e)}",
-            )
-            self._log_generation_to_db(response)
-            return response
+        # Skip quota check if skip_quota is True
+        if not skip_quota:
+            try:
+                self._check_quota()
+            except Exception as e:
+                current_app.logger.error(f"OpenAI Quota error with model {self.model}: {e}")
+                response = self._build_error_response(
+                    request_id=request_id,
+                    provider_request_id=provider_request_id or "",
+                    error_message=f"OpenAI Quota error: {str(e)}",
+                )
+                if not skip_quota:
+                    self._log_generation_to_db(response)
+                return response
 
         try:
             raw_response = self.client.responses.create(**openai_kwargs)
@@ -62,7 +67,9 @@ class OpenAIProvider(BaseProvider):
 
             processing_time_ms = int((time.time() - start_time) * 1000)
 
-            self._update_quota(quota_generation_count)
+            # Skip quota update if skip_quota is True
+            if not skip_quota:
+                self._update_quota(quota_generation_count)
 
             response = self._build_response(
                 generated_text=generated_text,
@@ -76,7 +83,10 @@ class OpenAIProvider(BaseProvider):
                 quota_generation_count=quota_generation_count,
             )
 
-            self._log_generation_to_db(response)
+            # Skip logging to DB if skip_quota is True
+            if not skip_quota:
+                self._log_generation_to_db(response)
+                
             return response
 
         except Exception as e:
@@ -86,5 +96,9 @@ class OpenAIProvider(BaseProvider):
                 provider_request_id=provider_request_id or "",
                 error_message=f"OpenAI API error: {str(e)}",
             )
-            self._log_generation_to_db(response)
+            
+            # Skip logging to DB if skip_quota is True
+            if not skip_quota:
+                self._log_generation_to_db(response)
+                
             return response

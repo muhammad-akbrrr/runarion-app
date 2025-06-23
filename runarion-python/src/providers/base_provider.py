@@ -23,7 +23,7 @@ class BaseProvider(ABC):
         self.remaining_quota = None
 
     @abstractmethod
-    def generate(self) -> BaseGenerationResponse:
+    def generate(self, skip_quota: bool = False) -> BaseGenerationResponse:
         pass
     
     def _get_quota_manager(self) -> QuotaManager:
@@ -171,6 +171,12 @@ class BaseProvider(ABC):
 
     def _log_generation_to_db(self, response: BaseGenerationResponse):
         try:
+            # Truncate potentially long inputs to prevent DB issues
+            MAX_TEXT_LENGTH = 1000  # Adjust based on your database column size
+            truncated_prompt = (self.request.prompt or "")[:MAX_TEXT_LENGTH]
+            truncated_instruction = (self.instruction or "")[:MAX_TEXT_LENGTH]
+            truncated_generated_text = (response.text or "")[:MAX_TEXT_LENGTH]
+            
             with self.quota_manager.connection_pool.getconn() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
@@ -208,9 +214,9 @@ class BaseProvider(ABC):
                         response.provider,
                         response.model_used,
                         response.key_used,
-                        self.request.prompt or "",
-                        self.instruction or "",
-                        response.text or "",
+                        truncated_prompt,
+                        truncated_instruction,
+                        truncated_generated_text,
                         response.success,
                         response.metadata.finish_reason,
                         response.metadata.input_tokens,
