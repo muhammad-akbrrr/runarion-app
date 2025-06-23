@@ -25,7 +25,7 @@ class ProjectNodeEditorFactory extends Factory
   public function definition(): array
   {
     return [
-      'project_id' => Projects::factory(),
+      'project_id' => null, // Will be set when creating with specific project
     ];
   }
 

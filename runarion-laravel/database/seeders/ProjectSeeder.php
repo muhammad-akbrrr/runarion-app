@@ -94,16 +94,24 @@ class ProjectSeeder extends Seeder
                         $project->save();
                     }
 
-                    // Create ProjectContent for this project
-                    ProjectContent::factory()->create([
-                        'project_id' => $project->id,
-                        'last_edited_by' => $owner->user->id,
-                    ]);
+                    // Check if ProjectContent already exists for this project
+                    $existingContent = ProjectContent::where('project_id', $project->id)->first();
+                    if (!$existingContent) {
+                        // Create ProjectContent for this project
+                        ProjectContent::factory()->create([
+                            'project_id' => $project->id,
+                            'last_edited_by' => $owner->user->id,
+                        ]);
+                    }
 
-                    // Create ProjectNodeEditor for this project
-                    ProjectNodeEditor::factory()->create([
-                        'project_id' => $project->id,
-                    ]);
+                    // Check if ProjectNodeEditor already exists for this project
+                    $existingNodeEditor = ProjectNodeEditor::where('project_id', $project->id)->first();
+                    if (!$existingNodeEditor) {
+                        // Create ProjectNodeEditor for this project
+                        ProjectNodeEditor::factory()->create([
+                            'project_id' => $project->id,
+                        ]);
+                    }
                 }
             }
         });

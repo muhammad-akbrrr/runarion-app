@@ -18,7 +18,6 @@ return new class extends Migration {
       $table->json('content')->comment('Array of chapters with order, chapter_name, and content');
       $table->json('metadata')->nullable()->comment('Additional metadata like word count, etc');
       $table->timestamp('last_edited_at')->nullable();
-      $table->unsignedBigInteger('last_edited_by')->nullable();
       $table->timestamps();
       $table->softDeletes();
 

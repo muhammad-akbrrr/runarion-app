@@ -43,7 +43,7 @@ class ProjectContentFactory extends Factory
     }
 
     return [
-      'project_id' => Projects::factory(),
+      'project_id' => null, // Will be set when creating with specific project
       'content' => $chapters,
       'metadata' => [
         'total_words' => $totalWords,
@@ -55,27 +55,5 @@ class ProjectContentFactory extends Factory
       'last_edited_at' => fake()->optional(0.9)->dateTimeBetween('-30 days', 'now'),
       'last_edited_by' => fake()->optional(0.8)->randomElement(User::pluck('id')->toArray()),
     ];
-  }
-
-  /**
-   * Configure the model factory.
-   */
-  public function configure()
-  {
-    return $this->afterCreating(function (ProjectContent $content) {
-      // Update metadata with actual word count
-      $totalWords = 0;
-      foreach ($content->content as $chapter) {
-        $totalWords += str_word_count(strip_tags($chapter['content']));
-      }
-
-      $content->metadata = array_merge($content->metadata ?? [], [
-        'total_words' => $totalWords,
-        'total_chapters' => count($content->content),
-        'average_words_per_chapter' => count($content->content) > 0 ? round($totalWords / count($content->content)) : 0,
-      ]);
-
-      $content->save();
-    });
   }
 }
