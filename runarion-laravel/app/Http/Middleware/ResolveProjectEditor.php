@@ -135,6 +135,7 @@ class ResolveProjectEditor
             'workspace_switching' => session()->pull('workspace_switching', false),
             'project_switching' => session()->pull('project_switching', false),
             'force_project_editor_loader' => session()->pull('force_project_editor_loader', false),
+            'project_completed_onboarding' => $project->completed_onboarding ?? false,
         ]);
 
         $request->attributes->set('user_role', $userRole);

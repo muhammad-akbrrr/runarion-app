@@ -45,6 +45,7 @@ import { Input } from "@/Components/ui/input";
 import { Button } from "@/Components/ui/button";
 import LoadingOverlay from "@/Components/LoadingOverlay";
 import { Project } from "@/types";
+import OnboardingDialog from "./Partials/OnboardingDialog";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -272,6 +273,7 @@ export default function ProjectEditorLayout({
         workspace_switching,
         project_switching,
         force_project_editor_loader,
+        project_completed_onboarding,
     } = usePage().props;
     const [showLoader, setShowLoader] = React.useState(
         Boolean(workspace_switching) ||
@@ -281,6 +283,9 @@ export default function ProjectEditorLayout({
     const TOTAL_STEPS = 3;
     const [completedSteps, setCompletedSteps] = React.useState(0);
     const progress = (completedSteps / TOTAL_STEPS) * 100;
+    const [onboardingOpen, setOnboardingOpen] = React.useState(
+        !project_completed_onboarding
+    );
 
     // Only trigger loader when a switch flag or force flag is true
     React.useEffect(() => {
@@ -376,6 +381,14 @@ export default function ProjectEditorLayout({
 
     return (
         <>
+            <OnboardingDialog
+                open={onboardingOpen}
+                onClose={() => setOnboardingOpen(false)}
+                workspaceId={workspaceId}
+                projectId={projectId}
+                authorStyles={[]}
+            />
+
             <LoadingOverlay
                 visible={showLoader}
                 progress={progress}
@@ -387,6 +400,7 @@ export default function ProjectEditorLayout({
                         : `Loading project... (${Math.round(progress)}%)`
                 }
             />
+
             <div
                 style={{
                     visibility: showLoader ? "hidden" : "visible",

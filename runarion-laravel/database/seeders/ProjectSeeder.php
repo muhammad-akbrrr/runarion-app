@@ -5,8 +5,6 @@ namespace Database\Seeders;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use App\Models\Projects;
-use App\Models\ProjectContent;
-use App\Models\ProjectNodeEditor;
 use App\Models\Workspace;
 use App\Models\Folder;
 use App\Models\WorkspaceMember;
@@ -62,10 +60,6 @@ class ProjectSeeder extends Seeder
                         'folder_id' => $folder->id,
                         'name' => "Project " . ($i + 1) . " in " . $folder->name,
                         'slug' => "project-" . $workspace->id . "-" . $folder->id . "-" . ($i + 1),
-                        'category' => fake()->optional(0.8)->randomElement(['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical']),
-                        'saved_in' => fake()->randomElement(['01', '02', '03', '04']),
-                        'description' => fake()->optional(0.7)->paragraph(),
-                        'is_active' => true,
                         'original_author' => $owner->user->id,
                     ]);
 
@@ -92,25 +86,6 @@ class ProjectSeeder extends Seeder
                         ];
                         $project->access = $access;
                         $project->save();
-                    }
-
-                    // Check if ProjectContent already exists for this project
-                    $existingContent = ProjectContent::where('project_id', $project->id)->first();
-                    if (!$existingContent) {
-                        // Create ProjectContent for this project
-                        ProjectContent::factory()->create([
-                            'project_id' => $project->id,
-                            'last_edited_by' => $owner->user->id,
-                        ]);
-                    }
-
-                    // Check if ProjectNodeEditor already exists for this project
-                    $existingNodeEditor = ProjectNodeEditor::where('project_id', $project->id)->first();
-                    if (!$existingNodeEditor) {
-                        // Create ProjectNodeEditor for this project
-                        ProjectNodeEditor::factory()->create([
-                            'project_id' => $project->id,
-                        ]);
                     }
                 }
             }

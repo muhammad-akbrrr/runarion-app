@@ -11,7 +11,33 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/Components/ui/dropdown-menu";
+import {
+    LexicalComposer,
+    type InitialConfigType,
+} from "@lexical/react/LexicalComposer";
+import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
+import { ContentEditable } from "@lexical/react/LexicalContentEditable";
+import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
+import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
+import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
+import { $getRoot } from "lexical";
 import { PageProps, Project } from "@/types";
+
+const editorConfig: InitialConfigType = {
+    namespace: "MyEditor",
+    theme: {
+        paragraph: "text-base leading-relaxed text-gray-900",
+    },
+    onError(error) {
+        throw error;
+    },
+};
+
+const Placeholder = () => (
+    <div className="absolute pointer-events-none text-gray-400">
+        Start typing here...
+    </div>
+);
 
 export default function ProjectEditorPage({
     workspaceId,
@@ -85,36 +111,25 @@ export default function ProjectEditorPage({
                             absolute top-0 left-0 w-full h-full
                         "
                     >
-                        <div
-                            className="
-                                bg-white rounded-lg
-                                h-[200vh] p-6
-                            "
-                        >
-                            <div
-                                className="
-                                    w-full h-full
-                                    outline-none resize-none
-                                    text-gray-900 placeholder-gray-400
-                                "
-                                contentEditable
-                                suppressContentEditableWarning={true}
-                                onInput={(e) =>
-                                    setContent(
-                                        e.currentTarget.textContent || ""
-                                    )
-                                }
-                                style={{
-                                    lineHeight: "1.6",
-                                    fontSize: "16px",
-                                }}
-                            >
-                                {content === "" && (
-                                    <span className="text-gray-400 pointer-events-none">
-                                        Start typing here...
-                                    </span>
-                                )}
-                            </div>
+                        <div className="bg-white rounded-lg min-h-full h-auto p-6 flex items-start justify-start">
+                            <LexicalComposer initialConfig={editorConfig}>
+                                <RichTextPlugin
+                                    contentEditable={
+                                        <ContentEditable className="outline-none w-full min-h-[500px]" />
+                                    }
+                                    placeholder={<Placeholder />}
+                                    ErrorBoundary={LexicalErrorBoundary}
+                                />
+                                <HistoryPlugin />
+                                <OnChangePlugin
+                                    onChange={(editorState) => {
+                                        editorState.read(() => {
+                                            const root = $getRoot();
+                                            setContent(root.getTextContent());
+                                        });
+                                    }}
+                                />
+                            </LexicalComposer>
                         </div>
                     </div>
 
