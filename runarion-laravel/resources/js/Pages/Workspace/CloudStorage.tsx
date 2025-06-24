@@ -22,13 +22,11 @@ export default function CloudStorage({
     data,
     isUserAdmin,
     isUserOwner,
-    flash,
 }: PageProps<{
     workspaceId: string;
     data: Record<string, CloudStorageDataItem>;
     isUserAdmin: boolean;
     isUserOwner: boolean;
-    flash?: { success?: string; error?: string; info?: string };
 }>) {
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Workspace Settings", path: "workspace.edit" },

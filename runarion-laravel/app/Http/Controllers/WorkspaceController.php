@@ -91,10 +91,6 @@ class WorkspaceController extends Controller
             ->where('id', $workspace_id)
             ->first(['id', 'cloud_storage']);
 
-        if (!$workspace) {
-            abort(401, 'Workspace not found.');
-        }
-
         $cloudStorage = $workspace->cloud_storage ? json_decode($workspace->cloud_storage, true) : [];
 
         $cloudStorage = array_map(
@@ -111,11 +107,6 @@ class WorkspaceController extends Controller
             'data' => $cloudStorage,
             'isUserAdmin' => $isUserAdmin,
             'isUserOwner' => $isUserOwner,
-            'flash' => [
-                'success' => session('success'),
-                'error' => session('error'),
-                'info' => session('info'),
-            ],
         ]);
     }
 
