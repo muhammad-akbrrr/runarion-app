@@ -59,6 +59,19 @@ return [
             'throw' => false,
             'report' => false,
         ],
+        
+        // This is a template for Google Drive disks
+        // Actual disks will be created dynamically per workspace
+        'google_drive' => [
+            'driver' => 'google_drive',
+            'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+            'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+            'refresh_token' => null, // Will be set dynamically per workspace
+            'folder_id' => null, // Optional: root folder ID for this disk
+            'team_drive_id' => null, // Optional: Team Drive ID
+            'throw' => false,
+            'report' => false,
+        ],
 
     ],
 

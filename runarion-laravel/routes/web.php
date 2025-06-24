@@ -8,6 +8,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceMemberController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\CloudStorageController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -65,7 +66,7 @@ Route::middleware('auth')->group(function () {
     Route::post('/workspaces', [WorkspaceController::class, 'store'])->name('workspace.store');
 });
 
-// Workspace Settings Routes
+// Workspace Cloud Storage Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/settings', [WorkspaceController::class, 'edit'])->name('workspace.edit');
     Route::post('/{workspace_id}/settings', [WorkspaceController::class, 'update'])->name('workspace.update');
@@ -96,6 +97,19 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
 // Workspace invitation accept route (no auth required)
 Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
+
+// Google Drive callback route
+Route::get('/oauth/callback/google-drive', [CloudStorageController::class, 'googleCallback'])
+    ->middleware(['auth'])
+    ->name('cloudstorage.google.callback');
+
+Route::get('/{workspace_id}/settings/cloud-storage/google-drive', [CloudStorageController::class, 'googleRedirect'])
+    ->middleware(['auth', 'workspace'])
+    ->name('cloudstorage.google.redirect');
+
+Route::delete('/{workspace_id}/settings/cloud-storage/google-drive', [CloudStorageController::class, 'googleDisconnect'])
+    ->middleware(['auth', 'workspace'])
+    ->name('cloudstorage.google.disconnect');
 
 require __DIR__ . '/auth.php';
 require __DIR__ . '/editor.php';

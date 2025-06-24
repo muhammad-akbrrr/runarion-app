@@ -119,4 +119,51 @@ class Workspace extends Model
     {
         return $this->members()->where('role', 'owner')->first()?->user;
     }
+
+    /**
+     * Get the Cloud Storage token for the workspace.
+     */
+    public function getCloudToken(string $provider): ?string
+    {
+        $cloudStorage = $this->cloud_storage ?? [];
+
+        $encrypted = $cloudStorage[$provider]['token'] ?? null;
+        if (!$encrypted) return null;
+
+        try {
+            return \Crypt::decryptString($encrypted);
+        } catch (\Exception $e) {
+            report($e);
+            return null;
+        }
+    }
+
+    /**
+     * Set the Cloud Storage token for the workspace.
+     */
+    public function setCloudToken(string $provider, ?string $plainToken): void
+    {
+        $cloudStorage = $this->cloud_storage ?? [];
+
+        if (!isset($cloudStorage[$provider])) {
+            $cloudStorage[$provider] = [];
+        }
+
+        $cloudStorage[$provider]['token'] = $plainToken
+            ? \Crypt::encryptString($plainToken)
+            : null;
+
+        $this->cloud_storage = $cloudStorage;
+    }
+
+    /**
+     * Check if the workspace is connected to a specific cloud provider.
+     */
+    public function isCloudConnected(string $provider): bool
+    {
+        $cloudStorage = $this->cloud_storage ?? [];
+
+        return !empty($cloudStorage[$provider]['enabled']) &&
+            !empty($cloudStorage[$provider]['token']);
+    }
 }

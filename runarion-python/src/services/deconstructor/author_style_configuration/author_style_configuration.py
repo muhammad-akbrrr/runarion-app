@@ -17,8 +17,8 @@ from services.usecase_handler.author_style_handler import (
 )
 from utils.get_model_max_token import get_model_max_token
 
-from .paragraph_extractor import ParagraphExtractor
-from .token_counter import TokenCounter
+from services.deconstructor.author_style_configuration.paragraph_extractor import ParagraphExtractor
+from services.deconstructor.author_style_configuration.token_counter import TokenCounter
 
 
 class Passage(NamedTuple):

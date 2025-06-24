@@ -10,7 +10,7 @@ import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
-import { Head } from "@inertiajs/react";
+import { Head, router } from "@inertiajs/react";
 import ConnectionCard from "./Partials/ConnectionCard";
 
 interface CloudStorageDataItem {
@@ -22,11 +22,13 @@ export default function CloudStorage({
     data,
     isUserAdmin,
     isUserOwner,
+    flash,
 }: PageProps<{
     workspaceId: string;
     data: Record<string, CloudStorageDataItem>;
     isUserAdmin: boolean;
     isUserOwner: boolean;
+    flash?: { success?: string; error?: string; info?: string };
 }>) {
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Workspace Settings", path: "workspace.edit" },
@@ -60,6 +62,18 @@ export default function CloudStorage({
         },
     ];
 
+    const handleConnect = (key: string) => {
+        if (key === "google_drive") {
+            window.location.href = route('cloudstorage.google.redirect', { workspace_id: workspaceId });
+        }
+    };
+
+    const handleDisconnect = (key: string) => {
+        if (key === "google_drive") {
+            router.delete(route('cloudstorage.google.disconnect', { workspace_id: workspaceId }));
+        }
+    };
+
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Cloud Storage" />
@@ -81,7 +95,8 @@ export default function CloudStorage({
                             name={connection.name}
                             description={connection.description}
                             connected={data[connection.key]?.enabled ?? false}
-                            onConnect={() => {}}
+                            onConnect={() => handleConnect(connection.key)}
+                            onDisconnect={() => handleDisconnect(connection.key)}
                             disabled={!isUserAdmin && !isUserOwner}
                         />
                     ))}

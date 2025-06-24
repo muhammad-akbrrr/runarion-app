@@ -6,6 +6,7 @@ export default function ConnectionCard({
     description,
     connected,
     onConnect,
+    onDisconnect,
     disabled = false,
 }: {
     logo_url: string;
@@ -13,6 +14,7 @@ export default function ConnectionCard({
     description: string;
     connected: boolean;
     onConnect: () => void;
+    onDisconnect?: () => void;
     disabled?: boolean;
 }) {
     return (
@@ -30,18 +32,34 @@ export default function ConnectionCard({
                     </div>
                 </div>
             </div>
-            <Button
-                variant={connected ? "default" : "destructive"}
-                className={
-                    connected
-                        ? "bg-blue-500 text-white shadow-xs hover:bg-blue-600 focus-visible:ring-blue-500 text-sm"
-                        : "text-sm"
-                }
-                onClick={onConnect}
-                disabled={disabled}
-            >
-                {connected ? "Connected" : "Connect"}
-            </Button>
+            {connected ? (
+                <div className="flex gap-2">
+                    <Button
+                        variant="default"
+                        className="bg-blue-500 text-white shadow-xs hover:bg-blue-600 focus-visible:ring-blue-500 text-sm"
+                        disabled={true}
+                    >
+                        Connected
+                    </Button>
+                    <Button
+                        variant="destructive"
+                        className="text-sm"
+                        onClick={onDisconnect}
+                        disabled={disabled}
+                    >
+                        Disconnect
+                    </Button>
+                </div>
+            ) : (
+                <Button
+                    variant="default"
+                    className="bg-blue-500 text-white shadow-xs hover:bg-blue-600 focus-visible:ring-blue-500 text-sm"
+                    onClick={onConnect}
+                    disabled={disabled}
+                >
+                    Connect
+                </Button>
+            )}
         </div>
     );
 }

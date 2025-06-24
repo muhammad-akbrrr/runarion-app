@@ -87,15 +87,21 @@ class WorkspaceController extends Controller
         $isUserOwner = $userRole === 'owner';
         $isUserAdmin = $userRole === 'admin';
 
-        $cloudStorage = DB::table('workspaces')
+        $workspace = DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->value('cloud_storage');
+            ->first(['id', 'cloud_storage']);
 
-        $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
+        if (!$workspace) {
+            abort(401, 'Workspace not found.');
+        }
+
+        $cloudStorage = $workspace->cloud_storage ? json_decode($workspace->cloud_storage, true) : [];
 
         $cloudStorage = array_map(
             fn($m) => [
-                'enabled' => $m['enabled'],
+                'enabled' => $m['enabled'] ?? false,
+                'connected_at' => $m['connected_at'] ?? null,
+                'has_token' => isset($m['token']),
             ],
             $cloudStorage
         );
@@ -105,6 +111,11 @@ class WorkspaceController extends Controller
             'data' => $cloudStorage,
             'isUserAdmin' => $isUserAdmin,
             'isUserOwner' => $isUserOwner,
+            'flash' => [
+                'success' => session('success'),
+                'error' => session('error'),
+                'info' => session('info'),
+            ],
         ]);
     }
 
