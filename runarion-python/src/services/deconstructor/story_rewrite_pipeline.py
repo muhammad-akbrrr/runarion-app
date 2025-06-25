@@ -496,6 +496,15 @@ class StoryRewritePipeline:
                             json.dumps(metadata),
                         )
                     )
+                    # Update onboarding status in projects table
+                    cursor.execute(
+                        """
+                        UPDATE projects
+                        SET completed_onboarding = TRUE
+                        WHERE id = %s AND completed_onboarding = FALSE
+                        """,
+                        (project_id,)
+                    )
                     conn.commit()
         except Exception as e:
             print(f"Warning: Failed to insert project_content: {str(e)}")
