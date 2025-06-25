@@ -86,9 +86,12 @@ class AuthorStyleConfiguration:
         self.author_name = author_name
         self.provider = provider or "gemini"
         self.model = model or "gemini-2.0-flash"
-        self.generation_config = GenerationConfig(
-            **(default_generation_config | (generation_config or {}))
-        )
+        # Only merge if generation_config is a dict, else use default
+        if isinstance(generation_config, dict):
+            merged_config = {**default_generation_config, **generation_config}
+        else:
+            merged_config = default_generation_config
+        self.generation_config = GenerationConfig(**merged_config)
         self.paragraph_overlap = paragraph_overlap or False
         self.store_intermediate = store_intermediate or False
 
@@ -225,8 +228,8 @@ class AuthorStyleConfiguration:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO intermediate_styles (id, structured_style_id, style, processing_time_ms, passages)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO intermediate_author_styles (id, structured_style_id, style, processing_time_ms, passages)
+                        VALUES (%s, %s, %s, %s, %s)
                         """,
                         (
                             str(ULID()),
@@ -393,6 +396,9 @@ class AuthorStyleConfiguration:
         combined_style = self._handle_combined_style(partial_styles)
 
         response = self._call_llm(combined_style.text, mode="structured")
+
+        # Debug: print the LLM response text before JSON decode
+        print("[DEBUG] LLM structured response.text:", repr(response.text))
 
         # response is expected to be a JSON string
         data = json.loads(response.text)

@@ -11,7 +11,7 @@ check_flask() {
     local max_attempts=30
     local attempt=1
     while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:5000/health > /dev/null; then
+        if curl -s http://python-app:5000/health > /dev/null; then
             log "Flask server is running"
             return 0
         fi

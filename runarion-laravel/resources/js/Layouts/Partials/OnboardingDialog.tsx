@@ -24,11 +24,18 @@ interface AuthorStyle {
     author_name: string;
 }
 
+// Add LocalAuthorStyle type
+interface LocalAuthorStyle {
+    id: string;
+    author_name: string;
+    files: File[];
+}
+
 const WRITING_PERSPECTIVES = [
     { value: "1st-person", label: "1st-Person" },
     { value: "2nd-person", label: "2nd-Person" },
-    { value: "omniscient", label: "Omniscient" },
-    { value: "tpl", label: "TPL" },
+    { value: "3rd-person-omniscient", label: "3rd-Person Omniscient" },
+    { value: "3rd-person-limited", label: "3rd-Person Limited" },
 ];
 
 interface OnboardingDialogProps {
@@ -60,7 +67,16 @@ export default function OnboardingDialog({
     const [step, setStep] = React.useState(0);
     const [form, setForm] = React.useState({ ...INITIAL_FORM });
     const [isProcessing, setIsProcessing] = React.useState(false);
-    const [error, setError] = React.useState<string | null>(null);
+    const [showAddAuthorStyle, setShowAddAuthorStyle] = React.useState(false);
+    const [localAuthorStyles, setLocalAuthorStyles] = React.useState<
+        LocalAuthorStyle[]
+    >([]);
+    const [authorStyleError, setAuthorStyleError] = React.useState<
+        string | null
+    >(null);
+    const [authorNameTouched, setAuthorNameTouched] = React.useState(false);
+    const [writingPerspectiveTouched, setWritingPerspectiveTouched] =
+        React.useState(false);
 
     // Reset state on open/close
     React.useEffect(() => {
@@ -68,7 +84,6 @@ export default function OnboardingDialog({
             setStep(0);
             setForm({ ...INITIAL_FORM });
             setIsProcessing(false);
-            setError(null);
         }
     }, [open]);
 
@@ -96,14 +111,17 @@ export default function OnboardingDialog({
         setStep(0);
         setForm({ ...INITIAL_FORM });
         setIsProcessing(false);
-        setError(null);
         onClose();
     };
 
     // Form submission handlers
     const handleScratch = () => {
         setIsProcessing(true);
-        setError(null);
+        console.log("Submitting onboarding (scratch) with:", {
+            workspaceId,
+            projectId,
+            method: "scratch",
+        });
         router.post(
             route("editor.project.onboarding", {
                 workspace_id: workspaceId,
@@ -117,7 +135,6 @@ export default function OnboardingDialog({
                 },
                 onError: (errors: any) => {
                     setIsProcessing(false);
-                    setError(errors?.method || "An error occurred.");
                 },
             }
         );
@@ -125,17 +142,36 @@ export default function OnboardingDialog({
 
     const handleDraft = () => {
         setIsProcessing(true);
-        setError(null);
-        const data: Record<string, any> = {
+
+        let data: Record<string, any> = {
             method: "draft",
             draft_file: form.draftFile,
             author_style_type: form.authorStyleType,
-            author_style_id: form.selectedAuthorStyle,
-            author_samples: form.newAuthorFiles,
-            author_name: form.newAuthorName,
+            selectedAuthorStyle: form.selectedAuthorStyle,
+            newAuthorFiles: form.newAuthorFiles,
+            newAuthorName: form.newAuthorName,
             writing_perspective: form.writingPerspective,
             summarize: form.summarize,
         };
+
+        // If selectedAuthorStyle is a local style, treat as 'new'
+        if (
+            form.authorStyleType === "existing" &&
+            form.selectedAuthorStyle.startsWith("local-")
+        ) {
+            const local = localAuthorStyles.find(
+                (s) => s.id === form.selectedAuthorStyle
+            );
+            if (local) {
+                data.author_style_type = "new";
+                data.selectedAuthorStyle = undefined;
+                data.newAuthorFiles = local.files;
+                data.newAuthorName = local.author_name;
+            }
+        }
+
+        console.log("Submitting onboarding (draft) with:", data);
+
         router.post(
             route("editor.project.onboarding", {
                 workspace_id: workspaceId,
@@ -150,12 +186,6 @@ export default function OnboardingDialog({
                 },
                 onError: (errors: any) => {
                     setIsProcessing(false);
-                    setError(
-                        errors?.draft_file ||
-                            errors?.author_name ||
-                            errors?.method ||
-                            "An error occurred."
-                    );
                 },
             }
         );
@@ -277,7 +307,7 @@ export default function OnboardingDialog({
                             </DialogTitle>
                         </DialogHeader>
 
-                        <div className="flex flex-col gap-4 mb-2">
+                        <div className="flex flex-col gap-4 mb-2 w-full">
                             <div className="flex flex-col justify-stretch items-start gap-2">
                                 <div className="flex flex-col justify-start items-start gap-0.5">
                                     <label className="text-sm">
@@ -307,30 +337,44 @@ export default function OnboardingDialog({
                                             <SelectValue placeholder="Select one..." />
                                         </SelectTrigger>
                                         <SelectContent>
-                                            {authorStyles.map((style) => (
+                                            {[
+                                                ...authorStyles,
+                                                ...localAuthorStyles,
+                                            ].length === 0 ? (
                                                 <SelectItem
-                                                    key={style.id}
-                                                    value={style.id}
+                                                    value="__no_author__"
+                                                    disabled
                                                 >
-                                                    {style.author_name}
+                                                    No author available
                                                 </SelectItem>
-                                            ))}
+                                            ) : (
+                                                [
+                                                    ...authorStyles,
+                                                    ...localAuthorStyles,
+                                                ].map((style) => (
+                                                    <SelectItem
+                                                        key={style.id}
+                                                        value={style.id}
+                                                    >
+                                                        {style.author_name}
+                                                    </SelectItem>
+                                                ))
+                                            )}
                                         </SelectContent>
                                     </Select>
                                     <Button
                                         variant="outline"
                                         onClick={() =>
-                                            setForm((prev) => ({
-                                                ...prev,
-                                                authorStyleType: "new",
-                                            }))
+                                            setShowAddAuthorStyle(
+                                                (prev) => !prev
+                                            )
                                         }
                                         className="h-9 w-9"
                                     >
                                         <Plus className="h-4 w-4" />
                                     </Button>
                                 </div>
-                                {form.authorStyleType === "new" && (
+                                {showAddAuthorStyle && (
                                     <div className="flex flex-col gap-2 w-full">
                                         <div className="border-dashed border-2 rounded-lg p-6 flex flex-col items-center justify-center gap-1 text-center relative mb-2">
                                             <Input
@@ -398,16 +442,101 @@ export default function OnboardingDialog({
                                                     className="w-full flex-grow"
                                                     placeholder="Save Author as..."
                                                     value={form.newAuthorName}
-                                                    onChange={(e) =>
+                                                    onChange={(e) => {
                                                         setForm((prev) => ({
                                                             ...prev,
                                                             newAuthorName:
                                                                 e.target.value,
-                                                        }))
+                                                        }));
+                                                        setAuthorNameTouched(
+                                                            true
+                                                        );
+                                                        setAuthorStyleError(
+                                                            null
+                                                        );
+                                                    }}
+                                                    onBlur={() =>
+                                                        setAuthorNameTouched(
+                                                            true
+                                                        )
                                                     }
                                                 />
                                                 <Button
-                                                    onClick={() => {}}
+                                                    onClick={() => {
+                                                        if (
+                                                            form.newAuthorFiles
+                                                                .length === 0
+                                                        ) {
+                                                            setAuthorStyleError(
+                                                                "Please upload at least one file."
+                                                            );
+                                                            return;
+                                                        }
+                                                        if (
+                                                            !form.newAuthorName
+                                                        ) {
+                                                            setAuthorStyleError(
+                                                                "Please enter an author name."
+                                                            );
+                                                            return;
+                                                        }
+                                                        // Check for duplicate name
+                                                        const allNames = [
+                                                            ...authorStyles,
+                                                            ...localAuthorStyles.map(
+                                                                (s) => ({
+                                                                    id: s.id,
+                                                                    author_name:
+                                                                        s.author_name,
+                                                                })
+                                                            ),
+                                                        ].map((s) =>
+                                                            s.author_name.toLowerCase()
+                                                        );
+                                                        if (
+                                                            allNames.includes(
+                                                                form.newAuthorName.toLowerCase()
+                                                            )
+                                                        ) {
+                                                            setAuthorStyleError(
+                                                                "An author with this name already exists."
+                                                            );
+                                                            return;
+                                                        }
+                                                        // Generate a unique id for the new style
+                                                        const newId = `local-${Date.now()}`;
+                                                        const newStyle: LocalAuthorStyle =
+                                                            {
+                                                                id: newId,
+                                                                author_name:
+                                                                    form.newAuthorName,
+                                                                files: form.newAuthorFiles,
+                                                            };
+                                                        setLocalAuthorStyles(
+                                                            (prev) => [
+                                                                ...prev,
+                                                                newStyle,
+                                                            ]
+                                                        );
+                                                        setForm((prev) => ({
+                                                            ...prev,
+                                                            authorStyleType:
+                                                                "existing",
+                                                            selectedAuthorStyle:
+                                                                newId,
+                                                            newAuthorFiles: [],
+                                                            newAuthorName: "",
+                                                        }));
+                                                        setShowAddAuthorStyle(
+                                                            false
+                                                        );
+                                                        setAuthorStyleError(
+                                                            null
+                                                        );
+                                                        setAuthorNameTouched(
+                                                            false
+                                                        );
+                                                    }}
                                                     disabled={
                                                         form.newAuthorFiles
                                                             .length === 0 ||
@@ -417,10 +546,28 @@ export default function OnboardingDialog({
                                                     Save
                                                 </Button>
                                             </div>
+                                            {authorStyleError && (
+                                                <p className="text-xs text-destructive mt-1">
+                                                    {authorStyleError}
+                                                </p>
+                                            )}
+                                            {authorNameTouched &&
+                                                !form.newAuthorName && (
+                                                    <p className="text-xs text-destructive mt-1">
+                                                        Author name is required.
+                                                    </p>
+                                                )}
                                         </div>
                                     </div>
                                 )}
+                                {authorStyleError && (
+                                    <p className="text-xs text-destructive mt-1">
+                                        {authorStyleError}
+                                    </p>
+                                )}
                             </div>
+
+                            <div className="w-full h-[1px] bg-gray-200 rounded-[1px]"></div>
 
                             <div className="flex flex-col justify-stretch items-start gap-2">
                                 <div className="flex flex-col justify-start items-start gap-0.5">
@@ -430,14 +577,20 @@ export default function OnboardingDialog({
                                 </div>
                                 <Select
                                     value={form.writingPerspective}
-                                    onValueChange={(val) =>
+                                    onValueChange={(val) => {
                                         setForm((prev) => ({
                                             ...prev,
                                             writingPerspective: val,
-                                        }))
-                                    }
+                                        }));
+                                        setWritingPerspectiveTouched(true);
+                                    }}
                                 >
-                                    <SelectTrigger className="w-full">
+                                    <SelectTrigger
+                                        className="w-full"
+                                        onBlur={() =>
+                                            setWritingPerspectiveTouched(true)
+                                        }
+                                    >
                                         <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
@@ -451,18 +604,31 @@ export default function OnboardingDialog({
                                         ))}
                                     </SelectContent>
                                 </Select>
+                                {writingPerspectiveTouched &&
+                                    !form.writingPerspective && (
+                                        <p className="text-xs text-destructive mt-1">
+                                            Writing perspective is required.
+                                        </p>
+                                    )}
                             </div>
 
-                            <div className="flex flex-row items-center justify-between gap-2">
-                                <div className="flex flex-col justify-start items-start gap-0.5">
-                                    <label className="text-sm">Summarize</label>
-                                    <p className="text-xs text-muted-foreground">
-                                        This will auto summarize your story upon
-                                        completion
-                                    </p>
-                                </div>
+                            <div className="w-full h-[1px] bg-gray-200 rounded-[1px]"></div>
 
-                                <Switch checked={false} disabled={true} />
+                            <div className="flex flex-col justify-stretch items-start gap-2">
+                                <div className="flex flex-row items-center justify-between gap-2 w-full">
+                                    <div className="flex flex-col justify-start items-start gap-0.5">
+                                        <label className="text-sm">
+                                            Summarize
+                                        </label>
+                                        <p className="text-xs text-muted-foreground">
+                                            This will auto summarize your story
+                                            upon completion
+                                        </p>
+                                    </div>
+
+                                    <Switch checked={false} disabled={true} />
+                                </div>
+                                {/* TODO: Add an error state here */}
                             </div>
                         </div>
 

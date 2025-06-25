@@ -15,7 +15,7 @@ return new class extends Migration {
       $table->ulid('id')->primary();
       $table->ulid('project_id')->unique();
       $table->unsignedBigInteger('last_edited_by')->nullable();
-      $table->json('content')->comment('Array of chapters with order, chapter_name, and content');
+      $table->json('content')->comment('Array of chapters with order (int), chapter_name (string), and content (string)');
       $table->json('metadata')->nullable()->comment('Additional metadata like word count, etc');
       $table->timestamp('last_edited_at')->nullable();
       $table->timestamps();

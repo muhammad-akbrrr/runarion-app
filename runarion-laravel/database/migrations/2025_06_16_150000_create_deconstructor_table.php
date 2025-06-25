@@ -8,8 +8,7 @@ return new class extends Migration {
   public function up()
   {
     Schema::create('deconstructor_logs', function (Blueprint $table) {
-      $table->id();
-      $table->string('request_id')->unique();
+      $table->ulid('id')->primary();
       $table->unsignedBigInteger('user_id')->nullable();
       $table->ulid('workspace_id')->nullable();
       $table->ulid('project_id')->nullable();
@@ -43,15 +42,56 @@ return new class extends Migration {
       $table->json('metadata')->nullable();
       $table->timestamps();
 
-      $table->foreign('request_id')->references('request_id')->on('deconstructor_logs')->onDelete('cascade');
+      $table->foreign('request_id')->references('id')->on('deconstructor_logs')->onDelete('cascade');
       $table->foreign('author_style_id')->references('id')->on('structured_author_styles')->nullOnDelete();
+      $table->foreign('project_id')->references('id')->on('projects')->nullOnDelete();
+    });
+
+    Schema::create('intermediate_deconstructor', function (Blueprint $table) {
+      $table->id();
+      $table->string('request_id');
+      $table->ulid('project_id');
+      $table->string('session_id')->nullable();
+      $table->longText('original_story')->nullable();
+      $table->longText('rewritten_story')->nullable();
+      $table->jsonb('applied_style')->nullable();
+      $table->jsonb('applied_perspective')->nullable();
+      $table->integer('duration_ms')->nullable();
+      $table->integer('token_count')->nullable();
+      $table->float('style_intensity')->nullable();
+      $table->longText('original_content')->nullable();
+      $table->integer('chunk_num')->nullable();
+      $table->timestamps();
+
+      $table->foreign('request_id')->references('id')->on('deconstructor_logs')->onDelete('cascade');
+      $table->foreign('project_id')->references('id')->on('projects')->nullOnDelete();
+    });
+
+    Schema::create('deconstructor_sessions', function (Blueprint $table) {
+      $table->ulid('id')->primary();
+      $table->unsignedBigInteger('user_id')->nullable();
+      $table->ulid('workspace_id')->nullable();
+      $table->ulid('project_id')->nullable();
+      $table->json('author_style')->nullable();
+      $table->json('writing_perspective')->nullable();
+      $table->json('rewrite_config')->nullable();
+      $table->integer('total_rewrites')->nullable();
+      $table->timestamp('started_at')->nullable();
+      $table->integer('total_time_ms')->nullable();
+      $table->longText('original_content')->nullable();
+      $table->timestamps();
+
+      $table->foreign('user_id')->references('id')->on('users')->nullOnDelete();
+      $table->foreign('workspace_id')->references('id')->on('workspaces')->nullOnDelete();
       $table->foreign('project_id')->references('id')->on('projects')->nullOnDelete();
     });
   }
 
   public function down()
   {
+    Schema::dropIfExists('deconstructor_sessions');
     Schema::dropIfExists('deconstructor_responses');
     Schema::dropIfExists('deconstructor_logs');
+    Schema::dropIfExists('intermediate_deconstructor');
   }
 };

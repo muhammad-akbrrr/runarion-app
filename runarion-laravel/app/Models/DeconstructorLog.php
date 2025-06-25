@@ -10,7 +10,7 @@ class DeconstructorLog extends Model
   protected $table = 'deconstructor_logs';
 
   protected $fillable = [
-    'request_id',
+    'id',
     'user_id',
     'workspace_id',
     'project_id',
@@ -45,6 +45,6 @@ class DeconstructorLog extends Model
    */
   public function deconstructorResponse(): HasOne
   {
-    return $this->hasOne(DeconstructorResponse::class, 'request_id', 'request_id');
+    return $this->hasOne(DeconstructorResponse::class, 'request_id', 'id');
   }
 }

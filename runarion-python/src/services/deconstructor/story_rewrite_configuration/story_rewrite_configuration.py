@@ -194,44 +194,48 @@ class ContentRewritePipeline:
 
         return response
 
-    def _store_intermediate_rewrite(self, rewrite: RewrittenContent, chunk: ContentChunk) -> None:
+    def _store_intermediate_deconstructor(self, rewrite: RewrittenContent, chunk: ContentChunk) -> None:
         """
-        Stores the intermediate rewrite result in the database.
+        Stores the intermediate rewrite result in the intermediate_deconstructor table.
 
         Args:
             rewrite (RewrittenContent): The rewrite result to store.
             chunk (ContentChunk): The chunk that was rewritten.
         """
-        if not self.store_intermediate:
+        if not self.store_intermediate or not self.request_id:
             return
         try:
             with self.connection_pool.getconn() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO intermediate_rewrites (id, rewrite_session_id, original_text, rewritten_text, 
-                                                          applied_style, applied_perspective, processing_time_ms, 
-                                                          token_count, style_confidence, source, chunk_num)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO intermediate_deconstructor (
+                            request_id, project_id, session_id, original_story, rewritten_story, 
+                            applied_style, applied_perspective, duration_ms, token_count, style_intensity, 
+                            original_content, chunk_num, created_at, updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                         """,
                         (
-                            str(ULID()),
-                            self.id,
-                            rewrite.original_text,
-                            rewrite.rewritten_text,
+                            self.request_id,  # Use the ULID request_id from the API
+                            self.caller.project_id,
+                            self.id,  # session_id
+                            chunk.text,  # original_story
+                            rewrite.rewritten_text,  # rewritten_story
                             json.dumps(rewrite.applied_style.dict()),
                             json.dumps(rewrite.applied_perspective.dict()),
-                            rewrite.processing_time_ms,
+                            rewrite.processing_time_ms,  # duration_ms
                             rewrite.token_count,
-                            rewrite.style_confidence,
-                            chunk.source,
+                            getattr(self.rewrite_config,
+                                    'style_intensity', None),
+                            chunk.text,  # original_content
                             chunk.chunk_num,
                         ),
                     )
                     conn.commit()
         except Exception as e:
             raise RuntimeError(
-                f"Failed to store intermediate rewrite: {str(e)}")
+                f"Failed to store intermediate deconstructor: {str(e)}")
 
     def _store_rewrite_session(self, rewrites: list[RewrittenContent], started_at: str, total_time_ms: int) -> None:
         """
@@ -247,10 +251,11 @@ class ContentRewritePipeline:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO rewrite_sessions (id, user_id, workspace_id, project_id, 
-                                                     author_style, writing_perspective, rewrite_config,
-                                                     total_rewrites, started_at, total_time_ms, sources)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO deconstructor_sessions (id, user_id, workspace_id, project_id, 
+                                                    author_style, writing_perspective, rewrite_config,
+                                                    total_rewrites, started_at, total_time_ms, original_content, 
+                                                    created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                         """,
                         (
                             self.id,
@@ -263,7 +268,7 @@ class ContentRewritePipeline:
                             len(rewrites),
                             started_at,
                             total_time_ms,
-                            ", ".join(self.sources),
+                            "\n".join(self.sources),
                         ),
                     )
                     conn.commit()
@@ -296,7 +301,7 @@ class ContentRewritePipeline:
             style_confidence=0.8,  # This could be calculated based on response quality
         )
 
-        self._store_intermediate_rewrite(rewrite, chunk)
+        self._store_intermediate_deconstructor(rewrite, chunk)
         return rewrite
 
     def run(self) -> list[RewrittenContent]:

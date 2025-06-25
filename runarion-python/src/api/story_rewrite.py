@@ -11,6 +11,8 @@ from models.deconstructor.story_rewrite import (
 from models.request import CallerInfo, GenerationConfig
 from services.deconstructor.story_rewrite_pipeline import StoryRewritePipeline
 from psycopg2.pool import SimpleConnectionPool
+from ulid import ULID
+import logging
 
 story_rewrite = Blueprint("story_rewrite", __name__)
 
@@ -21,6 +23,8 @@ MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
 
 # Ensure upload directory exists
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+logging.basicConfig(level=logging.INFO)
 
 
 def allowed_file(filename):
@@ -52,10 +56,18 @@ def story_rewrite_route():
         # Get the connection pool from app context
         connection_pool = current_app.config.get('connection_pool')
         if not connection_pool:
+            logging.error("Database connection not available")
             return jsonify({"error": "Database connection not available"}), 500
 
         # Extract form data
         form_data = request.form.to_dict()
+        logging.info(f"Received form data: {form_data}")
+
+        # Get request_id from form_data (must be provided by Laravel)
+        request_id = form_data.get('id')
+        if not request_id:
+            logging.error("request_id is required")
+            return jsonify({"error": "request_id is required"}), 400
 
         # Extract caller information
         caller = CallerInfo(
@@ -70,28 +82,39 @@ def story_rewrite_route():
 
         # Step 1: Handle rough draft file upload
         if 'rough_draft' not in request.files:
+            logging.error("Rough draft PDF file is required")
             return jsonify({"error": "Rough draft PDF file is required"}), 400
 
         rough_draft_file = request.files['rough_draft']
         if rough_draft_file.filename == '':
+            logging.error("No rough draft file selected")
             return jsonify({"error": "No rough draft file selected"}), 400
 
         rough_draft_path = save_uploaded_file(rough_draft_file, "rough_draft")
+        logging.info(f"Rough draft file saved at: {rough_draft_path}")
         if not rough_draft_path:
+            logging.error(
+                "Invalid rough draft file format. Only PDF files are allowed")
             return jsonify({"error": "Invalid rough draft file format. Only PDF files are allowed"}), 400
 
         # Step 2: Handle author style selection
         author_style_type = form_data.get('author_style_type')
+        logging.info(f"Author style type: {author_style_type}")
         if not author_style_type:
+            logging.error(
+                "author_style_type is required ('new' or 'existing')")
             return jsonify({"error": "author_style_type is required ('new' or 'existing')"}), 400
 
         if author_style_type == 'new':
             # Handle new author style creation
             if 'author_samples' not in request.files:
+                logging.error(
+                    "Author sample files are required for new author style")
                 return jsonify({"error": "Author sample files are required for new author style"}), 400
 
             author_samples = request.files.getlist('author_samples')
             if not author_samples or all(f.filename == '' for f in author_samples):
+                logging.error("At least one author sample file is required")
                 return jsonify({"error": "At least one author sample file is required"}), 400
 
             # Save author sample files
@@ -101,31 +124,41 @@ def story_rewrite_route():
                     sample_path = save_uploaded_file(sample, "author_sample")
                     if sample_path:
                         sample_paths.append(sample_path)
+                        logging.info(
+                            f"Author sample file saved at: {sample_path}")
 
             if not sample_paths:
+                logging.error("No valid author sample files uploaded")
                 return jsonify({"error": "No valid author sample files uploaded"}), 400
 
             author_style_request = NewAuthorStyleRequest(
                 sample_files=sample_paths,
                 author_name=form_data.get('author_name', '')
             )
+            logging.info(f"NewAuthorStyleRequest: {author_style_request}")
 
         elif author_style_type == 'existing':
             # Handle existing author style selection
             author_style_id = form_data.get('author_style_id')
             if not author_style_id:
+                logging.error(
+                    "author_style_id is required for existing author style")
                 return jsonify({"error": "author_style_id is required for existing author style"}), 400
 
             author_style_request = ExistingAuthorStyleRequest(
                 author_style_id=author_style_id
             )
+            logging.info(f"ExistingAuthorStyleRequest: {author_style_request}")
 
         else:
+            logging.error(
+                "Invalid author_style_type. Must be 'new' or 'existing'")
             return jsonify({"error": "Invalid author_style_type. Must be 'new' or 'existing'"}), 400
 
         # Step 3: Handle writing perspective
         perspective_type = form_data.get('writing_perspective_type')
         if not perspective_type:
+            logging.error("writing_perspective_type is required")
             return jsonify({"error": "writing_perspective_type is required"}), 400
 
         writing_perspective = WritingPerspective(
@@ -133,9 +166,9 @@ def story_rewrite_route():
             narrator_voice=form_data.get('narrator_voice', ''),
             character_focus=form_data.get('character_focus', '')
         )
+        logging.info(f"WritingPerspective: {writing_perspective}")
 
         # Step 4: Create the story rewrite request
-        # Note: rewrite_config will be created by the pipeline after author_style is available
         story_request = StoryRewriteRequest(
             rough_draft_file=rough_draft_path,
             author_style_request=author_style_request,
@@ -146,6 +179,7 @@ def story_rewrite_route():
             chunk_overlap=form_data.get(
                 'chunk_overlap', 'false').lower() == 'true'
         )
+        logging.info(f"StoryRewriteRequest: {story_request}")
 
         # Create and run the pipeline
         pipeline = StoryRewritePipeline(
@@ -153,10 +187,13 @@ def story_rewrite_route():
             connection_pool=connection_pool,
             provider=form_data.get('provider', 'gemini'),
             model=form_data.get('model', 'gemini-2.0-flash'),
+            request_id=request_id,  # Pass the request_id down
         )
+        logging.info(f"StoryRewritePipeline created: {pipeline}")
 
         # Process the request
         response = pipeline.process_request(story_request)
+        logging.info(f"Pipeline response: {response}")
 
         # Clean up uploaded files
         try:
@@ -165,8 +202,7 @@ def story_rewrite_route():
                 for sample_path in sample_paths:
                     os.remove(sample_path)
         except Exception as e:
-            current_app.logger.warning(
-                f"Failed to clean up uploaded files: {e}")
+            logging.warning(f"Failed to clean up uploaded files: {e}")
 
         # Return the response
         return jsonify({
@@ -186,10 +222,12 @@ def story_rewrite_route():
         }), 200
 
     except ValidationError as e:
+        logging.error(f"Validation error: {e}")
         current_app.logger.error(f"Validation error: {e}")
         return jsonify({"error": "Invalid request data", "details": str(e)}), 400
 
     except Exception as e:
+        logging.error(f"Story rewrite error: {type(e).__name__} - {e}")
         current_app.logger.error(
             f"Story rewrite error: {type(e).__name__} - {e}")
         return jsonify({"error": "Failed to process story rewrite request", "message": str(e)}), 500
