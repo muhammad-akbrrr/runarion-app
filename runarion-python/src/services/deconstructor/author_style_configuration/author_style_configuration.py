@@ -4,17 +4,18 @@ import time
 from math import ceil
 from typing import Literal, NamedTuple, Optional
 
+from flask import current_app
 from models.deconstructor.author_style import AuthorStyle
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
 from services.generation_engine import GenerationEngine
-from ulid import ULID
 from services.usecase_handler.author_style_handler import (
     COMBINED_AUTHOR_STYLE,
     PARTIAL_AUTHOR_STYLE,
     AuthorStyleHandler,
 )
+from ulid import ULID
 from utils.get_model_max_token import get_model_max_token
 
 from ..utils.paragraph_extractor import ParagraphExtractor
@@ -99,13 +100,10 @@ class AuthorStyleConfiguration:
         RESERVED_TOKENS_FOR_SAFETY = 100
         self.token_counter = TokenCounter(self.provider, self.model)
         model_max_token = (
-            get_model_max_token(self.provider, self.model) -
-            RESERVED_TOKENS_FOR_SAFETY
+            get_model_max_token(self.provider, self.model) - RESERVED_TOKENS_FOR_SAFETY
         )
-        partial_prompt_token = self.token_counter.count_tokens(
-            PARTIAL_AUTHOR_STYLE)
-        combined_prompt_token = self.token_counter.count_tokens(
-            COMBINED_AUTHOR_STYLE)
+        partial_prompt_token = self.token_counter.count_tokens(PARTIAL_AUTHOR_STYLE)
+        combined_prompt_token = self.token_counter.count_tokens(COMBINED_AUTHOR_STYLE)
         self.partial_max_token = model_max_token - partial_prompt_token
         self.combined_max_token = model_max_token - combined_prompt_token
 
@@ -131,7 +129,6 @@ class AuthorStyleConfiguration:
             extractor = self.paragraph_extractors[i]
             paragraphs = extractor.run()
             all_paragraphs[source] = paragraphs
-            extractor.clear()
 
         # dictionary with source file names as keys and lists of token counts as values
         token_counts: dict[str, list[int]] = {}
@@ -182,13 +179,13 @@ class AuthorStyleConfiguration:
         return passages
 
     def _call_llm(
-        self, prompt: str, mode: Literal["partial", "combined", "structured"]
+        self, text: str, mode: Literal["partial", "combined", "structured"]
     ) -> BaseGenerationResponse:
         """
-        Calls the LLM with the given prompt and mode.
+        Calls the LLM with the given text and mode.
 
         Args:
-            prompt (str): The prompt to send to the LLM.
+            text (str): The text to send to the LLM.
             mode (Literal["partial", "combined", "structured"]): The mode of the request.
         Returns:
             GenerationResponse: The response from the LLM.
@@ -199,7 +196,7 @@ class AuthorStyleConfiguration:
                 "mode": mode,
                 "provider": self.provider,
                 "model": self.model,
-                "text": prompt,
+                "text": text,
                 "generation_config": self.generation_config,
                 "caller": self.caller,
             }
@@ -337,8 +334,7 @@ class AuthorStyleConfiguration:
             Style: The combined style.
         """
         if recursion_depth > 5:
-            raise RuntimeError(
-                "Recursion depth exceeded while combining styles")
+            raise RuntimeError("Recursion depth exceeded while combining styles")
 
         total_token = sum(s.token for s in styles)
 
@@ -391,8 +387,7 @@ class AuthorStyleConfiguration:
         start_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         passages = self.construct_passages()
-        partial_styles = [self._handle_partial_style(
-            passage) for passage in passages]
+        partial_styles = [self._handle_partial_style(passage) for passage in passages]
         combined_style = self._handle_combined_style(partial_styles)
 
         response = self._call_llm(combined_style.text, mode="structured")
@@ -401,7 +396,13 @@ class AuthorStyleConfiguration:
         print("[DEBUG] LLM structured response.text:", repr(response.text))
 
         # response is expected to be a JSON string
-        data = json.loads(response.text)
+        try:
+            data = json.loads(response.text)
+        except json.JSONDecodeError:
+            current_app.logger.error(
+                "Invalid LLM output: Not a valid JSON. Output was: %s", response.text
+            )
+            raise
 
         total_time_ms = int((time.monotonic() - start_time) * 1000)
         self._store_structured_style(data, start_at, total_time_ms)
