@@ -259,7 +259,7 @@ class AuthorStyleConfiguration:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO structured_styles (id, workspace_id, project_id, user_id, author_name, style, sources, started_at, total_time_ms)
+                        INSERT INTO structured_author_styles (id, workspace_id, project_id, user_id, author_name, style, sources, started_at, total_time_ms)
                         VALUES (%s, %s, %s, %s)
                         """,
                         (
