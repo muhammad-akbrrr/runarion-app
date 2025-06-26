@@ -1,37 +1,39 @@
+from typing import Optional
+
 from pydantic import BaseModel
 
 
 class DialogueTechnique(BaseModel):
     conversation_style: str = ""
-    character_voices: str = ""
     dialogue_balance: str = ""
+    character_voices: Optional[str] = None
 
 
 class ActionTechnique(BaseModel):
-    fight_scenes: str = ""
     action_sequences: str = ""
     tension: str = ""
+    fight_scenes: Optional[str] = None
 
 
 class WorldbuildingTechnique(BaseModel):
     world_reveals: str = ""
-    exposition: str = ""
-    history_magic: str = ""
+    exposition: Optional[str] = None
+    history_magic: Optional[str] = None
 
 
 class DescriptionTechnique(BaseModel):
     character_descriptions: str = ""
     scene_painting: str = ""
-    atmosphere: str = ""
+    atmosphere: Optional[str] = None
 
 
 class LiteraryTechnique(BaseModel):
-    devices: str = ""
-    metaphors: str = ""
-    word_patterns: str = ""
-    scene_structure: str = ""
-    transitions: str = ""
-    pacing: str = ""
+    devices: Optional[str] = None
+    metaphors: Optional[str] = None
+    word_patterns: Optional[str] = None
+    scene_structure: Optional[str] = None
+    transitions: Optional[str] = None
+    pacing: Optional[str] = None
 
 
 class AuthorStyleTechniques(BaseModel):
