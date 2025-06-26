@@ -446,7 +446,12 @@ class AuthorStyleConfiguration:
         # Debug: print the LLM response text before JSON decode
         print("[DEBUG] LLM structured response.text:", repr(response.text))
 
-        author_style = self._parse_structured_response(response.text)
+        try:
+            author_style = self._parse_structured_response(response.text)
+        except Exception:
+            # if parsing fails, try to call the LLM and parse the response once again
+            response = self._call_llm(combined_style.text, mode="structured")
+            author_style = self._parse_structured_response(response.text)
 
         total_time_ms = int((time.monotonic() - start_time) * 1000)
         self._store_structured_style(author_style.model_dump(), start_at, total_time_ms)
