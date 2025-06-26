@@ -83,9 +83,9 @@ class MainEditorController extends Controller
                 'author_style_type' => 'required|in:existing,new',
                 'writing_perspective' => 'required|string',
                 'selectedAuthorStyle' => 'required_if:author_style_type,existing',
-                'newAuthorFiles' => 'required_if:author_style_type,new|array',
-                'newAuthorFiles.*' => 'file|mimes:pdf|max:102400',
-                'newAuthorName' => 'required_if:author_style_type,new|string',
+                'newAuthorFiles' => 'required_if:author_style_type,new|array|sometimes',
+                'newAuthorFiles.*' => 'file|mimes:pdf|max:102400|sometimes',
+                'newAuthorName' => 'required_if:author_style_type,new|sometimes|string',
             ]);
 
             // Store draft file

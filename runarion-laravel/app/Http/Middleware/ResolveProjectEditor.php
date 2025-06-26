@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
+use App\Models\StructuredAuthorStyle;
 
 class ResolveProjectEditor
 {
@@ -127,6 +128,9 @@ class ResolveProjectEditor
             session(['force_project_editor_loader' => true]);
         }
 
+        $authorStyles = StructuredAuthorStyle::where('workspace_id', $workspaceId)
+            ->get(['id', 'author_name']);
+
         Inertia::share([
             'auth' => [
                 'user' => $user,
@@ -136,6 +140,7 @@ class ResolveProjectEditor
             'project_switching' => session()->pull('project_switching', false),
             'force_project_editor_loader' => session()->pull('force_project_editor_loader', false),
             'project_completed_onboarding' => $project->completed_onboarding ?? false,
+            'authorStyles' => $authorStyles,
         ]);
 
         $request->attributes->set('user_role', $userRole);

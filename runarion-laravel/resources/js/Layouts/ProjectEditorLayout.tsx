@@ -46,6 +46,7 @@ import { Button } from "@/Components/ui/button";
 import LoadingOverlay from "@/Components/LoadingOverlay";
 import { Project } from "@/types";
 import OnboardingDialog from "./Partials/OnboardingDialog";
+import type { AuthorStyle } from "./Partials/OnboardingDialog"; // adjust path if needed
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -274,7 +275,9 @@ export default function ProjectEditorLayout({
         project_switching,
         force_project_editor_loader,
         project_completed_onboarding,
+        authorStyles: rawAuthorStyles,
     } = usePage().props;
+    const authorStyles = rawAuthorStyles as AuthorStyle[];
     const [showLoader, setShowLoader] = React.useState(
         Boolean(workspace_switching) ||
             Boolean(project_switching) ||
@@ -386,7 +389,7 @@ export default function ProjectEditorLayout({
                 onClose={() => setOnboardingOpen(false)}
                 workspaceId={workspaceId}
                 projectId={projectId}
-                authorStyles={[]}
+                authorStyles={authorStyles}
             />
 
             <LoadingOverlay

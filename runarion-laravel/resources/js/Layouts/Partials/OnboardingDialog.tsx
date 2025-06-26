@@ -19,7 +19,7 @@ import { X, File, FileText, CloudUpload, Plus } from "lucide-react";
 import { Switch } from "@/Components/ui/switch";
 
 // Types for author styles and writing perspectives
-interface AuthorStyle {
+export interface AuthorStyle {
     id: string;
     author_name: string;
 }
@@ -147,12 +147,19 @@ export default function OnboardingDialog({
             method: "draft",
             draft_file: form.draftFile,
             author_style_type: form.authorStyleType,
-            selectedAuthorStyle: form.selectedAuthorStyle,
-            newAuthorFiles: form.newAuthorFiles,
-            newAuthorName: form.newAuthorName,
             writing_perspective: form.writingPerspective,
             summarize: form.summarize,
         };
+
+        if (form.authorStyleType === "existing") {
+            data.selectedAuthorStyle = form.selectedAuthorStyle;
+            // Do NOT include newAuthorName or newAuthorFiles
+        }
+
+        if (form.authorStyleType === "new") {
+            data.newAuthorFiles = form.newAuthorFiles;
+            data.newAuthorName = form.newAuthorName;
+        }
 
         // If selectedAuthorStyle is a local style, treat as 'new'
         if (
@@ -164,9 +171,9 @@ export default function OnboardingDialog({
             );
             if (local) {
                 data.author_style_type = "new";
-                data.selectedAuthorStyle = undefined;
                 data.newAuthorFiles = local.files;
                 data.newAuthorName = local.author_name;
+                delete data.selectedAuthorStyle;
             }
         }
 

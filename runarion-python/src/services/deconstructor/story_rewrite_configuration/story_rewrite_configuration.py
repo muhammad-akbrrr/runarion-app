@@ -11,7 +11,7 @@ from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
 from services.generation_engine import GenerationEngine
 from ulid import ULID
-from services.usecase_handler.content_rewrite_handler import ContentRewriteHandler
+from services.usecase_handler.story_rewrite_handler import StoryRewriteHandler
 from utils.get_model_max_token import get_model_max_token
 
 from ..utils.paragraph_extractor import ParagraphExtractor
@@ -45,6 +45,7 @@ class ContentRewritePipeline:
         rewrite_config: Optional[ContentRewriteConfig] = None,
         chunk_overlap: bool = False,
         store_intermediate: bool = False,
+        request_id: Optional[str] = None,
     ):
         """
         Args:
@@ -59,6 +60,7 @@ class ContentRewritePipeline:
             rewrite_config (Optional[ContentRewriteConfig]): Additional rewriting configuration.
             chunk_overlap (bool): Whether to allow overlapping content in chunks.
             store_intermediate (bool): Whether to store intermediate results.
+            request_id (Optional[str]): The request ID.
         """
         self.paragraph_extractors = paragraph_extractors
         self.author_style = author_style
@@ -74,6 +76,7 @@ class ContentRewritePipeline:
         )
         self.chunk_overlap = chunk_overlap
         self.store_intermediate = store_intermediate
+        self.request_id = request_id
 
         # Calculate max tokens for content chunks
         RESERVED_TOKENS_FOR_SAFETY = 200
@@ -167,20 +170,36 @@ class ContentRewritePipeline:
 
         return chunks
 
-    def _call_llm(self, original_text: str) -> BaseGenerationResponse:
+    def _call_llm(self, original_text: str, chapter: dict = None) -> BaseGenerationResponse:
         """
         Calls the LLM to rewrite the given text.
 
         Args:
             original_text (str): The original text to rewrite.
+            chapter (dict): The chapter dict, for logging and safe key access.
         Returns:
             BaseGenerationResponse: The response from the LLM.
         """
-        request = ContentRewriteHandler().build_request({
+        import logging
+        logger = logging.getLogger("story_rewrite_pipeline")
+        chapter_name = chapter.get("chapter_name", "") if chapter else ""
+        chapter_summary = chapter.get("summary", "") if chapter else ""
+        chapter_plot_points = chapter.get("plot_points", []) if chapter else []
+        # Log if any key is missing
+        if chapter:
+            for key in ["chapter_name", "summary", "plot_points"]:
+                if key not in chapter:
+                    logger.warning(
+                        f"[RewriteConfig] Chapter dict missing key '{key}': {chapter}")
+        request = StoryRewriteHandler().build_request({
             "mode": "rewrite",
             "provider": self.provider,
             "model": self.model,
             "original_text": original_text,
+            "author_style_json": self.author_style.dict(),
+            "chapter_name": chapter_name,
+            "chapter_summary": chapter_summary,
+            "chapter_plot_points": chapter_plot_points,
             "rewrite_config": self.rewrite_config,
             "generation_config": self.generation_config,
             "caller": self.caller,
@@ -275,19 +294,19 @@ class ContentRewritePipeline:
         except Exception as e:
             raise RuntimeError(f"Failed to store rewrite session: {str(e)}")
 
-    def _rewrite_chunk(self, chunk: ContentChunk) -> RewrittenContent:
+    def _rewrite_chunk(self, chunk: ContentChunk, chapter: dict = None) -> RewrittenContent:
         """
         Rewrites a single content chunk.
 
         Args:
             chunk (ContentChunk): The chunk to rewrite.
-
+            chapter (dict): The chapter dict for context.
         Returns:
             RewrittenContent: The rewritten content.
         """
         start_time = time.monotonic()
 
-        response = self._call_llm(chunk.text)
+        response = self._call_llm(chunk.text, chapter=chapter)
 
         processing_time_ms = int((time.monotonic() - start_time) * 1000)
 
@@ -304,10 +323,12 @@ class ContentRewritePipeline:
         self._store_intermediate_deconstructor(rewrite, chunk)
         return rewrite
 
-    def run(self) -> list[RewrittenContent]:
+    def run(self, chapters: list = None) -> list[RewrittenContent]:
         """
         Executes the content rewriting pipeline.
 
+        Args:
+            chapters (list): List of chapter dicts for context.
         Returns:
             list[RewrittenContent]: List of rewritten content chunks.
         """
@@ -318,7 +339,13 @@ class ContentRewritePipeline:
         chunks = self.construct_content_chunks()
 
         # Rewrite each chunk
-        rewrites = [self._rewrite_chunk(chunk) for chunk in chunks]
+        rewrites = []
+        if chapters and len(chapters) == len(chunks):
+            for chunk, chapter in zip(chunks, chapters):
+                rewrites.append(self._rewrite_chunk(chunk, chapter=chapter))
+        else:
+            for chunk in chunks:
+                rewrites.append(self._rewrite_chunk(chunk))
 
         # Store the complete session
         total_time_ms = int((time.monotonic() - start_time) * 1000)

@@ -63,7 +63,7 @@ def story_rewrite_route():
         form_data = request.form.to_dict()
         logging.info(f"Received form data: {form_data}")
 
-        # Get request_id from form_data (must be provided by Laravel)
+        # Get deconstructor_log id from form_data (must be provided by Laravel)
         request_id = form_data.get('id')
         if not request_id:
             logging.error("request_id is required")
@@ -207,17 +207,17 @@ def story_rewrite_route():
         # Return the response
         return jsonify({
             "success": True,
-            "session_id": response.session_id,
-            "author_style_id": response.author_style_id,
-            "original_story": response.original_story,
-            "rewritten_story": response.rewritten_story,
+            "session_id": response["session_id"],
+            "author_style_id": response["author_style_id"],
+            "original_story": response["original_story"],
+            "rewritten_story": response["rewritten_story"],
             "metadata": {
-                "total_chunks": response.total_chunks,
-                "total_original_chars": response.total_original_chars,
-                "total_rewritten_chars": response.total_rewritten_chars,
-                "total_tokens": response.total_tokens,
-                "processing_time_ms": response.processing_time_ms,
-                "average_style_confidence": response.average_style_confidence,
+                "total_chunks": response["total_chunks"],
+                "total_original_chars": response["total_original_chars"],
+                "total_rewritten_chars": response["total_rewritten_chars"],
+                "total_tokens": response["total_tokens"],
+                "processing_time_ms": response["processing_time_ms"],
+                "average_style_confidence": response["average_style_confidence"],
             }
         }), 200
 
