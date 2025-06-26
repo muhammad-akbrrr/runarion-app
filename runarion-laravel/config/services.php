@@ -48,4 +48,15 @@ return [
         ],
     ],
 
+    'dropbox' => [
+        'client_id' => env('DROPBOX_CLIENT_ID'),
+        'client_secret' => env('DROPBOX_CLIENT_SECRET'),
+        'redirect_uri' => env('DROPBOX_REDIRECT_URI'),
+        'scopes' => [
+            'files.metadata.read',
+            'files.content.read',
+            'files.content.write',
+        ],
+    ],
+
 ];

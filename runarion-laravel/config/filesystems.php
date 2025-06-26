@@ -60,8 +60,6 @@ return [
             'report' => false,
         ],
         
-        // This is a template for Google Drive disks
-        // Actual disks will be created dynamically per workspace
         'google_drive' => [
             'driver' => 'google_drive',
             'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
@@ -71,6 +69,13 @@ return [
             'team_drive_id' => null, // Optional: Team Drive ID
             'throw' => false,
             'report' => false,
+        ],
+        
+        'dropbox' => [
+            'driver' => 'dropbox',
+            'client_id' => env('DROPBOX_CLIENT_ID'),
+            'client_secret' => env('DROPBOX_CLIENT_SECRET'),
+            'authorization_token' => null, // dynamically injected per workspace
         ],
 
     ],

@@ -11,7 +11,17 @@ import AuthenticatedLayout, {
 } from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
 import { Head, router } from "@inertiajs/react";
+import { useState } from "react";
 import ConnectionCard from "./Partials/ConnectionCard";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/Components/ui/dialog";
+import { Button } from "@/Components/ui/button";
 
 interface CloudStorageDataItem {
     enabled: boolean;
@@ -28,6 +38,9 @@ export default function CloudStorage({
     isUserAdmin: boolean;
     isUserOwner: boolean;
 }>) {
+    const [selectedKey, setSelectedKey] = useState<string | null>(null);
+    const [dialogOpen, setDialogOpen] = useState(false);
+
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Workspace Settings", path: "workspace.edit" },
         { label: "Cloud Storage", path: "workspace.edit.cloud-storage" },
@@ -60,32 +73,53 @@ export default function CloudStorage({
         },
     ];
 
-    const handleConnect = (key: string) => {
-        if (key === "google_drive") {
-            window.location.href = route('cloudstorage.google.redirect', { workspace_id: workspaceId });
+    const handleAction = (key: string) => {
+        const isConnected = data[key]?.enabled;
+        const routeParams = { workspace_id: workspaceId };
+
+        const routeMap: Record<string, { redirect: string; disconnect: string }> = {
+            google_drive: {
+                redirect: route("cloudstorage.google.redirect", routeParams),
+                disconnect: route("cloudstorage.google.disconnect", routeParams),
+            },
+            dropbox: {
+                redirect: route("cloudstorage.dropbox.redirect", routeParams),
+                disconnect: route("cloudstorage.dropbox.disconnect", routeParams),
+            },
+        };
+
+        const routes = routeMap[key];
+        if (!routes) return;
+
+        if (isConnected) {
+            router.delete(routes.disconnect);
+        } else {
+            window.location.href = routes.redirect;
         }
     };
 
-    const handleDisconnect = (key: string) => {
-        if (key === "google_drive") {
-            router.delete(route('cloudstorage.google.disconnect', { workspace_id: workspaceId }));
-        }
+
+    const openConfirmation = (key: string) => {
+        setSelectedKey(key);
+        setDialogOpen(true);
     };
+
+    const selected = selectedKey ? connections.find(c => c.key === selectedKey) : null;
+    const isConnected = selectedKey ? data[selectedKey]?.enabled : false;
 
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Cloud Storage" />
 
-            <Card className="w-full h-full ">
+            <Card className="w-full">
                 <CardHeader>
                     <CardTitle className="text-2xl">Cloud Storage</CardTitle>
                     <CardDescription className="text-sm">
-                        Enable or disable cloud storage integrations with your
-                        workspace
+                        Enable or disable cloud storage integrations with your workspace.
                     </CardDescription>
                 </CardHeader>
-                <Separator className="mx-6" style={{ width: "auto" }} />
-                <CardContent className="flex flex-col gap-4">
+                <Separator className="w-full" />
+                <CardContent className="flex flex-col gap-4 overflow-x-hidden">
                     {connections.map((connection) => (
                         <ConnectionCard
                             key={connection.key}
@@ -93,13 +127,42 @@ export default function CloudStorage({
                             name={connection.name}
                             description={connection.description}
                             connected={data[connection.key]?.enabled ?? false}
-                            onConnect={() => handleConnect(connection.key)}
-                            onDisconnect={() => handleDisconnect(connection.key)}
+                            onConnect={() => openConfirmation(connection.key)}
                             disabled={!isUserAdmin && !isUserOwner}
                         />
                     ))}
                 </CardContent>
             </Card>
+
+            {/* Confirmation Dialog */}
+            <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>
+                            {isConnected ? "Disconnect Storage" : "Connect Storage"}
+                        </DialogTitle>
+                        <DialogDescription>
+                            {isConnected
+                                ? `Are you sure you want to disconnect ${selected?.name}?`
+                                : `You're about to connect ${selected?.name} to your workspace.`}
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                            Cancel
+                        </Button>
+                        <Button
+                            variant={isConnected ? "destructive" : "default"}
+                            onClick={() => {
+                                if (selectedKey) handleAction(selectedKey);
+                                setDialogOpen(false);
+                            }}
+                        >
+                            {isConnected ? "Disconnect" : "Connect"}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </AuthenticatedLayout>
     );
 }

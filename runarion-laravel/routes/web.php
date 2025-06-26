@@ -117,5 +117,24 @@ Route::middleware(['auth'])->group(function () {
         });
 });
 
+// Dropbox Group route
+Route::middleware(['auth'])->group(function () {
+    // Callback after Dropbox OAuth
+    Route::get('/oauth/callback/dropbox', [CloudStorageController::class, 'dropboxCallback'])
+        ->name('cloudstorage.dropbox.callback');
+
+    // Routes that require both auth and workspace context
+    Route::prefix('/{workspace_id}/settings/cloud-storage')
+        ->middleware('workspace')
+        ->name('cloudstorage.dropbox.')
+        ->group(function () {
+            Route::get('/dropbox', [CloudStorageController::class, 'dropboxRedirect'])
+                ->name('redirect');
+
+            Route::delete('/dropbox', [CloudStorageController::class, 'dropboxDisconnect'])
+                ->name('disconnect');
+        });
+});
+
 require __DIR__ . '/auth.php';
 require __DIR__ . '/editor.php';
