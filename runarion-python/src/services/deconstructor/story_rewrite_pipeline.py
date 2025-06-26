@@ -63,6 +63,29 @@ class StoryRewritePipeline:
             self.generation_config.max_output_tokens = 2000
         self.request_id = request_id
 
+    def _set_processing_status(self):
+        """
+        Set the deconstructor_logs status to 'processing' when the pipeline starts.
+        """
+        conn = self.connection_pool.getconn()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE deconstructor_logs 
+                    SET status = 'processing',
+                        updated_at = NOW()
+                    WHERE id = %s AND status = 'pending'
+                    """,
+                    (self.request_id,)
+                )
+            conn.commit()
+        except Exception as e:
+            logger = logging.getLogger("story_rewrite_pipeline")
+            logger.error(f"[Pipeline] Failed to set processing status: {e}")
+        finally:
+            self.connection_pool.putconn(conn)
+
     def process_request(self, request: StoryRewriteRequest) -> StoryRewriteResponse:
         """
         Process a complete story rewrite request using the revamped three-stage pipeline.
@@ -72,6 +95,9 @@ class StoryRewritePipeline:
         session_id = str(ULID())
         logger.info(
             f"[Pipeline] Starting story rewrite pipeline (Session: {session_id})")
+
+        # Set status to processing
+        self._set_processing_status()
 
         try:
             # --- Stage 1: Chunk the draft ---
@@ -172,37 +198,39 @@ class StoryRewritePipeline:
 
             # Save each chunk in intermediate_deconstructor (original, not rewritten yet)
             for idx, passage in enumerate(passages):
+                conn = self.connection_pool.getconn()
                 try:
-                    with self.connection_pool.getconn() as conn:
-                        with conn.cursor() as cursor:
-                            cursor.execute(
-                                """
-                                INSERT INTO intermediate_deconstructor (
-                                    request_id, project_id, session_id, original_story, rewritten_story, 
-                                    applied_style, applied_perspective, duration_ms, token_count, style_intensity, 
-                                    original_content, chunk_num, created_at, updated_at
-                                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                                """,
-                                (
-                                    self.request_id,
-                                    self.caller.project_id,
-                                    session_id,
-                                    passage.text,
-                                    None,
-                                    None,
-                                    json.dumps(
-                                        request.writing_perspective.dict()),
-                                    None,
-                                    token_counter.count_tokens(passage.text),
-                                    None,
-                                    passage.text,
-                                    idx + 1,
-                                )
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            """
+                            INSERT INTO intermediate_deconstructor (
+                                request_id, project_id, session_id, original_story, rewritten_story, 
+                                applied_style, applied_perspective, duration_ms, token_count, style_intensity, 
+                                original_content, chunk_num, created_at, updated_at
+                            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                            """,
+                            (
+                                self.request_id,
+                                self.caller.project_id,
+                                session_id,
+                                passage.text,
+                                None,
+                                None,
+                                json.dumps(
+                                    request.writing_perspective.dict()),
+                                None,
+                                token_counter.count_tokens(passage.text),
+                                None,
+                                passage.text,
+                                idx + 1,
                             )
-                            conn.commit()
+                        )
+                    conn.commit()
                 except Exception as e:
                     logger.error(
                         f"[Pipeline] Failed to save intermediate chunk {idx+1}: {e}")
+                finally:
+                    self.connection_pool.putconn(conn)
 
             # --- Stage 2: Analyze draft structure (chapter breakdown) ---
             logger.info(
@@ -311,18 +339,18 @@ class StoryRewritePipeline:
                 "[Pipeline] Stage 3: Rewriting by chapter using structured author style...")
             if hasattr(request.author_style_request, 'author_style_id'):
                 # Existing style: fetch from DB
+                conn = self.connection_pool.getconn()
                 try:
-                    with self.connection_pool.getconn() as conn:
-                        with conn.cursor() as cursor:
-                            cursor.execute(
-                                "SELECT style FROM structured_author_styles WHERE id = %s",
-                                (request.author_style_request.author_style_id,)
-                            )
-                            result = cursor.fetchone()
-                            if not result:
-                                raise ValueError(
-                                    f"Author style with ID {request.author_style_request.author_style_id} not found")
-                            author_style_json = result[0]
+                    with conn.cursor() as cursor:
+                        cursor.execute(
+                            "SELECT style FROM structured_author_styles WHERE id = %s",
+                            (request.author_style_request.author_style_id,)
+                        )
+                        result = cursor.fetchone()
+                        if not result:
+                            raise ValueError(
+                                f"Author style with ID {request.author_style_request.author_style_id} not found")
+                        author_style_json = result[0]
                 except Exception as e:
                     logger.error(
                         f"[Pipeline] Failed to fetch existing author style: {e}")
@@ -418,6 +446,69 @@ class StoryRewritePipeline:
 
             total_time_ms = int((time.monotonic() - start_time) * 1000)
             logger.info(f"[Pipeline] Completed in {total_time_ms} ms.")
+
+            # Prepare metadata for storage
+            metadata = {
+                "original_story": "".join([p.text for p in passages]),
+                "rewritten_story": rewritten_story,
+                "author_style": author_style_json,
+                "total_chunks": len(passages),
+                "total_original_chars": sum(len(p.text) for p in passages),
+                "total_rewritten_chars": len(rewritten_story),
+                "total_tokens": sum(token_counter.count_tokens(p.text) for p in passages),
+                "chapters": rewritten_chapters,
+            }
+
+            # Update deconstructor_logs with completion status
+            logger.info(
+                f"[Pipeline] Updating deconstructor_logs with completion status")
+            self._update_deconstructor_log(
+                session_id, total_time_ms, True, None, metadata)
+
+            # Insert deconstructor_response record
+            author_style_id = getattr(
+                request.author_style_request, 'author_style_id', None)
+            logger.info(
+                f"[Pipeline] Inserting deconstructor_response record with request_id: {self.request_id}")
+            self._insert_deconstructor_response(
+                request_id=self.request_id,
+                session_id=session_id,
+                author_style_id=author_style_id,
+                project_id=self.caller.project_id,
+                original_story="".join([p.text for p in passages]),
+                rewritten_story=rewritten_story,
+                metadata=metadata
+            )
+
+            # Update project_content with the rewritten chapters
+            project_metadata = {
+                "total_words": len(rewritten_story.split()),
+                "total_chapters": len(rewritten_chapters),
+                "average_words_per_chapter": len(rewritten_story.split()) / max(len(rewritten_chapters), 1),
+                "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "last_modified": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                "deconstructor_session_id": session_id,
+                "author_style_id": author_style_id,
+            }
+
+            # Convert user_id to integer for database storage
+            try:
+                last_edited_by = int(
+                    self.caller.user_id) if self.caller.user_id and self.caller.user_id != 'default_user' else None
+            except (ValueError, TypeError):
+                logger.warning(
+                    f"[Pipeline] Invalid user_id format: {self.caller.user_id}, setting to None")
+                last_edited_by = None
+
+            logger.info(
+                f"[Pipeline] Updating project_content with {len(rewritten_chapters)} chapters")
+            self._insert_project_content(
+                project_id=self.caller.project_id,
+                last_edited_by=last_edited_by,
+                chapters=rewritten_chapters,
+                metadata=project_metadata
+            )
+
             return {
                 "original_story": "".join([p.text for p in passages]),
                 "rewritten_story": rewritten_story,
@@ -429,11 +520,35 @@ class StoryRewritePipeline:
                 "processing_time_ms": total_time_ms,
                 "average_style_confidence": 0.0,  # TODO: calculate if needed
                 "session_id": session_id,
-                "author_style_id": getattr(request.author_style_request, 'author_style_id', None),
+                "author_style_id": author_style_id,
                 "chapters": rewritten_chapters,
             }
         except Exception as e:
             logger.error(f"[Pipeline] Unhandled error: {e}")
+            # Calculate time even if we don't have all variables
+            elapsed_time = int((time.monotonic() - start_time) * 1000)
+
+            # Safely get metadata with fallbacks
+            metadata = {}
+            try:
+                if 'passages' in locals():
+                    metadata["total_chunks"] = len(passages)
+                    metadata["total_original_chars"] = sum(
+                        len(p.text) for p in passages)
+                    metadata["total_tokens"] = sum(
+                        token_counter.count_tokens(p.text) for p in passages)
+                if 'rewritten_story' in locals():
+                    metadata["total_rewritten_chars"] = len(rewritten_story)
+                if 'author_style_json' in locals():
+                    metadata["author_style"] = author_style_json
+                if 'rewritten_chapters' in locals():
+                    metadata["chapters"] = rewritten_chapters
+            except Exception as meta_error:
+                logger.error(
+                    f"[Pipeline] Failed to build metadata: {meta_error}")
+
+            self._update_deconstructor_log(
+                session_id, elapsed_time, False, str(e), metadata)
             raise
 
     def _handle_author_style(
@@ -520,29 +635,31 @@ class StoryRewritePipeline:
         """
         print(f"Retrieving existing author style: {author_style_id}")
 
+        conn = self.connection_pool.getconn()
         try:
-            with self.connection_pool.getconn() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        SELECT style FROM structured_author_styles 
-                        WHERE id = %s
-                        """,
-                        (author_style_id,)
-                    )
-                    result = cursor.fetchone()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT style FROM structured_author_styles 
+                    WHERE id = %s
+                    """,
+                    (author_style_id,)
+                )
+                result = cursor.fetchone()
 
-                    if not result:
-                        raise ValueError(
-                            f"Author style with ID {author_style_id} not found")
+                if not result:
+                    raise ValueError(
+                        f"Author style with ID {author_style_id} not found")
 
-                    style_data = result[0]
-                    author_style = AuthorStyle(**style_data)
+                style_data = result[0]
+                author_style = AuthorStyle(**style_data)
 
-                    return author_style, author_style_id
+                return author_style, author_style_id
 
         except Exception as e:
             raise RuntimeError(f"Failed to retrieve author style: {str(e)}")
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _rewrite_story(
         self,
@@ -615,21 +732,23 @@ class StoryRewritePipeline:
             author_style_id (str): ID of the author style.
             author_name (str): Name of the author.
         """
+        conn = self.connection_pool.getconn()
         try:
-            with self.connection_pool.getconn() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        UPDATE structured_author_styles 
-                        SET author_name = %s 
-                        WHERE id = %s
-                        """,
-                        (author_name, author_style_id)
-                    )
-                    conn.commit()
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE structured_author_styles 
+                    SET author_name = %s 
+                    WHERE id = %s
+                    """,
+                    (author_name, author_style_id)
+                )
+            conn.commit()
         except Exception as e:
             print(f"Warning: Failed to store author metadata: {str(e)}")
             # Don't fail the entire pipeline for this
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _format_chapters(self, rewritten_content):
         """
@@ -654,64 +773,119 @@ class StoryRewritePipeline:
         return chapters
 
     def _insert_deconstructor_response(self, request_id, session_id, author_style_id, project_id, original_story, rewritten_story, metadata):
+        logger = logging.getLogger("story_rewrite_pipeline")
+        logger.info(
+            f"[Pipeline] Attempting to insert deconstructor_response with request_id: {request_id}")
+        conn = self.connection_pool.getconn()
         try:
-            with self.connection_pool.getconn() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        INSERT INTO deconstructor_responses (
-                            request_id, session_id, author_style_id, project_id, original_story, rewritten_story, metadata, created_at, updated_at
-                        ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
-                        ON CONFLICT (request_id) DO NOTHING
-                        """,
-                        (
-                            request_id,
-                            session_id,
-                            author_style_id,
-                            project_id,
-                            original_story,
-                            rewritten_story,
-                            json.dumps(metadata),
-                        )
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO deconstructor_responses (
+                        request_id, session_id, author_style_id, project_id, original_story, rewritten_story, metadata, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    ON CONFLICT (request_id) DO NOTHING
+                    """,
+                    (
+                        request_id,
+                        session_id,
+                        author_style_id,
+                        project_id,
+                        original_story,
+                        rewritten_story,
+                        json.dumps(metadata),
                     )
-                    conn.commit()
+                )
+            conn.commit()
+            logger.info(
+                f"[Pipeline] Successfully inserted deconstructor_response")
         except Exception as e:
-            print(
-                f"Warning: Failed to insert deconstructor_response: {str(e)}")
+            logger.error(
+                f"[Pipeline] Failed to insert deconstructor_response: {str(e)}")
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _insert_project_content(self, project_id, last_edited_by, chapters, metadata):
+        logger = logging.getLogger("story_rewrite_pipeline")
+        logger.info(
+            f"[Pipeline] Attempting to insert/update project_content for project_id: {project_id}")
+        conn = self.connection_pool.getconn()
         try:
-            with self.connection_pool.getconn() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute(
-                        """
-                        INSERT INTO project_content (
-                            id, project_id, last_edited_by, content, metadata, last_edited_at, created_at, updated_at
-                        ) VALUES (%s, %s, %s, %s, %s, NOW(), NOW(), NOW())
-                        ON CONFLICT (project_id) DO UPDATE SET
-                            last_edited_by = EXCLUDED.last_edited_by,
-                            content = EXCLUDED.content,
-                            metadata = EXCLUDED.metadata,
-                            last_edited_at = NOW(),
-                            updated_at = NOW()
-                        """,
-                        (
-                            str(ULID()),
-                            project_id,
-                            last_edited_by,
-                            json.dumps(chapters),
-                            json.dumps(metadata),
-                        )
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    INSERT INTO project_content (
+                        id, project_id, last_edited_by, content, metadata, last_edited_at, created_at, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, NOW(), NOW(), NOW())
+                    ON CONFLICT (project_id) DO UPDATE SET
+                        last_edited_by = EXCLUDED.last_edited_by,
+                        content = EXCLUDED.content,
+                        metadata = EXCLUDED.metadata,
+                        last_edited_at = NOW(),
+                        updated_at = NOW()
+                    """,
+                    (
+                        str(ULID()),
+                        project_id,
+                        last_edited_by,
+                        json.dumps(chapters),
+                        json.dumps(metadata),
                     )
-                    # Update onboarding status in projects table
-                    cursor.execute(
-                        """
-                        UPDATE projects
-                        SET completed_onboarding = TRUE
-                        WHERE id = %s AND completed_onboarding = FALSE
-                        """,
-                        (project_id,)
-                    )
-                    conn.commit()
+                )
+                # Update onboarding status in projects table
+                cursor.execute(
+                    """
+                    UPDATE projects
+                    SET completed_onboarding = TRUE
+                    WHERE id = %s AND completed_onboarding = FALSE
+                    """,
+                    (project_id,)
+                )
+            conn.commit()
+            logger.info(
+                f"[Pipeline] Successfully inserted/updated project_content")
         except Exception as e:
-            print(f"Warning: Failed to insert project_content: {str(e)}")
+            logger.error(
+                f"[Pipeline] Failed to insert project_content: {str(e)}")
+        finally:
+            self.connection_pool.putconn(conn)
+
+    def _update_deconstructor_log(self, session_id: str, total_time_ms: int, success: bool = True, error_message: str = None, metadata: dict = None):
+        """
+        Update the deconstructor_logs table with completion status and metadata.
+
+        Args:
+            session_id (str): Session ID for tracking.
+            total_time_ms (int): Total processing time in milliseconds.
+            success (bool): Whether the processing was successful.
+            error_message (str): Error message if processing failed.
+            metadata (dict): Additional metadata to store.
+        """
+        conn = self.connection_pool.getconn()
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """
+                    UPDATE deconstructor_logs 
+                    SET completed_at = NOW(),
+                        duration_ms = %s,
+                        status = %s,
+                        error_message = %s,
+                        response_metadata = %s,
+                        updated_at = NOW()
+                    WHERE id = %s
+                    """,
+                    (
+                        total_time_ms,
+                        'completed' if success else 'failed',
+                        error_message,
+                        json.dumps(metadata) if metadata else None,
+                        self.request_id,
+                    )
+                )
+            conn.commit()
+        except Exception as e:
+            logger = logging.getLogger("story_rewrite_pipeline")
+            logger.error(f"[Pipeline] Failed to update deconstructor_log: {e}")
+        finally:
+            self.connection_pool.putconn(conn)

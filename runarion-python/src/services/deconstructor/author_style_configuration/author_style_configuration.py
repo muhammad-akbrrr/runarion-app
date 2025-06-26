@@ -102,10 +102,13 @@ class AuthorStyleConfiguration:
         RESERVED_TOKENS_FOR_SAFETY = 100
         self.token_counter = TokenCounter(self.provider, self.model)
         model_max_token = (
-            get_model_max_token(self.provider, self.model) - RESERVED_TOKENS_FOR_SAFETY
+            get_model_max_token(self.provider, self.model) -
+            RESERVED_TOKENS_FOR_SAFETY
         )
-        partial_prompt_token = self.token_counter.count_tokens(PARTIAL_AUTHOR_STYLE)
-        combined_prompt_token = self.token_counter.count_tokens(COMBINED_AUTHOR_STYLE)
+        partial_prompt_token = self.token_counter.count_tokens(
+            PARTIAL_AUTHOR_STYLE)
+        combined_prompt_token = self.token_counter.count_tokens(
+            COMBINED_AUTHOR_STYLE)
         self.partial_max_token = model_max_token - partial_prompt_token
         self.combined_max_token = model_max_token - combined_prompt_token
 
@@ -245,6 +248,8 @@ class AuthorStyleConfiguration:
             error_text = f"Failed to store intermediate style: {str(e)}"
             current_app.logger.error(error_text)
             raise RuntimeError(error_text)
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _store_structured_style(
         self, data: dict, started_at: str, total_time_ms: int
@@ -282,6 +287,8 @@ class AuthorStyleConfiguration:
             error_text = f"Failed to store structured style: {str(e)}"
             current_app.logger.error(error_text)
             raise RuntimeError(error_text)
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _merge_style_passage(self, styles: list[Style]) -> StylePassages:
         """
@@ -407,7 +414,7 @@ class AuthorStyleConfiguration:
             error_text = "Invalid structured response format: No valid JSON found"
             current_app.logger.error(error_text)
             raise ValueError(error_text)
-        clean_text = text[start_index : end_index + 1]
+        clean_text = text[start_index: end_index + 1]
 
         try:
             data_dict = demjson3.decode(clean_text)
@@ -438,7 +445,8 @@ class AuthorStyleConfiguration:
         start_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         passages = self.construct_passages()
-        partial_styles = [self._handle_partial_style(passage) for passage in passages]
+        partial_styles = [self._handle_partial_style(
+            passage) for passage in passages]
         combined_style = self._handle_combined_style(partial_styles)
 
         response = self._call_llm(combined_style.text, mode="structured")
@@ -454,6 +462,7 @@ class AuthorStyleConfiguration:
             author_style = self._parse_structured_response(response.text)
 
         total_time_ms = int((time.monotonic() - start_time) * 1000)
-        self._store_structured_style(author_style.model_dump(), start_at, total_time_ms)
+        self._store_structured_style(
+            author_style.model_dump(), start_at, total_time_ms)
 
         return author_style

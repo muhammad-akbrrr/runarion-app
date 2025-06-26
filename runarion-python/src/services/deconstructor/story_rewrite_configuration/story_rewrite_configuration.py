@@ -255,6 +255,8 @@ class ContentRewritePipeline:
         except Exception as e:
             raise RuntimeError(
                 f"Failed to store intermediate deconstructor: {str(e)}")
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _store_rewrite_session(self, rewrites: list[RewrittenContent], started_at: str, total_time_ms: int) -> None:
         """
@@ -293,6 +295,8 @@ class ContentRewritePipeline:
                     conn.commit()
         except Exception as e:
             raise RuntimeError(f"Failed to store rewrite session: {str(e)}")
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _rewrite_chunk(self, chunk: ContentChunk, chapter: dict = None) -> RewrittenContent:
         """
