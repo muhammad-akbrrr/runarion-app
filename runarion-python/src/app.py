@@ -43,7 +43,7 @@ if missing_vars:
 try:
     connection_pool = pool.SimpleConnectionPool(
         minconn=1,
-        maxconn=10,
+        maxconn=20,  # Increased from 10 to 20 to help avoid connection pool exhaustion for concurrent requests
         host=os.getenv('DB_HOST'),
         port=os.getenv('DB_PORT'),
         database=os.getenv('DB_DATABASE'),

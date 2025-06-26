@@ -131,11 +131,27 @@ def story_rewrite_route():
                 logging.error("No valid author sample files uploaded")
                 return jsonify({"error": "No valid author sample files uploaded"}), 400
 
-            author_style_request = NewAuthorStyleRequest(
+            # --- Process the new author style before running the pipeline ---
+            # Create a temporary pipeline instance to use the author style creation logic
+            temp_pipeline = StoryRewritePipeline(
+                caller=caller,
+                connection_pool=connection_pool,
+                provider=form_data.get('provider', 'gemini'),
+                model=form_data.get('model', 'gemini-2.0-flash'),
+                request_id=request_id,
+            )
+            new_author_style_req = NewAuthorStyleRequest(
                 sample_files=sample_paths,
                 author_name=form_data.get('author_name', '')
             )
-            logging.info(f"NewAuthorStyleRequest: {author_style_request}")
+            author_style_obj, author_style_id = temp_pipeline._create_new_author_style(
+                new_author_style_req, str(ULID()))
+            # Now use the new style's ID for the rewrite request
+            author_style_request = ExistingAuthorStyleRequest(
+                author_style_id=author_style_id
+            )
+            logging.info(
+                f"New author style processed and stored with ID: {author_style_id}")
 
         elif author_style_type == 'existing':
             # Handle existing author style selection
