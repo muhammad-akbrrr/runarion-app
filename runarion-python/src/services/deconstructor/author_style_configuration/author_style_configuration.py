@@ -4,11 +4,13 @@ import time
 from math import ceil
 from typing import Literal, NamedTuple, Optional
 
+import demjson3
 from flask import current_app
 from models.deconstructor.author_style import AuthorStyle
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
+from pydantic import ValidationError
 from services.generation_engine import GenerationEngine
 from services.usecase_handler.author_style_handler import (
     COMBINED_AUTHOR_STYLE,
@@ -70,7 +72,7 @@ class AuthorStyleConfiguration:
         """
         default_generation_config = {
             "temperature": 0.7,
-            "max_output_tokens": 200,
+            "max_output_tokens": 2000,
             "nucleus_sampling": 1.0,
             "tail_free_sampling": 1.0,
             "top_k": 0.0,
@@ -207,7 +209,9 @@ class AuthorStyleConfiguration:
         response = engine.generate()
 
         if not response.success:
-            raise RuntimeError(f"LLM call failed: {response.error_message}")
+            error_text = f"LLM call failed: {response.error_message}"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
 
         return response
 
@@ -238,7 +242,9 @@ class AuthorStyleConfiguration:
                     )
                     conn.commit()
         except Exception as e:
-            raise RuntimeError(f"Failed to store intermediate style: {str(e)}")
+            error_text = f"Failed to store intermediate style: {str(e)}"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
 
     def _store_structured_style(
         self, data: dict, started_at: str, total_time_ms: int
@@ -257,7 +263,7 @@ class AuthorStyleConfiguration:
                     cursor.execute(
                         """
                         INSERT INTO structured_author_styles (id, workspace_id, project_id, user_id, author_name, style, sources, started_at, total_time_ms)
-                        VALUES (%s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             self.id,
@@ -273,7 +279,9 @@ class AuthorStyleConfiguration:
                     )
                     conn.commit()
         except Exception as e:
-            raise RuntimeError(f"Failed to store structured style: {str(e)}")
+            error_text = f"Failed to store structured style: {str(e)}"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
 
     def _merge_style_passage(self, styles: list[Style]) -> StylePassages:
         """
@@ -334,11 +342,18 @@ class AuthorStyleConfiguration:
             Style: The combined style.
         """
         if recursion_depth > 5:
-            raise RuntimeError("Recursion depth exceeded while combining styles")
+            error_text = "Recursion depth exceeded while combining styles"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
+
+        # recursion base case 1:
+        # if there is only one style, return it directly
+        if len(styles) == 1:
+            return styles[0]
 
         total_token = sum(s.token for s in styles)
 
-        # recursion base case:
+        # recursion base case 2:
         # if the total token count is within the limit,
         # perform combined style analysis and store the result
         if total_token < self.combined_max_token:
@@ -376,12 +391,48 @@ class AuthorStyleConfiguration:
         # recursively handle the reduced_styles
         return self._handle_combined_style(reduced_styles, recursion_depth + 1)
 
+    def _parse_structured_response(self, text: str) -> AuthorStyle:
+        """
+        Parses the LLM response and returns an AuthorStyle object.
+
+        Args:
+            text (str): The text response from the LLM, expected to be in JSON format.
+
+        Returns:
+            AuthorStyle: The parsed author style object.
+        """
+        start_index = text.find("{")
+        end_index = text.rfind("}")
+        if start_index == -1 or end_index == -1 or start_index >= end_index:
+            error_text = "Invalid structured response format: No valid JSON found"
+            current_app.logger.error(error_text)
+            raise ValueError(error_text)
+        clean_text = text[start_index : end_index + 1]
+
+        try:
+            data_dict = demjson3.decode(clean_text)
+        except demjson3.JSONDecodeError:
+            current_app.logger.error(
+                "Invalid LLM output: Not a valid JSON. Output was: %s", clean_text
+            )
+            raise
+
+        try:
+            author_style = AuthorStyle(**data_dict)
+        except ValidationError:
+            current_app.logger.error(
+                "Failed to parse dict into AuthorStyle: %s", str(data_dict)
+            )
+            raise
+
+        return author_style
+
     def run(self) -> AuthorStyle:
         """
         Executes the author style analysis process.
 
         Returns:
-            dict: The final structured style data.
+            AuthorStyle: The extracted structured author style.
         """
         start_time = time.monotonic()
         start_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
@@ -395,16 +446,9 @@ class AuthorStyleConfiguration:
         # Debug: print the LLM response text before JSON decode
         print("[DEBUG] LLM structured response.text:", repr(response.text))
 
-        # response is expected to be a JSON string
-        try:
-            data = json.loads(response.text)
-        except json.JSONDecodeError:
-            current_app.logger.error(
-                "Invalid LLM output: Not a valid JSON. Output was: %s", response.text
-            )
-            raise
+        author_style = self._parse_structured_response(response.text)
 
         total_time_ms = int((time.monotonic() - start_time) * 1000)
-        self._store_structured_style(data, start_at, total_time_ms)
+        self._store_structured_style(author_style.model_dump(), start_at, total_time_ms)
 
-        return AuthorStyle(**data)
+        return author_style
