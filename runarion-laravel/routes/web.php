@@ -21,8 +21,18 @@ Route::get('/', function () {
 
 // Dashboard Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
-    Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
+    // main dashboard page
+    Route::get(
+        '/{workspace_id}/dashboard',
+        [DashboardController::class, 'show']
+    )->name('workspace.dashboard');
 
+    Route::get(
+        '/{workspace_id}/dashboard/load/{provider}',
+        [DashboardController::class, 'loadFiles']
+    )->name('workspace.dashboard.files');
+
+    // a dummy route if needed
     Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
 });
 
@@ -98,41 +108,30 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 // Workspace invitation accept route (no auth required)
 Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
 
-// Google Drive Group route
+// OAuth callback & connect/disconnect
 Route::middleware(['auth'])->group(function () {
-    // Callback after Google OAuth
-    Route::get('/oauth/callback/google-drive', [CloudStorageController::class, 'googleCallback'])
-        ->name('cloudstorage.google.callback');
+    Route::get('/oauth/callback/{provider}', [CloudStorageController::class, 'callback'])
+        ->name('cloudstorage.callback');
 
-    // Routes that require both auth and workspace context
     Route::prefix('/{workspace_id}/settings/cloud-storage')
         ->middleware('workspace')
-        ->name('cloudstorage.google.')
         ->group(function () {
-            Route::get('/google-drive', [CloudStorageController::class, 'googleRedirect'])
-                ->name('redirect');
+            Route::get('/{provider}', [CloudStorageController::class, 'redirect'])
+                ->name('cloudstorage.redirect');
+            Route::delete('/{provider}', [CloudStorageController::class, 'disconnect'])
+                ->name('cloudstorage.disconnect');
 
-            Route::delete('/google-drive', [CloudStorageController::class, 'googleDisconnect'])
-                ->name('disconnect');
-        });
-});
-
-// Dropbox Group route
-Route::middleware(['auth'])->group(function () {
-    // Callback after Dropbox OAuth
-    Route::get('/oauth/callback/dropbox', [CloudStorageController::class, 'dropboxCallback'])
-        ->name('cloudstorage.dropbox.callback');
-
-    // Routes that require both auth and workspace context
-    Route::prefix('/{workspace_id}/settings/cloud-storage')
-        ->middleware('workspace')
-        ->name('cloudstorage.dropbox.')
-        ->group(function () {
-            Route::get('/dropbox', [CloudStorageController::class, 'dropboxRedirect'])
-                ->name('redirect');
-
-            Route::delete('/dropbox', [CloudStorageController::class, 'dropboxDisconnect'])
-                ->name('disconnect');
+            // file operations
+            Route::get ('/{provider}/files',              [CloudStorageController::class, 'listFiles'])
+                ->name('cloudstorage.files.list');
+            Route::post('/{provider}/files/upload',       [CloudStorageController::class, 'upload'])
+                ->name('cloudstorage.files.upload');
+            Route::get ('/{provider}/files/download/{path}', [CloudStorageController::class, 'download'])
+                ->where('path', '.*')
+                ->name('cloudstorage.files.download');
+            Route::delete('/{provider}/files/{path}',     [CloudStorageController::class, 'delete'])
+                ->where('path', '.*')
+                ->name('cloudstorage.files.delete');
         });
 });
 

@@ -156,14 +156,37 @@ class Workspace extends Model
         $this->cloud_storage = $cloudStorage;
     }
 
-    /**
-     * Check if the workspace is connected to a specific cloud provider.
-     */
     public function isCloudConnected(string $provider): bool
     {
-        $cloudStorage = $this->cloud_storage ?? [];
+        $data = $this->cloud_storage[$provider] ?? [];
 
-        return !empty($cloudStorage[$provider]['enabled']) &&
-            !empty($cloudStorage[$provider]['token']);
+        if (empty($data['enabled'])) {
+            return false;
+        }
+
+        return match ($provider) {
+            'google_drive' => !empty($data['refresh_token']),
+            default        => !empty($data['token']),
+        };
+    }
+
+
+    public function getCloudRefreshToken(string $provider): ?string
+    {
+        $data = $this->cloud_storage[$provider] ?? null;
+        if (! $data || empty($data['refresh_token'])) {
+            return null;
+        }
+        try {
+            return \Crypt::decryptString($data['refresh_token']);
+        } catch (\Throwable $e) {
+            report($e);
+            return null;
+        }
+    }
+
+    public function getCloudFolderId(string $provider): ?string
+    {
+        return $this->cloud_storage[$provider]['folder_id'] ?? null;
     }
 }
