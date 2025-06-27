@@ -9,6 +9,7 @@ from models.request import BaseGenerationRequest, GenerationConfig
 from models.response import BaseGenerationResponse, UsageMetadata, QuotaMetadata
 from services.quota_manager import QuotaManager
 
+
 class BaseProvider(ABC):
     def __init__(self, request: BaseGenerationRequest):
         self.request = request
@@ -25,12 +26,13 @@ class BaseProvider(ABC):
     @abstractmethod
     def generate(self) -> BaseGenerationResponse:
         pass
-    
+
     def _get_quota_manager(self) -> QuotaManager:
         return QuotaManager()
 
     def _check_quota(self):
-        self.remaining_quota = self.quota_manager.check_quota(self.request.caller)
+        self.remaining_quota = self.quota_manager.check_quota(
+            self.request.caller)
 
     def _update_quota(self, quota_generation_count: int):
         self.quota_manager.update_quota(
@@ -88,7 +90,7 @@ class BaseProvider(ABC):
         current_app.logger.warning(
             "No model name provided in request, using default model.")
         return default_model
-    
+
     def _format_instruction(self, instruction: Optional[object]) -> str:
         if instruction is None:
             return ""
@@ -136,8 +138,8 @@ class BaseProvider(ABC):
         )
 
     def _build_error_response(
-        self, 
-        request_id: str, 
+        self,
+        request_id: str,
         provider_request_id: str = "",
         error_message: str = "An error occurred during generation."
     ) -> BaseGenerationResponse:

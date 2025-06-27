@@ -14,6 +14,7 @@ use App\Models\WorkspaceMember;
  * 
  * Seeds the projects table with initial data.
  * Creates sample projects within each folder of each workspace.
+ * Also creates corresponding ProjectContent and ProjectNodeEditor records.
  */
 class ProjectSeeder extends Seeder
 {
@@ -27,6 +28,8 @@ class ProjectSeeder extends Seeder
      *    - All projects are set as active
      *    - Projects are named sequentially (Project 1, Project 2, etc.)
      *    - Projects are associated with their parent folder and workspace
+     *    - Creates ProjectContent with realistic chapter data
+     *    - Creates ProjectNodeEditor for node editor functionality
      * 
      * @return void
      */
@@ -57,10 +60,6 @@ class ProjectSeeder extends Seeder
                         'folder_id' => $folder->id,
                         'name' => "Project " . ($i + 1) . " in " . $folder->name,
                         'slug' => "project-" . $workspace->id . "-" . $folder->id . "-" . ($i + 1),
-                        'category' => fake()->optional(0.8)->randomElement(['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical']),
-                        'saved_in' => fake()->randomElement(['01', '02', '03', '04']),
-                        'description' => fake()->optional(0.7)->paragraph(),
-                        'is_active' => true,
                         'original_author' => $owner->user->id,
                     ]);
 

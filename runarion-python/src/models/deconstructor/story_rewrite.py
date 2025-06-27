@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Literal, Optional
+from typing import Literal, Optional, Union
 from models.deconstructor.author_style import AuthorStyle
 
 
@@ -35,3 +35,40 @@ class RewrittenContent(BaseModel):
     token_count: int
     # How confident the model is about style application
     style_confidence: float = Field(0.0, ge=0.0, le=1.0)
+
+
+class NewAuthorStyleRequest(BaseModel):
+    """Request to create a new author style from sample files"""
+    sample_files: list[str]
+    author_name: Optional[str] = ""
+
+
+class ExistingAuthorStyleRequest(BaseModel):
+    """Request to use an existing author style"""
+    author_style_id: str
+
+
+class StoryRewriteRequest(BaseModel):
+    """Complete story rewrite request"""
+    rough_draft_file: str
+    author_style_request: Union[NewAuthorStyleRequest,
+                                ExistingAuthorStyleRequest]
+    writing_perspective: WritingPerspective
+    rewrite_config: Optional[ContentRewriteConfig] = None
+    store_intermediate: bool = False
+    chunk_overlap: bool = False
+
+
+class StoryRewriteResponse(BaseModel):
+    """Response from story rewrite pipeline"""
+    original_story: str
+    rewritten_story: str
+    author_style: AuthorStyle
+    total_chunks: int
+    total_original_chars: int
+    total_rewritten_chars: int
+    total_tokens: int
+    processing_time_ms: int
+    average_style_confidence: float
+    session_id: str
+    author_style_id: str

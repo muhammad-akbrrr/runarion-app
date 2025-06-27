@@ -96,7 +96,7 @@ GOOGLE_API_KEY=your_google_key
 DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 
 # Service Configuration
-PYTHON_SERVICE_URL=http://localhost:5000
+PYTHON_SERVICE_URL=http://python-app:5000
 SD_SERVICE_URL=http://stable-diffusion:7860
 
 # Pipeline Configuration

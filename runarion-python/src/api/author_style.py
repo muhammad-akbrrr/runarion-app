@@ -14,8 +14,6 @@ from services.deconstructor import (
 from ulid import ULID
 from werkzeug.utils import secure_filename
 
-UPLOAD_FOLDER = os.path.join("")
-
 
 class CallerData(BaseModel):
     user_id: str
@@ -46,10 +44,10 @@ class AuthorStyleRequest(BaseModel):
     config: ConfigData = ConfigData()
 
 
-deconstructor = Blueprint("deconstructor", __name__)
+author_style = Blueprint("author_style", __name__)
 
 
-@deconstructor.route("/analyze-author-style", methods=["POST"])
+@author_style.route("/analyze-author-style", methods=["POST"])
 def analyze_author_style():
     """
     Endpoint to analyze author style from uploaded PDF files.
@@ -108,7 +106,8 @@ def analyze_author_style():
                     ), 400
 
         # Create upload directory if it doesn't exist
-        upload_dir = os.path.join(current_app.config["UPLOAD_PATH"], "pdf_files")
+        upload_dir = os.path.join(
+            current_app.config["UPLOAD_PATH"], "pdf_files")
         os.makedirs(upload_dir, exist_ok=True)
 
         # Save uploaded files and create paragraph extractors

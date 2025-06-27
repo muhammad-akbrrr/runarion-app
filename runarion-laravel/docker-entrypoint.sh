@@ -67,6 +67,7 @@ trap cleanup SIGTERM SIGINT
 # Set proper permissions
 log "Setting proper permissions..."
 chown -R www-data:www-data storage bootstrap/cache
+chmod -R 777 storage bootstrap/cache
 
 # Check and run migrations if needed
 check_migrations
