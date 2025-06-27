@@ -26,6 +26,39 @@ from services.usecase_handler.story_rewrite_handler import StoryStructureHandler
 from services.generation_engine import GenerationEngine
 
 
+def clean_unicode_characters(text: str) -> str:
+    """
+    Clean Unicode characters from text, converting smart quotes and other Unicode characters to ASCII equivalents.
+
+    Args:
+        text (str): The text to clean
+
+    Returns:
+        str: The cleaned text with ASCII characters
+    """
+    # Common Unicode to ASCII mappings
+    unicode_mappings = {
+        '\u2018': "'",  # Left single quotation mark
+        '\u2019': "'",  # Right single quotation mark
+        '\u201C': '"',  # Left double quotation mark
+        '\u201D': '"',  # Right double quotation mark
+        '\u2013': '-',  # En dash
+        '\u2014': '--',  # Em dash
+        '\u2026': '...',  # Horizontal ellipsis
+        '\u00A0': ' ',  # Non-breaking space
+        '\u00B0': '°',  # Degree sign
+        '\u00AE': '(R)',  # Registered trademark
+        '\u2122': '(TM)',  # Trademark
+        '\u00A9': '(C)',  # Copyright
+    }
+
+    # Apply all mappings
+    for unicode_char, ascii_char in unicode_mappings.items():
+        text = text.replace(unicode_char, ascii_char)
+
+    return text
+
+
 class StoryRewritePipeline:
     """
     Main pipeline for story rewriting following the user workflow:
@@ -264,7 +297,8 @@ class StoryRewritePipeline:
                 try:
                     structure_response = structure_engine.generate()
                     import re
-                    structure_response_text = structure_response.text.strip()
+                    structure_response_text = clean_unicode_characters(
+                        structure_response.text.strip())
                     logger.info(
                         f"[Pipeline] LLM structure response: {structure_response_text!r}")
 
@@ -392,7 +426,7 @@ class StoryRewritePipeline:
             rewritten_chapters = []
             rewritten_story = ""
             num_paragraphs = len(draft_paragraphs)
-            for chapter in chapter_breakdown:
+            for chapter_idx, chapter in enumerate(chapter_breakdown):
                 start_idx = chapter.get("start_idx", 0)
                 end_idx = chapter.get("end_idx", 0)
                 # Bounds checking
@@ -432,11 +466,14 @@ class StoryRewritePipeline:
                     chapter_rewrites = rewrite_pipeline.run()
                     chapter_text = "".join(
                         [c.rewritten_text for c in chapter_rewrites])
+                    # Clean Unicode characters from the generated text
+                    chapter_text = clean_unicode_characters(chapter_text)
                 except Exception as e:
                     logger.error(
                         f"[Pipeline] Failed to rewrite chapter '{chapter.get('chapter_name', '?')}': {e}")
                     chapter_text = "[ERROR: Failed to rewrite chapter]"
                 rewritten_chapters.append({
+                    "order": chapter_idx,  # Auto-increment from 0
                     "chapter_name": chapter.get("chapter_name", "Chapter"),
                     "content": chapter_text,
                     "summary": chapter.get("summary", ""),
@@ -761,14 +798,14 @@ class StoryRewritePipeline:
             return [{
                 "order": 0,
                 "chapter_name": "Chapter 1",
-                "content": rewritten_content[0].rewritten_text,
+                "content": clean_unicode_characters(rewritten_content[0].rewritten_text),
             }]
         chapters = []
         for idx, chunk in enumerate(rewritten_content):
             chapters.append({
-                "order": idx,
+                "order": idx,  # Auto-increment from 0
                 "chapter_name": f"Chapter {idx+1}",
-                "content": chunk.rewritten_text,
+                "content": clean_unicode_characters(chunk.rewritten_text),
             })
         return chapters
 

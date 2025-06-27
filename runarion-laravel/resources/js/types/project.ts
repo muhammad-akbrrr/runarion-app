@@ -29,6 +29,8 @@ export interface ProjectChapter {
     order: number;
     chapter_name: string;
     content: string;
+    summary: string;
+    plot_points: Array<string>;
 }
 
 export interface ProjectContent {

@@ -63,6 +63,8 @@ class ProjectContent extends Model
       'content.*.order' => ['required', 'integer', 'min:0'],
       'content.*.chapter_name' => ['required', 'string', 'max:255'],
       'content.*.content' => ['required', 'string'],
+      'content.*.summary' => ['nullable', 'string'],
+      'content.*.plot_points' => ['nullable', 'array'],
       'metadata' => ['nullable', 'array'],
       'last_edited_by' => ['nullable', 'integer', 'exists:users,id'],
     ];

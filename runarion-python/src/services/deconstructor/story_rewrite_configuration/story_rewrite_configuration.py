@@ -18,6 +18,39 @@ from ..utils.paragraph_extractor import ParagraphExtractor
 from ..utils.token_counter import TokenCounter
 
 
+def clean_unicode_characters(text: str) -> str:
+    """
+    Clean Unicode characters from text, converting smart quotes and other Unicode characters to ASCII equivalents.
+
+    Args:
+        text (str): The text to clean
+
+    Returns:
+        str: The cleaned text with ASCII characters
+    """
+    # Common Unicode to ASCII mappings
+    unicode_mappings = {
+        '\u2018': "'",  # Left single quotation mark
+        '\u2019': "'",  # Right single quotation mark
+        '\u201C': '"',  # Left double quotation mark
+        '\u201D': '"',  # Right double quotation mark
+        '\u2013': '-',  # En dash
+        '\u2014': '--',  # Em dash
+        '\u2026': '...',  # Horizontal ellipsis
+        '\u00A0': ' ',  # Non-breaking space
+        '\u00B0': '°',  # Degree sign
+        '\u00AE': '(R)',  # Registered trademark
+        '\u2122': '(TM)',  # Trademark
+        '\u00A9': '(C)',  # Copyright
+    }
+
+    # Apply all mappings
+    for unicode_char, ascii_char in unicode_mappings.items():
+        text = text.replace(unicode_char, ascii_char)
+
+    return text
+
+
 class ContentChunk(NamedTuple):
     source: str  # source file name
     chunk_num: int  # chunk number
@@ -316,7 +349,7 @@ class ContentRewritePipeline:
 
         rewrite = RewrittenContent(
             original_text=chunk.text,
-            rewritten_text=response.text,
+            rewritten_text=clean_unicode_characters(response.text),
             applied_style=self.author_style,
             applied_perspective=self.writing_perspective,
             processing_time_ms=processing_time_ms,

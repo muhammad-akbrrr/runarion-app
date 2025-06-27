@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProjectEditor;
 
 use Illuminate\Http\Request;
 use App\Models\Projects;
+use App\Models\ProjectContent;
 use App\Http\Controllers\Controller;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
@@ -25,10 +26,20 @@ class MainEditorController extends Controller
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
+        // Query project content
+        $projectContent = ProjectContent::where('project_id', $project_id)->first();
+
+        // Extract chapters from JSON content field
+        $chapters = [];
+        if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
+            $chapters = $projectContent->content;
+        }
+
         return Inertia::render('Projects/Editor/Main', [
             'workspaceId' => $workspace_id,
             'projectId' => $project_id,
             'project' => $project,
+            'chapters' => $chapters,
         ]);
     }
 

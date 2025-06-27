@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Head } from "@inertiajs/react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Check } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
 import { EditorToolbar } from "./Partials/MainEditorToolbar";
@@ -10,6 +10,8 @@ import {
     DropdownMenuContent,
     DropdownMenuItem,
     DropdownMenuTrigger,
+    DropdownMenuRadioGroup,
+    DropdownMenuRadioItem,
 } from "@/Components/ui/dropdown-menu";
 import {
     LexicalComposer,
@@ -20,8 +22,51 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import { $getRoot } from "lexical";
-import { PageProps, Project } from "@/types";
+import {
+    $getRoot,
+    $createParagraphNode,
+    $createTextNode,
+    $getSelection,
+    $isRangeSelection,
+} from "lexical";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
+import { PageProps, Project, ProjectChapter } from "@/types";
+
+// Custom plugin to update editor content when chapter changes
+function ContentUpdatePlugin({ content }: { content: string }) {
+    const [editor] = useLexicalComposerContext();
+
+    useEffect(() => {
+        console.log(
+            "ContentUpdatePlugin: Updating editor with content:",
+            content
+        );
+        editor.update(() => {
+            const root = $getRoot();
+            root.clear();
+
+            if (content && content.trim()) {
+                // Split content by lines to create multiple paragraphs if needed
+                const lines = content.split("\n");
+                lines.forEach((line, index) => {
+                    if (line.trim() || index === 0) {
+                        // Always add first line, even if empty
+                        const paragraph = $createParagraphNode();
+                        const textNode = $createTextNode(line);
+                        paragraph.append(textNode);
+                        root.append(paragraph);
+                    }
+                });
+            } else {
+                // Add empty paragraph if no content
+                const paragraph = $createParagraphNode();
+                root.append(paragraph);
+            }
+        });
+    }, [content, editor]);
+
+    return null;
+}
 
 const editorConfig: InitialConfigType = {
     namespace: "MyEditor",
@@ -43,12 +88,43 @@ export default function ProjectEditorPage({
     workspaceId,
     projectId,
     project,
+    chapters,
 }: PageProps<{
     workspaceId: string;
     projectId: string;
     project: Project;
+    chapters: ProjectChapter[];
 }>) {
     const [content, setContent] = useState("");
+    const [selectedChapter, setSelectedChapter] =
+        useState<ProjectChapter | null>(
+            chapters.length > 0 ? chapters[0] : null
+        );
+
+    // Update content when selected chapter changes
+    useEffect(() => {
+        if (selectedChapter) {
+            console.log(
+                "Selected chapter:",
+                selectedChapter.chapter_name,
+                "Content:",
+                selectedChapter.content
+            );
+            setContent(selectedChapter.content || "");
+        } else {
+            setContent("");
+        }
+    }, [selectedChapter]);
+
+    // Ensure first chapter is selected by default when chapters are loaded
+    useEffect(() => {
+        if (chapters.length > 0 && !selectedChapter) {
+            setSelectedChapter(chapters[0]);
+        }
+    }, [chapters, selectedChapter]);
+
+    // Get the selected chapter order for the radio group
+    const selectedChapterOrder = selectedChapter?.order ?? 0;
 
     return (
         <ProjectEditorLayout
@@ -87,15 +163,43 @@ export default function ProjectEditorPage({
                     <div className="flex items-center space-x-3">
                         <DropdownMenu>
                             <DropdownMenuTrigger>
-                                <Button variant="outline">
-                                    Select Chapter
+                                <Button
+                                    variant="outline"
+                                    className="flex flex-row justify-between items-center w-54"
+                                >
+                                    {selectedChapter
+                                        ? selectedChapter.chapter_name
+                                        : "Select Chapter"}
                                     <ChevronDown className="h-4 w-4" />
                                 </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="start">
-                                <DropdownMenuItem>Chapter 1</DropdownMenuItem>
-                                <DropdownMenuItem>Chapter 2</DropdownMenuItem>
-                                <DropdownMenuItem>Chapter 3</DropdownMenuItem>
+                                <DropdownMenuRadioGroup
+                                    value={selectedChapterOrder.toString()}
+                                    onValueChange={(value) => {
+                                        const chapter = chapters.find(
+                                            (c) => c.order.toString() === value
+                                        );
+                                        if (chapter) {
+                                            setSelectedChapter(chapter);
+                                        }
+                                    }}
+                                >
+                                    {chapters.length > 0 ? (
+                                        chapters.map((chapter, index) => (
+                                            <DropdownMenuRadioItem
+                                                key={index}
+                                                value={chapter.order.toString()}
+                                            >
+                                                {chapter.chapter_name}
+                                            </DropdownMenuRadioItem>
+                                        ))
+                                    ) : (
+                                        <DropdownMenuItem disabled>
+                                            No chapters available
+                                        </DropdownMenuItem>
+                                    )}
+                                </DropdownMenuRadioGroup>
                             </DropdownMenuContent>
                         </DropdownMenu>
 
@@ -125,10 +229,16 @@ export default function ProjectEditorPage({
                                     onChange={(editorState) => {
                                         editorState.read(() => {
                                             const root = $getRoot();
-                                            setContent(root.getTextContent());
+                                            const newContent =
+                                                root.getTextContent();
+                                            // Only update if content actually changed to avoid loops
+                                            if (newContent !== content) {
+                                                setContent(newContent);
+                                            }
                                         });
                                     }}
                                 />
+                                <ContentUpdatePlugin content={content} />
                             </LexicalComposer>
                         </div>
                     </div>
