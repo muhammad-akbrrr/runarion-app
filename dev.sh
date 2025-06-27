@@ -119,6 +119,8 @@ check_env_vars() {
         "PYTHON_PYTHONPATH"
         "PYTHON_PYTHONDONTWRITEBYTECODE"
         "PYTHON_PYTHONUNBUFFERED"
+        "PYTHON_UPLOAD_FOLDER"
+        "PYTHON_UPLOAD_PATH"
         
         # Stable Diffusion Settings
         "NVIDIA_VISIBLE_DEVICES"
@@ -422,7 +424,7 @@ set_permissions
 
 echo "Development environment is ready!"
 echo "Laravel frontend: http://localhost:8000"
-echo "Python service: http://localhost:5000"
+echo "Python service: http://python-app:5000"
 echo "Database: localhost:5432"
 echo "Vite HMR: http://localhost:5173"
 echo "Stable Diffusion: http://stable-diffusion:7860 (internal network only)"
