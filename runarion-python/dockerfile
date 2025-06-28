@@ -36,13 +36,18 @@ RUN . /app/venv/bin/activate && \
 # Copy project files
 COPY . .
 
+# Create uploads directory with proper permissions
+RUN mkdir -p /app/uploads && \
+  chown -R appuser:appuser /app/uploads && \
+  chmod 755 /app/uploads
+
 # Copy and set up development entrypoint script with proper line endings
 COPY docker-entrypoint.sh /tmp/
 RUN tr -d '\r' < /tmp/docker-entrypoint.sh > /app/docker-entrypoint.sh && \
   chmod +x /app/docker-entrypoint.sh && \
   rm /tmp/docker-entrypoint.sh
 
-# Change ownership
+# Change ownership of all app files
 RUN chown -R appuser:appuser /app
 
 # Switch to non-root user

@@ -119,7 +119,6 @@ check_env_vars() {
         "PYTHON_PYTHONPATH"
         "PYTHON_PYTHONDONTWRITEBYTECODE"
         "PYTHON_PYTHONUNBUFFERED"
-        "PYTHON_UPLOAD_FOLDER"
         "PYTHON_UPLOAD_PATH"
         
         # Stable Diffusion Settings

@@ -64,6 +64,8 @@ app.config['CONNECTION_POOL'] = connection_pool
 # --- Upload Location ---
 default_upload_path = os.getenv('UPLOAD_PATH', '/app/uploads')
 upload_path = os.getenv('UPLOAD_PATH') or default_upload_path
+
+# Create upload directory if it doesn't exist
 os.makedirs(upload_path, exist_ok=True)
 app.config['UPLOAD_PATH'] = upload_path
 
