@@ -18,7 +18,7 @@ story_rewrite = Blueprint("story_rewrite", __name__)
 
 # Configure file upload settings
 ALLOWED_EXTENSIONS = {'pdf'}
-UPLOAD_FOLDER = os.getenv('UPLOAD_FOLDER', '/app/uploads')
+UPLOAD_FOLDER = os.getenv('UPLOAD_PATH', '/app/uploads')
 MAX_CONTENT_LENGTH = 50 * 1024 * 1024  # 50MB max file size
 
 # Ensure upload directory exists
@@ -38,8 +38,14 @@ def save_uploaded_file(file, prefix="file"):
     if file and allowed_file(file.filename):
         filename = secure_filename(f"{prefix}_{file.filename}")
         filepath = os.path.join(UPLOAD_FOLDER, filename)
+
+        # Ensure upload directory exists
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+        # Save the file
         file.save(filepath)
         return filepath
+
     return None
 
 
