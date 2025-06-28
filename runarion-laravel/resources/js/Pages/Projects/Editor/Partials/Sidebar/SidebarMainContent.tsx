@@ -1,6 +1,6 @@
 // ========================= Imports =========================
 // External libraries
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Label } from "@/Components/ui/label";
 import {
     Select,
@@ -30,11 +30,22 @@ import {
 } from "lucide-react";
 
 export function SidebarContent() {
+    // UI State
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-    const [temperature, setTemperature] = useState([1.35]);
-    const [repetitionPenalty, setRepetitionPenalty] = useState([2.8]);
+
+    // Main Settings
+    const [currentPreset, setCurrentPreset] = useState("story-telling");
+    const [authorProfile, setAuthorProfile] = useState("tolkien");
+    const [aiModel, setAiModel] = useState("chatgpt-4o");
+    const [memory, setMemory] = useState("");
+    const [storyGenre, setStoryGenre] = useState("");
+    const [storyTone, setStoryTone] = useState("");
+    const [storyPov, setStoryPov] = useState("");
+
+    // Advanced Settings - Sliders
+    const [temperature, setTemperature] = useState([1]);
+    const [repetitionPenalty, setRepetitionPenalty] = useState([0]);
     const [outputLength, setOutputLength] = useState([300]);
-    const [phraseBias, setPhraseBias] = useState([0]);
     const [minOutputToken, setMinOutputToken] = useState([50]);
 
     // Sampling values
@@ -42,6 +53,69 @@ export function SidebarContent() {
     const [tailFree, setTailFree] = useState([0.85]);
     const [topA, setTopA] = useState([0.85]);
     const [topK, setTopK] = useState([0.85]);
+
+    // Phrase Bias Settings
+    const [phraseBiasInput, setPhraseBiasInput] = useState("");
+    const [phraseBiasValue, setPhraseBiasValue] = useState([0]);
+    const [phraseBias, setPhraseBias] = useState<Array<{ [key: string]: number }>>([]);
+
+    // Banned Tokens
+    const [bannedTokensInput, setBannedTokensInput] = useState("");
+    const [bannedPhrases, setBannedPhrases] = useState<string[]>([]);
+
+    // Stop Sequence
+    const [stopSequenceInput, setStopSequenceInput] = useState("");
+    const [stopSequences, setStopSequences] = useState<string[]>([]);
+
+    // Function to get all settings as JSON and log to console
+    const logSettings = () => {
+        const settings = {
+            // Main Settings
+            currentPreset,
+            authorProfile,
+            aiModel,
+            memory,
+            storyGenre,
+            storyTone,
+            storyPov,
+            
+            // Advanced Settings
+            temperature: temperature[0],
+            repetitionPenalty: repetitionPenalty[0],
+            outputLength: outputLength[0],
+            minOutputToken: minOutputToken[0],
+            
+            // Sampling
+            topP: topP[0],
+            tailFree: tailFree[0],
+            topA: topA[0],
+            topK: topK[0],
+            
+            // Phrase Bias
+            phraseBias,
+            
+            // Banned Tokens
+            bannedPhrases,
+            
+            // Stop Sequence
+            stopSequences,
+            
+            // UI State
+            isAdvancedOpen
+        };
+        
+        console.log("Editor Settings:", JSON.stringify(settings, null, 2));
+        return settings;
+    };
+
+    // Log settings whenever any value changes
+    useEffect(() => {
+        logSettings();
+    }, [
+        currentPreset, authorProfile, aiModel, memory, storyGenre, storyTone, storyPov,
+        temperature, repetitionPenalty, outputLength, minOutputToken,
+        topP, tailFree, topA, topK, phraseBias, bannedPhrases, stopSequences
+    ]);
 
     return (
         <div
@@ -53,7 +127,7 @@ export function SidebarContent() {
             {/* Current Preset */}
             <div className="space-y-2">
                 <Label htmlFor="preset">Current Preset</Label>
-                <Select defaultValue="story-telling">
+                <Select value={currentPreset} onValueChange={setCurrentPreset}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -72,7 +146,7 @@ export function SidebarContent() {
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select defaultValue="tolkien">
+                <Select value={authorProfile} onValueChange={setAuthorProfile}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -87,7 +161,7 @@ export function SidebarContent() {
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select defaultValue="chatgpt-4o">
+                <Select value={aiModel} onValueChange={setAiModel}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -112,6 +186,8 @@ export function SidebarContent() {
                         id="memory"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={memory}
+                        onChange={(e) => setMemory(e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -134,6 +210,8 @@ export function SidebarContent() {
                         id="genre"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={storyGenre}
+                        onChange={(e) => setStoryGenre(e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -156,6 +234,8 @@ export function SidebarContent() {
                         id="tone"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={storyTone}
+                        onChange={(e) => setStoryTone(e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -175,6 +255,8 @@ export function SidebarContent() {
                         id="pov"
                         placeholder="Search for an entry"
                         className="pr-8"
+                        value={storyPov}
+                        onChange={(e) => setStoryPov(e.target.value)}
                     />
                     <Button variant="outline" className="h-9 w-9 p-0">
                         <Book className="h-3 w-3" />
@@ -208,7 +290,7 @@ export function SidebarContent() {
                         <div className="flex justify-between items-center">
                             <Label>Temperature</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 1.35
+                                Default: 1
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -232,7 +314,7 @@ export function SidebarContent() {
                         <div className="flex justify-between items-center">
                             <Label>Repetition Penalty</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 2.8
+                                Default: 0
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -245,8 +327,8 @@ export function SidebarContent() {
                             <Slider
                                 value={repetitionPenalty}
                                 onValueChange={setRepetitionPenalty}
-                                max={5}
-                                min={1}
+                                max={2}
+                                min={-2}
                                 step={0.1}
                                 className="w-full"
                             />
@@ -388,15 +470,27 @@ export function SidebarContent() {
                             </div>
 
                             <p className="text-xs text-gray-500">
-                                Type in the area below, then press enter to save
+                                Type in the area below, then press the add button to save
                             </p>
 
                             <div className="flex flex-row items-center gap-2">
-                                <Input placeholder="Enter phrase you want to bias" />
+                                <Input 
+                                    placeholder="Enter phrase to bias" 
+                                    value={phraseBiasInput}
+                                    onChange={(e) => setPhraseBiasInput(e.target.value)}
+                                />
 
                                 <Button
                                     variant="outline"
                                     className="h-9 w-9 p-0"
+                                    onClick={() => {
+                                        if (phraseBiasInput.trim()) {
+                                            const updatedBias = [...phraseBias];
+                                            updatedBias.push({ [phraseBiasInput]: phraseBiasValue[0] });
+                                            setPhraseBias(updatedBias);
+                                            setPhraseBiasInput('');
+                                        }
+                                    }}
                                 >
                                     <Plus className="h-4 w-4" />
                                 </Button>
@@ -405,21 +499,51 @@ export function SidebarContent() {
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm">
-                                        Bias: {phraseBias[0]}
+                                        Bias: {phraseBiasValue[0]}
                                     </span>
                                     <span className="text-sm text-gray-500">
                                         Default: 0
                                     </span>
                                 </div>
                                 <Slider
-                                    value={phraseBias}
-                                    onValueChange={setPhraseBias}
+                                    value={phraseBiasValue}
+                                    onValueChange={setPhraseBiasValue}
                                     max={1}
                                     min={-1}
                                     step={0.01}
                                     className="w-full"
                                 />
                             </div>
+
+                            {/* List of phrase biases */}
+                            {phraseBias.length > 0 && (
+                                <div className="space-y-2 mt-2">
+                                    <Label>Current Phrase Biases:</Label>
+                                    {phraseBias.map((biasItem, index) => {
+                                        const phrase = Object.keys(biasItem)[0];
+                                        const biasValue = biasItem[phrase];
+                                        return (
+                                            <div key={index} className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
+                                                <span className="text-sm">
+                                                    "{phrase}" (Bias: {biasValue})
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0"
+                                                    onClick={() => {
+                                                        const updatedBias = [...phraseBias];
+                                                        updatedBias.splice(index, 1);
+                                                        setPhraseBias(updatedBias);
+                                                    }}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -449,31 +573,36 @@ export function SidebarContent() {
                     {/* Checkboxes */}
                     <div className="space-y-3">
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="enabled" />
+                            <Checkbox 
+                                id="enabled"
+                            />
                             <Label htmlFor="enabled" className="text-sm">
                                 Enabled
                             </Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="completion" />
+                            <Checkbox 
+                                id="completion"
+                            />
                             <Label htmlFor="completion" className="text-sm">
                                 Ensure Completion After Start
                             </Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="unbias" />
+                            <Checkbox 
+                                id="unbias"
+                            />
                             <Label htmlFor="unbias" className="text-sm">
                                 Unbias When Generated
                             </Label>
                         </div>
                     </div>
 
-                    {/* Banned Tokens */}
+                    {/* Banned Phrases */}
                     <div className="space-y-3">
-                        <Label>Banned Tokens</Label>
+                        <Label>Banned Phrases</Label>
                         <p className="text-xs text-gray-500">
-                            Weigh the AI's chance of generating certain words or
-                            phrases
+                            Words or phrases the AI should avoid using
                         </p>
                         <div className="flex flex-row items-center gap-2">
                             <Select defaultValue="empty">
@@ -481,7 +610,9 @@ export function SidebarContent() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="empty">Empty</SelectItem>
+                                    <SelectItem value="empty">
+                                        Empty
+                                    </SelectItem>
                                     <SelectItem value="common">
                                         Common Words
                                     </SelectItem>
@@ -500,17 +631,58 @@ export function SidebarContent() {
                         </div>
 
                         <p className="text-xs text-gray-500">
-                            Type in the area below, then press enter to save
+                            Type in the area below, then press the add button to save
                         </p>
 
+                        {/* Add new banned token */}
                         <div className="flex flex-row items-center gap-2">
-                            <Input placeholder="Enter phrase you want to ban" />
+                            <Input 
+                                placeholder="Enter phrase to ban" 
+                                value={bannedTokensInput}
+                                onChange={(e) => setBannedTokensInput(e.target.value)}
+                            />
 
-                            <Button variant="outline" className="h-9 w-9 p-0">
+                            <Button
+                                variant="outline"
+                                className="h-9 w-9 p-0"
+                                onClick={() => {
+                                    if (bannedTokensInput.trim()) {
+                                        const updatedTokens = [...bannedPhrases, bannedTokensInput];
+                                        setBannedPhrases(updatedTokens);
+                                        setBannedTokensInput('');
+                                    }
+                                }}
+                            >
                                 <Plus className="h-4 w-4" />
                             </Button>
                         </div>
                     </div>
+
+                    {/* List of banned tokens */}
+                    {bannedPhrases.length > 0 && (
+                        <div className="space-y-2 mt-2">
+                            <Label>Current Banned Tokens:</Label>
+                            <div className="flex flex-wrap gap-2">
+                                {bannedPhrases.map((token, index) => (
+                                    <div key={index} className="flex items-center bg-gray-100 px-2 py-1 rounded">
+                                        <span className="text-sm mr-1">{token}</span>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-5 w-5 p-0"
+                                            onClick={() => {
+                                                const updatedTokens = [...bannedPhrases];
+                                                updatedTokens.splice(index, 1);
+                                                setBannedPhrases(updatedTokens);
+                                            }}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Sequences */}
                     <div className="space-y-3">
@@ -535,7 +707,9 @@ export function SidebarContent() {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="sequences-enabled" />
+                            <Checkbox 
+                                id="sequences-enabled"
+                            />
                             <Label
                                 htmlFor="sequences-enabled"
                                 className="text-sm"
@@ -549,44 +723,54 @@ export function SidebarContent() {
                     <div className="space-y-3">
                         <Label>Stop Sequence</Label>
                         <p className="text-xs text-gray-500">
-                            Weigh the AI's chance of generating certain words or
-                            phrases
+                            Sequences that will cause the AI to stop generating text
                         </p>
 
                         <div className="flex flex-row items-center gap-2">
-                            <Input placeholder="Enter phrase you want to ban" />
+                            <Input 
+                                placeholder="Enter stop sequence" 
+                                value={stopSequenceInput}
+                                onChange={(e) => setStopSequenceInput(e.target.value)}
+                            />
 
-                            <Button variant="outline" className="h-9 w-9 p-0">
+                            <Button
+                                variant="outline"
+                                className="h-9 w-9 p-0"
+                                onClick={() => {
+                                    if (stopSequenceInput.trim()) {
+                                        const updatedSequences = [...stopSequences, stopSequenceInput];
+                                        setStopSequences(updatedSequences);
+                                        setStopSequenceInput('');
+                                    }
+                                }}
+                            >
                                 <Plus className="h-4 w-4" />
                             </Button>
                         </div>
 
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
-                                <span className="text-sm">
-                                    {"{while |a|k|bar}"}
-                                </span>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                >
-                                    <X className="h-3 w-3" />
-                                </Button>
+                        {/* List of stop sequences */}
+                        {stopSequences.length > 0 && (
+                            <div className="space-y-2 mt-2">
+                                <Label>Current Stop Sequences:</Label>
+                                {stopSequences.map((sequence, index) => (
+                                    <div key={index} className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
+                                        <span className="text-sm">"{sequence}"</span>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0"
+                                            onClick={() => {
+                                                const updatedSequences = [...stopSequences];
+                                                updatedSequences.splice(index, 1);
+                                                setStopSequences(updatedSequences);
+                                            }}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
-                                <span className="text-sm">
-                                    {"{while |a|k|bar}"}
-                                </span>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                >
-                                    <X className="h-3 w-3" />
-                                </Button>
-                            </div>
-                        </div>
+                        )}
 
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
