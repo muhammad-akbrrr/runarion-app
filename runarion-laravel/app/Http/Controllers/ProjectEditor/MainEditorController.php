@@ -286,6 +286,22 @@ class MainEditorController extends Controller
         $validated = $request->validate([
             'prompt' => 'required|string',
             'order' => 'required|integer',
+            'settings' => 'nullable|array',
+            'settings.aiModel' => 'nullable|string',
+            'settings.storyGenre' => 'nullable|string',
+            'settings.storyTone' => 'nullable|string',
+            'settings.storyPov' => 'nullable|string',
+            'settings.temperature' => 'nullable|numeric|min:0|max:2',
+            'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
+            'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+            'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
+            'settings.topP' => 'nullable|numeric|min:0|max:1',
+            'settings.tailFree' => 'nullable|numeric|min:0|max:1',
+            'settings.topA' => 'nullable|numeric|min:0|max:1',
+            'settings.topK' => 'nullable|numeric|min:0|max:1',
+            'settings.phraseBias' => 'nullable|array',
+            'settings.bannedPhrases' => 'nullable|array',
+            'settings.stopSequences' => 'nullable|array',
         ]);
 
         $project = Projects::where('id', $project_id)
@@ -293,26 +309,52 @@ class MainEditorController extends Controller
             ->firstOrFail();
 
         $user = Auth::user();
+        $settings = $validated['settings'] ?? [];
+        
+        // Get the current chapter content to provide context
+        $projectContent = ProjectContent::where('project_id', $project_id)->first();
+        $currentChapterContent = '';
+        
+        if ($projectContent) {
+            $chapters = $projectContent->content ?? [];
+            foreach ($chapters as $chapter) {
+                if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
+                    $currentChapterContent = $chapter['content'] ?? '';
+                    break;
+                }
+            }
+        }
 
         // Prepare the request data for the Python service
         $requestData = [
             'usecase' => 'story',
-            'provider' => 'openai',
-            'model' => '',
+            'provider' => (
+                isset($settings['aiModel']) && stripos($settings['aiModel'], 'gpt') !== false ? 'openai' :
+                (isset($settings['aiModel']) && stripos($settings['aiModel'], 'gemini') !== false ? 'gemini' :
+                (isset($settings['aiModel']) && stripos($settings['aiModel'], 'deepseek') !== false ? 'deepseek' :
+                'openai'))
+            ),
+            'model' => $settings['aiModel'] ?? 'gpt-4o-mini',
             'prompt' => $validated['prompt'],
-            'instruction' => '',
+            'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice.',
             'generation_config' => [
-                'temperature' => 0.1,
-                'max_output_tokens' => 50,
-                'top_p' => 1.0,
-                'top_k' => 0.0,
-                'repetition_penalty' => 0.0,
+                'temperature' => $settings['temperature'] ?? 1,
+                'max_output_tokens' => $settings['outputLength'] ?? 300,
+                'top_p' => $settings['topP'] ?? 0.85,
+                'top_k' => $settings['topK'] ?? 0.85,
+                'repetition_penalty' => $settings['repetitionPenalty'] ?? 0.0,
+                'tail_free_sampling' => $settings['tailFree'] ?? 0.85,
+                'top_a' => $settings['topA'] ?? 0.85,
+                'min_output_tokens' => $settings['minOutputToken'] ?? 50,
+                'phrase_bias' => $settings['phraseBias'] ?? [],
+                'banned_phrases' => $settings['bannedPhrases'] ?? [],
+                'stop_sequences' => $settings['stopSequences'] ?? [],
             ],
             'prompt_config' => [
-                'context' => 'A story about a woman who fell from the sky.',
-                'genre' => 'isekai',
-                'tone' => '',
-                'pov' => '',
+                'context' => $currentChapterContent,
+                'genre' => $settings['storyGenre'] ?? '',
+                'tone' => $settings['storyTone'] ?? '',
+                'pov' => $settings['storyPov'] ?? '',
             ],
             'caller' => [
                 'user_id' => (string)$user->id,
@@ -358,7 +400,7 @@ class MainEditorController extends Controller
                                 // Append the generated text to existing content, add space if needed
                                 $existingContent = $chapter['content'] ?? '';
                                 $generatedText = $responseData['text'];
-                                if ($existingContent !== '' && substr($existingContent, -1) !== ' ') {
+                                if ($existingContent !== '' && substr($existingContent, -1) !== ' ' && substr($generatedText, 0, 1) !== ' ') {
                                     $existingContent .= ' ';
                                 }
                                 $chapter['content'] = $existingContent . $generatedText;

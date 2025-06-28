@@ -112,11 +112,9 @@ export function SidebarContent({
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="chatgpt-4o">ChatGPT 4o</SelectItem>
-                        <SelectItem value="gemini-4.0">Gemini 4.0</SelectItem>
-                        <SelectItem value="deepseek-chat">
-                            DeepSeek V3
-                        </SelectItem>
+                        <SelectItem value="gemini-2.0-flash">Gemini 2.0</SelectItem>
+                        <SelectItem value="gpt-4o-mini">ChatGPT 4o</SelectItem>
+                        <SelectItem value="deepseek-chat">DeepSeek V3</SelectItem>
                     </SelectContent>
                 </Select>
             </div>

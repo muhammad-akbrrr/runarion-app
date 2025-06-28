@@ -15,18 +15,42 @@ import {
     RefreshCw,
     Loader2,
 } from "lucide-react";
+import { useState, useEffect } from "react";
 
 interface EditorToolbarProps {
     onSend?: () => void;
     isGenerating?: boolean;
+    wordCount?: number;
 }
 
-export function EditorToolbar({ onSend, isGenerating = false }: EditorToolbarProps) {
+export function EditorToolbar({ 
+    onSend, 
+    isGenerating = false,
+    wordCount = 0
+}: EditorToolbarProps) {
+    const [isButtonDisabled, setIsButtonDisabled] = useState(false);
+    
+    // Add a cooldown period after generation to prevent accidental double-clicks
+    useEffect(() => {
+        if (!isGenerating) {
+            const timer = setTimeout(() => {
+                setIsButtonDisabled(false);
+            }, 1000);
+            return () => clearTimeout(timer);
+        } else {
+            setIsButtonDisabled(true);
+        }
+    }, [isGenerating]);
+
     const handleSendClick = () => {
-        if (onSend && !isGenerating) {
+        if (onSend && !isButtonDisabled) {
+            setIsButtonDisabled(true);
             onSend();
         }
     };
+
+    // Calculate word count
+    const displayWordCount = wordCount || 0;
 
     return (
         <div
@@ -58,7 +82,7 @@ export function EditorToolbar({ onSend, isGenerating = false }: EditorToolbarPro
                             <DropdownMenuItem>Custom Settings</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <span className="text-sm text-gray-500">0 Words</span>
+                    <span className="text-sm text-gray-500">{displayWordCount} Words</span>
                 </div>
 
                 {/* Right side - Action buttons */}
@@ -87,17 +111,18 @@ export function EditorToolbar({ onSend, isGenerating = false }: EditorToolbarPro
                     <Button 
                         size="sm" 
                         onClick={handleSendClick}
-                        disabled={isGenerating}
+                        disabled={isButtonDisabled}
+                        className={isGenerating ? "animate-pulse" : ""}
                     >
                         {isGenerating ? (
                             <>
-                                <Loader2 className="h-4 w-4 animate-spin" />
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                                 Generating...
                             </>
                         ) : (
                             <>
                                 Send
-                                <Send className="h-4 w-4" />
+                                <Send className="h-4 w-4 ml-2" />
                             </>
                         )}
                     </Button>

@@ -208,15 +208,44 @@ export function useProjectEditor({
 
         setIsGenerating(true);
 
+        // Extract relevant settings for the generation request
+        const generationSettings = {
+            prompt: content || "",
+            order: selectedChapter.order,
+            settings: {
+                // Model settings
+                aiModel: settings.aiModel || 'gpt-4o-mini',
+                
+                // Story settings
+                storyGenre: settings.storyGenre || '',
+                storyTone: settings.storyTone || '',
+                storyPov: settings.storyPov || '',
+                
+                // Generation parameters
+                temperature: settings.temperature || 1.0,
+                repetitionPenalty: settings.repetitionPenalty || 0.0,
+                outputLength: settings.outputLength || 300,
+                minOutputToken: settings.minOutputToken || 50,
+                topP: settings.topP || 0.85,
+                tailFree: settings.tailFree || 0.85,
+                topA: settings.topA || 0.85,
+                topK: settings.topK || 0.85,
+                
+                // Advanced settings
+                phraseBias: settings.phraseBias || [],
+                bannedPhrases: settings.bannedPhrases || [],
+                stopSequences: settings.stopSequences || [],
+            }
+        };
+
+        console.log("Sending text generation request with settings:", generationSettings);
+
         router.post(
             route("editor.project.generate", {
                 workspace_id: workspaceId,
                 project_id: projectId,
             }),
-            {
-                prompt: content || "Continue the story",
-                order: selectedChapter.order,
-            },
+            generationSettings,
             {
                 preserveState: false,
                 preserveScroll: true,

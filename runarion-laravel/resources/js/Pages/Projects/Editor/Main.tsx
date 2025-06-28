@@ -277,6 +277,7 @@ export default function ProjectEditorPage({
                         <EditorToolbar 
                             onSend={handleGenerateText}
                             isGenerating={isGenerating}
+                            wordCount={content ? content.split(/\s+/).filter(Boolean).length : 0}
                         />
                     </div>
                 </div>
