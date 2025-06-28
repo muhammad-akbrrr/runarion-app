@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from "react";
-import { Head, router } from "@inertiajs/react";
+import { useState } from "react";
+import { Head } from "@inertiajs/react";
 import { ChevronDown } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
@@ -26,6 +26,8 @@ import { $getRoot, $createParagraphNode, $createTextNode } from "lexical";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
+import { useProjectEditor } from "./hooks";
+import { useEffect } from "react";
 
 // Custom plugin to update editor content when chapter changes
 function ContentUpdatePlugin({ content }: { content: string }) {
@@ -93,230 +95,44 @@ export default function ProjectEditorPage({
     project: Project;
     chapters?: ProjectChapter[];
 }>) {
-    const [isSaving, setIsSaving] = useState(false);
-    const [content, setContent] = useState("");
-    const [settings, setSettings] = useState(project.settings || {});
-    const [localChapters, setLocalChapters] = useState<ProjectChapter[]>(chapters);
-    const [selectedChapter, setSelectedChapter] =
-        useState<ProjectChapter | null>(
-            chapters.length > 0 ? chapters[0] : null
-        );
-    
-    // Unified save timeout for both content and settings
-    const saveTimeout = useRef<NodeJS.Timeout | null>(null);
-    const lastSavedContent = useRef<string>("");
-    const lastSavedSettings = useRef<any>({});
-    const isInitialized = useRef(false);
+    // Use custom hook for all editor logic
+    const {
+        isSaving,
+        content,
+        setContent,
+        settings,
+        localChapters,
+        selectedChapter,
+        selectedChapterOrder,
+        handleChapterSelect,
+        handleAddChapter,
+        handleSettingChange,
+    } = useProjectEditor({
+        workspaceId,
+        projectId,
+        project,
+        initialChapters: chapters,
+    });
 
     // Add Chapter Dialog state
     const [addChapterDialogOpen, setAddChapterDialogOpen] = useState(false);
     const [newChapterName, setNewChapterName] = useState("");
     const [addChapterLoading, setAddChapterLoading] = useState(false);
 
-    // Update local chapters when chapters prop changes
-    useEffect(() => {
-        setLocalChapters(chapters);
-        
-        // Update selectedChapter if it exists in the new chapters
-        if (selectedChapter) {
-            const updatedChapter = chapters.find(ch => ch.order === selectedChapter.order);
-            if (updatedChapter) {
-                setSelectedChapter(updatedChapter);
-            }
-        }
-    }, [chapters]);
-
-    // Initialize component
-    useEffect(() => {
-        if (selectedChapter) {
-            setContent(selectedChapter.content || "");
-            lastSavedContent.current = selectedChapter.content || "";
-        } else {
-            setContent("");
-            lastSavedContent.current = "";
-        }
-        
-        // Initialize settings
-        const initialSettings = project.settings || {};
-        setSettings(initialSettings);
-        lastSavedSettings.current = initialSettings;
-        
-        // Mark as initialized after a brief delay to ensure all components are mounted
-        setTimeout(() => {
-            isInitialized.current = true;
-            console.log("Project editor initialized");
-        }, 100);
-    }, [selectedChapter, project.settings]);
-
-    // Unified save function for both content and settings
-    const saveProjectData = () => {
-        if (!isInitialized.current) {
-            console.log("Skipping save: not initialized yet");
-            return;
-        }
-
-        const contentChanged = content !== lastSavedContent.current;
-        const settingsChanged = JSON.stringify(settings) !== JSON.stringify(lastSavedSettings.current);
-
-        if (!contentChanged && !settingsChanged) {
-            console.log("No changes to save");
-            return;
-        }
-
-        console.log("Starting unified save", { contentChanged, settingsChanged });
-        setIsSaving(true);
-
-        // Prepare save promises
-        const savePromises = [];
-
-        // Save content if changed and we have a selected chapter
-        if (contentChanged && selectedChapter) {
-            console.log("Saving content changes");
-            const contentPromise = new Promise((resolve, reject) => {
-                router.patch(
-                    route("editor.project.updateData", {
-                        workspace_id: workspaceId,
-                        project_id: projectId,
-                    }),
-                    {
-                        order: selectedChapter.order,
-                        content: content,
-                    },
-                    {
-                        preserveState: true,
-                        preserveScroll: true,
-                        onSuccess: (page) => {
-                            lastSavedContent.current = content;
-                            console.log("Content saved successfully");
-                            
-                            // Update local chapters with server response
-                            const updatedChapters = page.props.chapters as ProjectChapter[];
-                            if (updatedChapters) {
-                                setLocalChapters(updatedChapters);
-                                
-                                // Update selected chapter with latest content
-                                const updatedSelectedChapter = updatedChapters.find(ch => ch.order === selectedChapter.order);
-                                if (updatedSelectedChapter) {
-                                    setSelectedChapter(updatedSelectedChapter);
-                                }
-                            }
-                            
-                            resolve(true);
-                        },
-                        onError: (errors) => {
-                            console.error("Failed to save content:", errors);
-                            reject(errors);
-                        },
-                    }
-                );
-            });
-            savePromises.push(contentPromise);
-        }
-
-        // Save settings if changed
-        if (settingsChanged) {
-            console.log("Saving settings changes");
-            const settingsPromise = new Promise((resolve, reject) => {
-                router.patch(
-                    route("editor.project.updateSettings", {
-                        workspace_id: workspaceId,
-                        project_id: projectId,
-                    }),
-                    settings,
-                    {
-                        preserveState: true,
-                        preserveScroll: true,
-                        onSuccess: () => {
-                            lastSavedSettings.current = { ...settings };
-                            console.log("Settings saved successfully");
-                            resolve(true);
-                        },
-                        onError: (errors) => {
-                            console.error("Failed to save settings:", errors);
-                            reject(errors);
-                        },
-                    }
-                );
-            });
-            savePromises.push(settingsPromise);
-        }
-
-        // Handle all save operations
-        if (savePromises.length > 0) {
-            Promise.allSettled(savePromises)
-                .then((results) => {
-                    const failures = results.filter(result => result.status === 'rejected');
-                    if (failures.length > 0) {
-                        console.error("Some saves failed:", failures);
-                    } else {
-                        console.log("All saves completed successfully");
-                    }
-                })
-                .finally(() => {
-                    setIsSaving(false);
-                });
-        } else {
-            setIsSaving(false);
-        }
-    };
-
-    // Unified debounced auto-save effect
-    useEffect(() => {
-        if (!isInitialized.current) {
-            return;
-        }
-
-        // Clear existing timeout
-        if (saveTimeout.current) {
-            clearTimeout(saveTimeout.current);
-        }
-
-        // Set new timeout
-        saveTimeout.current = setTimeout(() => {
-            saveProjectData();
-        }, 1000);
-
-        return () => {
-            if (saveTimeout.current) {
-                clearTimeout(saveTimeout.current);
-            }
-        };
-    }, [content, settings, selectedChapter, workspaceId, projectId]);
-
-    // Ensure first chapter is selected by default when chapters are loaded
-    useEffect(() => {
-        if (localChapters.length > 0 && !selectedChapter) {
-            setSelectedChapter(localChapters[0]);
-        }
-    }, [localChapters, selectedChapter]);
-
-    // Get the selected chapter order for the radio group
-    const selectedChapterOrder = selectedChapter?.order ?? 0;
-
     // Handler for adding a new chapter
-    const handleAddChapter = async () => {
+    const handleAddChapterClick = async () => {
+        if (!newChapterName.trim()) return;
+        
         setAddChapterLoading(true);
-        router.post(
-            route("editor.project.chapter", {
-                workspace_id: workspaceId,
-                project_id: projectId,
-            }),
-            { chapter_name: newChapterName },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                onSuccess: (page) => {
-                    const updatedChapters = page.props.chapters as ProjectChapter[];
-                    if (updatedChapters && updatedChapters.length > 0) {
-                        setLocalChapters(updatedChapters);
-                        setSelectedChapter(updatedChapters[updatedChapters.length - 1]);
-                    }
-                    setAddChapterDialogOpen(false);
-                    setNewChapterName("");
-                },
-                onFinish: () => setAddChapterLoading(false),
-            }
-        );
+        try {
+            await handleAddChapter(newChapterName);
+            setAddChapterDialogOpen(false);
+            setNewChapterName("");
+        } catch (error) {
+            console.error("Failed to add chapter:", error);
+        } finally {
+            setAddChapterLoading(false);
+        }
     };
 
     return (
@@ -325,35 +141,13 @@ export default function ProjectEditorPage({
             projectId={projectId}
             workspaceId={workspaceId}
             isSaving={isSaving}
-            setIsSaving={setIsSaving}
+            setIsSaving={() => {}} // Managed by hook now
         >
             <Head title="Project Editor" />
 
             <EditorSidebar 
-                currentPreset={settings.currentPreset || "story-telling"}
-                authorProfile={settings.authorProfile || "tolkien"}
-                aiModel={settings.aiModel || "chatgpt-4o"}
-                memory={settings.memory || ""}
-                storyGenre={settings.storyGenre || ""}
-                storyTone={settings.storyTone || ""}
-                storyPov={settings.storyPov || ""}
-                temperature={settings.temperature || 1}
-                repetitionPenalty={settings.repetitionPenalty || 0}
-                outputLength={settings.outputLength || 300}
-                minOutputToken={settings.minOutputToken || 50}
-                topP={settings.topP || 0.85}
-                tailFree={settings.tailFree || 0.85}
-                topA={settings.topA || 0.85}
-                topK={settings.topK || 0.85}
-                phraseBias={settings.phraseBias || []}
-                bannedPhrases={settings.bannedPhrases || []}
-                stopSequences={settings.stopSequences || []}
-                onSettingChange={(key: string, value: any) => {
-                    setSettings(prev => ({
-                        ...prev,
-                        [key]: value
-                    }));
-                }}
+                settings={settings}
+                onSettingChange={handleSettingChange}
                 workspaceId={workspaceId}
                 projectId={projectId}
             >
@@ -400,14 +194,7 @@ export default function ProjectEditorPage({
                             <DropdownMenuContent align="start" className="w-50">
                                 <DropdownMenuRadioGroup
                                     value={selectedChapterOrder.toString()}
-                                    onValueChange={(value) => {
-                                        const chapter = localChapters.find(
-                                            (c) => c.order.toString() === value
-                                        );
-                                        if (chapter) {
-                                            setSelectedChapter(chapter);
-                                        }
-                                    }}
+                                    onValueChange={(value) => handleChapterSelect(parseInt(value))}
                                 >
                                     {localChapters.length > 0 ? (
                                         localChapters.map((chapter, index) => (
@@ -436,7 +223,7 @@ export default function ProjectEditorPage({
                             chapterName={newChapterName}
                             setChapterName={setNewChapterName}
                             loading={addChapterLoading}
-                            handleAddChapter={handleAddChapter}
+                            handleAddChapter={handleAddChapterClick}
                         />
                     </div>
                 </div>
@@ -463,8 +250,7 @@ export default function ProjectEditorPage({
                                     onChange={(editorState) => {
                                         editorState.read(() => {
                                             const root = $getRoot();
-                                            const newContent =
-                                                root.getTextContent();
+                                            const newContent = root.getTextContent();
                                             // Only update if content actually changed to avoid loops
                                             if (newContent !== content) {
                                                 setContent(newContent);

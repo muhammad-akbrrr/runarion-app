@@ -5,52 +5,15 @@ import {
     SidebarProvider,
 } from "@/Components/ui/sidebar";
 import { SidebarTabs } from "./SidebarTabs";
+import { SidebarSettingsProps } from "../../types/settings";
 
-interface EditorSidebarProps {
+interface EditorSidebarProps extends SidebarSettingsProps {
     children: React.ReactNode;
-    currentPreset: string;
-    authorProfile: string;
-    aiModel: string;
-    memory: string;
-    storyGenre: string;
-    storyTone: string;
-    storyPov: string;
-    temperature: number;
-    repetitionPenalty: number;
-    outputLength: number;
-    minOutputToken: number;
-    topP: number;
-    tailFree: number;
-    topA: number;
-    topK: number;
-    phraseBias: Array<{ [key: string]: number }>;
-    bannedPhrases: string[];
-    stopSequences: string[];
-    onSettingChange: (key: string, value: any) => void;
-    workspaceId?: string;
-    projectId?: string;
 }
 
 export function EditorSidebar({ 
     children,
-    currentPreset,
-    authorProfile,
-    aiModel,
-    memory,
-    storyGenre,
-    storyTone,
-    storyPov,
-    temperature,
-    repetitionPenalty,
-    outputLength,
-    minOutputToken,
-    topP,
-    tailFree,
-    topA,
-    topK,
-    phraseBias,
-    bannedPhrases,
-    stopSequences,
+    settings,
     onSettingChange,
     workspaceId, 
     projectId 
@@ -85,24 +48,7 @@ export function EditorSidebar({
                 >
                     <SidebarContent className="overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
                         <SidebarTabs 
-                            currentPreset={currentPreset}
-                            authorProfile={authorProfile}
-                            aiModel={aiModel}
-                            memory={memory}
-                            storyGenre={storyGenre}
-                            storyTone={storyTone}
-                            storyPov={storyPov}
-                            temperature={temperature}
-                            repetitionPenalty={repetitionPenalty}
-                            outputLength={outputLength}
-                            minOutputToken={minOutputToken}
-                            topP={topP}
-                            tailFree={tailFree}
-                            topA={topA}
-                            topK={topK}
-                            phraseBias={phraseBias}
-                            bannedPhrases={bannedPhrases}
-                            stopSequences={stopSequences}
+                            settings={settings}
                             onSettingChange={onSettingChange}
                             workspaceId={workspaceId}
                             projectId={projectId}

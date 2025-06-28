@@ -2,54 +2,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { SidebarTrigger, useSidebar } from "@/Components/ui/sidebar";
 import { Grid3X3 } from "lucide-react";
 import { SidebarContent } from "./SidebarMainContent";
-
-interface SidebarTabsProps {
-    currentPreset: string;
-    authorProfile: string;
-    aiModel: string;
-    memory: string;
-    storyGenre: string;
-    storyTone: string;
-    storyPov: string;
-    temperature: number;
-    repetitionPenalty: number;
-    outputLength: number;
-    minOutputToken: number;
-    topP: number;
-    tailFree: number;
-    topA: number;
-    topK: number;
-    phraseBias: Array<{ [key: string]: number }>;
-    bannedPhrases: string[];
-    stopSequences: string[];
-    onSettingChange: (key: string, value: any) => void;
-    workspaceId?: string;
-    projectId?: string;
-}
+import { SidebarSettingsProps } from "../../types/settings";
 
 export function SidebarTabs({ 
-    currentPreset,
-    authorProfile,
-    aiModel,
-    memory,
-    storyGenre,
-    storyTone,
-    storyPov,
-    temperature,
-    repetitionPenalty,
-    outputLength,
-    minOutputToken,
-    topP,
-    tailFree,
-    topA,
-    topK,
-    phraseBias,
-    bannedPhrases,
-    stopSequences,
+    settings,
     onSettingChange,
     workspaceId, 
     projectId 
-}: SidebarTabsProps) {
+}: SidebarSettingsProps) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
 
@@ -108,24 +68,7 @@ export function SidebarTabs({
                     {/* Settings tab content - shows the AI configuration */}
                     <TabsContent value="settings" className="mt-0">
                         <SidebarContent 
-                            currentPreset={currentPreset}
-                            authorProfile={authorProfile}
-                            aiModel={aiModel}
-                            memory={memory}
-                            storyGenre={storyGenre}
-                            storyTone={storyTone}
-                            storyPov={storyPov}
-                            temperature={temperature}
-                            repetitionPenalty={repetitionPenalty}
-                            outputLength={outputLength}
-                            minOutputToken={minOutputToken}
-                            topP={topP}
-                            tailFree={tailFree}
-                            topA={topA}
-                            topK={topK}
-                            phraseBias={phraseBias}
-                            bannedPhrases={bannedPhrases}
-                            stopSequences={stopSequences}
+                            settings={settings}
                             onSettingChange={onSettingChange}
                             workspaceId={workspaceId}
                             projectId={projectId}

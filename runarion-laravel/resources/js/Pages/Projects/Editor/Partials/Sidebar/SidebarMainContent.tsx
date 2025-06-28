@@ -28,52 +28,12 @@ import {
     X,
     Book,
 } from "lucide-react";
-
-interface SidebarContentProps {
-    currentPreset: string;
-    authorProfile: string;
-    aiModel: string;
-    memory: string;
-    storyGenre: string;
-    storyTone: string;
-    storyPov: string;
-    temperature: number;
-    repetitionPenalty: number;
-    outputLength: number;
-    minOutputToken: number;
-    topP: number;
-    tailFree: number;
-    topA: number;
-    topK: number;
-    phraseBias: Array<{ [key: string]: number }>;
-    bannedPhrases: string[];
-    stopSequences: string[];
-    onSettingChange: (key: string, value: any) => void;
-    workspaceId?: string;
-    projectId?: string;
-}
+import { SidebarSettingsProps, DEFAULT_SETTINGS } from "../../types/settings";
 
 export function SidebarContent({ 
-    currentPreset,
-    authorProfile,
-    aiModel,
-    memory,
-    storyGenre,
-    storyTone,
-    storyPov,
-    temperature,
-    repetitionPenalty,
-    outputLength,
-    minOutputToken,
-    topP,
-    tailFree,
-    topA,
-    topK,
-    phraseBias,
-    bannedPhrases,
-    stopSequences,
+    settings,
     onSettingChange
-}: SidebarContentProps) {
+}: SidebarSettingsProps) {
     // UI State only - no data state
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
     
@@ -82,6 +42,26 @@ export function SidebarContent({
     const [phraseBiasValue, setPhraseBiasValue] = useState([0]);
     const [bannedTokensInput, setBannedTokensInput] = useState("");
     const [stopSequenceInput, setStopSequenceInput] = useState("");
+
+    // Get values with defaults
+    const currentPreset = settings.currentPreset ?? DEFAULT_SETTINGS.currentPreset;
+    const authorProfile = settings.authorProfile ?? DEFAULT_SETTINGS.authorProfile;
+    const aiModel = settings.aiModel ?? DEFAULT_SETTINGS.aiModel;
+    const memory = settings.memory ?? DEFAULT_SETTINGS.memory;
+    const storyGenre = settings.storyGenre ?? DEFAULT_SETTINGS.storyGenre;
+    const storyTone = settings.storyTone ?? DEFAULT_SETTINGS.storyTone;
+    const storyPov = settings.storyPov ?? DEFAULT_SETTINGS.storyPov;
+    const temperature = settings.temperature ?? DEFAULT_SETTINGS.temperature;
+    const repetitionPenalty = settings.repetitionPenalty ?? DEFAULT_SETTINGS.repetitionPenalty;
+    const outputLength = settings.outputLength ?? DEFAULT_SETTINGS.outputLength;
+    const minOutputToken = settings.minOutputToken ?? DEFAULT_SETTINGS.minOutputToken;
+    const topP = settings.topP ?? DEFAULT_SETTINGS.topP;
+    const tailFree = settings.tailFree ?? DEFAULT_SETTINGS.tailFree;
+    const topA = settings.topA ?? DEFAULT_SETTINGS.topA;
+    const topK = settings.topK ?? DEFAULT_SETTINGS.topK;
+    const phraseBias = settings.phraseBias ?? DEFAULT_SETTINGS.phraseBias;
+    const bannedPhrases = settings.bannedPhrases ?? DEFAULT_SETTINGS.bannedPhrases;
+    const stopSequences = settings.stopSequences ?? DEFAULT_SETTINGS.stopSequences;
 
     return (
         <div
@@ -93,7 +73,7 @@ export function SidebarContent({
             {/* Current Preset */}
             <div className="space-y-2">
                 <Label htmlFor="preset">Current Preset</Label>
-                <Select value={currentPreset} onValueChange={(value) => onSettingChange('currentPreset', value)}>
+                <Select value={currentPreset} onValueChange={(value) => onSettingChange?.('currentPreset', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -112,7 +92,7 @@ export function SidebarContent({
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select value={authorProfile} onValueChange={(value) => onSettingChange('authorProfile', value)}>
+                <Select value={authorProfile} onValueChange={(value) => onSettingChange?.('authorProfile', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -127,7 +107,7 @@ export function SidebarContent({
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select value={aiModel} onValueChange={(value) => onSettingChange('aiModel', value)}>
+                <Select value={aiModel} onValueChange={(value) => onSettingChange?.('aiModel', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -153,7 +133,7 @@ export function SidebarContent({
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
                         value={memory}
-                        onChange={(e) => onSettingChange('memory', e.target.value)}
+                        onChange={(e) => onSettingChange?.('memory', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -177,7 +157,7 @@ export function SidebarContent({
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
                         value={storyGenre}
-                        onChange={(e) => onSettingChange('storyGenre', e.target.value)}
+                        onChange={(e) => onSettingChange?.('storyGenre', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -201,7 +181,7 @@ export function SidebarContent({
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
                         value={storyTone}
-                        onChange={(e) => onSettingChange('storyTone', e.target.value)}
+                        onChange={(e) => onSettingChange?.('storyTone', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -222,7 +202,7 @@ export function SidebarContent({
                         placeholder="Search for an entry"
                         className="pr-8"
                         value={storyPov}
-                        onChange={(e) => onSettingChange('storyPov', e.target.value)}
+                        onChange={(e) => onSettingChange?.('storyPov', e.target.value)}
                     />
                     <Button variant="outline" className="h-9 w-9 p-0">
                         <Book className="h-3 w-3" />
@@ -266,7 +246,7 @@ export function SidebarContent({
                             <span className="text-sm">{temperature}</span>
                             <Slider
                                 value={[temperature]}
-                                onValueChange={(value) => onSettingChange('temperature', value[0])}
+                                onValueChange={(value) => onSettingChange?.('temperature', value[0])}
                                 max={2}
                                 min={0}
                                 step={0.01}
@@ -292,7 +272,7 @@ export function SidebarContent({
                             </span>
                             <Slider
                                 value={[repetitionPenalty]}
-                                onValueChange={(value) => onSettingChange('repetitionPenalty', value[0])}
+                                onValueChange={(value) => onSettingChange?.('repetitionPenalty', value[0])}
                                 max={2}
                                 min={-2}
                                 step={0.1}
@@ -316,7 +296,7 @@ export function SidebarContent({
                             <span className="text-sm">~{outputLength}</span>
                             <Slider
                                 value={[outputLength]}
-                                onValueChange={(value) => onSettingChange('outputLength', value[0])}
+                                onValueChange={(value) => onSettingChange?.('outputLength', value[0])}
                                 max={1000}
                                 min={50}
                                 step={10}
