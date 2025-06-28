@@ -32,7 +32,7 @@ export function useAutoSave({
     onSaveEnd,
 }: UseAutoSaveProps) {
     const saveTimeout = useRef<NodeJS.Timeout | null>(null);
-    const lastSavedContent = useRef<string>("");
+    const lastSavedContent = useRef<string | null>(null); 
     const lastSavedSettings = useRef<any>({});
     const isSaving = useRef<boolean>(false);
 
@@ -54,18 +54,25 @@ export function useAutoSave({
 
         const { content: contentData, settings } = data;
         
-        // Allow empty content - compare with null/undefined check instead of truthy check
+        // Allow empty content - use strict comparison to handle null vs empty string vs content
         const contentChanged = contentData !== undefined && contentData.content !== lastSavedContent.current;
         const settingsChanged = settings && JSON.stringify(settings) !== JSON.stringify(lastSavedSettings.current);
 
         if (!contentChanged && !settingsChanged) {
-            console.log("No changes to save");
+            console.log("No changes to save", {
+                currentContent: contentData?.content,
+                lastSavedContent: lastSavedContent.current,
+                contentChanged,
+                settingsChanged
+            });
             return;
         }
 
         console.log("Starting save", { 
             contentChanged, 
             settingsChanged, 
+            currentContent: contentData?.content,
+            lastSavedContent: lastSavedContent.current,
             contentLength: contentData?.content?.length || 0 
         });
         
@@ -78,7 +85,8 @@ export function useAutoSave({
         if (contentChanged && contentData !== undefined) {
             console.log("Saving content changes", { 
                 isEmpty: contentData.content === "", 
-                length: contentData.content.length 
+                length: contentData.content.length,
+                content: contentData.content
             });
             
             const contentPromise = new Promise((resolve, reject) => {
@@ -98,7 +106,8 @@ export function useAutoSave({
                             lastSavedContent.current = contentData.content;
                             console.log("Content saved successfully", { 
                                 isEmpty: contentData.content === "",
-                                length: contentData.content.length 
+                                length: contentData.content.length,
+                                savedContent: contentData.content
                             });
                             
                             const updatedChapters = page.props.chapters as ProjectChapter[];
@@ -203,11 +212,20 @@ export function useAutoSave({
         return saveData(data);
     }, [cancelSave, saveData]);
 
+    // Method to initialize the last saved content
+    const initializeLastSavedContent = useCallback((content: string) => {
+        if (lastSavedContent.current === null) {
+            lastSavedContent.current = content;
+            console.log("Initialized lastSavedContent:", content);
+        }
+    }, []);
+
     return {
         saveData,
         debouncedSave,
         cancelSave,
         forceSave,
+        initializeLastSavedContent,
         isSaving: isSaving.current,
         lastSavedContent: lastSavedContent.current,
         lastSavedSettings: lastSavedSettings.current,

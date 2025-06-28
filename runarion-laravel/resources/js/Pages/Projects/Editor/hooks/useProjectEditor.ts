@@ -22,14 +22,13 @@ export function useProjectEditor({
     const [content, setContent] = useState("");
     const [settings, setSettings] = useState(project.settings || {});
     const [localChapters, setLocalChapters] = useState<ProjectChapter[]>(initialChapters);
-    const [selectedChapter, setSelectedChapter] = useState<ProjectChapter | null>(
-        initialChapters.length > 0 ? initialChapters[0] : null
-    );
+    const [selectedChapter, setSelectedChapter] = useState<ProjectChapter | null>(null);
+    const [preservedChapterOrder, setPreservedChapterOrder] = useState<number | null>(null);
     
     const isInitialized = useRef(false);
 
     // Auto-save hook
-    const { debouncedSave, cancelSave, forceSave } = useAutoSave({
+    const { debouncedSave, cancelSave, forceSave, initializeLastSavedContent } = useAutoSave({
         workspaceId,
         projectId,
         isInitialized: isInitialized.current,
@@ -37,7 +36,7 @@ export function useProjectEditor({
         onContentSaved: (updatedChapters) => {
             setLocalChapters(updatedChapters);
             
-            // Update selected chapter with latest content
+            // Update selected chapter with latest content, preserving the current selection
             if (selectedChapter) {
                 const updatedSelectedChapter = updatedChapters.find(ch => ch.order === selectedChapter.order);
                 if (updatedSelectedChapter) {
@@ -52,9 +51,20 @@ export function useProjectEditor({
         onSaveEnd: () => setIsSaving(false),
     });
 
-    // Update local chapters when prop changes
+    // Update local chapters when prop changes, but preserve selected chapter
     useEffect(() => {
         setLocalChapters(initialChapters);
+        
+        // If we have a preserved chapter order (from generation), restore it
+        if (preservedChapterOrder !== null) {
+            const chapterToRestore = initialChapters.find(ch => ch.order === preservedChapterOrder);
+            if (chapterToRestore) {
+                setSelectedChapter(chapterToRestore);
+                setPreservedChapterOrder(null); // Clear the preserved order
+                console.log("Restored chapter after generation:", chapterToRestore.chapter_name);
+                return;
+            }
+        }
         
         // Update selectedChapter if it exists in the new chapters
         if (selectedChapter) {
@@ -63,12 +73,15 @@ export function useProjectEditor({
                 setSelectedChapter(updatedChapter);
             }
         }
-    }, [initialChapters]);
+    }, [initialChapters, preservedChapterOrder, selectedChapter]);
 
     // Initialize component
     useEffect(() => {
         if (selectedChapter) {
-            setContent(selectedChapter.content || "");
+            const chapterContent = selectedChapter.content || "";
+            setContent(chapterContent);
+            // Initialize the autosave with current content to prevent unnecessary saves
+            initializeLastSavedContent(chapterContent);
         } else {
             setContent("");
         }
@@ -84,7 +97,7 @@ export function useProjectEditor({
         }, 500); // Increased delay to ensure proper initialization
 
         return () => clearTimeout(timer);
-    }, [selectedChapter, project.settings]);
+    }, [selectedChapter, project.settings, initializeLastSavedContent]);
 
     // Auto-save effect - only trigger when not generating
     useEffect(() => {
@@ -110,12 +123,13 @@ export function useProjectEditor({
         return () => cancelSave();
     }, [content, settings, selectedChapter, debouncedSave, cancelSave, isGenerating]);
 
-    // Ensure first chapter is selected by default
+    // Ensure first chapter is selected by default only if no chapter is selected and no preserved order
     useEffect(() => {
-        if (localChapters.length > 0 && !selectedChapter) {
+        if (localChapters.length > 0 && !selectedChapter && preservedChapterOrder === null) {
             setSelectedChapter(localChapters[0]);
+            console.log("Auto-selected first chapter:", localChapters[0].chapter_name);
         }
-    }, [localChapters, selectedChapter]);
+    }, [localChapters, selectedChapter, preservedChapterOrder]);
 
     // Chapter management functions
     const handleChapterSelect = useCallback((chapterOrder: number) => {
@@ -185,9 +199,12 @@ export function useProjectEditor({
             return;
         }
 
+        // Preserve the current chapter order before generation
+        setPreservedChapterOrder(selectedChapter.order);
+        
         // Cancel any pending autosave before generation
         cancelSave();
-        console.log("Starting text generation - autosave cancelled");
+        console.log("Starting text generation - autosave cancelled, preserving chapter:", selectedChapter.chapter_name);
 
         setIsGenerating(true);
 
@@ -208,16 +225,14 @@ export function useProjectEditor({
                     const updatedChapters = page.props.chapters as ProjectChapter[];
                     if (updatedChapters) {
                         setLocalChapters(updatedChapters);
-                        const updatedSelectedChapter = updatedChapters.find(ch => ch.order === selectedChapter.order);
-                        if (updatedSelectedChapter) {
-                            setSelectedChapter(updatedSelectedChapter);
-                            setContent(updatedSelectedChapter.content || "");
-                        }
+                        // Don't set selected chapter here - let the useEffect handle restoration
+                        console.log("Text generation completed successfully, chapters updated");
                     }
-                    console.log("Text generation completed successfully");
                 },
                 onError: (errors) => {
                     console.error("Failed to generate text:", errors);
+                    // Clear preserved order on error
+                    setPreservedChapterOrder(null);
                 },
                 onFinish: () => {
                     setIsGenerating(false);

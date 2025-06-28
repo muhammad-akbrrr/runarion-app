@@ -355,8 +355,13 @@ class MainEditorController extends Controller
                         
                         foreach ($chapters as &$chapter) {
                             if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
-                                // Append the generated text to existing content
-                                $chapter['content'] = ($chapter['content'] ?? '') . $responseData['text'];
+                                // Append the generated text to existing content, add space if needed
+                                $existingContent = $chapter['content'] ?? '';
+                                $generatedText = $responseData['text'];
+                                if ($existingContent !== '' && substr($existingContent, -1) !== ' ') {
+                                    $existingContent .= ' ';
+                                }
+                                $chapter['content'] = $existingContent . $generatedText;
                                 break;
                             }
                         }
