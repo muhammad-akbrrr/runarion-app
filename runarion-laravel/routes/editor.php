@@ -10,7 +10,8 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'editor'])->name('workspace.projects.editor');
     Route::patch('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'updateProjectName'])->name('editor.project.updateName');
     Route::post('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'projectOnboarding'])->name('editor.project.onboarding');
-    Route::post('/{workspace_id}/projects/{project_id}/editor/deconstruction', [MainEditorController::class, 'manuscriptDeconstruction'])->name('editor.project.deconstruction');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/chapter', [MainEditorController::class, 'storeProjectChapter'])->name('editor.project.chapter');
+    Route::patch('/{workspace_id}/projects/{project_id}/editor/data', [MainEditorController::class, 'updateProjectData'])->name('editor.project.updateData');
 
     Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
 });

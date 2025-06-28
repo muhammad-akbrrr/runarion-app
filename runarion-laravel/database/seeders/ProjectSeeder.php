@@ -61,6 +61,7 @@ class ProjectSeeder extends Seeder
                         'name' => "Project " . ($i + 1) . " in " . $folder->name,
                         'slug' => "project-" . $workspace->id . "-" . $folder->id . "-" . ($i + 1),
                         'original_author' => $owner->user->id,
+                        'completed_onboarding' => fake()->boolean(),
                     ]);
 
                     // Ensure original author is in access array with admin role

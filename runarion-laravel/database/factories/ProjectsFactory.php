@@ -4,9 +4,9 @@ namespace Database\Factories;
 
 use App\Models\Projects;
 use App\Models\Workspace;
-use App\Models\WorkspaceMember;
 use App\Models\ProjectContent;
 use App\Models\ProjectNodeEditor;
+use App\Models\WorkspaceMember;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -43,7 +43,7 @@ class ProjectsFactory extends Factory
       'access' => null,
       'is_active' => true,
       'backup_frequency' => fake()->randomElement(['daily', 'weekly', 'manual']),
-      'completed_onboarding' => false,
+      'completed_onboarding' => fake()->boolean(),
     ];
   }
 
@@ -105,11 +105,14 @@ class ProjectsFactory extends Factory
         $project->save();
       }
 
-      // Create ProjectContent for this project
-      ProjectContent::factory()->create([
-        'project_id' => $project->id,
-        'last_edited_by' => $project->original_author,
-      ]);
+      // Create ProjectContent for this project using the correct state
+      $contentFactory = new \Database\Factories\ProjectContentFactory();
+      if ($project->completed_onboarding) {
+        $contentData = $contentFactory->definitionCompleted($project);
+      } else {
+        $contentData = $contentFactory->definitionNotCompleted($project);
+      }
+      ProjectContent::factory()->create($contentData);
 
       // Create ProjectNodeEditor for this project
       ProjectNodeEditor::factory()->create([

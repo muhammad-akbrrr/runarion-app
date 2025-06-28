@@ -1,4 +1,4 @@
-import * as React from "react";
+import React from "react";
 import {
     Menu,
     BookOpenText,
@@ -108,8 +108,6 @@ const quickLinks: ActionItem[] = [
 function EditableText({ initialValue, onSave }: EditableTextProps) {
     const [value, setValue] = React.useState(initialValue);
     const [isEditing, setIsEditing] = React.useState(false);
-    const [isSaving, setIsSaving] = React.useState(false);
-    const [isSaved, setIsSaved] = React.useState(true);
 
     const handleSave = async () => {
         if (value === initialValue) {
@@ -117,17 +115,15 @@ function EditableText({ initialValue, onSave }: EditableTextProps) {
             return;
         }
 
-        setIsSaving(true);
-        setIsSaved(false);
-
         try {
-            await onSave?.(value, setIsSaving, setIsSaved);
-            setIsSaved(true);
-            setTimeout(() => setIsSaved(true), 2000); // Show saved state for 2 seconds
+            await onSave?.(
+                value,
+                () => {},
+                () => {}
+            );
         } catch (error) {
             console.error("Failed to save:", error);
         } finally {
-            setIsSaving(false);
             setIsEditing(false);
         }
     };
@@ -140,12 +136,6 @@ function EditableText({ initialValue, onSave }: EditableTextProps) {
             setIsEditing(false);
         }
     };
-
-    React.useEffect(() => {
-        if (value !== initialValue) {
-            setIsSaved(false);
-        }
-    }, [value, initialValue]);
 
     if (isEditing) {
         return (
@@ -161,21 +151,12 @@ function EditableText({ initialValue, onSave }: EditableTextProps) {
     }
 
     return (
-        <div className="flex items-center gap-2">
-            <button
-                onClick={() => setIsEditing(true)}
-                className="text-base font-medium hover:bg-accent hover:text-accent-foreground rounded px-1 py-0.5 transition-colors"
-            >
-                {value}
-            </button>
-            {isSaving ? (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            ) : isSaved ? (
-                <Check className="h-4 w-4 text-green-600" />
-            ) : (
-                <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            )}
-        </div>
+        <button
+            onClick={() => setIsEditing(true)}
+            className="text-base font-medium hover:bg-accent hover:text-accent-foreground rounded px-1 py-0.5 transition-colors"
+        >
+            {value}
+        </button>
     );
 }
 
@@ -262,6 +243,8 @@ interface ProjectEditorLayoutProps {
     project: Project;
     projectId: string;
     workspaceId: string;
+    isSaving: boolean;
+    setIsSaving: (saving: boolean) => void;
 }
 
 export default function ProjectEditorLayout({
@@ -269,6 +252,8 @@ export default function ProjectEditorLayout({
     project,
     projectId,
     workspaceId,
+    isSaving,
+    setIsSaving,
 }: ProjectEditorLayoutProps) {
     const {
         workspace_switching,
@@ -343,6 +328,7 @@ export default function ProjectEditorLayout({
                 name: value,
             },
             {
+                preserveState: true,
                 preserveScroll: true,
                 onSuccess: () => {
                     setIsSaving(false);
@@ -512,11 +498,16 @@ export default function ProjectEditorLayout({
                         {/* Header area: TopBar features */}
                         <div className="sticky top-0 z-10 grid grid-cols-3 items-center px-4 py-2 border-b bg-white">
                             {/* Left: Project title */}
-                            <div className="flex items-center">
+                            <div className="flex items-center gap-2">
                                 <EditableText
                                     initialValue={project.name}
                                     onSave={handleSave}
                                 />
+                                {isSaving ? (
+                                    <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                                ) : (
+                                    <Check className="h-4 w-4 text-green-600" />
+                                )}
                             </div>
                             {/* Center: Search/Command palette */}
                             <div className="flex justify-center">
