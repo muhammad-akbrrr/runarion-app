@@ -873,7 +873,8 @@ class StoryRewritePipeline:
                 cursor.execute(
                     """
                     UPDATE projects
-                    SET completed_onboarding = TRUE
+                    SET completed_onboarding = TRUE,
+                        updated_at = NOW()
                     WHERE id = %s AND completed_onboarding = FALSE
                     """,
                     (project_id,)
