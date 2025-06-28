@@ -1,7 +1,6 @@
 // ========================= Imports =========================
 // External libraries
-import { useState, useEffect, useRef } from "react";
-import { router } from "@inertiajs/react";
+import { useState } from "react";
 import { Label } from "@/Components/ui/label";
 import {
     Select,
@@ -31,146 +30,58 @@ import {
 } from "lucide-react";
 
 interface SidebarContentProps {
-    projectSettings?: any;
+    currentPreset: string;
+    authorProfile: string;
+    aiModel: string;
+    memory: string;
+    storyGenre: string;
+    storyTone: string;
+    storyPov: string;
+    temperature: number;
+    repetitionPenalty: number;
+    outputLength: number;
+    minOutputToken: number;
+    topP: number;
+    tailFree: number;
+    topA: number;
+    topK: number;
+    phraseBias: Array<{ [key: string]: number }>;
+    bannedPhrases: string[];
+    stopSequences: string[];
+    onSettingChange: (key: string, value: any) => void;
     workspaceId?: string;
     projectId?: string;
 }
 
 export function SidebarContent({ 
-    projectSettings = {}, 
-    workspaceId, 
-    projectId 
+    currentPreset,
+    authorProfile,
+    aiModel,
+    memory,
+    storyGenre,
+    storyTone,
+    storyPov,
+    temperature,
+    repetitionPenalty,
+    outputLength,
+    minOutputToken,
+    topP,
+    tailFree,
+    topA,
+    topK,
+    phraseBias,
+    bannedPhrases,
+    stopSequences,
+    onSettingChange
 }: SidebarContentProps) {
-    // UI State
+    // UI State only - no data state
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-
-    // Main Settings - Initialize from projectSettings or defaults
-    const [currentPreset, setCurrentPreset] = useState(projectSettings.currentPreset || "story-telling");
-    const [authorProfile, setAuthorProfile] = useState(projectSettings.authorProfile || "tolkien");
-    const [aiModel, setAiModel] = useState(projectSettings.aiModel || "chatgpt-4o");
-    const [memory, setMemory] = useState(projectSettings.memory || "");
-    const [storyGenre, setStoryGenre] = useState(projectSettings.storyGenre || "");
-    const [storyTone, setStoryTone] = useState(projectSettings.storyTone || "");
-    const [storyPov, setStoryPov] = useState(projectSettings.storyPov || "");
-
-    // Advanced Settings - Sliders - Initialize from projectSettings or defaults
-    const [temperature, setTemperature] = useState([projectSettings.temperature || 1]);
-    const [repetitionPenalty, setRepetitionPenalty] = useState([projectSettings.repetitionPenalty || 0]);
-    const [outputLength, setOutputLength] = useState([projectSettings.outputLength || 300]);
-    const [minOutputToken, setMinOutputToken] = useState([projectSettings.minOutputToken || 50]);
-
-    // Sampling values - Initialize from projectSettings or defaults
-    const [topP, setTopP] = useState([projectSettings.topP || 0.85]);
-    const [tailFree, setTailFree] = useState([projectSettings.tailFree || 0.85]);
-    const [topA, setTopA] = useState([projectSettings.topA || 0.85]);
-    const [topK, setTopK] = useState([projectSettings.topK || 0.85]);
-
-    // Phrase Bias Settings - Initialize from projectSettings or defaults
+    
+    // Local input states for complex inputs
     const [phraseBiasInput, setPhraseBiasInput] = useState("");
     const [phraseBiasValue, setPhraseBiasValue] = useState([0]);
-    const [phraseBias, setPhraseBias] = useState<Array<{ [key: string]: number }>>(projectSettings.phraseBias || []);
-
-    // Banned Tokens - Initialize from projectSettings or defaults
     const [bannedTokensInput, setBannedTokensInput] = useState("");
-    const [bannedPhrases, setBannedPhrases] = useState<string[]>(projectSettings.bannedPhrases || []);
-
-    // Stop Sequence - Initialize from projectSettings or defaults
     const [stopSequenceInput, setStopSequenceInput] = useState("");
-    const [stopSequences, setStopSequences] = useState<string[]>(projectSettings.stopSequences || []);
-
-    // Ref for debouncing saves
-    const saveTimeout = useRef<NodeJS.Timeout | null>(null);
-
-    // Function to get all settings as JSON and log to console
-    const logSettings = () => {
-        const settings = {
-            // Main Settings
-            currentPreset,
-            authorProfile,
-            aiModel,
-            memory,
-            storyGenre,
-            storyTone,
-            storyPov,
-            
-            // Advanced Settings
-            temperature: temperature[0],
-            repetitionPenalty: repetitionPenalty[0],
-            outputLength: outputLength[0],
-            minOutputToken: minOutputToken[0],
-            
-            // Sampling
-            topP: topP[0],
-            tailFree: tailFree[0],
-            topA: topA[0],
-            topK: topK[0],
-            
-            // Phrase Bias
-            phraseBias,
-            
-            // Banned Tokens
-            bannedPhrases,
-            
-            // Stop Sequence
-            stopSequences,
-        };
-        
-        console.log("Editor Settings:", JSON.stringify(settings, null, 2));
-        return settings;
-    };
-
-    // Function to save settings to the backend
-    const saveSettings = (settings: any) => {
-        if (!workspaceId || !projectId) {
-            console.warn("Cannot save settings: missing workspaceId or projectId");
-            return;
-        }
-
-        // Clear existing timeout
-        if (saveTimeout.current) {
-            clearTimeout(saveTimeout.current);
-        }
-
-        // Debounce the save operation
-        saveTimeout.current = setTimeout(() => {
-            router.patch(
-                route("editor.project.updateSettings", {
-                    workspace_id: workspaceId,
-                    project_id: projectId,
-                }),
-                settings,
-                {
-                    preserveState: true,
-                    preserveScroll: true,
-                    onSuccess: () => {
-                        console.log("Settings saved successfully");
-                    },
-                    onError: (errors) => {
-                        console.error("Failed to save settings:", errors);
-                    },
-                }
-            );
-        }, 1000); // 1 second debounce
-    };
-
-    // Log settings and save whenever any value changes
-    useEffect(() => {
-        const settings = logSettings();
-        saveSettings(settings);
-    }, [
-        currentPreset, authorProfile, aiModel, memory, storyGenre, storyTone, storyPov,
-        temperature, repetitionPenalty, outputLength, minOutputToken,
-        topP, tailFree, topA, topK, phraseBias, bannedPhrases, stopSequences
-    ]);
-
-    // Cleanup timeout on unmount
-    useEffect(() => {
-        return () => {
-            if (saveTimeout.current) {
-                clearTimeout(saveTimeout.current);
-            }
-        };
-    }, []);
 
     return (
         <div
@@ -182,7 +93,7 @@ export function SidebarContent({
             {/* Current Preset */}
             <div className="space-y-2">
                 <Label htmlFor="preset">Current Preset</Label>
-                <Select value={currentPreset} onValueChange={setCurrentPreset}>
+                <Select value={currentPreset} onValueChange={(value) => onSettingChange('currentPreset', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -201,7 +112,7 @@ export function SidebarContent({
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select value={authorProfile} onValueChange={setAuthorProfile}>
+                <Select value={authorProfile} onValueChange={(value) => onSettingChange('authorProfile', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -216,7 +127,7 @@ export function SidebarContent({
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select value={aiModel} onValueChange={setAiModel}>
+                <Select value={aiModel} onValueChange={(value) => onSettingChange('aiModel', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -242,7 +153,7 @@ export function SidebarContent({
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
                         value={memory}
-                        onChange={(e) => setMemory(e.target.value)}
+                        onChange={(e) => onSettingChange('memory', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -266,7 +177,7 @@ export function SidebarContent({
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
                         value={storyGenre}
-                        onChange={(e) => setStoryGenre(e.target.value)}
+                        onChange={(e) => onSettingChange('storyGenre', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -290,7 +201,7 @@ export function SidebarContent({
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
                         value={storyTone}
-                        onChange={(e) => setStoryTone(e.target.value)}
+                        onChange={(e) => onSettingChange('storyTone', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -311,7 +222,7 @@ export function SidebarContent({
                         placeholder="Search for an entry"
                         className="pr-8"
                         value={storyPov}
-                        onChange={(e) => setStoryPov(e.target.value)}
+                        onChange={(e) => onSettingChange('storyPov', e.target.value)}
                     />
                     <Button variant="outline" className="h-9 w-9 p-0">
                         <Book className="h-3 w-3" />
@@ -352,10 +263,10 @@ export function SidebarContent({
                             The higher the value, the more random the output
                         </p>
                         <div className="space-y-2">
-                            <span className="text-sm">{temperature[0]}</span>
+                            <span className="text-sm">{temperature}</span>
                             <Slider
-                                value={temperature}
-                                onValueChange={setTemperature}
+                                value={[temperature]}
+                                onValueChange={(value) => onSettingChange('temperature', value[0])}
                                 max={2}
                                 min={0}
                                 step={0.01}
@@ -377,11 +288,11 @@ export function SidebarContent({
                         </p>
                         <div className="space-y-2">
                             <span className="text-sm">
-                                {repetitionPenalty[0]}
+                                {repetitionPenalty}
                             </span>
                             <Slider
-                                value={repetitionPenalty}
-                                onValueChange={setRepetitionPenalty}
+                                value={[repetitionPenalty]}
+                                onValueChange={(value) => onSettingChange('repetitionPenalty', value[0])}
                                 max={2}
                                 min={-2}
                                 step={0.1}
@@ -402,10 +313,10 @@ export function SidebarContent({
                             Increase the length of the generated responses
                         </p>
                         <div className="space-y-2">
-                            <span className="text-sm">~{outputLength[0]}</span>
+                            <span className="text-sm">~{outputLength}</span>
                             <Slider
-                                value={outputLength}
-                                onValueChange={setOutputLength}
+                                value={[outputLength]}
+                                onValueChange={(value) => onSettingChange('outputLength', value[0])}
                                 max={1000}
                                 min={50}
                                 step={10}
@@ -420,15 +331,15 @@ export function SidebarContent({
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Nucleus: {topP[0]}
+                                    Nucleus: {topP}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={topP}
-                                onValueChange={setTopP}
+                                value={[topP]}
+                                onValueChange={(value) => onSettingChange('topP', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -436,15 +347,15 @@ export function SidebarContent({
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Tail-Free: {tailFree[0]}
+                                    Tail-Free: {tailFree}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={tailFree}
-                                onValueChange={setTailFree}
+                                value={[tailFree]}
+                                onValueChange={(value) => onSettingChange('tailFree', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -452,15 +363,15 @@ export function SidebarContent({
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Top-A: {topA[0]}
+                                    Top-A: {topA}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={topA}
-                                onValueChange={setTopA}
+                                value={[topA]}
+                                onValueChange={(value) => onSettingChange('topA', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -468,15 +379,15 @@ export function SidebarContent({
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Top-K: {topK[0]}
+                                    Top-K: {topK}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={topK}
-                                onValueChange={setTopK}
+                                value={[topK]}
+                                onValueChange={(value) => onSettingChange('topK', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -542,7 +453,7 @@ export function SidebarContent({
                                         if (phraseBiasInput.trim()) {
                                             const updatedBias = [...phraseBias];
                                             updatedBias.push({ [phraseBiasInput]: phraseBiasValue[0] });
-                                            setPhraseBias(updatedBias);
+                                            onSettingChange('phraseBias', updatedBias);
                                             setPhraseBiasInput('');
                                         }
                                     }}
@@ -589,7 +500,7 @@ export function SidebarContent({
                                                     onClick={() => {
                                                         const updatedBias = [...phraseBias];
                                                         updatedBias.splice(index, 1);
-                                                        setPhraseBias(updatedBias);
+                                                        onSettingChange('phraseBias', updatedBias);
                                                     }}
                                                 >
                                                     <X className="h-3 w-3" />
@@ -703,7 +614,7 @@ export function SidebarContent({
                                 onClick={() => {
                                     if (bannedTokensInput.trim()) {
                                         const updatedTokens = [...bannedPhrases, bannedTokensInput];
-                                        setBannedPhrases(updatedTokens);
+                                        onSettingChange('bannedPhrases', updatedTokens);
                                         setBannedTokensInput('');
                                     }
                                 }}
@@ -728,7 +639,7 @@ export function SidebarContent({
                                             onClick={() => {
                                                 const updatedTokens = [...bannedPhrases];
                                                 updatedTokens.splice(index, 1);
-                                                setBannedPhrases(updatedTokens);
+                                                onSettingChange('bannedPhrases', updatedTokens);
                                             }}
                                         >
                                             <X className="h-3 w-3" />
@@ -794,7 +705,7 @@ export function SidebarContent({
                                 onClick={() => {
                                     if (stopSequenceInput.trim()) {
                                         const updatedSequences = [...stopSequences, stopSequenceInput];
-                                        setStopSequences(updatedSequences);
+                                        onSettingChange('stopSequences', updatedSequences);
                                         setStopSequenceInput('');
                                     }
                                 }}
@@ -817,7 +728,7 @@ export function SidebarContent({
                                             onClick={() => {
                                                 const updatedSequences = [...stopSequences];
                                                 updatedSequences.splice(index, 1);
-                                                setStopSequences(updatedSequences);
+                                                onSettingChange('stopSequences', updatedSequences);
                                             }}
                                         >
                                             <X className="h-3 w-3" />
@@ -830,15 +741,15 @@ export function SidebarContent({
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Min Output Token: {minOutputToken[0]}
+                                    Min Output Token: {minOutputToken}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 1
                                 </span>
                             </div>
                             <Slider
-                                value={minOutputToken}
-                                onValueChange={setMinOutputToken}
+                                value={[minOutputToken]}
+                                onValueChange={(value) => onSettingChange('minOutputToken', value[0])}
                                 max={100}
                                 min={1}
                                 step={1}
