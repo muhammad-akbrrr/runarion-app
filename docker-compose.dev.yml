@@ -94,12 +94,11 @@ services:
       PYTHONPATH: ${PYTHON_PYTHONPATH:-/app/src}
       PYTHONDONTWRITEBYTECODE: ${PYTHON_PYTHONDONTWRITEBYTECODE:-1}
       PYTHONUNBUFFERED: ${PYTHON_PYTHONUNBUFFERED:-1}
-      UPLOAD_FOLDER: ${PYTHON_UPLOAD_FOLDER:-/app/uploads}
       UPLOAD_PATH: ${PYTHON_UPLOAD_PATH:-/app/uploads}
     volumes:
       - ./runarion-python/src:/app/src
       - ./runarion-python/tests:/app/tests
-      - ./runarion-python/uploads:/app/uploads
+      - python_uploads:/app/uploads
       - ./runarion-python/requirements.txt:/app/requirements.txt
       - python_venv:/app/venv
     networks:
@@ -217,3 +216,4 @@ volumes:
   vendor:
   python_venv:
   sd_venv:
+  python_uploads:
