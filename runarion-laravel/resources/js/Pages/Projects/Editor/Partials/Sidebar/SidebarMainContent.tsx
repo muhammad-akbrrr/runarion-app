@@ -1,6 +1,7 @@
 // ========================= Imports =========================
 // External libraries
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { router } from "@inertiajs/react";
 import { Label } from "@/Components/ui/label";
 import {
     Select,
@@ -29,43 +30,56 @@ import {
     Book,
 } from "lucide-react";
 
-export function SidebarContent() {
+interface SidebarContentProps {
+    projectSettings?: any;
+    workspaceId?: string;
+    projectId?: string;
+}
+
+export function SidebarContent({ 
+    projectSettings = {}, 
+    workspaceId, 
+    projectId 
+}: SidebarContentProps) {
     // UI State
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
-    // Main Settings
-    const [currentPreset, setCurrentPreset] = useState("story-telling");
-    const [authorProfile, setAuthorProfile] = useState("tolkien");
-    const [aiModel, setAiModel] = useState("chatgpt-4o");
-    const [memory, setMemory] = useState("");
-    const [storyGenre, setStoryGenre] = useState("");
-    const [storyTone, setStoryTone] = useState("");
-    const [storyPov, setStoryPov] = useState("");
+    // Main Settings - Initialize from projectSettings or defaults
+    const [currentPreset, setCurrentPreset] = useState(projectSettings.currentPreset || "story-telling");
+    const [authorProfile, setAuthorProfile] = useState(projectSettings.authorProfile || "tolkien");
+    const [aiModel, setAiModel] = useState(projectSettings.aiModel || "chatgpt-4o");
+    const [memory, setMemory] = useState(projectSettings.memory || "");
+    const [storyGenre, setStoryGenre] = useState(projectSettings.storyGenre || "");
+    const [storyTone, setStoryTone] = useState(projectSettings.storyTone || "");
+    const [storyPov, setStoryPov] = useState(projectSettings.storyPov || "");
 
-    // Advanced Settings - Sliders
-    const [temperature, setTemperature] = useState([1]);
-    const [repetitionPenalty, setRepetitionPenalty] = useState([0]);
-    const [outputLength, setOutputLength] = useState([300]);
-    const [minOutputToken, setMinOutputToken] = useState([50]);
+    // Advanced Settings - Sliders - Initialize from projectSettings or defaults
+    const [temperature, setTemperature] = useState([projectSettings.temperature || 1]);
+    const [repetitionPenalty, setRepetitionPenalty] = useState([projectSettings.repetitionPenalty || 0]);
+    const [outputLength, setOutputLength] = useState([projectSettings.outputLength || 300]);
+    const [minOutputToken, setMinOutputToken] = useState([projectSettings.minOutputToken || 50]);
 
-    // Sampling values
-    const [topP, setTopP] = useState([0.85]);
-    const [tailFree, setTailFree] = useState([0.85]);
-    const [topA, setTopA] = useState([0.85]);
-    const [topK, setTopK] = useState([0.85]);
+    // Sampling values - Initialize from projectSettings or defaults
+    const [topP, setTopP] = useState([projectSettings.topP || 0.85]);
+    const [tailFree, setTailFree] = useState([projectSettings.tailFree || 0.85]);
+    const [topA, setTopA] = useState([projectSettings.topA || 0.85]);
+    const [topK, setTopK] = useState([projectSettings.topK || 0.85]);
 
-    // Phrase Bias Settings
+    // Phrase Bias Settings - Initialize from projectSettings or defaults
     const [phraseBiasInput, setPhraseBiasInput] = useState("");
     const [phraseBiasValue, setPhraseBiasValue] = useState([0]);
-    const [phraseBias, setPhraseBias] = useState<Array<{ [key: string]: number }>>([]);
+    const [phraseBias, setPhraseBias] = useState<Array<{ [key: string]: number }>>(projectSettings.phraseBias || []);
 
-    // Banned Tokens
+    // Banned Tokens - Initialize from projectSettings or defaults
     const [bannedTokensInput, setBannedTokensInput] = useState("");
-    const [bannedPhrases, setBannedPhrases] = useState<string[]>([]);
+    const [bannedPhrases, setBannedPhrases] = useState<string[]>(projectSettings.bannedPhrases || []);
 
-    // Stop Sequence
+    // Stop Sequence - Initialize from projectSettings or defaults
     const [stopSequenceInput, setStopSequenceInput] = useState("");
-    const [stopSequences, setStopSequences] = useState<string[]>([]);
+    const [stopSequences, setStopSequences] = useState<string[]>(projectSettings.stopSequences || []);
+
+    // Ref for debouncing saves
+    const saveTimeout = useRef<NodeJS.Timeout | null>(null);
 
     // Function to get all settings as JSON and log to console
     const logSettings = () => {
@@ -99,23 +113,64 @@ export function SidebarContent() {
             
             // Stop Sequence
             stopSequences,
-            
-            // UI State
-            isAdvancedOpen
         };
         
         console.log("Editor Settings:", JSON.stringify(settings, null, 2));
         return settings;
     };
 
-    // Log settings whenever any value changes
+    // Function to save settings to the backend
+    const saveSettings = (settings: any) => {
+        if (!workspaceId || !projectId) {
+            console.warn("Cannot save settings: missing workspaceId or projectId");
+            return;
+        }
+
+        // Clear existing timeout
+        if (saveTimeout.current) {
+            clearTimeout(saveTimeout.current);
+        }
+
+        // Debounce the save operation
+        saveTimeout.current = setTimeout(() => {
+            router.patch(
+                route("editor.project.updateSettings", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                }),
+                settings,
+                {
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: () => {
+                        console.log("Settings saved successfully");
+                    },
+                    onError: (errors) => {
+                        console.error("Failed to save settings:", errors);
+                    },
+                }
+            );
+        }, 1000); // 1 second debounce
+    };
+
+    // Log settings and save whenever any value changes
     useEffect(() => {
-        logSettings();
+        const settings = logSettings();
+        saveSettings(settings);
     }, [
         currentPreset, authorProfile, aiModel, memory, storyGenre, storyTone, storyPov,
         temperature, repetitionPenalty, outputLength, minOutputToken,
         topP, tailFree, topA, topK, phraseBias, bannedPhrases, stopSequences
     ]);
+
+    // Cleanup timeout on unmount
+    useEffect(() => {
+        return () => {
+            if (saveTimeout.current) {
+                clearTimeout(saveTimeout.current);
+            }
+        };
+    }, []);
 
     return (
         <div
@@ -138,7 +193,7 @@ export function SidebarContent() {
                         <SelectItem value="creative-writing">
                             Creative Writing
                         </SelectItem>
-                        <SelectItem value="technical">Technical</SelectItem>
+                        <SelectItem value="technical-writing">Technical Writing</SelectItem>
                     </SelectContent>
                 </Select>
             </div>

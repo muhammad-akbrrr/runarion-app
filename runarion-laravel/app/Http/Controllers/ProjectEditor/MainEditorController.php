@@ -232,4 +232,47 @@ class MainEditorController extends Controller
             'project_id' => $project_id,
         ]);
     }
+
+    /**
+     * Function to handle project settings updates.
+     */
+    public function updateProjectSettings(Request $request, string $workspace_id, string $project_id)
+    {
+        $validated = $request->validate([
+            'currentPreset' => 'nullable|string',
+            'authorProfile' => 'nullable|string',
+            'aiModel' => 'nullable|string',
+            'memory' => 'nullable|string',
+            'storyGenre' => 'nullable|string',
+            'storyTone' => 'nullable|string',
+            'storyPov' => 'nullable|string',
+            'temperature' => 'nullable|numeric|min:0|max:2',
+            'repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
+            'outputLength' => 'nullable|integer|min:50|max:1000',
+            'minOutputToken' => 'nullable|integer|min:1|max:100',
+            'topP' => 'nullable|numeric|min:0|max:1',
+            'tailFree' => 'nullable|numeric|min:0|max:1',
+            'topA' => 'nullable|numeric|min:0|max:1',
+            'topK' => 'nullable|numeric|min:0|max:1',
+            'phraseBias' => 'nullable|array',
+            'phraseBias.*' => 'nullable|array',
+            'bannedPhrases' => 'nullable|array',
+            'bannedPhrases.*' => 'nullable|string',
+            'stopSequences' => 'nullable|array',
+            'stopSequences.*' => 'nullable|string',
+        ]);
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        // Update the settings JSON column
+        $project->settings = $validated;
+        $project->save();
+
+        return redirect()->route('workspace.projects.editor', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
+        ]);
+    }
 }

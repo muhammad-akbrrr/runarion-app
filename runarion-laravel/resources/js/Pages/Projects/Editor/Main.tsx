@@ -205,7 +205,11 @@ export default function ProjectEditorPage({
         >
             <Head title="Project Editor" />
 
-            <EditorSidebar>
+            <EditorSidebar 
+                projectSettings={project.settings || {}}
+                workspaceId={workspaceId}
+                projectId={projectId}
+            >
                 <div className="flex items-center justify-between">
                     {/* Left side - Menu items */}
                     <div

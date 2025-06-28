@@ -8,9 +8,17 @@ import { SidebarTabs } from "./SidebarTabs";
 
 interface EditorSidebarProps {
     children: React.ReactNode;
+    projectSettings?: any;
+    workspaceId?: string;
+    projectId?: string;
 }
 
-export function EditorSidebar({ children }: EditorSidebarProps) {
+export function EditorSidebar({ 
+    children, 
+    projectSettings = {}, 
+    workspaceId, 
+    projectId 
+}: EditorSidebarProps) {
     return (
         <SidebarProvider
             defaultOpen={true}
@@ -40,7 +48,11 @@ export function EditorSidebar({ children }: EditorSidebarProps) {
                     className="absolute flex flex-col h-auto"
                 >
                     <SidebarContent className="overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
-                        <SidebarTabs />
+                        <SidebarTabs 
+                            projectSettings={projectSettings}
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                        />
                     </SidebarContent>
                 </Sidebar>
             </div>
