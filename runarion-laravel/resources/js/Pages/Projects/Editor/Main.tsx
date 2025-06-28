@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Head } from "@inertiajs/react";
+import { Head, usePage } from "@inertiajs/react";
 import { ChevronDown } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
@@ -95,9 +95,12 @@ export default function ProjectEditorPage({
     project: Project;
     chapters?: ProjectChapter[];
 }>) {
+    const { errors } = usePage().props;
+
     // Use custom hook for all editor logic
     const {
         isSaving,
+        isGenerating,
         content,
         setContent,
         settings,
@@ -107,6 +110,7 @@ export default function ProjectEditorPage({
         handleChapterSelect,
         handleAddChapter,
         handleSettingChange,
+        handleGenerateText,
     } = useProjectEditor({
         workspaceId,
         projectId,
@@ -151,6 +155,7 @@ export default function ProjectEditorPage({
                 workspaceId={workspaceId}
                 projectId={projectId}
             >
+
                 <div className="flex items-center justify-between">
                     {/* Left side - Menu items */}
                     <div
@@ -182,6 +187,7 @@ export default function ProjectEditorPage({
                                 <Button
                                     variant="outline"
                                     className="flex flex-row justify-between items-center w-50 overflow-hidden"
+                                    disabled={isGenerating}
                                 >
                                     <p className="truncate">
                                         {selectedChapter
@@ -201,6 +207,7 @@ export default function ProjectEditorPage({
                                             <DropdownMenuRadioItem
                                                 key={index}
                                                 value={chapter.order.toString()}
+                                                disabled={isGenerating}
                                             >
                                                 {chapter.chapter_name}
                                             </DropdownMenuRadioItem>
@@ -214,7 +221,10 @@ export default function ProjectEditorPage({
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <Button onClick={() => setAddChapterDialogOpen(true)}>
+                        <Button 
+                            onClick={() => setAddChapterDialogOpen(true)}
+                            disabled={isGenerating}
+                        >
                             New Chapter
                         </Button>
                         <AddChapterDialog
@@ -264,7 +274,10 @@ export default function ProjectEditorPage({
                     </div>
 
                     <div className="absolute left-0 bottom-0 w-full p-4">
-                        <EditorToolbar />
+                        <EditorToolbar 
+                            onSend={handleGenerateText}
+                            isGenerating={isGenerating}
+                        />
                     </div>
                 </div>
             </EditorSidebar>

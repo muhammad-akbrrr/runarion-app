@@ -13,9 +13,21 @@ import {
     Book,
     SlidersHorizontal,
     RefreshCw,
+    Loader2,
 } from "lucide-react";
 
-export function EditorToolbar() {
+interface EditorToolbarProps {
+    onSend?: () => void;
+    isGenerating?: boolean;
+}
+
+export function EditorToolbar({ onSend, isGenerating = false }: EditorToolbarProps) {
+    const handleSendClick = () => {
+        if (onSend && !isGenerating) {
+            onSend();
+        }
+    };
+
     return (
         <div
             className="
@@ -72,9 +84,22 @@ export function EditorToolbar() {
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                         <RefreshCw className="h-4 w-4" />
                     </Button>
-                    <Button size="sm">
-                        Send
-                        <Send className="h-4 w-4" />
+                    <Button 
+                        size="sm" 
+                        onClick={handleSendClick}
+                        disabled={isGenerating}
+                    >
+                        {isGenerating ? (
+                            <>
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Generating...
+                            </>
+                        ) : (
+                            <>
+                                Send
+                                <Send className="h-4 w-4" />
+                            </>
+                        )}
                     </Button>
                 </div>
             </div>

@@ -10,6 +10,7 @@ use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use App\Jobs\ManuscriptDeconstructionJob;
+use Illuminate\Support\Facades\Http;
 
 class MainEditorController extends Controller
 {
@@ -275,5 +276,124 @@ class MainEditorController extends Controller
             'workspace_id' => $workspace_id,
             'project_id' => $project_id,
         ]);
+    }
+
+    /**
+     * Function to handle LLM text generation.
+     */
+    public function generateText(Request $request, string $workspace_id, string $project_id)
+    {
+        $validated = $request->validate([
+            'prompt' => 'required|string',
+            'order' => 'required|integer',
+        ]);
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $user = Auth::user();
+
+        // Prepare the request data for the Python service
+        $requestData = [
+            'usecase' => 'story',
+            'provider' => 'openai',
+            'model' => '',
+            'prompt' => $validated['prompt'],
+            'instruction' => '',
+            'generation_config' => [
+                'temperature' => 0.1,
+                'max_output_tokens' => 50,
+                'top_p' => 1.0,
+                'top_k' => 0.0,
+                'repetition_penalty' => 0.0,
+            ],
+            'prompt_config' => [
+                'context' => 'A story about a woman who fell from the sky.',
+                'genre' => 'isekai',
+                'tone' => '',
+                'pov' => '',
+            ],
+            'caller' => [
+                'user_id' => (string)$user->id,
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'api_keys' => [
+                    'openai' => '',
+                    'gemini' => '',
+                    'deepseek' => '',
+                ],
+            ],
+        ];
+
+        try {
+            // Make request to Python service using Laravel's HTTP client
+            \Log::info('Making request to Python service', [
+                'url' => 'http://python-app:5000/api/generate',
+                'data' => $requestData
+            ]);
+
+            $response = Http::timeout(30)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                ])
+                ->post('http://python-app:5000/api/generate', $requestData);
+
+            \Log::info('Python service response', [
+                'status' => $response->status(),
+                'body' => $response->body()
+            ]);
+
+            if ($response->successful()) {
+                $responseData = $response->json();
+
+                if ($responseData['success'] && isset($responseData['text'])) {
+                    // Update the project content with the generated text
+                    $projectContent = ProjectContent::where('project_id', $project_id)->first();
+                    if ($projectContent) {
+                        $chapters = $projectContent->content ?? [];
+                        
+                        foreach ($chapters as &$chapter) {
+                            if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
+                                // Append the generated text to existing content
+                                $chapter['content'] = ($chapter['content'] ?? '') . $responseData['text'];
+                                break;
+                            }
+                        }
+                        
+                        $projectContent->content = $chapters;
+                        $projectContent->save();
+
+                        \Log::info('Successfully updated project content with generated text');
+                    }
+
+                    return redirect()->route('workspace.projects.editor', [
+                        'workspace_id' => $workspace_id,
+                        'project_id' => $project_id,
+                    ]);
+                } else {
+                    \Log::error('Generation failed', ['response' => $responseData]);
+                    return back()->withErrors([
+                        'generation' => $responseData['error_message'] ?? 'Generation failed'
+                    ]);
+                }
+            } else {
+                \Log::error('HTTP request failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body()
+                ]);
+                return back()->withErrors([
+                    'generation' => 'Failed to connect to generation service'
+                ]);
+            }
+        } catch (\Exception $e) {
+            \Log::error('LLM Generation Error: ' . $e->getMessage(), [
+                'exception' => $e,
+                'trace' => $e->getTraceAsString()
+            ]);
+            return back()->withErrors([
+                'generation' => 'Failed to generate text: ' . $e->getMessage()
+            ]);
+        }
     }
 }

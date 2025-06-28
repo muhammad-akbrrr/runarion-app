@@ -18,6 +18,7 @@ export function useProjectEditor({
 }: UseProjectEditorProps) {
     // Core state
     const [isSaving, setIsSaving] = useState(false);
+    const [isGenerating, setIsGenerating] = useState(false);
     const [content, setContent] = useState("");
     const [settings, setSettings] = useState(project.settings || {});
     const [localChapters, setLocalChapters] = useState<ProjectChapter[]>(initialChapters);
@@ -28,10 +29,11 @@ export function useProjectEditor({
     const isInitialized = useRef(false);
 
     // Auto-save hook
-    const { debouncedSave, cancelSave } = useAutoSave({
+    const { debouncedSave, cancelSave, forceSave } = useAutoSave({
         workspaceId,
         projectId,
         isInitialized: isInitialized.current,
+        isGenerating,
         onContentSaved: (updatedChapters) => {
             setLocalChapters(updatedChapters);
             
@@ -75,18 +77,18 @@ export function useProjectEditor({
         const initialSettings = project.settings || {};
         setSettings(initialSettings);
         
-        // Mark as initialized after a brief delay
+        // Mark as initialized after a brief delay to prevent race conditions
         const timer = setTimeout(() => {
             isInitialized.current = true;
             console.log("Project editor initialized");
-        }, 100);
+        }, 500); // Increased delay to ensure proper initialization
 
         return () => clearTimeout(timer);
     }, [selectedChapter, project.settings]);
 
-    // Auto-save effect
+    // Auto-save effect - only trigger when not generating
     useEffect(() => {
-        if (!isInitialized.current) {
+        if (!isInitialized.current || isGenerating) {
             return;
         }
 
@@ -106,7 +108,7 @@ export function useProjectEditor({
         debouncedSave(saveData);
 
         return () => cancelSave();
-    }, [content, settings, selectedChapter, debouncedSave, cancelSave]);
+    }, [content, settings, selectedChapter, debouncedSave, cancelSave, isGenerating]);
 
     // Ensure first chapter is selected by default
     useEffect(() => {
@@ -117,14 +119,32 @@ export function useProjectEditor({
 
     // Chapter management functions
     const handleChapterSelect = useCallback((chapterOrder: number) => {
+        // Prevent chapter switching during generation
+        if (isGenerating) {
+            console.log("Cannot switch chapters during text generation");
+            return;
+        }
+
         const chapter = localChapters.find(c => c.order === chapterOrder);
         if (chapter) {
+            // Cancel any pending autosave before switching
+            cancelSave();
             setSelectedChapter(chapter);
+            console.log("Chapter switched to:", chapter.chapter_name);
         }
-    }, [localChapters]);
+    }, [localChapters, isGenerating, cancelSave]);
 
     const handleAddChapter = useCallback((chapterName: string) => {
+        // Prevent adding chapters during generation
+        if (isGenerating) {
+            console.log("Cannot add chapters during text generation");
+            return Promise.reject(new Error("Cannot add chapters during text generation"));
+        }
+
         return new Promise<void>((resolve, reject) => {
+            // Cancel any pending autosave before adding chapter
+            cancelSave();
+            
             router.post(
                 route("editor.project.chapter", {
                     workspace_id: workspaceId,
@@ -149,7 +169,7 @@ export function useProjectEditor({
                 }
             );
         });
-    }, [workspaceId, projectId]);
+    }, [workspaceId, projectId, isGenerating, cancelSave]);
 
     // Settings management
     const handleSettingChange = useCallback((key: string, value: any) => {
@@ -159,9 +179,58 @@ export function useProjectEditor({
         }));
     }, []);
 
+    // Text generation function
+    const handleGenerateText = useCallback(() => {
+        if (!selectedChapter || isGenerating) {
+            return;
+        }
+
+        // Cancel any pending autosave before generation
+        cancelSave();
+        console.log("Starting text generation - autosave cancelled");
+
+        setIsGenerating(true);
+
+        router.post(
+            route("editor.project.generate", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            }),
+            {
+                prompt: content || "Continue the story",
+                order: selectedChapter.order,
+            },
+            {
+                preserveState: false,
+                preserveScroll: true,
+                onSuccess: (page) => {
+                    // The controller redirects back to the editor with updated content
+                    const updatedChapters = page.props.chapters as ProjectChapter[];
+                    if (updatedChapters) {
+                        setLocalChapters(updatedChapters);
+                        const updatedSelectedChapter = updatedChapters.find(ch => ch.order === selectedChapter.order);
+                        if (updatedSelectedChapter) {
+                            setSelectedChapter(updatedSelectedChapter);
+                            setContent(updatedSelectedChapter.content || "");
+                        }
+                    }
+                    console.log("Text generation completed successfully");
+                },
+                onError: (errors) => {
+                    console.error("Failed to generate text:", errors);
+                },
+                onFinish: () => {
+                    setIsGenerating(false);
+                    console.log("Text generation finished - autosave will resume");
+                },
+            }
+        );
+    }, [workspaceId, projectId, selectedChapter, content, isGenerating, cancelSave]);
+
     return {
         // State
         isSaving,
+        isGenerating,
         content,
         setContent,
         settings,
@@ -175,5 +244,6 @@ export function useProjectEditor({
         handleChapterSelect,
         handleAddChapter,
         handleSettingChange,
+        handleGenerateText,
     };
 }

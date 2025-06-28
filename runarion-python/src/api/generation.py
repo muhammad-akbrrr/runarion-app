@@ -25,8 +25,10 @@ def generate_text_route():
 
     try:
         req_obj = handler.build_request(json_data)
+        current_app.logger.info(f"Received request for usecase '{usecase}': {req_obj.model_dump()}")
         engine = GenerationEngine(req_obj)
         response = engine.generate()
+        current_app.logger.info(f"Generated response: {response.model_dump()}")
         return jsonify(response.model_dump()), 200
     except Exception as e:
         current_app.logger.error(f"Generation error: {type(e).__name__} - {e}")

@@ -6,6 +6,7 @@ interface UseAutoSaveProps {
     workspaceId: string;
     projectId: string;
     isInitialized: boolean;
+    isGenerating?: boolean;
     onContentSaved?: (chapters: ProjectChapter[]) => void;
     onSettingsSaved?: () => void;
     onSaveStart?: () => void;
@@ -24,6 +25,7 @@ export function useAutoSave({
     workspaceId,
     projectId,
     isInitialized,
+    isGenerating = false,
     onContentSaved,
     onSettingsSaved,
     onSaveStart,
@@ -32,10 +34,21 @@ export function useAutoSave({
     const saveTimeout = useRef<NodeJS.Timeout | null>(null);
     const lastSavedContent = useRef<string>("");
     const lastSavedSettings = useRef<any>({});
+    const isSaving = useRef<boolean>(false);
 
     const saveData = useCallback(async (data: SaveData) => {
         if (!isInitialized) {
             console.log("Skipping save: not initialized yet");
+            return;
+        }
+
+        if (isGenerating) {
+            console.log("Skipping save: generation in progress");
+            return;
+        }
+
+        if (isSaving.current) {
+            console.log("Skipping save: save already in progress");
             return;
         }
 
@@ -55,6 +68,8 @@ export function useAutoSave({
             settingsChanged, 
             contentLength: contentData?.content?.length || 0 
         });
+        
+        isSaving.current = true;
         onSaveStart?.();
 
         const savePromises = [];
@@ -146,14 +161,22 @@ export function useAutoSave({
             } catch (error) {
                 console.error("Save operation failed:", error);
             } finally {
+                isSaving.current = false;
                 onSaveEnd?.();
             }
         } else {
+            isSaving.current = false;
             onSaveEnd?.();
         }
-    }, [workspaceId, projectId, isInitialized, onContentSaved, onSettingsSaved, onSaveStart, onSaveEnd]);
+    }, [workspaceId, projectId, isInitialized, isGenerating, onContentSaved, onSettingsSaved, onSaveStart, onSaveEnd]);
 
     const debouncedSave = useCallback((data: SaveData, delay: number = 1000) => {
+        // Don't schedule save if generation is in progress
+        if (isGenerating) {
+            console.log("Skipping debounced save: generation in progress");
+            return;
+        }
+
         // Clear existing timeout
         if (saveTimeout.current) {
             clearTimeout(saveTimeout.current);
@@ -163,19 +186,29 @@ export function useAutoSave({
         saveTimeout.current = setTimeout(() => {
             saveData(data);
         }, delay);
-    }, [saveData]);
+    }, [saveData, isGenerating]);
 
     const cancelSave = useCallback(() => {
         if (saveTimeout.current) {
             clearTimeout(saveTimeout.current);
             saveTimeout.current = null;
+            console.log("Autosave cancelled");
         }
     }, []);
+
+    const forceSave = useCallback((data: SaveData) => {
+        // Cancel any pending saves
+        cancelSave();
+        // Force immediate save
+        return saveData(data);
+    }, [cancelSave, saveData]);
 
     return {
         saveData,
         debouncedSave,
         cancelSave,
+        forceSave,
+        isSaving: isSaving.current,
         lastSavedContent: lastSavedContent.current,
         lastSavedSettings: lastSavedSettings.current,
     };
