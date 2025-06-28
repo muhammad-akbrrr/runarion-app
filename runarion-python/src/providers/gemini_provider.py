@@ -1,4 +1,4 @@
-# providers/openai_provider.py
+# providers/gemini_provider.py
 
 import time
 import uuid
@@ -27,6 +27,12 @@ class GeminiProvider(BaseProvider):
 
         config = self.request.generation_config
 
+        # Note: Gemini doesn't support logit_bias directly like OpenAI does
+        
+        all_stop_sequences = config.stop_sequences or []
+        # if hasattr(config, 'banned_tokens') and config.banned_tokens:
+        #     all_stop_sequences.extend(config.banned_tokens)
+
         gemini_kwargs = {
             "model": self.model,
             "contents": self.request.prompt or "",
@@ -35,9 +41,14 @@ class GeminiProvider(BaseProvider):
                 temperature=config.temperature,
                 max_output_tokens=config.max_output_tokens,
                 top_p=config.nucleus_sampling,
-                top_k=config.top_k,
+                top_k=int(config.top_k) if config.top_k > 0 else None,
+                stop_sequences=all_stop_sequences,
+                presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
+                frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
             ),
         }
+        
+        current_app.logger.info(f"Gemini API request: {gemini_kwargs}")
 
         try:
             self._check_quota()
@@ -53,6 +64,7 @@ class GeminiProvider(BaseProvider):
 
         try:
             raw_response = self.client.models.generate_content(**gemini_kwargs)
+            current_app.logger.info(f"Gemini API response: {raw_response}")
             provider_request_id = getattr(raw_response, 'response_id', "")
 
             if raw_response.prompt_feedback and raw_response.prompt_feedback.block_reason:

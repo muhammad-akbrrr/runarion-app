@@ -2,13 +2,13 @@
 
 import os
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Literal
+from typing import Optional, Tuple, Literal, List, Dict
 from flask import current_app
 
 from models.request import BaseGenerationRequest, GenerationConfig
 from models.response import BaseGenerationResponse, UsageMetadata, QuotaMetadata
 from services.quota_manager import QuotaManager
-
+from utils.tokenizer import TokenizerManager
 
 class BaseProvider(ABC):
     def __init__(self, request: BaseGenerationRequest):
@@ -22,17 +22,19 @@ class BaseProvider(ABC):
         self.instruction = self._format_instruction(request.instruction)
         self.quota_manager = self._get_quota_manager()
         self.remaining_quota = None
+        
+        # Process tokenization for phrase bias, banned tokens, and stop sequences
+        self._process_tokenization()
 
     @abstractmethod
     def generate(self) -> BaseGenerationResponse:
         pass
-
+    
     def _get_quota_manager(self) -> QuotaManager:
         return QuotaManager()
 
     def _check_quota(self):
-        self.remaining_quota = self.quota_manager.check_quota(
-            self.request.caller)
+        self.remaining_quota = self.quota_manager.check_quota(self.request.caller)
 
     def _update_quota(self, quota_generation_count: int):
         self.quota_manager.update_quota(
@@ -90,13 +92,40 @@ class BaseProvider(ABC):
         current_app.logger.warning(
             "No model name provided in request, using default model.")
         return default_model
-
+    
     def _format_instruction(self, instruction: Optional[object]) -> str:
         if instruction is None:
             return ""
         if isinstance(instruction, str):
             return instruction.strip()
         return str(instruction).strip()
+    
+    def _process_tokenization(self):
+        """
+        Process tokenization for phrase bias, banned tokens, and stop sequences.
+        This method updates the generation_config in the request with tokenized values.
+        """
+        config = self.request.generation_config
+        
+        # Process phrase bias if it exists
+        if config.phrase_bias:
+            try:
+                tokenized_phrase_bias = TokenizerManager.tokenize_phrase_bias(config.phrase_bias, self.model)
+                self.request.generation_config.phrase_bias = tokenized_phrase_bias
+                current_app.logger.info(f"Tokenized phrase bias: {tokenized_phrase_bias}")
+            except Exception as e:
+                current_app.logger.error(f"Error tokenizing phrase bias: {e}")
+        
+        # Process banned tokens if they exist as strings
+        if hasattr(config, 'banned_tokens') and config.banned_tokens:
+            try:
+                tokenized_banned_tokens = TokenizerManager.tokenize_banned_tokens(config.banned_tokens, self.model)
+                self.request.generation_config.banned_tokens = tokenized_banned_tokens
+                current_app.logger.info(f"Tokenized banned tokens: {tokenized_banned_tokens}")
+            except Exception as e:
+                current_app.logger.error(f"Error tokenizing banned tokens: {e}")
+        
+        # Stop sequences don't need tokenization as they're used as-is by the APIs
 
     def _build_response(
         self,
@@ -138,8 +167,8 @@ class BaseProvider(ABC):
         )
 
     def _build_error_response(
-        self,
-        request_id: str,
+        self, 
+        request_id: str, 
         provider_request_id: str = "",
         error_message: str = "An error occurred during generation."
     ) -> BaseGenerationResponse:
