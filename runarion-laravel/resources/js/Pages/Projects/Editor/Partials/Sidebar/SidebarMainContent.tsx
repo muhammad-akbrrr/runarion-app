@@ -28,7 +28,7 @@ import {
     X,
     Book,
 } from "lucide-react";
-import { SidebarSettingsProps, DEFAULT_SETTINGS } from "../../types/settings";
+import { SidebarSettingsProps, DEFAULT_SETTINGS } from "@/types/project";
 
 export function SidebarContent({ 
     settings,

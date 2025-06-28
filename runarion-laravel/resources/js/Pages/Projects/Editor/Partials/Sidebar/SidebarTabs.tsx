@@ -2,7 +2,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { SidebarTrigger, useSidebar } from "@/Components/ui/sidebar";
 import { Grid3X3 } from "lucide-react";
 import { SidebarContent } from "./SidebarMainContent";
-import { SidebarSettingsProps } from "../../types/settings";
+import { SidebarSettingsProps } from "@/types/project";
 
 export function SidebarTabs({ 
     settings,

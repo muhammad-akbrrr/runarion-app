@@ -5,7 +5,7 @@ import {
     SidebarProvider,
 } from "@/Components/ui/sidebar";
 import { SidebarTabs } from "./SidebarTabs";
-import { SidebarSettingsProps } from "../../types/settings";
+import { SidebarSettingsProps } from "@/types/project";
 
 interface EditorSidebarProps extends SidebarSettingsProps {
     children: React.ReactNode;
