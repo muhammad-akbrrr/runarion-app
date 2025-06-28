@@ -60,10 +60,15 @@ class MainEditorController extends Controller
         $project->slug = Str::slug($validated['name']);
         $project->save();
 
-        return Inertia::render('Projects/Editor/Main', [
-            'workspaceId' => $workspace_id,
-            'projectId' => $project_id,
-            'project' => $project,
+        // Extract chapters from JSON content field
+        $chapters = [];
+        if ($project && $project->content && is_array($project->content)) {
+            $chapters = $project->content;
+        }
+
+        return redirect()->route('workspace.projects.editor', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
         ]);
     }
 
@@ -80,10 +85,16 @@ class MainEditorController extends Controller
             $project->completed_onboarding = true;
             $project->save();
 
+            $chapters = [];
+            if ($project && $project->content && is_array($project->content)) {
+                $chapters = $project->content;
+            }
+
             return Inertia::render('Projects/Editor/Main', [
                 'workspaceId' => $workspace_id,
                 'projectId' => $project_id,
                 'project' => $project,
+                'chapters' => $chapters,
             ]);
         }
 
@@ -143,5 +154,82 @@ class MainEditorController extends Controller
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
         return response()->json(['error' => 'Invalid method'], 400);
+    }
+
+    /**
+     * Function to handle adding Chapters to a project's Content.
+     */
+    public function storeProjectChapter(Request $request, string $workspace_id, string $project_id)
+    {
+        $validated = $request->validate([
+            'chapter_name' => 'required|string|max:255',
+        ]);
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->first();
+        if (!$projectContent) {
+            // If no content exists, create a new ProjectContent
+            $projectContent = ProjectContent::create([
+                'project_id' => $project_id,
+                'content' => [],
+            ]);
+        }
+
+        $chapters = $projectContent->content ?? [];
+        $newOrder = count($chapters);
+        $newChapter = [
+            'order' => $newOrder,
+            'chapter_name' => $validated['chapter_name'],
+            'content' => '',
+            'summary' => null,
+            'plot_points' => null,
+        ];
+        $chapters[] = $newChapter;
+        $projectContent->content = $chapters;
+        $projectContent->save();
+
+        return redirect()->route('workspace.projects.editor', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
+        ]);
+    }
+
+    /**
+     * Function to handle project Saves.
+     */
+    public function updateProjectData(Request $request, string $workspace_id, string $project_id)
+    {
+        $validated = $request->validate([
+            'order' => 'required|integer',
+            'content' => 'required|string',
+        ]);
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+        $chapters = $projectContent->content ?? [];
+
+        foreach ($chapters as &$chapter) {
+            if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
+                $chapter['content'] = $validated['content'];
+                break;
+            }
+        }
+
+        $projectContent->content = $chapters;
+        $projectContent->save();
+
+        // Extract chapters from JSON content field
+        $chapters = $projectContent->content ?? [];
+
+        return redirect()->route('workspace.projects.editor', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
+        ]);
     }
 }

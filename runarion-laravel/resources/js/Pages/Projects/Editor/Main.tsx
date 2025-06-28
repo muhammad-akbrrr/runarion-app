@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
-import { Head } from "@inertiajs/react";
-import { ChevronDown, Check } from "lucide-react";
+import { useState, useEffect, useRef } from "react";
+import { Head, router } from "@inertiajs/react";
+import { ChevronDown } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
 import { EditorToolbar } from "./Partials/MainEditorToolbar";
@@ -22,46 +22,44 @@ import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
 import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
-import {
-    $getRoot,
-    $createParagraphNode,
-    $createTextNode,
-    $getSelection,
-    $isRangeSelection,
-} from "lexical";
+import { $getRoot, $createParagraphNode, $createTextNode } from "lexical";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { PageProps, Project, ProjectChapter } from "@/types";
+import AddChapterDialog from "./Partials/AddChapterDialog";
 
 // Custom plugin to update editor content when chapter changes
 function ContentUpdatePlugin({ content }: { content: string }) {
     const [editor] = useLexicalComposerContext();
 
     useEffect(() => {
-        console.log(
-            "ContentUpdatePlugin: Updating editor with content:",
-            content
-        );
-        editor.update(() => {
+        editor.getEditorState().read(() => {
             const root = $getRoot();
-            root.clear();
-
-            if (content && content.trim()) {
-                // Split content by lines to create multiple paragraphs if needed
-                const lines = content.split("\n");
-                lines.forEach((line, index) => {
-                    if (line.trim() || index === 0) {
-                        // Always add first line, even if empty
-                        const paragraph = $createParagraphNode();
-                        const textNode = $createTextNode(line);
-                        paragraph.append(textNode);
-                        root.append(paragraph);
-                    }
-                });
-            } else {
-                // Add empty paragraph if no content
-                const paragraph = $createParagraphNode();
-                root.append(paragraph);
+            const currentContent = root.getTextContent();
+            if (currentContent === content) {
+                return; // No need to update
             }
+            editor.update(() => {
+                const root = $getRoot();
+                root.clear();
+
+                if (content && content.trim()) {
+                    // Split content by lines to create multiple paragraphs if needed
+                    const lines = content.split("\n");
+                    lines.forEach((line, index) => {
+                        if (line.trim() || index === 0) {
+                            // Always add first line, even if empty
+                            const paragraph = $createParagraphNode();
+                            const textNode = $createTextNode(line);
+                            paragraph.append(textNode);
+                            root.append(paragraph);
+                        }
+                    });
+                } else {
+                    // Add empty paragraph if no content
+                    const paragraph = $createParagraphNode();
+                    root.append(paragraph);
+                }
+            });
         });
     }, [content, editor]);
 
@@ -88,33 +86,79 @@ export default function ProjectEditorPage({
     workspaceId,
     projectId,
     project,
-    chapters,
+    chapters = [],
 }: PageProps<{
     workspaceId: string;
     projectId: string;
     project: Project;
-    chapters: ProjectChapter[];
+    chapters?: ProjectChapter[];
 }>) {
+    const [isSaving, setIsSaving] = useState(false);
     const [content, setContent] = useState("");
     const [selectedChapter, setSelectedChapter] =
         useState<ProjectChapter | null>(
             chapters.length > 0 ? chapters[0] : null
         );
+    const saveTimeout = useRef<NodeJS.Timeout | null>(null);
+    const lastSavedContent = useRef<string>("");
+
+    // Add Chapter Dialog state
+    const [addChapterDialogOpen, setAddChapterDialogOpen] = useState(false);
+    const [newChapterName, setNewChapterName] = useState("");
+    const [addChapterLoading, setAddChapterLoading] = useState(false);
 
     // Update content when selected chapter changes
     useEffect(() => {
         if (selectedChapter) {
-            console.log(
-                "Selected chapter:",
-                selectedChapter.chapter_name,
-                "Content:",
-                selectedChapter.content
-            );
             setContent(selectedChapter.content || "");
+            lastSavedContent.current = selectedChapter.content || "";
         } else {
             setContent("");
+            lastSavedContent.current = "";
         }
     }, [selectedChapter]);
+
+    // Debounced auto-save handler for content changes
+    useEffect(() => {
+        if (!selectedChapter) return;
+        if (content === lastSavedContent.current) return;
+        if (saveTimeout.current) clearTimeout(saveTimeout.current);
+
+        saveTimeout.current = setTimeout(() => {
+            console.log("Starting save, setting isSaving to true");
+            setIsSaving(true);
+            router.patch(
+                route("editor.project.updateData", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                }),
+                {
+                    order: selectedChapter.order,
+                    content: content,
+                },
+                {
+                    preserveState: true,
+                    preserveScroll: true,
+                    onSuccess: (page) => {
+                        console.log(
+                            "Save successful, setting isSaving to false"
+                        );
+                        setIsSaving(false);
+                        lastSavedContent.current = content;
+                        // Optionally update chapters/selectedChapter from response
+                    },
+                    onError: () => {
+                        console.log("Save failed, setting isSaving to false");
+                        setIsSaving(false);
+                    },
+                }
+            );
+        }, 1000);
+
+        return () => {
+            if (saveTimeout.current) clearTimeout(saveTimeout.current);
+        };
+    }, [content, selectedChapter, workspaceId, projectId]);
 
     // Ensure first chapter is selected by default when chapters are loaded
     useEffect(() => {
@@ -126,11 +170,38 @@ export default function ProjectEditorPage({
     // Get the selected chapter order for the radio group
     const selectedChapterOrder = selectedChapter?.order ?? 0;
 
+    // Handler for adding a new chapter
+    const handleAddChapter = async () => {
+        setAddChapterLoading(true);
+        router.post(
+            route("editor.project.chapter", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            }),
+            { chapter_name: newChapterName },
+            {
+                preserveState: true,
+                preserveScroll: true,
+                onSuccess: (page) => {
+                    const chapters = page.props.chapters as ProjectChapter[];
+                    if (chapters && chapters.length > 0) {
+                        setSelectedChapter(chapters[chapters.length - 1]);
+                    }
+                    setAddChapterDialogOpen(false);
+                    setNewChapterName("");
+                },
+                onFinish: () => setAddChapterLoading(false),
+            }
+        );
+    };
+
     return (
         <ProjectEditorLayout
             project={project}
             projectId={projectId}
             workspaceId={workspaceId}
+            isSaving={isSaving}
+            setIsSaving={setIsSaving}
         >
             <Head title="Project Editor" />
 
@@ -165,15 +236,17 @@ export default function ProjectEditorPage({
                             <DropdownMenuTrigger>
                                 <Button
                                     variant="outline"
-                                    className="flex flex-row justify-between items-center w-54"
+                                    className="flex flex-row justify-between items-center w-50 overflow-hidden"
                                 >
-                                    {selectedChapter
-                                        ? selectedChapter.chapter_name
-                                        : "Select Chapter"}
+                                    <p className="truncate">
+                                        {selectedChapter
+                                            ? selectedChapter.chapter_name
+                                            : "Select Chapter"}
+                                    </p>
                                     <ChevronDown className="h-4 w-4" />
                                 </Button>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start">
+                            <DropdownMenuContent align="start" className="w-50">
                                 <DropdownMenuRadioGroup
                                     value={selectedChapterOrder.toString()}
                                     onValueChange={(value) => {
@@ -203,7 +276,17 @@ export default function ProjectEditorPage({
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <Button>New Chapter</Button>
+                        <Button onClick={() => setAddChapterDialogOpen(true)}>
+                            New Chapter
+                        </Button>
+                        <AddChapterDialog
+                            open={addChapterDialogOpen}
+                            setOpen={setAddChapterDialogOpen}
+                            chapterName={newChapterName}
+                            setChapterName={setNewChapterName}
+                            loading={addChapterLoading}
+                            handleAddChapter={handleAddChapter}
+                        />
                     </div>
                 </div>
 
@@ -219,7 +302,7 @@ export default function ProjectEditorPage({
                             <LexicalComposer initialConfig={editorConfig}>
                                 <RichTextPlugin
                                     contentEditable={
-                                        <ContentEditable className="outline-none w-full min-h-[500px]" />
+                                        <ContentEditable className="outline-none w-full min-h-full" />
                                     }
                                     placeholder={<Placeholder />}
                                     ErrorBoundary={LexicalErrorBoundary}
