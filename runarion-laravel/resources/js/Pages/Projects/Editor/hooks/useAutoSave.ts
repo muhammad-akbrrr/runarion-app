@@ -40,7 +40,9 @@ export function useAutoSave({
         }
 
         const { content: contentData, settings } = data;
-        const contentChanged = contentData && contentData.content !== lastSavedContent.current;
+        
+        // Allow empty content - compare with null/undefined check instead of truthy check
+        const contentChanged = contentData !== undefined && contentData.content !== lastSavedContent.current;
         const settingsChanged = settings && JSON.stringify(settings) !== JSON.stringify(lastSavedSettings.current);
 
         if (!contentChanged && !settingsChanged) {
@@ -48,14 +50,22 @@ export function useAutoSave({
             return;
         }
 
-        console.log("Starting save", { contentChanged, settingsChanged });
+        console.log("Starting save", { 
+            contentChanged, 
+            settingsChanged, 
+            contentLength: contentData?.content?.length || 0 
+        });
         onSaveStart?.();
 
         const savePromises = [];
 
-        // Save content if changed
-        if (contentChanged && contentData) {
-            console.log("Saving content changes");
+        // Save content if changed (including empty content)
+        if (contentChanged && contentData !== undefined) {
+            console.log("Saving content changes", { 
+                isEmpty: contentData.content === "", 
+                length: contentData.content.length 
+            });
+            
             const contentPromise = new Promise((resolve, reject) => {
                 router.patch(
                     route("editor.project.updateData", {
@@ -64,14 +74,17 @@ export function useAutoSave({
                     }),
                     {
                         order: contentData.order,
-                        content: contentData.content,
+                        content: contentData.content, // Allow empty string
                     },
                     {
                         preserveState: true,
                         preserveScroll: true,
                         onSuccess: (page) => {
                             lastSavedContent.current = contentData.content;
-                            console.log("Content saved successfully");
+                            console.log("Content saved successfully", { 
+                                isEmpty: contentData.content === "",
+                                length: contentData.content.length 
+                            });
                             
                             const updatedChapters = page.props.chapters as ProjectChapter[];
                             if (updatedChapters) {

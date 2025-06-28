@@ -204,7 +204,7 @@ class MainEditorController extends Controller
     {
         $validated = $request->validate([
             'order' => 'required|integer',
-            'content' => 'required|string',
+            'content' => 'nullable|string', // Changed from 'required' to 'nullable' to allow empty content
         ]);
 
         $project = Projects::where('id', $project_id)
@@ -216,7 +216,8 @@ class MainEditorController extends Controller
 
         foreach ($chapters as &$chapter) {
             if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
-                $chapter['content'] = $validated['content'];
+                // Allow empty content - use null coalescing to handle null values
+                $chapter['content'] = $validated['content'] ?? '';
                 break;
             }
         }
