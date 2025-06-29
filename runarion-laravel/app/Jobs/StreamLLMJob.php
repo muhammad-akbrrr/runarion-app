@@ -138,14 +138,14 @@ class StreamLLMJob implements ShouldQueue
             'generation_config' => [
                 'temperature' => $this->settings['temperature'] ?? 1,
                 'max_output_tokens' => $this->settings['outputLength'] ?? 300,
-                'top_p' => $this->settings['topP'] ?? 0.85,
+                'nucleus_sampling' => $this->settings['topP'] ?? 0.85,
                 'top_k' => $this->settings['topK'] ?? 0.85,
                 'repetition_penalty' => $this->settings['repetitionPenalty'] ?? 0.0,
                 'tail_free_sampling' => $this->settings['tailFree'] ?? 0.85,
                 'top_a' => $this->settings['topA'] ?? 0.85,
                 'min_output_tokens' => $this->settings['minOutputToken'] ?? 50,
                 'phrase_bias' => $this->settings['phraseBias'] ?? [],
-                'banned_phrases' => $this->settings['bannedPhrases'] ?? [],
+                'banned_tokens' => $this->settings['bannedPhrases'] ?? [],
                 'stop_sequences' => $this->settings['stopSequences'] ?? [],
             ],
             'prompt_config' => [
@@ -225,9 +225,9 @@ class StreamLLMJob implements ShouldQueue
             $buffer .= $chunk;
 
             // Process complete lines
-            while (($pos = strpos($buffer, "\n")) !== false) {
+            while (($pos = strpos($buffer, "\n\n")) !== false) {
                 $line = substr($buffer, 0, $pos);
-                $buffer = substr($buffer, $pos + 1);
+                $buffer = substr($buffer, $pos + 2);
 
                 $this->processStreamLine($line, $fullText, $chunkIndex);
             }
@@ -286,6 +286,15 @@ class StreamLLMJob implements ShouldQueue
                 return;
             }
 
+            // Check for error
+            if (isset($decoded['error'])) {
+                Log::error('Error in stream', [
+                    'session_id' => $this->sessionId,
+                    'error' => $decoded['error'],
+                ]);
+                throw new \Exception($decoded['error']);
+            }
+
             // Extract text chunk - assuming Flask always returns in the same format with 'chunk' field
             $textChunk = $decoded['chunk'] ?? '';
             
@@ -310,6 +319,7 @@ class StreamLLMJob implements ShouldQueue
                 'error' => $e->getMessage(),
                 'data' => $data,
             ]);
+            throw $e;
         }
     }
 

@@ -2,7 +2,7 @@
 
 import os
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Literal, List, Dict
+from typing import Optional, Tuple, Literal, List, Dict, Generator
 from flask import current_app
 
 from models.request import BaseGenerationRequest, GenerationConfig
@@ -28,6 +28,22 @@ class BaseProvider(ABC):
 
     @abstractmethod
     def generate(self) -> BaseGenerationResponse:
+        """
+        Generate text in a non-streaming fashion.
+        
+        Returns:
+            BaseGenerationResponse: The generated text and metadata.
+        """
+        pass
+    
+    @abstractmethod
+    def generate_stream(self) -> Generator[str, None, None]:
+        """
+        Generate text in a streaming fashion.
+        
+        Yields:
+            str: Text chunks as they are generated.
+        """
         pass
     
     def _get_quota_manager(self) -> QuotaManager:

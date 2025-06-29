@@ -5,7 +5,7 @@ import uuid
 import openai
 from flask import current_app
 from openai import OpenAI
-from typing import Dict
+from typing import Dict, Generator
 from providers.base_provider import BaseProvider
 from models.response import BaseGenerationResponse
 from models.request import BaseGenerationRequest, GenerationConfig
@@ -60,10 +60,19 @@ class OpenAIProvider(BaseProvider):
         return {k: v for k, v in openai_kwargs.items() if v is not None}
         
     def generate(self) -> BaseGenerationResponse:
+        """
+        Generate text in a non-streaming fashion.
+        
+        Returns:
+            BaseGenerationResponse: The generated text and metadata.
+        """
         start_time = time.time()
         request_id = str(uuid.uuid4())
         provider_request_id = None
         quota_generation_count = 1
+        
+        # Ensure streaming is disabled for non-streaming generation
+        self.request.generation_config.stream = False
         
         openai_kwargs = self._build_openai_kwargs(self.request.generation_config)
         current_app.logger.info(f"OpenAI API request: {openai_kwargs}")
@@ -126,3 +135,45 @@ class OpenAIProvider(BaseProvider):
             )
             self._log_generation_to_db(response)
             return response
+    
+    def generate_stream(self) -> Generator[str, None, None]:
+        """
+        Generate text in a streaming fashion.
+        
+        Yields:
+            str: Text chunks as they are generated.
+        """
+        # Ensure streaming is enabled
+        self.request.generation_config.stream = True
+        
+        # Check quota before streaming
+        try:
+            self._check_quota()
+        except Exception as e:
+            current_app.logger.error(f"OpenAI Quota error with model {self.model}: {e}")
+            yield f"Error: {str(e)}"
+            return
+        
+        # Build OpenAI kwargs
+        openai_kwargs = self._build_openai_kwargs(self.request.generation_config)
+        current_app.logger.info(f"OpenAI streaming request: {openai_kwargs}")
+        
+        try:
+            # Make the streaming request
+            stream = self.client.chat.completions.create(**openai_kwargs)
+            
+            # Process the stream
+            for chunk in stream:
+                if hasattr(chunk, 'choices') and chunk.choices:
+                    choice = chunk.choices[0]
+                    if hasattr(choice, 'delta') and hasattr(choice.delta, 'content'):
+                        content = choice.delta.content
+                        if content:
+                            yield content
+            
+            # Update quota after successful streaming
+            self._update_quota(1)  # Count as one generation
+            
+        except Exception as e:
+            current_app.logger.error(f"OpenAI streaming error: {e}")
+            yield f"Error: {str(e)}"

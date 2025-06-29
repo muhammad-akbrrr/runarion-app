@@ -9,6 +9,7 @@ class CallerInfo(BaseModel):
     workspace_id: str
     project_id: str
     api_keys: Dict[str, Optional[str]]
+    session_id: Optional[str] = None
 
 class GenerationConfig(BaseModel):
     temperature: float = Field(0.7, ge=0.0, le=1.0)
@@ -22,7 +23,7 @@ class GenerationConfig(BaseModel):
     phrase_bias: Optional[List[Dict[str, float]]] = None
     banned_tokens: Optional[List[str]] = None
     stop_sequences: Optional[List[str]] = None
-    stream: Optional[bool] = False
+    stream: bool = False
 
 class BaseGenerationRequest(BaseModel):
     usecase: str = "mock"

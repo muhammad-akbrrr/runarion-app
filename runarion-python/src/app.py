@@ -6,6 +6,7 @@ from psycopg2 import pool
 from api.generation import generate
 from api.author_style import author_style
 from api.story_rewrite import story_rewrite
+from api.streaming import stream_bp
 
 load_dotenv()
 
@@ -75,6 +76,7 @@ app.config['UPLOAD_PATH'] = upload_path
 app.register_blueprint(generate, url_prefix='/api')
 app.register_blueprint(author_style, url_prefix='/api')
 app.register_blueprint(story_rewrite, url_prefix='/api')
+app.register_blueprint(stream_bp, url_prefix='/api')  # Register streaming blueprint
 
 # --- Health Check ---
 
@@ -112,6 +114,7 @@ def root():
         "endpoints": {
             "generation": "/api/generate",
             "story_rewrite": "/api/story-rewrite",
+            "streaming": "/api/stream",
             "health": "/health"
         }
     })
