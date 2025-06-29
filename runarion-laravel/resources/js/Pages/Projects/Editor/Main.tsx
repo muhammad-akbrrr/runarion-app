@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Head, usePage } from "@inertiajs/react";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, Square } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
 import { EditorToolbar } from "./Partials/MainEditorToolbar";
@@ -28,6 +28,9 @@ import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
 import { useProjectEditor } from "./hooks";
 import { useEffect } from "react";
+
+// Import Echo for WebSocket connection
+import '@/echo';
 
 // Custom plugin to update editor content when chapter changes
 function ContentUpdatePlugin({ content }: { content: string }) {
@@ -107,10 +110,14 @@ export default function ProjectEditorPage({
         localChapters,
         selectedChapter,
         selectedChapterOrder,
+        isStreaming,
+        streamingText,
+        streamError,
         handleChapterSelect,
         handleAddChapter,
         handleSettingChange,
         handleGenerateText,
+        handleCancelGeneration,
     } = useProjectEditor({
         workspaceId,
         projectId,
@@ -235,6 +242,19 @@ export default function ProjectEditorPage({
                             loading={addChapterLoading}
                             handleAddChapter={handleAddChapterClick}
                         />
+
+                        {/* Cancel Generation Button */}
+                        {isGenerating && (
+                            <Button 
+                                variant="destructive"
+                                size="sm"
+                                onClick={handleCancelGeneration}
+                                className="flex items-center space-x-2"
+                            >
+                                <Square className="h-3 w-3" />
+                                <span>Cancel</span>
+                            </Button>
+                        )}
                     </div>
                 </div>
 
@@ -250,7 +270,11 @@ export default function ProjectEditorPage({
                             <LexicalComposer initialConfig={editorConfig}>
                                 <RichTextPlugin
                                     contentEditable={
-                                        <ContentEditable className="outline-none w-full min-h-full" />
+                                        <ContentEditable 
+                                            className={`outline-none w-full min-h-full ${
+                                                isStreaming ? 'opacity-90' : ''
+                                            }`} 
+                                        />
                                     }
                                     placeholder={<Placeholder />}
                                     ErrorBoundary={LexicalErrorBoundary}
@@ -258,20 +282,42 @@ export default function ProjectEditorPage({
                                 <HistoryPlugin />
                                 <OnChangePlugin
                                     onChange={(editorState) => {
-                                        editorState.read(() => {
-                                            const root = $getRoot();
-                                            const newContent = root.getTextContent();
-                                            // Only update if content actually changed to avoid loops
-                                            if (newContent !== content) {
-                                                setContent(newContent);
-                                            }
-                                        });
+                                        // Only update content if not streaming to avoid conflicts
+                                        if (!isStreaming) {
+                                            editorState.read(() => {
+                                                const root = $getRoot();
+                                                const newContent = root.getTextContent();
+                                                // Only update if content actually changed to avoid loops
+                                                if (newContent !== content) {
+                                                    setContent(newContent);
+                                                }
+                                            });
+                                        }
                                     }}
                                 />
                                 <ContentUpdatePlugin content={content} />
                             </LexicalComposer>
                         </div>
                     </div>
+
+                    {/* Streaming indicator */}
+                    {isStreaming && (
+                        <div className="absolute top-4 right-4 bg-blue-100 border border-blue-300 rounded-lg px-3 py-2 text-sm text-blue-800">
+                            <div className="flex items-center space-x-2">
+                                <div className="animate-pulse w-2 h-2 bg-blue-500 rounded-full"></div>
+                                <span>AI is writing...</span>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Stream error indicator */}
+                    {streamError && (
+                        <div className="absolute top-4 right-4 bg-red-100 border border-red-300 rounded-lg px-3 py-2 text-sm text-red-800">
+                            <div className="flex items-center space-x-2">
+                                <span>Error: {streamError}</span>
+                            </div>
+                        </div>
+                    )}
 
                     <div className="absolute left-0 bottom-0 w-full p-4">
                         <EditorToolbar 

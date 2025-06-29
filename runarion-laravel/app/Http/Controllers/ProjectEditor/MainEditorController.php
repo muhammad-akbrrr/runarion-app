@@ -10,6 +10,8 @@ use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use App\Jobs\ManuscriptDeconstructionJob;
+use App\Jobs\StreamLLMJob;
+use App\Events\ProjectContentUpdated;
 use Illuminate\Support\Facades\Http;
 
 class MainEditorController extends Controller
@@ -199,13 +201,14 @@ class MainEditorController extends Controller
     }
 
     /**
-     * Function to handle project Saves.
+     * Function to handle project Saves with broadcasting.
      */
     public function updateProjectData(Request $request, string $workspace_id, string $project_id)
     {
         $validated = $request->validate([
             'order' => 'required|integer',
-            'content' => 'nullable|string', // Changed from 'required' to 'nullable' to allow empty content
+            'content' => 'nullable|string',
+            'trigger' => 'nullable|string|in:manual,auto,llm_generation',
         ]);
 
         $project = Projects::where('id', $project_id)
@@ -217,14 +220,23 @@ class MainEditorController extends Controller
 
         foreach ($chapters as &$chapter) {
             if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
-                // Allow empty content - use null coalescing to handle null values
                 $chapter['content'] = $validated['content'] ?? '';
                 break;
             }
         }
 
         $projectContent->content = $chapters;
+        $projectContent->updateLastEdited();
         $projectContent->save();
+
+        // Broadcast content update event
+        broadcast(new ProjectContentUpdated(
+            $workspace_id,
+            $project_id,
+            $validated['order'],
+            $validated['content'] ?? '',
+            $validated['trigger'] ?? 'manual'
+        ));
 
         // Extract chapters from JSON content field
         $chapters = $projectContent->content ?? [];
@@ -279,7 +291,7 @@ class MainEditorController extends Controller
     }
 
     /**
-     * Function to handle LLM text generation.
+     * Function to handle LLM text generation with streaming.
      */
     public function generateText(Request $request, string $workspace_id, string $project_id)
     {
@@ -310,137 +322,21 @@ class MainEditorController extends Controller
 
         $user = Auth::user();
         $settings = $validated['settings'] ?? [];
-        
-        // Get the current chapter content to provide context
-        $projectContent = ProjectContent::where('project_id', $project_id)->first();
-        $currentChapterContent = '';
-        
-        if ($projectContent) {
-            $chapters = $projectContent->content ?? [];
-            foreach ($chapters as $chapter) {
-                if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
-                    $currentChapterContent = $chapter['content'] ?? '';
-                    break;
-                }
-            }
-        }
 
-        // Prepare the request data for the Python service
-        $requestData = [
-            'usecase' => 'story',
-            'provider' => (
-                isset($settings['aiModel']) && stripos($settings['aiModel'], 'gpt') !== false ? 'openai' :
-                (isset($settings['aiModel']) && stripos($settings['aiModel'], 'gemini') !== false ? 'gemini' :
-                (isset($settings['aiModel']) && stripos($settings['aiModel'], 'deepseek') !== false ? 'deepseek' :
-                'openai'))
-            ),
-            'model' => $settings['aiModel'] ?? 'gpt-4o-mini',
-            'prompt' => $validated['prompt'],
-            'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice.',
-            'generation_config' => [
-                'temperature' => $settings['temperature'] ?? 1,
-                'max_output_tokens' => $settings['outputLength'] ?? 300,
-                'top_p' => $settings['topP'] ?? 0.85,
-                'top_k' => $settings['topK'] ?? 0.85,
-                'repetition_penalty' => $settings['repetitionPenalty'] ?? 0.0,
-                'tail_free_sampling' => $settings['tailFree'] ?? 0.85,
-                'top_a' => $settings['topA'] ?? 0.85,
-                'min_output_tokens' => $settings['minOutputToken'] ?? 50,
-                'phrase_bias' => $settings['phraseBias'] ?? [],
-                'banned_phrases' => $settings['bannedPhrases'] ?? [],
-                'stop_sequences' => $settings['stopSequences'] ?? [],
-            ],
-            'prompt_config' => [
-                'context' => $currentChapterContent,
-                'genre' => $settings['storyGenre'] ?? '',
-                'tone' => $settings['storyTone'] ?? '',
-                'pov' => $settings['storyPov'] ?? '',
-            ],
-            'caller' => [
-                'user_id' => (string)$user->id,
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
-                'api_keys' => [
-                    'openai' => '',
-                    'gemini' => '',
-                    'deepseek' => '',
-                ],
-            ],
-        ];
+        // Dispatch streaming job
+        StreamLLMJob::dispatch(
+            $workspace_id,
+            $project_id,
+            $validated['order'],
+            $validated['prompt'],
+            $settings,
+            $user->id
+        );
 
-        try {
-            // Make request to Python service using Laravel's HTTP client
-            \Log::info('Making request to Python service', [
-                'url' => 'http://python-app:5000/api/generate',
-                'data' => $requestData
-            ]);
-
-            $response = Http::timeout(30)
-                ->withHeaders([
-                    'Content-Type' => 'application/json',
-                ])
-                ->post('http://python-app:5000/api/generate', $requestData);
-
-            \Log::info('Python service response', [
-                'status' => $response->status(),
-                'body' => $response->body()
-            ]);
-
-            if ($response->successful()) {
-                $responseData = $response->json();
-
-                if ($responseData['success'] && isset($responseData['text'])) {
-                    // Update the project content with the generated text
-                    $projectContent = ProjectContent::where('project_id', $project_id)->first();
-                    if ($projectContent) {
-                        $chapters = $projectContent->content ?? [];
-                        
-                        foreach ($chapters as &$chapter) {
-                            if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
-                                // Append the generated text to existing content, add space if needed
-                                $existingContent = $chapter['content'] ?? '';
-                                $generatedText = $responseData['text'];
-                                if ($existingContent !== '' && substr($existingContent, -1) !== ' ' && substr($generatedText, 0, 1) !== ' ') {
-                                    $existingContent .= ' ';
-                                }
-                                $chapter['content'] = $existingContent . $generatedText;
-                                break;
-                            }
-                        }
-                        
-                        $projectContent->content = $chapters;
-                        $projectContent->save();
-
-                        \Log::info('Successfully updated project content with generated text');
-                    }
-
-                    return redirect()->route('workspace.projects.editor', [
-                        'workspace_id' => $workspace_id,
-                        'project_id' => $project_id,
-                    ]);
-                } else {
-                    \Log::error('Generation failed', ['response' => $responseData]);
-                    return back()->withErrors([
-                        'generation' => $responseData['error_message'] ?? 'Generation failed'
-                    ]);
-                }
-            } else {
-                \Log::error('HTTP request failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body()
-                ]);
-                return back()->withErrors([
-                    'generation' => 'Failed to connect to generation service'
-                ]);
-            }
-        } catch (\Exception $e) {
-            \Log::error('LLM Generation Error: ' . $e->getMessage(), [
-                'exception' => $e,
-                'trace' => $e->getTraceAsString()
-            ]);
-            return back()->withErrors([
-                'generation' => 'Failed to generate text: ' . $e->getMessage()
-            ]);
-        }
+        // Return success response immediately
+        return response()->json([
+            'success' => true,
+            'message' => 'Text generation started. You will receive real-time updates.',
+        ]);
     }
 }
