@@ -12,7 +12,9 @@ use Illuminate\Support\Facades\Auth;
 use App\Jobs\ManuscriptDeconstructionJob;
 use App\Jobs\StreamLLMJob;
 use App\Events\ProjectContentUpdated;
+use App\Events\LLMStreamCompleted;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 class MainEditorController extends Controller
 {
@@ -295,48 +297,154 @@ class MainEditorController extends Controller
      */
     public function generateText(Request $request, string $workspace_id, string $project_id)
     {
-        $validated = $request->validate([
-            'prompt' => 'required|string',
-            'order' => 'required|integer',
-            'settings' => 'nullable|array',
-            'settings.aiModel' => 'nullable|string',
-            'settings.storyGenre' => 'nullable|string',
-            'settings.storyTone' => 'nullable|string',
-            'settings.storyPov' => 'nullable|string',
-            'settings.temperature' => 'nullable|numeric|min:0|max:2',
-            'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
-            'settings.outputLength' => 'nullable|integer|min:50|max:1000',
-            'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
-            'settings.topP' => 'nullable|numeric|min:0|max:1',
-            'settings.tailFree' => 'nullable|numeric|min:0|max:1',
-            'settings.topA' => 'nullable|numeric|min:0|max:1',
-            'settings.topK' => 'nullable|numeric|min:0|max:1',
-            'settings.phraseBias' => 'nullable|array',
-            'settings.bannedPhrases' => 'nullable|array',
-            'settings.stopSequences' => 'nullable|array',
-        ]);
+        try {
+            $validated = $request->validate([
+                'prompt' => 'required|string',
+                'order' => 'required|integer',
+                'settings' => 'nullable|array',
+                'settings.aiModel' => 'nullable|string',
+                'settings.storyGenre' => 'nullable|string',
+                'settings.storyTone' => 'nullable|string',
+                'settings.storyPov' => 'nullable|string',
+                'settings.temperature' => 'nullable|numeric|min:0|max:2',
+                'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
+                'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+                'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
+                'settings.topP' => 'nullable|numeric|min:0|max:1',
+                'settings.tailFree' => 'nullable|numeric|min:0|max:1',
+                'settings.topA' => 'nullable|numeric|min:0|max:1',
+                'settings.topK' => 'nullable|numeric|min:0|max:1',
+                'settings.phraseBias' => 'nullable|array',
+                'settings.bannedPhrases' => 'nullable|array',
+                'settings.stopSequences' => 'nullable|array',
+            ]);
 
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->firstOrFail();
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
 
-        $user = Auth::user();
-        $settings = $validated['settings'] ?? [];
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
 
-        // Dispatch streaming job
-        StreamLLMJob::dispatch(
-            $workspace_id,
-            $project_id,
-            $validated['order'],
-            $validated['prompt'],
-            $settings,
-            $user->id
-        );
+            $settings = $validated['settings'] ?? [];
 
-        // Return success response immediately
-        return response()->json([
-            'success' => true,
-            'message' => 'Text generation started. You will receive real-time updates.',
-        ]);
+            // Generate a unique session ID for this generation
+            $sessionId = Str::uuid()->toString();
+
+            // Verify the chapter exists
+            $projectContent = ProjectContent::where('project_id', $project_id)->first();
+            if (!$projectContent) {
+                return response()->json(['error' => 'Project content not found'], 404);
+            }
+
+            $chapterExists = false;
+            $chapters = $projectContent->content ?? [];
+            foreach ($chapters as $chapter) {
+                if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
+                    $chapterExists = true;
+                    break;
+                }
+            }
+
+            if (!$chapterExists) {
+                return response()->json(['error' => 'Chapter not found'], 404);
+            }
+
+            // Log the generation request
+            Log::info('Text generation request', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'chapter_order' => $validated['order'],
+                'session_id' => $sessionId,
+                'user_id' => $user->id,
+                'model' => $settings['aiModel'] ?? 'default',
+            ]);
+
+            // Dispatch streaming job
+            StreamLLMJob::dispatch(
+                $workspace_id,
+                $project_id,
+                $validated['order'],
+                $validated['prompt'],
+                $settings,
+                $user->id,
+                $sessionId
+            );
+
+            // Return success response immediately with session ID
+            return response()->json([
+                'success' => true,
+                'message' => 'Text generation started. You will receive real-time updates.',
+                'session_id' => $sessionId,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error starting text generation', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to start text generation: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+    
+    /**
+     * Function to handle cancellation of text generation.
+     */
+    public function cancelGeneration(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'session_id' => 'required|string',
+                'chapter_order' => 'required|integer',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            Log::info('Cancelling text generation', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'chapter_order' => $validated['chapter_order'],
+                'session_id' => $validated['session_id'],
+                'user_id' => $user->id,
+            ]);
+
+            // Broadcast a completion event with cancelled status
+            broadcast(new LLMStreamCompleted(
+                $workspace_id,
+                $project_id,
+                $validated['chapter_order'],
+                $validated['session_id'],
+                '',
+                false,
+                'Generation cancelled by user'
+            ));
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Text generation cancelled.',
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error cancelling text generation', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to cancel text generation: ' . $e->getMessage(),
+            ], 500);
+        }
     }
 }

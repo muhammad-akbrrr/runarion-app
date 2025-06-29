@@ -31,7 +31,7 @@ class LLMStreamCompleted implements ShouldBroadcast
         int $chapterOrder,
         string $sessionId,
         string $fullText,
-        bool $success = true,
+        bool $success,
         ?string $error = null
     ) {
         $this->workspaceId = $workspaceId;

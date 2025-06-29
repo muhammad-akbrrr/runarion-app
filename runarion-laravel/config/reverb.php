@@ -69,21 +69,22 @@ return [
     */
 
     'apps' => [
-
         'provider' => 'config',
-
         'apps' => [
             [
-                'app_id' => env('REVERB_APP_ID', 'local'),
-                'key' => env('REVERB_APP_KEY', 'local-key'),
-                'secret' => env('REVERB_APP_SECRET', 'local-secret'),
-                'capacity' => null,
-                'allowed_origins' => ['*'],
-                'ping_interval' => env('REVERB_PING_INTERVAL', 30),
-                'activity_timeout' => env('REVERB_ACTIVITY_TIMEOUT', 30),
+            'app_id' => env('REVERB_APP_ID'),
+            'key' => env('REVERB_APP_KEY'),
+            'secret' => env('REVERB_APP_SECRET'),
+            'options' => [
+                'host' => env('REVERB_HOST'),
+                'port' => env('REVERB_PORT'),
+                'scheme' => env('REVERB_SCHEME'),
+            ],
+            'allowed_origins' => ['*'],
+            'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
+            'activity_timeout' => env('REVERB_ACTIVITY_TIMEOUT', 30),
+            'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 10000),
             ],
         ],
-
     ],
-
 ];

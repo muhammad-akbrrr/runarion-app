@@ -73,7 +73,7 @@ start_vite() {
 # Function to start Reverb server
 start_reverb() {
     log "Starting Reverb WebSocket server..."
-    php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080} || {
+    php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080} --debug || {
         log "Error: Reverb server failed to start"
         exit 1
     }

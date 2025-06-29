@@ -28,6 +28,8 @@ class StreamLLMJob implements ShouldQueue
     public array $settings;
     public string $sessionId;
     public int $userId;
+    public int $timeout = 180; // 3 minutes timeout
+    public int $tries = 1; // No retries for streaming jobs
 
     /**
      * Create a new job instance.
@@ -38,14 +40,15 @@ class StreamLLMJob implements ShouldQueue
         int $chapterOrder,
         string $prompt,
         array $settings,
-        int $userId
+        int $userId,
+        ?string $sessionId = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
         $this->chapterOrder = $chapterOrder;
         $this->prompt = $prompt;
         $this->settings = $settings;
-        $this->sessionId = Str::uuid()->toString();
+        $this->sessionId = $sessionId ?? Str::uuid()->toString();
         $this->userId = $userId;
     }
 
@@ -157,9 +160,9 @@ class StreamLLMJob implements ShouldQueue
                 'project_id' => $this->projectId,
                 'session_id' => $this->sessionId,
                 'api_keys' => [
-                    'openai' => '',
-                    'gemini' => '',
-                    'deepseek' => '',
+                    'openai' => env('OPENAI_API_KEY', ''),
+                    'gemini' => env('GEMINI_API_KEY', ''),
+                    'deepseek' => env('DEEPSEEK_API_KEY', ''),
                 ],
             ],
         ];
@@ -190,23 +193,24 @@ class StreamLLMJob implements ShouldQueue
     {
         $fullText = '';
         $chunkIndex = 0;
+        $pythonServiceUrl = env('PYTHON_SERVICE_URL', 'http://python-app:5000');
 
         Log::info('Making streaming request to Python service', [
             'session_id' => $this->sessionId,
-            'url' => 'http://python-app:5000/api/stream',
+            'url' => $pythonServiceUrl . '/api/stream',
         ]);
 
         // Create HTTP client with streaming support
-        $response = Http::timeout(120)
+        $response = Http::timeout($this->timeout)
             ->withHeaders([
                 'Content-Type' => 'application/json',
                 'Accept' => 'text/event-stream',
             ])
             ->withOptions([
                 'stream' => true,
-                'read_timeout' => 120,
+                'read_timeout' => $this->timeout,
             ])
-            ->post('http://python-app:5000/api/stream', $requestData);
+            ->post($pythonServiceUrl . '/api/stream', $requestData);
 
         if (!$response->successful()) {
             throw new \Exception('Failed to connect to Python service: ' . $response->body());
@@ -282,8 +286,8 @@ class StreamLLMJob implements ShouldQueue
                 return;
             }
 
-            // Extract text chunk based on expected response format
-            $textChunk = $this->extractTextChunk($decoded);
+            // Extract text chunk - assuming Flask always returns in the same format with 'chunk' field
+            $textChunk = $decoded['chunk'] ?? '';
             
             if (!empty($textChunk)) {
                 $fullText .= $textChunk;
@@ -310,31 +314,6 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
-     * Extract text chunk from decoded response
-     */
-    private function extractTextChunk(array $decoded): string
-    {
-        // Handle different response formats from various AI providers
-        if (isset($decoded['choices'][0]['delta']['content'])) {
-            return $decoded['choices'][0]['delta']['content'];
-        }
-        
-        if (isset($decoded['text'])) {
-            return $decoded['text'];
-        }
-        
-        if (isset($decoded['content'])) {
-            return $decoded['content'];
-        }
-        
-        if (isset($decoded['chunk'])) {
-            return $decoded['chunk'];
-        }
-        
-        return '';
-    }
-
-    /**
      * Update project content with generated text
      */
     private function updateProjectContent(string $generatedText): void
@@ -354,6 +333,7 @@ class StreamLLMJob implements ShouldQueue
         }
 
         $chapters = $projectContent->content ?? [];
+        $updatedContent = '';
         
         foreach ($chapters as &$chapter) {
             if (isset($chapter['order']) && $chapter['order'] === $this->chapterOrder) {
@@ -367,6 +347,7 @@ class StreamLLMJob implements ShouldQueue
                 }
                 
                 $chapter['content'] = $existingContent . $generatedText;
+                $updatedContent = $chapter['content'];
                 break;
             }
         }
@@ -380,7 +361,7 @@ class StreamLLMJob implements ShouldQueue
             $this->workspaceId,
             $this->projectId,
             $this->chapterOrder,
-            $chapter['content'] ?? '',
+            $updatedContent,
             'llm_generation'
         ));
 
@@ -389,5 +370,28 @@ class StreamLLMJob implements ShouldQueue
             'chapter_order' => $this->chapterOrder,
             'generated_length' => strlen($generatedText),
         ]);
+    }
+
+    /**
+     * Handle job failure.
+     */
+    public function failed(\Throwable $exception): void
+    {
+        Log::error('StreamLLMJob failed', [
+            'session_id' => $this->sessionId,
+            'error' => $exception->getMessage(),
+            'trace' => $exception->getTraceAsString(),
+        ]);
+
+        // Broadcast error event
+        broadcast(new LLMStreamCompleted(
+            $this->workspaceId,
+            $this->projectId,
+            $this->chapterOrder,
+            $this->sessionId,
+            '',
+            false,
+            'Job failed: ' . $exception->getMessage()
+        ));
     }
 }

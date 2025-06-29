@@ -10,14 +10,21 @@ declare global {
 
 window.Pusher = Pusher;
 
+// Enable Pusher logging for debugging
+if (import.meta.env.DEV) {
+    Pusher.logToConsole = true;
+}
+
+// Initialize Echo with Reverb configuration
 window.Echo = new Echo({
     broadcaster: 'reverb',
     key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: import.meta.env.VITE_REVERB_HOST,
-    wsPort: import.meta.env.VITE_REVERB_PORT ?? 80,
-    wssPort: import.meta.env.VITE_REVERB_PORT ?? 443,
-    forceTLS: (import.meta.env.VITE_REVERB_SCHEME ?? 'https') === 'https',
+    wsHost: import.meta.env.VITE_REVERB_CLIENT_HOST || window.location.hostname,
+    wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
+    wssPort: import.meta.env.VITE_REVERB_PORT || 443,
+    forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'http') === 'https',
     enabledTransports: ['ws', 'wss'],
+    disableStats: true,
     authEndpoint: '/broadcasting/auth',
     auth: {
         headers: {
