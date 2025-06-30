@@ -79,15 +79,6 @@ start_reverb() {
     }
 }
 
-# Function to start queue worker
-start_queue_worker() {
-    log "Starting queue worker..."
-    php artisan queue:work --tries=3 --timeout=90 || {
-        log "Error: Queue worker failed to start"
-        exit 1
-    }
-}
-
 # Function to handle shutdown
 cleanup() {
     log "Shutting down..."
@@ -116,10 +107,6 @@ VITE_PID=$!
 # Start Reverb WebSocket server (background)
 start_reverb &
 REVERB_PID=$!
-
-# Start queue worker (background)
-start_queue_worker &
-QUEUE_PID=$!
 
 # Wait for services to be ready
 check_vite || exit 1
