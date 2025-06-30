@@ -5,12 +5,19 @@ import {
     SidebarProvider,
 } from "@/Components/ui/sidebar";
 import { SidebarTabs } from "./SidebarTabs";
+import { SidebarSettingsProps } from "@/types/project";
 
-interface EditorSidebarProps {
+interface EditorSidebarProps extends SidebarSettingsProps {
     children: React.ReactNode;
 }
 
-export function EditorSidebar({ children }: EditorSidebarProps) {
+export function EditorSidebar({ 
+    children,
+    settings,
+    onSettingChange,
+    workspaceId, 
+    projectId 
+}: EditorSidebarProps) {
     return (
         <SidebarProvider
             defaultOpen={true}
@@ -40,7 +47,12 @@ export function EditorSidebar({ children }: EditorSidebarProps) {
                     className="absolute flex flex-col h-auto"
                 >
                     <SidebarContent className="overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
-                        <SidebarTabs />
+                        <SidebarTabs 
+                            settings={settings}
+                            onSettingChange={onSettingChange}
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                        />
                     </SidebarContent>
                 </Sidebar>
             </div>
