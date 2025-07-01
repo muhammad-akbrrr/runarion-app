@@ -62,7 +62,7 @@ class StreamLLMJob implements ShouldQueue
                 'session_id' => $this->sessionId,
                 'workspace_id' => $this->workspaceId,
                 'project_id' => $this->projectId,
-                'chapter_order' => $this->chapterOrder,
+                'chapter_order' => $this->chapterOrder, 
             ]);
 
             // Broadcast stream started event

@@ -15,12 +15,7 @@ use App\Models\WorkspaceMember;
 |
 */
 
-Broadcast::channel('App.Models.User.{id}', function ($user, $id) {
-    return (int) $user->id === (int) $id;
-});
-
 Broadcast::channel('project.{workspaceId}.{projectId}', function ($user, $workspaceId, $projectId) {
-    // Check if user is a member of the workspace
     $isMember = WorkspaceMember::where('workspace_id', $workspaceId)
         ->where('user_id', $user->id)
         ->exists();
@@ -49,9 +44,5 @@ Broadcast::channel('project.{workspaceId}.{projectId}', function ($user, $worksp
         }
     }
     
-    return [
-        'id' => $user->id,
-        'name' => $user->name,
-        'email' => $user->email,
-    ];
+    return true;
 });

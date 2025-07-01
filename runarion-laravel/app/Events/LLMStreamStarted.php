@@ -3,8 +3,6 @@
 namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
-use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
@@ -12,16 +10,13 @@ use Illuminate\Queue\SerializesModels;
 
 class LLMStreamStarted implements ShouldBroadcast
 {
-    use Dispatchable, InteractsWithSockets, SerializesModels;
+    use Dispatchable, SerializesModels;
 
     public string $workspaceId;
     public string $projectId;
     public int $chapterOrder;
     public string $sessionId;
 
-    /**
-     * Create a new event instance.
-     */
     public function __construct(
         string $workspaceId,
         string $projectId,
@@ -35,9 +30,15 @@ class LLMStreamStarted implements ShouldBroadcast
     }
 
     /**
-     * Get the channels the event should broadcast on.
-     *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
+     * Explicitly use the Reverb broadcaster.
+     */
+    public function broadcastConnection(): string
+    {
+        return 'reverb';
+    }
+
+    /**
+     * Channels for broadcast.
      */
     public function broadcastOn(): array
     {
@@ -46,25 +47,20 @@ class LLMStreamStarted implements ShouldBroadcast
         ];
     }
 
-    /**
-     * The event's broadcast name.
-     */
     public function broadcastAs(): string
     {
         return 'llm.stream.started';
     }
 
-    /**
-     * Get the data to broadcast.
-     */
     public function broadcastWith(): array
     {
         return [
-            'workspace_id' => $this->workspaceId,
-            'project_id' => $this->projectId,
+            'workspace_id'  => $this->workspaceId,
+            'project_id'    => $this->projectId,
             'chapter_order' => $this->chapterOrder,
-            'session_id' => $this->sessionId,
-            'timestamp' => now()->toISOString(),
+            'session_id'    => $this->sessionId,
+            'timestamp'     => now()->toISOString(),
         ];
     }
 }
+

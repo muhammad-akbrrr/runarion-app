@@ -53,6 +53,7 @@ return [
                 'interval' => env('REVERB_PULSE_INTERVAL', 15),
                 'lottery' => [1, 1000],
             ],
+            'pulse_ingest_interval' => env('REVERB_PULSE_INGEST_INTERVAL', 15),
         ],
 
     ],
