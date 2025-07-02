@@ -373,12 +373,11 @@ class MainEditorController extends Controller
                 $sessionId
             );
 
-            // Return success response immediately with session ID
-            return response()->json([
-                'success' => true,
-                'message' => 'Text generation started. You will receive real-time updates.',
-                'session_id' => $sessionId,
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
             ]);
+            
         } catch (\Exception $e) {
             Log::error('Error starting text generation', [
                 'error' => $e->getMessage(),
