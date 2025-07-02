@@ -28,13 +28,8 @@ class StoryHandler(UseCaseHandler):
 
             # Extract generation config with defaults
             generation_config_data = raw_json.get("generation_config", {})
-            
-            # Ensure stream is set correctly based on the request
-            if "stream" in raw_json:
-                generation_config_data["stream"] = raw_json["stream"]
-                
-            # Create the generation config
             generation_config = GenerationConfig(**generation_config_data)
+            generation_config.stream = raw_json.get("stream", False)
             
             # Extract caller info
             caller_data = raw_json.get("caller", {})
@@ -48,7 +43,7 @@ class StoryHandler(UseCaseHandler):
                 prompt=prompt,
                 instruction=instruction,
                 generation_config=generation_config,
-                caller=caller
+                caller=caller,
             )
         except Exception as e:
             current_app.logger.error(f"Error building story request: {e}")

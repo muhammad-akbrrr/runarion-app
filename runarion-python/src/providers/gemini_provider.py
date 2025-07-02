@@ -20,47 +20,33 @@ class GeminiProvider(BaseProvider):
             current_app.logger.error(f"Failed to initialize Gemini client: {e}")
             raise ValueError(f"Failed to initialize Gemini client: {str(e)}")
     
-    def _build_gemini_config(self, config: GenerationConfig) -> Dict[str, Any]:
+    def _build_gemini_kwargs(self, config: GenerationConfig) -> Dict:
         """
-        Build generation config for Gemini API.
+        Transforms the GenerationConfig into a dictionary of kwargs suitable for 
+        the Gemini config API.
+        """
+        # Note: Gemini doesn't support logit_bias directly like OpenAI does
         
-        Args:
-            config: Generation configuration.
-            
-        Returns:
-            Dict[str, Any]: Gemini generation config.
-        """
-        gemini_config = {
-            "temperature": config.temperature,
-            "top_p": config.nucleus_sampling,
-            "top_k": int(config.top_k * 40) if config.top_k > 0 else None,
-            "max_output_tokens": config.max_output_tokens,
+        all_stop_sequences = config.stop_sequences or []
+        # if hasattr(config, 'banned_tokens') and config.banned_tokens:
+        #     all_stop_sequences.extend(config.banned_tokens)
+                
+        gemini_kwargs = {
+            "model": self.model,
+            "contents": self.request.prompt or "",
+            "config": GenerateContentConfig(
+                system_instruction=self.instruction or "",
+                temperature=config.temperature,
+                max_output_tokens=config.max_output_tokens,
+                top_p=config.nucleus_sampling,
+                top_k=int(config.top_k) if config.top_k > 0 else None,
+                stop_sequences=all_stop_sequences,
+                presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
+                frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
+            ),
         }
         
-        # Add stop sequences if provided
-        if config.stop_sequences:
-            gemini_config["stop_sequences"] = config.stop_sequences
-        
-        return {k: v for k, v in gemini_config.items() if v is not None}
-    
-    def _prepare_prompt_parts(self):
-        """
-        Prepare prompt parts for Gemini API.
-        
-        Returns:
-            list: List of prompt parts.
-        """
-        prompt_parts = []
-        
-        # Add instruction as system prompt
-        if self.instruction:
-            prompt_parts.append(self.instruction)
-        
-        # Add user prompt
-        if self.request.prompt:
-            prompt_parts.append(self.request.prompt)
-        
-        return prompt_parts
+        return {k: v for k, v in gemini_kwargs.items() if v is not None}
         
     def generate(self) -> BaseGenerationResponse:
         """
@@ -69,21 +55,15 @@ class GeminiProvider(BaseProvider):
         Returns:
             BaseGenerationResponse: The generated text and metadata.
         """
+        self.request.generation_config.stream = False
         start_time = time.time()
         request_id = str(uuid.uuid4())
         provider_request_id = None
         quota_generation_count = 1
         
-        # Ensure streaming is disabled for non-streaming generation
-        self.request.generation_config.stream = False
-        
         # Build Gemini generation config
-        generation_config = self._build_gemini_config(self.request.generation_config)
-        current_app.logger.info(f"Gemini generation config: {generation_config}")
-        
-        # Prepare prompt parts
-        prompt_parts = self._prepare_prompt_parts()
-        current_app.logger.info(f"Gemini prompt parts: {prompt_parts}")
+        gemini_kwargs = self._build_gemini_kwargs(self.request.generation_config)
+        current_app.logger.info(f"Gemini generation kwargs: {gemini_kwargs}")
 
         try:
             self._check_quota()
@@ -99,38 +79,41 @@ class GeminiProvider(BaseProvider):
 
         try:
             # Create the model
-            model = self.client.GenerativeModel(
-                model_name=self.model,
-                generation_config=generation_config
-            )
-            
-            # Generate content
-            raw_response = model.generate_content(prompt_parts)
+            raw_response = self.client.models.generate_content(**gemini_kwargs)
             current_app.logger.info(f"Gemini API response: {raw_response}")
-            
-            # Extract provider request ID if available
             provider_request_id = getattr(raw_response, 'response_id', "")
+            
+            if raw_response.prompt_feedback and raw_response.prompt_feedback.block_reason:
+                reason_name = getattr(raw_response.prompt_feedback.block_reason, 'name', str(raw_response.prompt_feedback.block_reason))
+                error_message = f"Content generation blocked by Gemini. Reason: {reason_name}"
+                current_app.logger.warning(error_message)
+                return self._build_error_response(
+                    request_id=request_id,
+                    provider_request_id=provider_request_id,
+                    error_message=error_message
+                )
 
-            # Extract generated text
             generated_text = ""
-            finish_reason = "stop"  # Default finish reason
+            finish_reason = ""
 
-            if hasattr(raw_response, 'text'):
-                generated_text = raw_response.text
-            
-            # Extract usage information if available
-            # Note: Gemini doesn't provide token counts directly
-            input_tokens = 0
-            output_tokens = 0
-            total_tokens = 0
-            
-            # Calculate processing time
+            if raw_response.candidates:
+                candidate = raw_response.candidates[0]
+                if candidate.content and candidate.content.parts:
+                    generated_text = "".join(
+                        part.text for part in candidate.content.parts if hasattr(part, "text") and part.text
+                    )
+                if candidate.finish_reason:
+                    finish_reason = getattr(candidate.finish_reason, 'name', str(candidate.finish_reason))
+
+            usage = getattr(raw_response, 'usage_metadata', None) or {}
+            input_tokens = getattr(usage, "prompt_token_count", 0)
+            output_tokens = getattr(usage, "candidates_token_count", 0)
+            total_tokens = getattr(usage, "total_token_count", 0)
+
             processing_time_ms = int((time.time() - start_time) * 1000)
 
-            # Update quota
             self._update_quota(quota_generation_count)
 
-            # Build response
             response = self._build_response(
                 generated_text=generated_text,
                 finish_reason=finish_reason,
@@ -143,7 +126,6 @@ class GeminiProvider(BaseProvider):
                 quota_generation_count=quota_generation_count,
             )
 
-            # Log generation to DB
             self._log_generation_to_db(response)
             return response
 
@@ -166,45 +148,72 @@ class GeminiProvider(BaseProvider):
         """
         # Ensure streaming is enabled
         self.request.generation_config.stream = True
+        start_time = time.time()
+        request_id = str(uuid.uuid4())
+        provider_request_id = None
+        quota_generation_count = 1
         
-        # Check quota before streaming
         try:
             self._check_quota()
         except Exception as e:
             current_app.logger.error(f"Gemini Quota error with model {self.model}: {e}")
+            response = self._build_error_response(
+                request_id=request_id,
+                provider_request_id=provider_request_id or "",
+                error_message=f"Gemini Quota error: {str(e)}",
+            )
+            self._log_generation_to_db(response)
             yield f"Error: {str(e)}"
-            return
+            return response
         
         # Build Gemini generation config
-        generation_config = self._build_gemini_config(self.request.generation_config)
-        current_app.logger.info(f"Gemini streaming config: {generation_config}")
+        gemini_kwargs = self._build_gemini_kwargs(self.request.generation_config)
+        current_app.logger.info(f"Gemini generation kwargs: {gemini_kwargs}")
         
-        # Prepare prompt parts
-        prompt_parts = self._prepare_prompt_parts()
-        current_app.logger.info(f"Gemini streaming prompt parts: {prompt_parts}")
-        
+        generated_text = ""
+        input_tokens = 0
+        output_tokens = 0
+        total_tokens = 0
+        finish_reason = "stop"
+
         try:
-            # Create the model
-            model = self.client.GenerativeModel(
-                model_name=self.model,
-                generation_config=generation_config
+            # Streaming API call
+            stream = self.client.models.generate_content_stream(**gemini_kwargs)
+
+            for chunk in stream:
+                # Try to extract provider request ID from any chunk (first usually)
+                provider_request_id = getattr(chunk, 'response_id', provider_request_id)
+
+                if hasattr(chunk, 'text') and chunk.text:
+                    generated_text += chunk.text
+                    yield chunk.text
+
+            # Final usage data (Gemini stream does NOT return this currently, set 0s safely)
+            processing_time_ms = int((time.time() - start_time) * 1000)
+            self._update_quota(quota_generation_count)
+
+            response = self._build_response(
+                generated_text=generated_text,
+                finish_reason=finish_reason,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                processing_time_ms=processing_time_ms,
+                request_id=request_id,
+                provider_request_id=provider_request_id or "",
+                quota_generation_count=quota_generation_count
             )
-            
-            # Make the streaming request
-            response = model.generate_content(
-                prompt_parts,
-                stream=True
-            )
-            
-            # Process the stream
-            for chunk in response:
-                if hasattr(chunk, 'text'):
-                    if chunk.text:
-                        yield chunk.text
-            
-            # Update quota after successful streaming
-            self._update_quota(1)  # Count as one generation
-            
+
+            self._log_generation_to_db(response)
+
         except Exception as e:
-            current_app.logger.error(f"Gemini streaming error: {e}")
+            current_app.logger.error(f"Gemini streaming API error with model {self.model}: {e}")
+            error_response = self._build_error_response(
+                request_id=request_id,
+                provider_request_id=provider_request_id or "",
+                error_message=f"Gemini streaming API error: {str(e)}"
+            )
+            self._log_generation_to_db(error_response)
             yield f"Error: {str(e)}"
+        
+        

@@ -55,8 +55,6 @@ class OpenAIProvider(BaseProvider):
             "stream": config.stream
         }
         
-        current_app.logger.debug(f"OpenAI kwargs: {openai_kwargs}")
-        
         return {k: v for k, v in openai_kwargs.items() if v is not None}
         
     def generate(self) -> BaseGenerationResponse:
@@ -66,13 +64,11 @@ class OpenAIProvider(BaseProvider):
         Returns:
             BaseGenerationResponse: The generated text and metadata.
         """
+        self.request.generation_config.stream = False
         start_time = time.time()
         request_id = str(uuid.uuid4())
         provider_request_id = None
         quota_generation_count = 1
-        
-        # Ensure streaming is disabled for non-streaming generation
-        self.request.generation_config.stream = False
         
         openai_kwargs = self._build_openai_kwargs(self.request.generation_config)
         current_app.logger.info(f"OpenAI API request: {openai_kwargs}")
@@ -139,41 +135,89 @@ class OpenAIProvider(BaseProvider):
     def generate_stream(self) -> Generator[str, None, None]:
         """
         Generate text in a streaming fashion.
-        
+
         Yields:
             str: Text chunks as they are generated.
         """
-        # Ensure streaming is enabled
         self.request.generation_config.stream = True
-        
-        # Check quota before streaming
+        request_id = str(uuid.uuid4())
+        provider_request_id = None
+        quota_generation_count = 1
+        start_time = time.time()
+
         try:
             self._check_quota()
         except Exception as e:
             current_app.logger.error(f"OpenAI Quota error with model {self.model}: {e}")
+            error_response = self._build_error_response(
+                request_id=request_id,
+                provider_request_id="",
+                error_message=f"OpenAI Quota error: {str(e)}"
+            )
+            self._log_generation_to_db(error_response)
             yield f"Error: {str(e)}"
             return
-        
-        # Build OpenAI kwargs
+
         openai_kwargs = self._build_openai_kwargs(self.request.generation_config)
         current_app.logger.info(f"OpenAI streaming request: {openai_kwargs}")
-        
+
+        # Collect results
+        generated_text = ""
+        finish_reason = ""
+        input_tokens = 0
+        output_tokens = 0
+        total_tokens = 0
+
         try:
-            # Make the streaming request
             stream = self.client.chat.completions.create(**openai_kwargs)
-            
-            # Process the stream
+
             for chunk in stream:
                 if hasattr(chunk, 'choices') and chunk.choices:
                     choice = chunk.choices[0]
+                    provider_request_id = getattr(chunk, 'id', provider_request_id)
+
                     if hasattr(choice, 'delta') and hasattr(choice.delta, 'content'):
                         content = choice.delta.content
                         if content:
+                            generated_text += content
                             yield content
-            
-            # Update quota after successful streaming
-            self._update_quota(1)  # Count as one generation
-            
+
+            # Attempt to get usage metadata from the final response
+            try:
+                usage = getattr(stream, 'usage', None)
+                if usage:
+                    input_tokens = getattr(usage, "input_tokens", 0)
+                    output_tokens = getattr(usage, "output_tokens", 0)
+                    total_tokens = getattr(usage, "total_tokens", 0)
+            except Exception as e:
+                current_app.logger.warning(f"Failed to parse usage metadata from stream: {e}")
+
+            finish_reason = choice.finish_reason if hasattr(choice, 'finish_reason') else "stop"
+
+            processing_time_ms = int((time.time() - start_time) * 1000)
+
+            self._update_quota(quota_generation_count)
+
+            response = self._build_response(
+                generated_text=generated_text,
+                finish_reason=finish_reason,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                processing_time_ms=processing_time_ms,
+                request_id=request_id,
+                provider_request_id=provider_request_id or "",
+                quota_generation_count=quota_generation_count,
+            )
+            self._log_generation_to_db(response)
+
         except Exception as e:
             current_app.logger.error(f"OpenAI streaming error: {e}")
+            error_response = self._build_error_response(
+                request_id=request_id,
+                provider_request_id=provider_request_id or "",
+                error_message=f"OpenAI API error: {str(e)}",
+            )
+            self._log_generation_to_db(error_response)
             yield f"Error: {str(e)}"
+
