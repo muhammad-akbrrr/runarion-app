@@ -243,18 +243,6 @@ export default function ProjectEditorPage({
                             handleAddChapter={handleAddChapterClick}
                         />
 
-                        {/* Cancel Generation Button */}
-                        {isGenerating && (
-                            <Button 
-                                variant="destructive"
-                                size="sm"
-                                onClick={handleCancelGeneration}
-                                className="flex items-center space-x-2"
-                            >
-                                <Square className="h-3 w-3" />
-                                <span>Cancel</span>
-                            </Button>
-                        )}
                     </div>
                 </div>
 
@@ -299,25 +287,6 @@ export default function ProjectEditorPage({
                             </LexicalComposer>
                         </div>
                     </div>
-
-                    {/* Streaming indicator */}
-                    {isStreaming && (
-                        <div className="absolute top-4 right-4 bg-blue-100 border border-blue-300 rounded-lg px-3 py-2 text-sm text-blue-800">
-                            <div className="flex items-center space-x-2">
-                                <div className="animate-pulse w-2 h-2 bg-blue-500 rounded-full"></div>
-                                <span>AI is writing...</span>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Stream error indicator */}
-                    {streamError && (
-                        <div className="absolute top-4 right-4 bg-red-100 border border-red-300 rounded-lg px-3 py-2 text-sm text-red-800">
-                            <div className="flex items-center space-x-2">
-                                <span>Error: {streamError}</span>
-                            </div>
-                        </div>
-                    )}
 
                     <div className="absolute left-0 bottom-0 w-full p-4">
                         <EditorToolbar 

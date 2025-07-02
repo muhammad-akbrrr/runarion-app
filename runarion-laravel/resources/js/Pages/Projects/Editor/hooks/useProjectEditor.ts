@@ -268,7 +268,7 @@ export function useProjectEditor({
 
         // Extract relevant settings for the generation request
         const generationSettings = {
-            prompt: content || "",
+            prompt: content || "<please start writing here>",
             order: selectedChapter.order,
             settings: {
                 // Model settings
