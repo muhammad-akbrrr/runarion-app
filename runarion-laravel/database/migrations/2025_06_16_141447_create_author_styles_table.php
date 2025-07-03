@@ -10,15 +10,6 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::create('intermediate_author_styles', function (Blueprint $table) {
-            $table->ulid('id')->primary();
-            $table->ulid('structured_style_id');
-            $table->text('style')->comment('Intermediate author style');
-            $table->json('passages')->comment('Passages used in the style analysis: {source_file: [list of passage numbers]}');
-            $table->integer('processing_time_ms');
-            $table->timestamps();
-        });
-
         Schema::create('structured_author_styles', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->ulid('workspace_id');
@@ -43,7 +34,6 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::dropIfExists('intermediate_author_styles');
         Schema::dropIfExists('structured_author_styles');
     }
 };
