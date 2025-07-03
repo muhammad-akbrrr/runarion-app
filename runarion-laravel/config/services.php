@@ -14,6 +14,10 @@ return [
     |
     */
 
+    'deconstructor' => [
+        'url' => env('PYTHON_SERVICE_URL') . '/api/story-rewrite',
+    ],
+
     'postmark' => [
         'token' => env('POSTMARK_TOKEN'),
     ],

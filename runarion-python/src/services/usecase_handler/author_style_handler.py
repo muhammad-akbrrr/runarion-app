@@ -114,6 +114,8 @@ Extract ALL examples you can find, regardless of formatting. Look for:
 - Examples after "Example:" or similar markers
 - Descriptive explanations of techniques
 - Any text that demonstrates the technique being discussed
+
+Only return the JSON object, without any additional text or explanations.
 """
 
 INPUT_CONTENT = """

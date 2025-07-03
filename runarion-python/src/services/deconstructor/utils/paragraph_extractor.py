@@ -16,8 +16,8 @@ class ParagraphExtractor:
         file_path: str,
         start_page: int = 1,
         end_page: Optional[int] = None,
-        min_char_len: int = 150,
-        max_char_len: int = 5000,
+        min_char_len: Optional[int] = None,
+        max_char_len: Optional[int] = None,
         sentence_endings: Optional[list[str]] = None,
     ):
         """
@@ -25,15 +25,15 @@ class ParagraphExtractor:
             file_path (str): Path to the PDF file.
             start_page (int): Page number to start extraction from.
             end_page (Optional[int]): Page number to stop extraction at. None means till the last page.
-            min_char_len (int): Minimum character length for a paragraph.
-            max_char_len (int): Maximum character length for a paragraph.
+            min_char_len (Optional[int]): Minimum character length for a paragraph, defaults to 150.
+            max_char_len (Optional[int]): Maximum character length for a paragraph, defaults to 5000.
             sentence_endings (Optional[list[str]]): Sentence ending characters to identify paragraph endings and split paragraphs. Defaults to ".", "!", "?", and their variations within quotes.
         """
         self.file_path = file_path
         self.start_page = start_page
         self.end_page = end_page
-        self.min_char_len = min_char_len
-        self.max_char_len = max_char_len
+        self.min_char_len = min_char_len or 150
+        self.max_char_len = max_char_len or 5000
 
         default_endings = [".", "!", "?"]
         default_endings = (

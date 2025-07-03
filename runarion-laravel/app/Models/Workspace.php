@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Validation\Rule;
+use App\Models\StructuredAuthorStyle;
 
 /**
  * Model Workspace
@@ -122,5 +123,13 @@ class Workspace extends Model
     public function owner()
     {
         return $this->members()->where('role', 'owner')->first()?->user;
+    }
+
+    /**
+     * Get the structured author styles that belong to the workspace.
+     */
+    public function authorStyles()
+    {
+        return $this->hasMany(StructuredAuthorStyle::class, 'workspace_id');
     }
 }

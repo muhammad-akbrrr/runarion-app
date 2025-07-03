@@ -111,3 +111,6 @@ coverage.xml
 # Local development
 *.local
 local_settings.py
+
+# Uploaded files
+uploads/

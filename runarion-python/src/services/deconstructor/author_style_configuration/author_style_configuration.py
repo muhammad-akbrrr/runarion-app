@@ -4,21 +4,24 @@ import time
 from math import ceil
 from typing import Literal, NamedTuple, Optional
 
+import demjson3
+from flask import current_app
 from models.deconstructor.author_style import AuthorStyle
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
+from pydantic import ValidationError
 from services.generation_engine import GenerationEngine
-from ulid import ULID
-from usecase_handler.author_style_handler import (
+from services.usecase_handler.author_style_handler import (
     COMBINED_AUTHOR_STYLE,
     PARTIAL_AUTHOR_STYLE,
     AuthorStyleHandler,
 )
+from ulid import ULID
 from utils.get_model_max_token import get_model_max_token
 
-from .paragraph_extractor import ParagraphExtractor
-from .token_counter import TokenCounter
+from ..utils.paragraph_extractor import ParagraphExtractor
+from ..utils.token_counter import TokenCounter
 
 
 class Passage(NamedTuple):
@@ -48,40 +51,64 @@ class AuthorStyleConfiguration:
         paragraph_extractors: list[ParagraphExtractor],
         caller: CallerInfo,
         connection_pool: SimpleConnectionPool,
-        provider: Optional[str] = "gemini",
+        author_name: str,
+        provider: Optional[str] = None,
         model: Optional[str] = None,
-        generation_config: Optional[GenerationConfig] = None,
-        paragraph_overlap: bool = False,
-        store_intermediate: bool = False,
+        generation_config: Optional[dict] = None,
+        paragraph_overlap: Optional[bool] = False,
+        store_intermediate: Optional[bool] = False,
     ):
         """
         Args:
             paragraph_extractors (list[ParagraphExtractor]): List of paragraph extractors, each associated with a source file.
             caller (CallerInfo): Caller information.
             connection_pool (SimpleConnectionPool): Database connection pool for storing results.
-            provider (Optional[str]): The model provider (e.g., "openai", "gemini").
-            model (Optional[str]): The model name.
-            generation_config (Optional[GenerationConfig]): Configuration for LLM generation.
-            paragraph_overlap (bool): Whether to allow overlaping paragraphs in the passages.
-            store_intermediate (bool): Whether to store intermediate styles.
+            author_name (str): Name for identifying the author style.
+            provider (Optional[str]): The model provider, defaults to "gemini".
+            model (Optional[str]): The model name, defaults to "gemini-2.0-flash".
+            generation_config (Optional[dict]): Override configuration for LLM generation.
+            paragraph_overlap (Optional[bool]): Whether to allow overlaping paragraphs in the passages, defaults to False.
+            store_intermediate (Optional[bool]): Whether to store intermediate styles, defaults to False.
         """
+        default_generation_config = {
+            "temperature": 0.7,
+            "max_output_tokens": 2000,
+            "nucleus_sampling": 1.0,
+            "tail_free_sampling": 1.0,
+            "top_k": 0.0,
+            "top_a": 0.0,
+            "phrase_bias": None,
+            "banned_tokens": None,
+            "stop_sequences": None,
+            "repetition_penalty": 0.0,
+        }
+
         self.paragraph_extractors = paragraph_extractors
         self.caller = caller
         self.connection_pool = connection_pool
+        self.author_name = author_name
         self.provider = provider or "gemini"
-        self.model = model or "gemini-2.5-flash"
-        self.generation_config = generation_config or GenerationConfig()  # type: ignore
-        self.paragraph_overlap = paragraph_overlap
-        self.store_intermediate = store_intermediate
+        self.model = model or "gemini-2.0-flash"
+        # Only merge if generation_config is a dict, else use default
+        if isinstance(generation_config, dict):
+            merged_config = {**default_generation_config, **generation_config}
+        else:
+            merged_config = default_generation_config
+        self.generation_config = GenerationConfig(**merged_config)
+        self.paragraph_overlap = paragraph_overlap or False
+        self.store_intermediate = store_intermediate or False
 
         # calculate max token of content in partial and combined prompts
         RESERVED_TOKENS_FOR_SAFETY = 100
         self.token_counter = TokenCounter(self.provider, self.model)
         model_max_token = (
-            get_model_max_token(self.provider, self.model) - RESERVED_TOKENS_FOR_SAFETY
+            get_model_max_token(self.provider, self.model) -
+            RESERVED_TOKENS_FOR_SAFETY
         )
-        partial_prompt_token = self.token_counter.count_tokens(PARTIAL_AUTHOR_STYLE)
-        combined_prompt_token = self.token_counter.count_tokens(COMBINED_AUTHOR_STYLE)
+        partial_prompt_token = self.token_counter.count_tokens(
+            PARTIAL_AUTHOR_STYLE)
+        combined_prompt_token = self.token_counter.count_tokens(
+            COMBINED_AUTHOR_STYLE)
         self.partial_max_token = model_max_token - partial_prompt_token
         self.combined_max_token = model_max_token - combined_prompt_token
 
@@ -107,7 +134,6 @@ class AuthorStyleConfiguration:
             extractor = self.paragraph_extractors[i]
             paragraphs = extractor.run()
             all_paragraphs[source] = paragraphs
-            extractor.clear()
 
         # dictionary with source file names as keys and lists of token counts as values
         token_counts: dict[str, list[int]] = {}
@@ -118,7 +144,8 @@ class AuthorStyleConfiguration:
 
         passages: list[Passage] = []
         for source in self.sources:
-            passage: list[str] = []  # list of paragraphs in the current passage
+            # list of paragraphs in the current passage
+            passage: list[str] = []
             token_count = 0  # token count of the current passage
             passage_num = 1  # current passage number
             index = 0  # index of paragraphs
@@ -157,13 +184,13 @@ class AuthorStyleConfiguration:
         return passages
 
     def _call_llm(
-        self, prompt: str, mode: Literal["partial", "combined", "structured"]
+        self, text: str, mode: Literal["partial", "combined", "structured"]
     ) -> BaseGenerationResponse:
         """
-        Calls the LLM with the given prompt and mode.
+        Calls the LLM with the given text and mode.
 
         Args:
-            prompt (str): The prompt to send to the LLM.
+            text (str): The text to send to the LLM.
             mode (Literal["partial", "combined", "structured"]): The mode of the request.
         Returns:
             GenerationResponse: The response from the LLM.
@@ -174,7 +201,7 @@ class AuthorStyleConfiguration:
                 "mode": mode,
                 "provider": self.provider,
                 "model": self.model,
-                "text": prompt,
+                "text": text,
                 "generation_config": self.generation_config,
                 "caller": self.caller,
             }
@@ -185,7 +212,9 @@ class AuthorStyleConfiguration:
         response = engine.generate()
 
         if not response.success:
-            raise RuntimeError(f"LLM call failed: {response.error_message}")
+            error_text = f"LLM call failed: {response.error_message}"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
 
         return response
 
@@ -203,8 +232,8 @@ class AuthorStyleConfiguration:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO intermediate_styles (id, structured_style_id, style, processing_time_ms, passages)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO intermediate_author_styles (id, structured_style_id, style, processing_time_ms, passages)
+                        VALUES (%s, %s, %s, %s, %s)
                         """,
                         (
                             str(ULID()),
@@ -216,7 +245,11 @@ class AuthorStyleConfiguration:
                     )
                     conn.commit()
         except Exception as e:
-            raise RuntimeError(f"Failed to store intermediate style: {str(e)}")
+            error_text = f"Failed to store intermediate style: {str(e)}"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _store_structured_style(
         self, data: dict, started_at: str, total_time_ms: int
@@ -234,23 +267,28 @@ class AuthorStyleConfiguration:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO structured_styles (id, user_id, workspace_id, project_id, style, started_at, total_time_ms, sources)
-                        VALUES (%s, %s, %s, %s)
+                        INSERT INTO structured_author_styles (id, workspace_id, project_id, user_id, author_name, style, sources, started_at, total_time_ms)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             self.id,
-                            self.caller.user_id,
                             self.caller.workspace_id,
                             self.caller.project_id,
+                            self.caller.user_id,
+                            self.author_name,
                             json.dumps(data),
+                            ", ".join(self.sources),
                             started_at,
                             total_time_ms,
-                            ", ".join(self.sources),
                         ),
                     )
                     conn.commit()
         except Exception as e:
-            raise RuntimeError(f"Failed to store structured style: {str(e)}")
+            error_text = f"Failed to store structured style: {str(e)}"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _merge_style_passage(self, styles: list[Style]) -> StylePassages:
         """
@@ -311,11 +349,18 @@ class AuthorStyleConfiguration:
             Style: The combined style.
         """
         if recursion_depth > 5:
-            raise RuntimeError("Recursion depth exceeded while combining styles")
+            error_text = "Recursion depth exceeded while combining styles"
+            current_app.logger.error(error_text)
+            raise RuntimeError(error_text)
+
+        # recursion base case 1:
+        # if there is only one style, return it directly
+        if len(styles) == 1:
+            return styles[0]
 
         total_token = sum(s.token for s in styles)
 
-        # recursion base case:
+        # recursion base case 2:
         # if the total token count is within the limit,
         # perform combined style analysis and store the result
         if total_token < self.combined_max_token:
@@ -353,26 +398,71 @@ class AuthorStyleConfiguration:
         # recursively handle the reduced_styles
         return self._handle_combined_style(reduced_styles, recursion_depth + 1)
 
+    def _parse_structured_response(self, text: str) -> AuthorStyle:
+        """
+        Parses the LLM response and returns an AuthorStyle object.
+
+        Args:
+            text (str): The text response from the LLM, expected to be in JSON format.
+
+        Returns:
+            AuthorStyle: The parsed author style object.
+        """
+        start_index = text.find("{")
+        end_index = text.rfind("}")
+        if start_index == -1 or end_index == -1 or start_index >= end_index:
+            error_text = "Invalid structured response format: No valid JSON found"
+            current_app.logger.error(error_text)
+            raise ValueError(error_text)
+        clean_text = text[start_index: end_index + 1]
+
+        try:
+            data_dict = demjson3.decode(clean_text)
+        except demjson3.JSONDecodeError:
+            current_app.logger.error(
+                "Invalid LLM output: Not a valid JSON. Output was: %s", clean_text
+            )
+            raise
+
+        try:
+            author_style = AuthorStyle(**data_dict)
+        except ValidationError:
+            current_app.logger.error(
+                "Failed to parse dict into AuthorStyle: %s", str(data_dict)
+            )
+            raise
+
+        return author_style
+
     def run(self) -> AuthorStyle:
         """
         Executes the author style analysis process.
 
         Returns:
-            dict: The final structured style data.
+            AuthorStyle: The extracted structured author style.
         """
         start_time = time.monotonic()
         start_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         passages = self.construct_passages()
-        partial_styles = [self._handle_partial_style(passage) for passage in passages]
+        partial_styles = [self._handle_partial_style(
+            passage) for passage in passages]
         combined_style = self._handle_combined_style(partial_styles)
 
         response = self._call_llm(combined_style.text, mode="structured")
 
-        # response is expected to be a JSON string
-        data = json.loads(response.text)
+        # Debug: print the LLM response text before JSON decode
+        print("[DEBUG] LLM structured response.text:", repr(response.text))
+
+        try:
+            author_style = self._parse_structured_response(response.text)
+        except Exception:
+            # if parsing fails, try to call the LLM and parse the response once again
+            response = self._call_llm(combined_style.text, mode="structured")
+            author_style = self._parse_structured_response(response.text)
 
         total_time_ms = int((time.monotonic() - start_time) * 1000)
-        self._store_structured_style(data, start_at, total_time_ms)
+        self._store_structured_style(
+            author_style.model_dump(), start_at, total_time_ms)
 
-        return AuthorStyle(**data)
+        return author_style

@@ -147,7 +147,7 @@ DB_DATABASE=runarion
 DB_USERNAME=postgres
 DB_PASSWORD=your_password
 
-PYTHON_SERVICE_URL=http://localhost:5000
+PYTHON_SERVICE_URL=http://python-app:5000
 ```
 
 ### Queue Configuration

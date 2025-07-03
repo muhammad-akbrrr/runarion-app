@@ -9,6 +9,8 @@ use Illuminate\Http\RedirectResponse;
 use App\Models\Folder;
 use App\Models\Projects;
 use App\Models\Workspace;
+use App\Models\ProjectContent;
+use App\Models\ProjectNodeEditor;
 use Illuminate\Support\Str;
 use App\Models\WorkspaceMember;
 use Illuminate\Validation\Rule;
@@ -170,6 +172,32 @@ class ProjectController extends Controller
 
         $project->save();
 
+        // Create associated ProjectContent record
+        $projectContent = new ProjectContent();
+        $projectContent->project_id = $project->id;
+        $projectContent->content = [
+            [
+                'order' => 0,
+                'chapter_name' => 'Chapter 1',
+                'content' => '',
+            ]
+        ];
+        $projectContent->metadata = [
+            'total_words' => 0,
+            'total_chapters' => 1,
+            'average_words_per_chapter' => 0,
+            'created_at' => now()->toISOString(),
+            'last_modified' => now()->toISOString(),
+        ];
+        $projectContent->last_edited_by = $request->user()->id;
+        $projectContent->last_edited_at = now();
+        $projectContent->save();
+
+        // Create associated ProjectNodeEditor record
+        $projectNodeEditor = new ProjectNodeEditor();
+        $projectNodeEditor->project_id = $project->id;
+        $projectNodeEditor->save();
+
         // Redirect to the editor page for the new project
         return redirect()->route('workspace.projects.editor', [
             'workspace_id' => $workspace_id,
@@ -200,6 +228,12 @@ class ProjectController extends Controller
         if (!$isOriginalAuthor && !$hasAdminAccess) {
             return back()->withErrors(['project' => 'You do not have permission to delete this project.']);
         }
+
+        // Delete associated ProjectContent record (cascade should handle this, but explicit for safety)
+        ProjectContent::where('project_id', $project_id)->delete();
+
+        // Delete associated ProjectNodeEditor record (cascade should handle this, but explicit for safety)
+        ProjectNodeEditor::where('project_id', $project_id)->delete();
 
         // Update the slug to make it unique when soft deleted
         $project->slug = $project->slug . '-' . Str::random(6);
