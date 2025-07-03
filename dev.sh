@@ -128,6 +128,22 @@ check_env_vars() {
         "SD_PYTHONDONTWRITEBYTECODE"
         "SD_PYTHONUNBUFFERED"
         "SD_DIR_PERMISSIONS"
+
+        # Reverb Settings
+        "BROADCAST_CONNECTION"
+
+        "REVERB_APP_ID"
+        "REVERB_APP_KEY"
+        "REVERB_APP_SECRET"
+        "REVERB_HOST"
+        "REVERB_PORT"
+        "REVERB_SCHEME"
+
+        "VITE_REVERB_APP_KEY"
+        "VITE_REVERB_HOST"
+        "VITE_REVERB_CLIENT_HOST"
+        "VITE_REVERB_PORT"
+        "VITE_REVERB_SCHEME"
         
         # Network Configuration
         "NETWORK_DRIVER"

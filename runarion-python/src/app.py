@@ -78,7 +78,6 @@ app.register_blueprint(story_rewrite, url_prefix='/api')
 
 # --- Health Check ---
 
-
 @app.route('/health', methods=['GET'])
 def health_check():
     db_status = "connected"
@@ -103,7 +102,6 @@ def health_check():
 
 # --- Root Endpoint ---
 
-
 @app.route('/', methods=['GET'])
 def root():
     return jsonify({
@@ -112,6 +110,7 @@ def root():
         "endpoints": {
             "generation": "/api/generate",
             "story_rewrite": "/api/story-rewrite",
+            "streaming": "/api/stream",
             "health": "/health"
         }
     })

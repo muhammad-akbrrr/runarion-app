@@ -34,6 +34,23 @@ check_vite() {
     return 1
 }
 
+# Function to check if Reverb is running
+check_reverb() {
+    local max_attempts=30
+    local attempt=1
+    while [ $attempt -le $max_attempts ]; do
+        if curl -s http://localhost:${REVERB_PORT:-8080} > /dev/null; then
+            log "Reverb server is running"
+            return 0
+        fi
+        log "Waiting for Reverb server... (attempt $attempt/$max_attempts)"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+    log "Error: Reverb server failed to start"
+    return 1
+}
+
 # Function to start the development server
 start_development_server() {
     log "Starting Laravel development server..."
@@ -53,10 +70,21 @@ start_vite() {
     }
 }
 
+# Function to start Reverb server
+start_reverb() {
+    log "Starting Reverb WebSocket server..."
+    php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080} --debug || {
+        log "Error: Reverb server failed to start"
+        exit 1
+    }
+}
+
 # Function to handle shutdown
 cleanup() {
     log "Shutting down..."
     pkill -f "php artisan serve"
+    pkill -f "php artisan reverb:start"
+    pkill -f "php artisan queue:work"
     pkill -f "vite"
     exit 0
 }
@@ -76,8 +104,13 @@ check_migrations
 start_vite &
 VITE_PID=$!
 
-# Wait for Vite to be ready
-check_vite || exit 1
+# Start Reverb WebSocket server (background)
+start_reverb &
+REVERB_PID=$!
 
-# Start Laravel development server
-start_development_server 
+# Wait for services to be ready
+check_vite || exit 1
+check_reverb || exit 1
+
+# Start Laravel development server (foreground)
+start_development_server
