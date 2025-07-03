@@ -134,7 +134,12 @@ export default function AuthenticatedLayout({
             path: "workspace.projects",
             param: { id: workspaceId },
         },
-        { label: "File Manager", icon: Folder, path: "" },
+        { 
+            label: "File Manager", 
+            icon: Folder, 
+            path: "workspace.files",
+            param: { id: workspaceId },
+        },
     ];
 
     const dummyFavoriteItems: SidebarItem[] = [

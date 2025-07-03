@@ -4,6 +4,7 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Foundation\Application;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FileManagerController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceMemberController;
@@ -22,17 +23,8 @@ Route::get('/', function () {
 // Dashboard Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     // main dashboard page
-    Route::get(
-        '/{workspace_id}/dashboard',
-        [DashboardController::class, 'show']
-    )->name('workspace.dashboard');
+    Route::get( '/{workspace_id}/dashboard',[DashboardController::class, 'show'])->name('workspace.dashboard');
 
-    Route::get(
-        '/{workspace_id}/dashboard/load/{provider}',
-        [DashboardController::class, 'loadFiles']
-    )->name('workspace.dashboard.files');
-
-    // a dummy route if needed
     Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
 });
 
@@ -47,6 +39,12 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     Route::get('/projects', fn() => '')->name('raw.workspace.projects');
     Route::get('/projects/folder/{folder_id}', fn() => '')->name('raw.workspace.folders.open');
+});
+
+// File Manager Routes
+Route::middleware(['auth', 'workspace'])->group(function () {
+    Route::get('/{workspace_id}/files', [FileManagerController::class, 'show'])->name('workspace.files');
+    Route::get('/files', fn() => '')->name('raw.workspace.files');
 });
 
 // Project Settings Routes
