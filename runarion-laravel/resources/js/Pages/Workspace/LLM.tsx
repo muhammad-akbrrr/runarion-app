@@ -143,7 +143,7 @@ export default function LLM({
                 <Separator className="mx-6" style={{ width: "auto" }} />
                 <CardContent className="flex flex-col gap-4">
                     {connections.map((connection) => (
-                        <ConnectionCard
+                        <ConnectionCard 
                             key={connection.key}
                             logo_url={connection.logo_url}
                             name={connection.name}

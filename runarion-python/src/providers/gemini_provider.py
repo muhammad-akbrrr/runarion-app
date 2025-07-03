@@ -48,7 +48,7 @@ class GeminiProvider(BaseProvider):
         
         return {k: v for k, v in gemini_kwargs.items() if v is not None}
         
-    def generate(self) -> BaseGenerationResponse:
+    def generate(self, skip_quota: bool = False) -> BaseGenerationResponse:
         """
         Generate text in a non-streaming fashion.
         
@@ -59,23 +59,26 @@ class GeminiProvider(BaseProvider):
         start_time = time.time()
         request_id = str(uuid.uuid4())
         provider_request_id = None
-        quota_generation_count = 1
+        quota_generation_count = 0 if skip_quota else 1
         
         # Build Gemini generation config
         gemini_kwargs = self._build_gemini_kwargs(self.request.generation_config)
         current_app.logger.info(f"Gemini generation kwargs: {gemini_kwargs}")
 
-        try:
-            self._check_quota()
-        except Exception as e:
-            current_app.logger.error(f"Gemini Quota error with model {self.model}: {e}")
-            response = self._build_error_response(
-                request_id=request_id,
-                provider_request_id=provider_request_id or "",
-                error_message=f"Gemini Quota error: {str(e)}",
-            )
-            self._log_generation_to_db(response)
-            return response
+        # Skip quota check if skip_quota is True
+        if not skip_quota:
+            try:
+                self._check_quota()
+            except Exception as e:
+                current_app.logger.error(f"Gemini Quota error with model {self.model}: {e}")
+                response = self._build_error_response(
+                    request_id=request_id,
+                    provider_request_id=provider_request_id or "",
+                    error_message=f"Gemini Quota error: {str(e)}",
+                )
+                if not skip_quota:
+                    self._log_generation_to_db(response)
+                return response
 
         try:
             # Create the model
@@ -87,11 +90,14 @@ class GeminiProvider(BaseProvider):
                 reason_name = getattr(raw_response.prompt_feedback.block_reason, 'name', str(raw_response.prompt_feedback.block_reason))
                 error_message = f"Content generation blocked by Gemini. Reason: {reason_name}"
                 current_app.logger.warning(error_message)
-                return self._build_error_response(
+                response = self._build_error_response(
                     request_id=request_id,
                     provider_request_id=provider_request_id,
                     error_message=error_message
                 )
+                if not skip_quota:
+                    self._log_generation_to_db(response)
+                return response
 
             generated_text = ""
             finish_reason = ""
@@ -112,7 +118,9 @@ class GeminiProvider(BaseProvider):
 
             processing_time_ms = int((time.time() - start_time) * 1000)
 
-            self._update_quota(quota_generation_count)
+            # Skip quota update if skip_quota is True
+            if not skip_quota:
+                self._update_quota(quota_generation_count)
 
             response = self._build_response(
                 generated_text=generated_text,
@@ -126,7 +134,10 @@ class GeminiProvider(BaseProvider):
                 quota_generation_count=quota_generation_count,
             )
 
-            self._log_generation_to_db(response)
+            # Skip logging to DB if skip_quota is True
+            if not skip_quota:
+                self._log_generation_to_db(response)
+                
             return response
 
         except Exception as e:
@@ -136,7 +147,11 @@ class GeminiProvider(BaseProvider):
                 provider_request_id=provider_request_id or "",
                 error_message=f"Gemini API error: {str(e)}",
             )
-            self._log_generation_to_db(response)
+            
+            # Skip logging to DB if skip_quota is True
+            if not skip_quota:
+                self._log_generation_to_db(response)
+                
             return response
     
     def generate_stream(self) -> Generator[str, None, None]:

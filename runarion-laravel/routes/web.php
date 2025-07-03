@@ -4,10 +4,12 @@ use Inertia\Inertia;
 use Illuminate\Support\Facades\Route;
 use Illuminate\Foundation\Application;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\FileManagerController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceMemberController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\CloudStorageController;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -20,7 +22,8 @@ Route::get('/', function () {
 
 // Dashboard Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
-    Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
+    // main dashboard page
+    Route::get( '/{workspace_id}/dashboard',[DashboardController::class, 'show'])->name('workspace.dashboard');
 
     Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
 });
@@ -36,6 +39,12 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
     Route::get('/projects', fn() => '')->name('raw.workspace.projects');
     Route::get('/projects/folder/{folder_id}', fn() => '')->name('raw.workspace.folders.open');
+});
+
+// File Manager Routes
+Route::middleware(['auth', 'workspace'])->group(function () {
+    Route::get('/{workspace_id}/files', [FileManagerController::class, 'show'])->name('workspace.files');
+    Route::get('/files', fn() => '')->name('raw.workspace.files');
 });
 
 // Project Settings Routes
@@ -96,6 +105,33 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 
 // Workspace invitation accept route (no auth required)
 Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
+
+// OAuth callback & connect/disconnect
+Route::middleware(['auth'])->group(function () {
+    Route::get('/oauth/callback/{provider}', [CloudStorageController::class, 'callback'])
+        ->name('cloudstorage.callback');
+
+    Route::prefix('/{workspace_id}/settings/cloud-storage')
+        ->middleware('workspace')
+        ->group(function () {
+            Route::get('/{provider}', [CloudStorageController::class, 'redirect'])
+                ->name('cloudstorage.redirect');
+            Route::delete('/{provider}', [CloudStorageController::class, 'disconnect'])
+                ->name('cloudstorage.disconnect');
+
+            // file operations
+            Route::get ('/{provider}/files',              [CloudStorageController::class, 'listFiles'])
+                ->name('cloudstorage.files.list');
+            Route::post('/{provider}/files/upload',       [CloudStorageController::class, 'upload'])
+                ->name('cloudstorage.files.upload');
+            Route::get ('/{provider}/files/download/{path}', [CloudStorageController::class, 'download'])
+                ->where('path', '.*')
+                ->name('cloudstorage.files.download');
+            Route::delete('/{provider}/files/{path}',     [CloudStorageController::class, 'delete'])
+                ->where('path', '.*')
+                ->name('cloudstorage.files.delete');
+        });
+});
 
 require __DIR__ . '/auth.php';
 require __DIR__ . '/editor.php';

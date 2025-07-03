@@ -37,8 +37,9 @@ class GenerationEngine:
         except Exception as e:
             raise RuntimeError(f"Failed to instantiate provider '{self.provider_name}': {e}")
 
-    def generate(self) -> BaseGenerationResponse:
-        return self.provider_instance.generate()
+    def generate(self, skip_quota: bool = False) -> BaseGenerationResponse:
+        return self.provider_instance.generate(skip_quota=skip_quota)
+
     
     def stream(self) -> Generator[str, None, None]:
         print(f"Starting stream for session {self.request.caller.session_id} with provider {self.provider_name}...")
