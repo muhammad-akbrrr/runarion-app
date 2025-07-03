@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from "react";
-import { Head, router } from "@inertiajs/react";
-import { ChevronDown } from "lucide-react";
+import { useState } from "react";
+import { Head, usePage } from "@inertiajs/react";
+import { ChevronDown, Square } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
 import { EditorToolbar } from "./Partials/MainEditorToolbar";
@@ -26,6 +26,11 @@ import { $getRoot, $createParagraphNode, $createTextNode } from "lexical";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
+import { useProjectEditor } from "./hooks";
+import { useEffect } from "react";
+
+// Import Echo for WebSocket connection
+import '@/echo';
 
 // Custom plugin to update editor content when chapter changes
 function ContentUpdatePlugin({ content }: { content: string }) {
@@ -93,106 +98,52 @@ export default function ProjectEditorPage({
     project: Project;
     chapters?: ProjectChapter[];
 }>) {
-    const [isSaving, setIsSaving] = useState(false);
-    const [content, setContent] = useState("");
-    const [selectedChapter, setSelectedChapter] =
-        useState<ProjectChapter | null>(
-            chapters.length > 0 ? chapters[0] : null
-        );
-    const saveTimeout = useRef<NodeJS.Timeout | null>(null);
-    const lastSavedContent = useRef<string>("");
+    const { errors } = usePage().props;
+
+    // Use custom hook for all editor logic
+    const {
+        isSaving,
+        isGenerating,
+        content,
+        setContent,
+        settings,
+        localChapters,
+        selectedChapter,
+        selectedChapterOrder,
+        isStreaming,
+        streamingText,
+        streamError,
+        handleChapterSelect,
+        handleAddChapter,
+        handleSettingChange,
+        handleGenerateText,
+        handleCancelGeneration,
+    } = useProjectEditor({
+        workspaceId,
+        projectId,
+        project,
+        initialChapters: chapters,
+    });
 
     // Add Chapter Dialog state
     const [addChapterDialogOpen, setAddChapterDialogOpen] = useState(false);
     const [newChapterName, setNewChapterName] = useState("");
     const [addChapterLoading, setAddChapterLoading] = useState(false);
 
-    // Update content when selected chapter changes
-    useEffect(() => {
-        if (selectedChapter) {
-            setContent(selectedChapter.content || "");
-            lastSavedContent.current = selectedChapter.content || "";
-        } else {
-            setContent("");
-            lastSavedContent.current = "";
-        }
-    }, [selectedChapter]);
-
-    // Debounced auto-save handler for content changes
-    useEffect(() => {
-        if (!selectedChapter) return;
-        if (content === lastSavedContent.current) return;
-        if (saveTimeout.current) clearTimeout(saveTimeout.current);
-
-        saveTimeout.current = setTimeout(() => {
-            console.log("Starting save, setting isSaving to true");
-            setIsSaving(true);
-            router.patch(
-                route("editor.project.updateData", {
-                    workspace_id: workspaceId,
-                    project_id: projectId,
-                }),
-                {
-                    order: selectedChapter.order,
-                    content: content,
-                },
-                {
-                    preserveState: true,
-                    preserveScroll: true,
-                    onSuccess: (page) => {
-                        console.log(
-                            "Save successful, setting isSaving to false"
-                        );
-                        setIsSaving(false);
-                        lastSavedContent.current = content;
-                        // Optionally update chapters/selectedChapter from response
-                    },
-                    onError: () => {
-                        console.log("Save failed, setting isSaving to false");
-                        setIsSaving(false);
-                    },
-                }
-            );
-        }, 1000);
-
-        return () => {
-            if (saveTimeout.current) clearTimeout(saveTimeout.current);
-        };
-    }, [content, selectedChapter, workspaceId, projectId]);
-
-    // Ensure first chapter is selected by default when chapters are loaded
-    useEffect(() => {
-        if (chapters.length > 0 && !selectedChapter) {
-            setSelectedChapter(chapters[0]);
-        }
-    }, [chapters, selectedChapter]);
-
-    // Get the selected chapter order for the radio group
-    const selectedChapterOrder = selectedChapter?.order ?? 0;
-
     // Handler for adding a new chapter
-    const handleAddChapter = async () => {
+    const handleAddChapterClick = async () => {
+        if (!newChapterName.trim()) return;
+        
         setAddChapterLoading(true);
-        router.post(
-            route("editor.project.chapter", {
-                workspace_id: workspaceId,
-                project_id: projectId,
-            }),
-            { chapter_name: newChapterName },
-            {
-                preserveState: true,
-                preserveScroll: true,
-                onSuccess: (page) => {
-                    const chapters = page.props.chapters as ProjectChapter[];
-                    if (chapters && chapters.length > 0) {
-                        setSelectedChapter(chapters[chapters.length - 1]);
-                    }
-                    setAddChapterDialogOpen(false);
-                    setNewChapterName("");
-                },
-                onFinish: () => setAddChapterLoading(false),
-            }
-        );
+        try {
+            await handleAddChapter(newChapterName);
+            setAddChapterDialogOpen(false);
+            setNewChapterName("");
+        } catch (error) {
+            console.error("Failed to add chapter:", error);
+        } finally {
+            setAddChapterLoading(false);
+        }
     };
 
     return (
@@ -201,11 +152,17 @@ export default function ProjectEditorPage({
             projectId={projectId}
             workspaceId={workspaceId}
             isSaving={isSaving}
-            setIsSaving={setIsSaving}
+            setIsSaving={() => {}} // Managed by hook now
         >
             <Head title="Project Editor" />
 
-            <EditorSidebar>
+            <EditorSidebar 
+                settings={settings}
+                onSettingChange={handleSettingChange}
+                workspaceId={workspaceId}
+                projectId={projectId}
+            >
+
                 <div className="flex items-center justify-between">
                     {/* Left side - Menu items */}
                     <div
@@ -237,6 +194,7 @@ export default function ProjectEditorPage({
                                 <Button
                                     variant="outline"
                                     className="flex flex-row justify-between items-center w-50 overflow-hidden"
+                                    disabled={isGenerating}
                                 >
                                     <p className="truncate">
                                         {selectedChapter
@@ -249,20 +207,14 @@ export default function ProjectEditorPage({
                             <DropdownMenuContent align="start" className="w-50">
                                 <DropdownMenuRadioGroup
                                     value={selectedChapterOrder.toString()}
-                                    onValueChange={(value) => {
-                                        const chapter = chapters.find(
-                                            (c) => c.order.toString() === value
-                                        );
-                                        if (chapter) {
-                                            setSelectedChapter(chapter);
-                                        }
-                                    }}
+                                    onValueChange={(value) => handleChapterSelect(parseInt(value))}
                                 >
-                                    {chapters.length > 0 ? (
-                                        chapters.map((chapter, index) => (
+                                    {localChapters.length > 0 ? (
+                                        localChapters.map((chapter, index) => (
                                             <DropdownMenuRadioItem
                                                 key={index}
                                                 value={chapter.order.toString()}
+                                                disabled={isGenerating}
                                             >
                                                 {chapter.chapter_name}
                                             </DropdownMenuRadioItem>
@@ -276,7 +228,10 @@ export default function ProjectEditorPage({
                             </DropdownMenuContent>
                         </DropdownMenu>
 
-                        <Button onClick={() => setAddChapterDialogOpen(true)}>
+                        <Button 
+                            onClick={() => setAddChapterDialogOpen(true)}
+                            disabled={isGenerating}
+                        >
                             New Chapter
                         </Button>
                         <AddChapterDialog
@@ -285,8 +240,9 @@ export default function ProjectEditorPage({
                             chapterName={newChapterName}
                             setChapterName={setNewChapterName}
                             loading={addChapterLoading}
-                            handleAddChapter={handleAddChapter}
+                            handleAddChapter={handleAddChapterClick}
                         />
+
                     </div>
                 </div>
 
@@ -302,7 +258,11 @@ export default function ProjectEditorPage({
                             <LexicalComposer initialConfig={editorConfig}>
                                 <RichTextPlugin
                                     contentEditable={
-                                        <ContentEditable className="outline-none w-full min-h-full" />
+                                        <ContentEditable 
+                                            className={`outline-none w-full min-h-full ${
+                                                isStreaming ? 'opacity-90' : ''
+                                            }`} 
+                                        />
                                     }
                                     placeholder={<Placeholder />}
                                     ErrorBoundary={LexicalErrorBoundary}
@@ -310,15 +270,17 @@ export default function ProjectEditorPage({
                                 <HistoryPlugin />
                                 <OnChangePlugin
                                     onChange={(editorState) => {
-                                        editorState.read(() => {
-                                            const root = $getRoot();
-                                            const newContent =
-                                                root.getTextContent();
-                                            // Only update if content actually changed to avoid loops
-                                            if (newContent !== content) {
-                                                setContent(newContent);
-                                            }
-                                        });
+                                        // Only update content if not streaming to avoid conflicts
+                                        if (!isStreaming) {
+                                            editorState.read(() => {
+                                                const root = $getRoot();
+                                                const newContent = root.getTextContent();
+                                                // Only update if content actually changed to avoid loops
+                                                if (newContent !== content) {
+                                                    setContent(newContent);
+                                                }
+                                            });
+                                        }
                                     }}
                                 />
                                 <ContentUpdatePlugin content={content} />
@@ -327,7 +289,11 @@ export default function ProjectEditorPage({
                     </div>
 
                     <div className="absolute left-0 bottom-0 w-full p-4">
-                        <EditorToolbar />
+                        <EditorToolbar 
+                            onSend={handleGenerateText}
+                            isGenerating={isGenerating}
+                            wordCount={content ? content.split(/\s+/).filter(Boolean).length : 0}
+                        />
                     </div>
                 </div>
             </EditorSidebar>

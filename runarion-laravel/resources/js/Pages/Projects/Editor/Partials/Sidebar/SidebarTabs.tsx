@@ -2,8 +2,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { SidebarTrigger, useSidebar } from "@/Components/ui/sidebar";
 import { Grid3X3 } from "lucide-react";
 import { SidebarContent } from "./SidebarMainContent";
+import { SidebarSettingsProps } from "@/types/project";
 
-export function SidebarTabs() {
+export function SidebarTabs({ 
+    settings,
+    onSettingChange,
+    workspaceId, 
+    projectId 
+}: SidebarSettingsProps) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
 
@@ -61,7 +67,12 @@ export function SidebarTabs() {
                 >
                     {/* Settings tab content - shows the AI configuration */}
                     <TabsContent value="settings" className="mt-0">
-                        <SidebarContent />
+                        <SidebarContent 
+                            settings={settings}
+                            onSettingChange={onSettingChange}
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                        />
                     </TabsContent>
 
                     {/* Advisor tab content */}

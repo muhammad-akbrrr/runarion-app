@@ -28,20 +28,40 @@ import {
     X,
     Book,
 } from "lucide-react";
+import { SidebarSettingsProps, DEFAULT_SETTINGS } from "@/types/project";
 
-export function SidebarContent() {
+export function SidebarContent({ 
+    settings,
+    onSettingChange
+}: SidebarSettingsProps) {
+    // UI State only - no data state
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
-    const [temperature, setTemperature] = useState([1.35]);
-    const [repetitionPenalty, setRepetitionPenalty] = useState([2.8]);
-    const [outputLength, setOutputLength] = useState([300]);
-    const [phraseBias, setPhraseBias] = useState([0]);
-    const [minOutputToken, setMinOutputToken] = useState([50]);
+    
+    // Local input states for complex inputs
+    const [phraseBiasInput, setPhraseBiasInput] = useState("");
+    const [phraseBiasValue, setPhraseBiasValue] = useState([0]);
+    const [bannedTokensInput, setBannedTokensInput] = useState("");
+    const [stopSequenceInput, setStopSequenceInput] = useState("");
 
-    // Sampling values
-    const [topP, setTopP] = useState([0.85]);
-    const [tailFree, setTailFree] = useState([0.85]);
-    const [topA, setTopA] = useState([0.85]);
-    const [topK, setTopK] = useState([0.85]);
+    // Get values with defaults
+    const currentPreset = settings.currentPreset ?? DEFAULT_SETTINGS.currentPreset;
+    const authorProfile = settings.authorProfile ?? DEFAULT_SETTINGS.authorProfile;
+    const aiModel = settings.aiModel ?? DEFAULT_SETTINGS.aiModel;
+    const memory = settings.memory ?? DEFAULT_SETTINGS.memory;
+    const storyGenre = settings.storyGenre ?? DEFAULT_SETTINGS.storyGenre;
+    const storyTone = settings.storyTone ?? DEFAULT_SETTINGS.storyTone;
+    const storyPov = settings.storyPov ?? DEFAULT_SETTINGS.storyPov;
+    const temperature = settings.temperature ?? DEFAULT_SETTINGS.temperature;
+    const repetitionPenalty = settings.repetitionPenalty ?? DEFAULT_SETTINGS.repetitionPenalty;
+    const outputLength = settings.outputLength ?? DEFAULT_SETTINGS.outputLength;
+    const minOutputToken = settings.minOutputToken ?? DEFAULT_SETTINGS.minOutputToken;
+    const topP = settings.topP ?? DEFAULT_SETTINGS.topP;
+    const tailFree = settings.tailFree ?? DEFAULT_SETTINGS.tailFree;
+    const topA = settings.topA ?? DEFAULT_SETTINGS.topA;
+    const topK = settings.topK ?? DEFAULT_SETTINGS.topK;
+    const phraseBias = settings.phraseBias ?? DEFAULT_SETTINGS.phraseBias;
+    const bannedPhrases = settings.bannedPhrases ?? DEFAULT_SETTINGS.bannedPhrases;
+    const stopSequences = settings.stopSequences ?? DEFAULT_SETTINGS.stopSequences;
 
     return (
         <div
@@ -53,7 +73,7 @@ export function SidebarContent() {
             {/* Current Preset */}
             <div className="space-y-2">
                 <Label htmlFor="preset">Current Preset</Label>
-                <Select defaultValue="story-telling">
+                <Select value={currentPreset} onValueChange={(value) => onSettingChange?.('currentPreset', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -64,7 +84,7 @@ export function SidebarContent() {
                         <SelectItem value="creative-writing">
                             Creative Writing
                         </SelectItem>
-                        <SelectItem value="technical">Technical</SelectItem>
+                        <SelectItem value="technical-writing">Technical Writing</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -72,7 +92,7 @@ export function SidebarContent() {
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select defaultValue="tolkien">
+                <Select value={authorProfile} onValueChange={(value) => onSettingChange?.('authorProfile', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
@@ -87,16 +107,14 @@ export function SidebarContent() {
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select defaultValue="chatgpt-4o">
+                <Select value={aiModel} onValueChange={(value) => onSettingChange?.('aiModel', value)}>
                     <SelectTrigger className="w-full">
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="chatgpt-4o">ChatGPT 4o</SelectItem>
-                        <SelectItem value="gemini-4.0">Gemini 4.0</SelectItem>
-                        <SelectItem value="deepseek-chat">
-                            DeepSeek V3
-                        </SelectItem>
+                        <SelectItem value="gemini-2.0-flash">Gemini 2.0</SelectItem>
+                        <SelectItem value="gpt-4o-mini">ChatGPT 4o</SelectItem>
+                        <SelectItem value="deepseek-chat">DeepSeek V3</SelectItem>
                     </SelectContent>
                 </Select>
             </div>
@@ -112,6 +130,8 @@ export function SidebarContent() {
                         id="memory"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={memory}
+                        onChange={(e) => onSettingChange?.('memory', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -134,6 +154,8 @@ export function SidebarContent() {
                         id="genre"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={storyGenre}
+                        onChange={(e) => onSettingChange?.('storyGenre', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -156,6 +178,8 @@ export function SidebarContent() {
                         id="tone"
                         placeholder="Type here..."
                         className="min-h-[80px] pr-8"
+                        value={storyTone}
+                        onChange={(e) => onSettingChange?.('storyTone', e.target.value)}
                     />
                     <Button
                         variant="ghost"
@@ -175,6 +199,8 @@ export function SidebarContent() {
                         id="pov"
                         placeholder="Search for an entry"
                         className="pr-8"
+                        value={storyPov}
+                        onChange={(e) => onSettingChange?.('storyPov', e.target.value)}
                     />
                     <Button variant="outline" className="h-9 w-9 p-0">
                         <Book className="h-3 w-3" />
@@ -208,17 +234,17 @@ export function SidebarContent() {
                         <div className="flex justify-between items-center">
                             <Label>Temperature</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 1.35
+                                Default: 1
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
                             The higher the value, the more random the output
                         </p>
                         <div className="space-y-2">
-                            <span className="text-sm">{temperature[0]}</span>
+                            <span className="text-sm">{temperature}</span>
                             <Slider
-                                value={temperature}
-                                onValueChange={setTemperature}
+                                value={[temperature]}
+                                onValueChange={(value) => onSettingChange?.('temperature', value[0])}
                                 max={2}
                                 min={0}
                                 step={0.01}
@@ -232,7 +258,7 @@ export function SidebarContent() {
                         <div className="flex justify-between items-center">
                             <Label>Repetition Penalty</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 2.8
+                                Default: 0
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -240,13 +266,13 @@ export function SidebarContent() {
                         </p>
                         <div className="space-y-2">
                             <span className="text-sm">
-                                {repetitionPenalty[0]}
+                                {repetitionPenalty}
                             </span>
                             <Slider
-                                value={repetitionPenalty}
-                                onValueChange={setRepetitionPenalty}
-                                max={5}
-                                min={1}
+                                value={[repetitionPenalty]}
+                                onValueChange={(value) => onSettingChange?.('repetitionPenalty', value[0])}
+                                max={2}
+                                min={-2}
                                 step={0.1}
                                 className="w-full"
                             />
@@ -265,10 +291,10 @@ export function SidebarContent() {
                             Increase the length of the generated responses
                         </p>
                         <div className="space-y-2">
-                            <span className="text-sm">~{outputLength[0]}</span>
+                            <span className="text-sm">~{outputLength}</span>
                             <Slider
-                                value={outputLength}
-                                onValueChange={setOutputLength}
+                                value={[outputLength]}
+                                onValueChange={(value) => onSettingChange?.('outputLength', value[0])}
                                 max={1000}
                                 min={50}
                                 step={10}
@@ -283,15 +309,15 @@ export function SidebarContent() {
                         <div className="space-y-3">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Nucleus: {topP[0]}
+                                    Nucleus: {topP}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={topP}
-                                onValueChange={setTopP}
+                                value={[topP]}
+                                onValueChange={(value) => onSettingChange('topP', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -299,15 +325,15 @@ export function SidebarContent() {
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Tail-Free: {tailFree[0]}
+                                    Tail-Free: {tailFree}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={tailFree}
-                                onValueChange={setTailFree}
+                                value={[tailFree]}
+                                onValueChange={(value) => onSettingChange('tailFree', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -315,15 +341,15 @@ export function SidebarContent() {
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Top-A: {topA[0]}
+                                    Top-A: {topA}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={topA}
-                                onValueChange={setTopA}
+                                value={[topA]}
+                                onValueChange={(value) => onSettingChange('topA', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -331,15 +357,15 @@ export function SidebarContent() {
 
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Top-K: {topK[0]}
+                                    Top-K: {topK}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 0.85
                                 </span>
                             </div>
                             <Slider
-                                value={topK}
-                                onValueChange={setTopK}
+                                value={[topK]}
+                                onValueChange={(value) => onSettingChange('topK', value[0])}
                                 max={1}
                                 min={0}
                                 step={0.01}
@@ -388,15 +414,27 @@ export function SidebarContent() {
                             </div>
 
                             <p className="text-xs text-gray-500">
-                                Type in the area below, then press enter to save
+                                Type in the area below, then press the add button to save
                             </p>
 
                             <div className="flex flex-row items-center gap-2">
-                                <Input placeholder="Enter phrase you want to bias" />
+                                <Input 
+                                    placeholder="Enter phrase to bias" 
+                                    value={phraseBiasInput}
+                                    onChange={(e) => setPhraseBiasInput(e.target.value)}
+                                />
 
                                 <Button
                                     variant="outline"
                                     className="h-9 w-9 p-0"
+                                    onClick={() => {
+                                        if (phraseBiasInput.trim()) {
+                                            const updatedBias = [...phraseBias];
+                                            updatedBias.push({ [phraseBiasInput]: phraseBiasValue[0] });
+                                            onSettingChange('phraseBias', updatedBias);
+                                            setPhraseBiasInput('');
+                                        }
+                                    }}
                                 >
                                     <Plus className="h-4 w-4" />
                                 </Button>
@@ -405,21 +443,51 @@ export function SidebarContent() {
                             <div className="space-y-2">
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm">
-                                        Bias: {phraseBias[0]}
+                                        Bias: {phraseBiasValue[0]}
                                     </span>
                                     <span className="text-sm text-gray-500">
                                         Default: 0
                                     </span>
                                 </div>
                                 <Slider
-                                    value={phraseBias}
-                                    onValueChange={setPhraseBias}
+                                    value={phraseBiasValue}
+                                    onValueChange={setPhraseBiasValue}
                                     max={1}
                                     min={-1}
                                     step={0.01}
                                     className="w-full"
                                 />
                             </div>
+
+                            {/* List of phrase biases */}
+                            {phraseBias.length > 0 && (
+                                <div className="space-y-2 mt-2">
+                                    <Label>Current Phrase Biases:</Label>
+                                    {phraseBias.map((biasItem, index) => {
+                                        const phrase = Object.keys(biasItem)[0];
+                                        const biasValue = biasItem[phrase];
+                                        return (
+                                            <div key={index} className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
+                                                <span className="text-sm">
+                                                    "{phrase}" (Bias: {biasValue})
+                                                </span>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0"
+                                                    onClick={() => {
+                                                        const updatedBias = [...phraseBias];
+                                                        updatedBias.splice(index, 1);
+                                                        onSettingChange('phraseBias', updatedBias);
+                                                    }}
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </Button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -449,31 +517,36 @@ export function SidebarContent() {
                     {/* Checkboxes */}
                     <div className="space-y-3">
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="enabled" />
+                            <Checkbox 
+                                id="enabled"
+                            />
                             <Label htmlFor="enabled" className="text-sm">
                                 Enabled
                             </Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="completion" />
+                            <Checkbox 
+                                id="completion"
+                            />
                             <Label htmlFor="completion" className="text-sm">
                                 Ensure Completion After Start
                             </Label>
                         </div>
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="unbias" />
+                            <Checkbox 
+                                id="unbias"
+                            />
                             <Label htmlFor="unbias" className="text-sm">
                                 Unbias When Generated
                             </Label>
                         </div>
                     </div>
 
-                    {/* Banned Tokens */}
+                    {/* Banned Phrases */}
                     <div className="space-y-3">
-                        <Label>Banned Tokens</Label>
+                        <Label>Banned Phrases</Label>
                         <p className="text-xs text-gray-500">
-                            Weigh the AI's chance of generating certain words or
-                            phrases
+                            Words or phrases the AI should avoid using
                         </p>
                         <div className="flex flex-row items-center gap-2">
                             <Select defaultValue="empty">
@@ -481,7 +554,9 @@ export function SidebarContent() {
                                     <SelectValue />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    <SelectItem value="empty">Empty</SelectItem>
+                                    <SelectItem value="empty">
+                                        Empty
+                                    </SelectItem>
                                     <SelectItem value="common">
                                         Common Words
                                     </SelectItem>
@@ -500,17 +575,58 @@ export function SidebarContent() {
                         </div>
 
                         <p className="text-xs text-gray-500">
-                            Type in the area below, then press enter to save
+                            Type in the area below, then press the add button to save
                         </p>
 
+                        {/* Add new banned token */}
                         <div className="flex flex-row items-center gap-2">
-                            <Input placeholder="Enter phrase you want to ban" />
+                            <Input 
+                                placeholder="Enter phrase to ban" 
+                                value={bannedTokensInput}
+                                onChange={(e) => setBannedTokensInput(e.target.value)}
+                            />
 
-                            <Button variant="outline" className="h-9 w-9 p-0">
+                            <Button
+                                variant="outline"
+                                className="h-9 w-9 p-0"
+                                onClick={() => {
+                                    if (bannedTokensInput.trim()) {
+                                        const updatedTokens = [...bannedPhrases, bannedTokensInput];
+                                        onSettingChange('bannedPhrases', updatedTokens);
+                                        setBannedTokensInput('');
+                                    }
+                                }}
+                            >
                                 <Plus className="h-4 w-4" />
                             </Button>
                         </div>
                     </div>
+
+                    {/* List of banned tokens */}
+                    {bannedPhrases.length > 0 && (
+                        <div className="space-y-2 mt-2">
+                            <Label>Current Banned Tokens:</Label>
+                            <div className="flex flex-wrap gap-2">
+                                {bannedPhrases.map((token, index) => (
+                                    <div key={index} className="flex items-center bg-gray-100 px-2 py-1 rounded">
+                                        <span className="text-sm mr-1">{token}</span>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-5 w-5 p-0"
+                                            onClick={() => {
+                                                const updatedTokens = [...bannedPhrases];
+                                                updatedTokens.splice(index, 1);
+                                                onSettingChange('bannedPhrases', updatedTokens);
+                                            }}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Sequences */}
                     <div className="space-y-3">
@@ -535,7 +651,9 @@ export function SidebarContent() {
                         </div>
 
                         <div className="flex items-center space-x-2">
-                            <Checkbox id="sequences-enabled" />
+                            <Checkbox 
+                                id="sequences-enabled"
+                            />
                             <Label
                                 htmlFor="sequences-enabled"
                                 className="text-sm"
@@ -549,57 +667,67 @@ export function SidebarContent() {
                     <div className="space-y-3">
                         <Label>Stop Sequence</Label>
                         <p className="text-xs text-gray-500">
-                            Weigh the AI's chance of generating certain words or
-                            phrases
+                            Sequences that will cause the AI to stop generating text
                         </p>
 
                         <div className="flex flex-row items-center gap-2">
-                            <Input placeholder="Enter phrase you want to ban" />
+                            <Input 
+                                placeholder="Enter stop sequence" 
+                                value={stopSequenceInput}
+                                onChange={(e) => setStopSequenceInput(e.target.value)}
+                            />
 
-                            <Button variant="outline" className="h-9 w-9 p-0">
+                            <Button
+                                variant="outline"
+                                className="h-9 w-9 p-0"
+                                onClick={() => {
+                                    if (stopSequenceInput.trim()) {
+                                        const updatedSequences = [...stopSequences, stopSequenceInput];
+                                        onSettingChange('stopSequences', updatedSequences);
+                                        setStopSequenceInput('');
+                                    }
+                                }}
+                            >
                                 <Plus className="h-4 w-4" />
                             </Button>
                         </div>
 
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
-                                <span className="text-sm">
-                                    {"{while |a|k|bar}"}
-                                </span>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                >
-                                    <X className="h-3 w-3" />
-                                </Button>
+                        {/* List of stop sequences */}
+                        {stopSequences.length > 0 && (
+                            <div className="space-y-2 mt-2">
+                                <Label>Current Stop Sequences:</Label>
+                                {stopSequences.map((sequence, index) => (
+                                    <div key={index} className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
+                                        <span className="text-sm">"{sequence}"</span>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 w-6 p-0"
+                                            onClick={() => {
+                                                const updatedSequences = [...stopSequences];
+                                                updatedSequences.splice(index, 1);
+                                                onSettingChange('stopSequences', updatedSequences);
+                                            }}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    </div>
+                                ))}
                             </div>
-                            <div className="flex items-center justify-between bg-gray-100 px-3 py-2 rounded">
-                                <span className="text-sm">
-                                    {"{while |a|k|bar}"}
-                                </span>
-                                <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="h-6 w-6 p-0"
-                                >
-                                    <X className="h-3 w-3" />
-                                </Button>
-                            </div>
-                        </div>
+                        )}
 
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
-                                    Min Output Token: {minOutputToken[0]}
+                                    Min Output Token: {minOutputToken}
                                 </span>
                                 <span className="text-sm text-gray-500">
                                     Default: 1
                                 </span>
                             </div>
                             <Slider
-                                value={minOutputToken}
-                                onValueChange={setMinOutputToken}
+                                value={[minOutputToken]}
+                                onValueChange={(value) => onSettingChange('minOutputToken', value[0])}
                                 max={100}
                                 min={1}
                                 step={1}
