@@ -4,8 +4,6 @@ from dotenv import load_dotenv
 import os
 from psycopg2 import pool
 from api.generation import generate
-from api.author_style import author_style
-from api.story_rewrite import story_rewrite
 
 load_dotenv()
 
@@ -73,10 +71,9 @@ app.config['UPLOAD_PATH'] = upload_path
 # --- Blueprint Registration ---
 
 app.register_blueprint(generate, url_prefix='/api')
-app.register_blueprint(author_style, url_prefix='/api')
-app.register_blueprint(story_rewrite, url_prefix='/api')
 
 # --- Health Check ---
+
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -102,6 +99,7 @@ def health_check():
 
 # --- Root Endpoint ---
 
+
 @app.route('/', methods=['GET'])
 def root():
     return jsonify({
@@ -109,7 +107,6 @@ def root():
         "status": "running",
         "endpoints": {
             "generation": "/api/generate",
-            "story_rewrite": "/api/story-rewrite",
             "streaming": "/api/stream",
             "health": "/health"
         }
