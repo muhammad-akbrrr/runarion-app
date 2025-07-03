@@ -5,17 +5,51 @@ from math import ceil
 from typing import Literal, NamedTuple, Optional
 
 from models.deconstructor.author_style import AuthorStyle
-from models.deconstructor.content_rewrite import ContentRewriteConfig, RewrittenContent, WritingPerspective
+from models.deconstructor.story_rewrite import ContentRewriteConfig, RewrittenContent, WritingPerspective
 from models.request import CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from psycopg2.pool import SimpleConnectionPool
 from services.generation_engine import GenerationEngine
 from ulid import ULID
-from services.deconstructor.content_rewrite_handler import ContentRewriteHandler
+from services.usecase_handler.story_rewrite_handler import StoryRewriteHandler
 from utils.get_model_max_token import get_model_max_token
 
-from services.deconstructor.author_style_configuration.paragraph_extractor import ParagraphExtractor
-from services.deconstructor.author_style_configuration.token_counter import TokenCounter
+from ..utils.paragraph_extractor import ParagraphExtractor
+from ..utils.token_counter import TokenCounter
+
+
+def clean_unicode_characters(text: str) -> str:
+    """
+    Clean Unicode characters from text, converting smart quotes and other Unicode characters to ASCII equivalents.
+
+    Args:
+        text (str): The text to clean
+
+    Returns:
+        str: The cleaned text with ASCII characters
+    """
+    # Common Unicode to ASCII mappings
+    unicode_mappings = {
+        '\u2018': "'",  # Left single quotation mark
+        '\u2019': "'",  # Right single quotation mark
+        '\u201C': '"',  # Left double quotation mark
+        '\u201D': '"',  # Right double quotation mark
+        '\u2013': '-',  # En dash
+        '\u2014': '--',  # Em dash
+        '\u2026': '...',  # Horizontal ellipsis
+        '\u00A0': ' ',  # Non-breaking space
+        '\u00B0': '°',  # Degree sign
+        '\u00AE': '(R)',  # Registered trademark
+        '\u2122': '(TM)',  # Trademark
+        '\u00A9': '(C)',  # Copyright
+    }
+
+    # Apply all mappings
+    for unicode_char, ascii_char in unicode_mappings.items():
+        text = text.replace(unicode_char, ascii_char)
+
+    return text
+
 
 class ContentChunk(NamedTuple):
     source: str  # source file name
@@ -44,6 +78,7 @@ class ContentRewritePipeline:
         rewrite_config: Optional[ContentRewriteConfig] = None,
         chunk_overlap: bool = False,
         store_intermediate: bool = False,
+        request_id: Optional[str] = None,
     ):
         """
         Args:
@@ -58,6 +93,7 @@ class ContentRewritePipeline:
             rewrite_config (Optional[ContentRewriteConfig]): Additional rewriting configuration.
             chunk_overlap (bool): Whether to allow overlapping content in chunks.
             store_intermediate (bool): Whether to store intermediate results.
+            request_id (Optional[str]): The request ID.
         """
         self.paragraph_extractors = paragraph_extractors
         self.author_style = author_style
@@ -65,7 +101,7 @@ class ContentRewritePipeline:
         self.caller = caller
         self.connection_pool = connection_pool
         self.provider = provider or "gemini"
-        self.model = model or "gemini-2.5-flash"
+        self.model = model or "gemini-2.0-flash"
         self.generation_config = generation_config or GenerationConfig()  # type: ignore
         self.rewrite_config = rewrite_config or ContentRewriteConfig(
             author_style=author_style,
@@ -73,6 +109,7 @@ class ContentRewritePipeline:
         )
         self.chunk_overlap = chunk_overlap
         self.store_intermediate = store_intermediate
+        self.request_id = request_id
 
         # Calculate max tokens for content chunks
         RESERVED_TOKENS_FOR_SAFETY = 200
@@ -166,20 +203,36 @@ class ContentRewritePipeline:
 
         return chunks
 
-    def _call_llm(self, original_text: str) -> BaseGenerationResponse:
+    def _call_llm(self, original_text: str, chapter: dict = None) -> BaseGenerationResponse:
         """
         Calls the LLM to rewrite the given text.
 
         Args:
             original_text (str): The original text to rewrite.
+            chapter (dict): The chapter dict, for logging and safe key access.
         Returns:
             BaseGenerationResponse: The response from the LLM.
         """
-        request = ContentRewriteHandler().build_request({
+        import logging
+        logger = logging.getLogger("story_rewrite_pipeline")
+        chapter_name = chapter.get("chapter_name", "") if chapter else ""
+        chapter_summary = chapter.get("summary", "") if chapter else ""
+        chapter_plot_points = chapter.get("plot_points", []) if chapter else []
+        # Log if any key is missing
+        if chapter:
+            for key in ["chapter_name", "summary", "plot_points"]:
+                if key not in chapter:
+                    logger.warning(
+                        f"[RewriteConfig] Chapter dict missing key '{key}': {chapter}")
+        request = StoryRewriteHandler().build_request({
             "mode": "rewrite",
             "provider": self.provider,
             "model": self.model,
             "original_text": original_text,
+            "author_style_json": self.author_style.dict(),
+            "chapter_name": chapter_name,
+            "chapter_summary": chapter_summary,
+            "chapter_plot_points": chapter_plot_points,
             "rewrite_config": self.rewrite_config,
             "generation_config": self.generation_config,
             "caller": self.caller,
@@ -193,44 +246,50 @@ class ContentRewritePipeline:
 
         return response
 
-    def _store_intermediate_rewrite(self, rewrite: RewrittenContent, chunk: ContentChunk) -> None:
+    def _store_intermediate_deconstructor(self, rewrite: RewrittenContent, chunk: ContentChunk) -> None:
         """
-        Stores the intermediate rewrite result in the database.
+        Stores the intermediate rewrite result in the intermediate_deconstructor table.
 
         Args:
             rewrite (RewrittenContent): The rewrite result to store.
             chunk (ContentChunk): The chunk that was rewritten.
         """
-        if not self.store_intermediate:
+        if not self.store_intermediate or not self.request_id:
             return
         try:
             with self.connection_pool.getconn() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO intermediate_rewrites (id, rewrite_session_id, original_text, rewritten_text, 
-                                                          applied_style, applied_perspective, processing_time_ms, 
-                                                          token_count, style_confidence, source, chunk_num)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO intermediate_deconstructor (
+                            request_id, project_id, session_id, original_story, rewritten_story, 
+                            applied_style, applied_perspective, duration_ms, token_count, style_intensity, 
+                            original_content, chunk_num, created_at, updated_at
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                         """,
                         (
-                            str(ULID()),
-                            self.id,
-                            rewrite.original_text,
-                            rewrite.rewritten_text,
+                            self.request_id,  # Use the ULID request_id from the API
+                            self.caller.project_id,
+                            self.id,  # session_id
+                            chunk.text,  # original_story
+                            rewrite.rewritten_text,  # rewritten_story
                             json.dumps(rewrite.applied_style.dict()),
                             json.dumps(rewrite.applied_perspective.dict()),
-                            rewrite.processing_time_ms,
+                            rewrite.processing_time_ms,  # duration_ms
                             rewrite.token_count,
-                            rewrite.style_confidence,
-                            chunk.source,
+                            getattr(self.rewrite_config,
+                                    'style_intensity', None),
+                            chunk.text,  # original_content
                             chunk.chunk_num,
                         ),
                     )
                     conn.commit()
         except Exception as e:
             raise RuntimeError(
-                f"Failed to store intermediate rewrite: {str(e)}")
+                f"Failed to store intermediate deconstructor: {str(e)}")
+        finally:
+            self.connection_pool.putconn(conn)
 
     def _store_rewrite_session(self, rewrites: list[RewrittenContent], started_at: str, total_time_ms: int) -> None:
         """
@@ -246,10 +305,11 @@ class ContentRewritePipeline:
                 with conn.cursor() as cursor:
                     cursor.execute(
                         """
-                        INSERT INTO rewrite_sessions (id, user_id, workspace_id, project_id, 
-                                                     author_style, writing_perspective, rewrite_config,
-                                                     total_rewrites, started_at, total_time_ms, sources)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        INSERT INTO deconstructor_sessions (id, user_id, workspace_id, project_id, 
+                                                    author_style, writing_perspective, rewrite_config,
+                                                    total_rewrites, started_at, total_time_ms, original_content, 
+                                                    created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                         """,
                         (
                             self.id,
@@ -262,32 +322,34 @@ class ContentRewritePipeline:
                             len(rewrites),
                             started_at,
                             total_time_ms,
-                            ", ".join(self.sources),
+                            "\n".join(self.sources),
                         ),
                     )
                     conn.commit()
         except Exception as e:
             raise RuntimeError(f"Failed to store rewrite session: {str(e)}")
+        finally:
+            self.connection_pool.putconn(conn)
 
-    def _rewrite_chunk(self, chunk: ContentChunk) -> RewrittenContent:
+    def _rewrite_chunk(self, chunk: ContentChunk, chapter: dict = None) -> RewrittenContent:
         """
         Rewrites a single content chunk.
 
         Args:
             chunk (ContentChunk): The chunk to rewrite.
-
+            chapter (dict): The chapter dict for context.
         Returns:
             RewrittenContent: The rewritten content.
         """
         start_time = time.monotonic()
 
-        response = self._call_llm(chunk.text)
+        response = self._call_llm(chunk.text, chapter=chapter)
 
         processing_time_ms = int((time.monotonic() - start_time) * 1000)
 
         rewrite = RewrittenContent(
             original_text=chunk.text,
-            rewritten_text=response.text,
+            rewritten_text=clean_unicode_characters(response.text),
             applied_style=self.author_style,
             applied_perspective=self.writing_perspective,
             processing_time_ms=processing_time_ms,
@@ -295,13 +357,15 @@ class ContentRewritePipeline:
             style_confidence=0.8,  # This could be calculated based on response quality
         )
 
-        self._store_intermediate_rewrite(rewrite, chunk)
+        self._store_intermediate_deconstructor(rewrite, chunk)
         return rewrite
 
-    def run(self) -> list[RewrittenContent]:
+    def run(self, chapters: list = None) -> list[RewrittenContent]:
         """
         Executes the content rewriting pipeline.
 
+        Args:
+            chapters (list): List of chapter dicts for context.
         Returns:
             list[RewrittenContent]: List of rewritten content chunks.
         """
@@ -312,7 +376,13 @@ class ContentRewritePipeline:
         chunks = self.construct_content_chunks()
 
         # Rewrite each chunk
-        rewrites = [self._rewrite_chunk(chunk) for chunk in chunks]
+        rewrites = []
+        if chapters and len(chapters) == len(chunks):
+            for chunk, chapter in zip(chunks, chapters):
+                rewrites.append(self._rewrite_chunk(chunk, chapter=chapter))
+        else:
+            for chunk in chunks:
+                rewrites.append(self._rewrite_chunk(chunk))
 
         # Store the complete session
         total_time_ms = int((time.monotonic() - start_time) * 1000)

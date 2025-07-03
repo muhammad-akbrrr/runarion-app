@@ -21,7 +21,7 @@ app = FastAPI(title="Stable Diffusion API")
 
 # Configure CORS
 allowed_origins = os.getenv(
-    "ALLOWED_ORIGINS", "http://localhost:8000,http://localhost:5000").split(",")
+    "ALLOWED_ORIGINS", "http://localhost:8000,http://python-app:5000").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

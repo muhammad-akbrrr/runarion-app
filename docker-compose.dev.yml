@@ -6,6 +6,7 @@ services:
     ports:
       - "${VITE_PORT:-5173}:5173"
       - "${LARAVEL_PORT:-8000}:8000"
+      - "${REVERB_PORT:-8080}:8080"
     environment:
       APP_ENV: local
       APP_DEBUG: "true"
@@ -25,6 +26,18 @@ services:
       VITE_PORT: ${VITE_PORT}
       VITE_HOST: ${VITE_HOST}
       VITE_SERVICE_URL: ${VITE_SERVICE_URL}
+      BROADCAST_CONNECTION: ${BROADCAST_CONNECTION}
+      REVERB_APP_ID: ${REVERB_APP_ID}
+      REVERB_APP_KEY: ${REVERB_APP_KEY}
+      REVERB_APP_SECRET: ${REVERB_APP_SECRET}
+      REVERB_HOST: ${REVERB_HOST}
+      REVERB_PORT: ${REVERB_PORT}
+      REVERB_SCHEME: ${REVERB_SCHEME}
+      REVERB_DEBUG: ${REVERB_DEBUG:-true}
+      VITE_REVERB_APP_KEY: ${VITE_REVERB_APP_KEY}
+      VITE_REVERB_HOST: ${VITE_REVERB_HOST}
+      VITE_REVERB_PORT: ${VITE_REVERB_PORT}
+      VITE_REVERB_SCHEME: ${VITE_REVERB_SCHEME}
       NODE_OPTIONS: ${NODE_OPTIONS:-"--max_old_space_size=2048"}
       npm_config_cache: ${NPM_CONFIG_CACHE:-"/tmp/npm-cache"}
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-"true"}
@@ -34,7 +47,6 @@ services:
         source: ./runarion-laravel
         target: /var/www/html
         consistency: delegated
-      - deconstructor_uploads:/tmp/runarion_uploads
       - type: volume
         source: node_modules
         target: /var/www/html/node_modules
@@ -95,20 +107,20 @@ services:
       PYTHONPATH: ${PYTHON_PYTHONPATH:-/app/src}
       PYTHONDONTWRITEBYTECODE: ${PYTHON_PYTHONDONTWRITEBYTECODE:-1}
       PYTHONUNBUFFERED: ${PYTHON_PYTHONUNBUFFERED:-1}
+      UPLOAD_PATH: ${PYTHON_UPLOAD_PATH:-/app/uploads}
     volumes:
       - ./runarion-python/src:/app/src
       - ./runarion-python/tests:/app/tests
-      - ./runarion-python/uploads:/app/uploads
+      - python_uploads:/app/uploads
       - ./runarion-python/requirements.txt:/app/requirements.txt
       - python_venv:/app/venv
-      - deconstructor_uploads:/tmp/runarion_uploads
     networks:
       - runarion-network
     depends_on:
       postgres-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${PYTHON_PORT:-5000}/health"]
+      test: ["CMD", "curl", "-f", "http://python-app:${PYTHON_PORT:-5000}/health"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -217,4 +229,4 @@ volumes:
   vendor:
   python_venv:
   sd_venv:
-  deconstructor_uploads:
+  python_uploads:

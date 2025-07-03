@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 import os
 from psycopg2 import pool
 from api.generation import generate
-from api.deconstructor import deconstructor
+from api.author_style import author_style
 from api.story_rewrite import story_rewrite
 
 load_dotenv()
@@ -43,7 +43,7 @@ if missing_vars:
 try:
     connection_pool = pool.SimpleConnectionPool(
         minconn=1,
-        maxconn=10,
+        maxconn=20,  # Increased from 10 to 20 to help avoid connection pool exhaustion for concurrent requests
         host=os.getenv('DB_HOST'),
         port=os.getenv('DB_PORT'),
         database=os.getenv('DB_DATABASE'),
@@ -62,8 +62,10 @@ app.config['CONNECTION_POOL'] = connection_pool
 
 
 # --- Upload Location ---
-default_upload_path = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, 'uploads'))
+default_upload_path = os.getenv('UPLOAD_PATH', '/app/uploads')
 upload_path = os.getenv('UPLOAD_PATH') or default_upload_path
+
+# Create upload directory if it doesn't exist
 os.makedirs(upload_path, exist_ok=True)
 app.config['UPLOAD_PATH'] = upload_path
 
@@ -71,11 +73,10 @@ app.config['UPLOAD_PATH'] = upload_path
 # --- Blueprint Registration ---
 
 app.register_blueprint(generate, url_prefix='/api')
-app.register_blueprint(deconstructor, url_prefix='/api/deconstructor')
+app.register_blueprint(author_style, url_prefix='/api')
 app.register_blueprint(story_rewrite, url_prefix='/api')
 
 # --- Health Check ---
-
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -101,7 +102,6 @@ def health_check():
 
 # --- Root Endpoint ---
 
-
 @app.route('/', methods=['GET'])
 def root():
     return jsonify({
@@ -110,6 +110,7 @@ def root():
         "endpoints": {
             "generation": "/api/generate",
             "story_rewrite": "/api/story-rewrite",
+            "streaming": "/api/stream",
             "health": "/health"
         }
     })
