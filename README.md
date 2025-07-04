@@ -172,6 +172,10 @@ npm install
 # Generate application key
 php artisan key:generate
 
+# Generate App-ID, secrets, and key for reverb-related variables
+php artisan tinker
+Str::random(32);
+
 # Return to root directory
 cd ..
 ```
@@ -290,6 +294,7 @@ The application uses the following ports:
 - Python: 5000
 - PostgreSQL: 5432
 - Vite: 5173
+- Reverb: 8080
 - Stable Diffusion: 7860
 
 To manage port conflicts:
