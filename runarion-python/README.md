@@ -6,14 +6,31 @@ The Python service component of Runarion handles the AI-powered novel generation
 
 ## Features
 
-- AI-powered story generation
-- Style customization and building
-- Automated novel writing pipeline
-- Character relationship analysis
-- PDF enhancement and formatting
+### Core AI Features
+- AI-powered story generation with multiple model support (OpenAI, Gemini, DeepSeek)
+- Advanced 3-phase novel writing pipeline
+- Intelligent manuscript deconstruction and analysis
+- Author style analysis and profiling
+
+### Graph Database Integration
+- **Apache AGE Extension**: PostgreSQL 17 with graph database capabilities
+- Character relationship mapping and analysis
+- Plot dependency tracking and visualization
+- Complex narrative structure analysis using graph queries
+- Scene and setting relationship modeling
+
+### Pipeline Features
+- **Phase 1**: Manuscript deconstruction, scene extraction, plot analysis
+- **Phase 2**: Author style analysis with graph-based character relationships
+- **Phase 3**: Enhanced novel generation using graph insights
+- Real-time processing with job queue integration
+
+### Technical Features
+- Flask-based REST API with comprehensive error handling
+- PDF enhancement and professional formatting
 - Integration with Stable Diffusion for illustrations
-- FastAPI-based REST API
-- Docker containerization
+- Docker containerization with health checks
+- Comprehensive logging and monitoring
 
 ## Directory Structure
 
@@ -37,8 +54,9 @@ runarion-python/
 - Python 3.12
 - Virtual environment management tool (venv)
 - Docker (for containerized deployment)
-- PostgreSQL 17 (for database)
+- **PostgreSQL 17 with Apache AGE extension** (for database and graph operations)
 - Required system libraries (see requirements.txt)
+- Graph database knowledge (Cypher-like queries) for advanced features
 
 ## Setup and Installation
 
@@ -95,6 +113,10 @@ GOOGLE_API_KEY=your_google_key
 # Database Configuration
 DATABASE_URL=postgresql://user:password@localhost:5432/dbname
 
+# Apache AGE Graph Database Configuration
+AGE_ENABLED=true
+AGE_GRAPH_NAME=novel_pipeline_graph
+
 # Service Configuration
 PYTHON_SERVICE_URL=http://python-app:5000
 SD_SERVICE_URL=http://stable-diffusion:7860
@@ -102,6 +124,54 @@ SD_SERVICE_URL=http://stable-diffusion:7860
 # Pipeline Configuration
 ENABLE_PARALLEL_PROCESSING=true
 MAX_CONCURRENT_TASKS=4
+```
+
+## Graph Database Operations
+
+### Apache AGE Integration
+
+The Python service integrates with Apache AGE for advanced graph-based novel analysis:
+
+#### Character Relationship Mapping
+```python
+# Example: Create character relationships in graph
+def create_character_relationships(characters, scene_id):
+    query = """
+    SELECT * FROM cypher('novel_pipeline_graph', $$
+        CREATE (c1:Character {name: $char1_name, scene_id: $scene_id})
+        CREATE (c2:Character {name: $char2_name, scene_id: $scene_id})  
+        CREATE (c1)-[:INTERACTS_WITH {scene_id: $scene_id}]->(c2)
+        RETURN c1, c2
+    $$) AS (c1 agtype, c2 agtype);
+    """
+```
+
+#### Plot Dependency Analysis
+```python
+# Example: Track plot dependencies
+def analyze_plot_dependencies(scenes):
+    query = """
+    SELECT * FROM cypher('novel_pipeline_graph', $$
+        MATCH (s1:Scene)-[:LEADS_TO]->(s2:Scene)
+        WHERE s1.plot_importance > 0.7
+        RETURN s1.title, s2.title, path_length
+    $$) AS (scene1 agtype, scene2 agtype, length agtype);
+    """
+```
+
+#### Graph-Enhanced Analysis Features
+- **Character Arc Tracking**: Follow character development across scenes
+- **Setting Relationships**: Map location connections and transitions
+- **Plot Consistency**: Identify narrative gaps and inconsistencies
+- **Style Pattern Recognition**: Graph-based style analysis and matching
+
+### Graph Database Health Checks
+```bash
+# Test AGE connectivity
+python -c "import psycopg2; conn = psycopg2.connect('DATABASE_URL'); print('AGE Connected')"
+
+# Verify graph operations
+SELECT ag_catalog.age_version();
 ```
 
 ## API Endpoints

@@ -77,6 +77,7 @@ if [ -z "$DATABASE_ALREADY_EXISTS" ]; then
 	
 	# Setup database and process initialization files
 	docker_setup_db
+	docker_verify_age_extension
 	docker_process_init_files /docker-entrypoint-initdb.d/*
 	
 	# Stop temporary server
