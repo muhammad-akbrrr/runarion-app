@@ -27,23 +27,36 @@ A revolutionary AI-powered novel generation and enhancement pipeline that transf
 
 ## Overview
 
-Runarion is a comprehensive five-phase pipeline that revolutionizes the book creation process:
+Runarion is a comprehensive AI-powered pipeline that revolutionizes the book creation process through a sophisticated three-phase novel generation system:
 
-1. Initial Story Generation
-2. Style Building
-3. Novel Writing
-4. Relationship Analysis
-5. PDF Enhancement
+### Core Novel Pipeline (Graph-Enhanced)
+1. **Novel Deconstruction**: Manuscript analysis, scene extraction, and plot issue identification
+2. **Author Style Analysis**: AI-powered style analysis with graph-based character and setting relationships  
+3. **Novel Rewriter Pipeline**: Enhanced novel generation utilizing graph database insights
+
+### Additional Processing Phases
+4. **Relationship Analysis**: Character and plot relationship mapping using Apache AGE graph database
+5. **PDF Enhancement**: Professional formatting and illustration generation
 
 ## Features
 
-- AI-powered story generation
+### Core AI Features
+- AI-powered story generation and analysis
 - Style customization and building
-- Automated novel writing pipeline
-- Character relationship analysis
+- Automated 3-phase novel writing pipeline
+- Advanced manuscript deconstruction and scene analysis
+
+### Graph Database Integration  
+- **Apache AGE Extension**: PostgreSQL 17 with graph database capabilities
+- Character and plot relationship mapping
+- Graph-enhanced story analysis and generation
+- Complex narrative structure visualization
+
+### Output & Enhancement
 - Professional PDF formatting and enhancement
 - Integrated illustration generation with Stable Diffusion
 - ControlNet-based image generation for consistent style
+- Real-time collaborative editing with WebSocket support
 
 ## Cross-Platform Compatibility
 
@@ -60,14 +73,21 @@ This project is designed to work on both Linux and Windows. For Windows users:
 
 ## Prerequisites
 
+### Core Requirements
 - Docker Engine
 - Node.js (v20 or higher)
 - PHP 8.4
 - Composer
 - Python 3.12
-- PostgreSQL 17
 - Git
 - Git Bash
+
+### Database Requirements  
+- **PostgreSQL 17** with Apache AGE extension
+- **Apache AGE**: Graph database extension (automatically compiled from PG17 branch)
+- Graph database support for novel pipeline relationships
+
+### AI & Graphics Requirements
 - NVIDIA GPU with CUDA support (required for Stable Diffusion)
 - NVIDIA Container Toolkit (nvidia-docker2)
 - 8GB GPU VRAM (recommended for Stable Diffusion)
@@ -305,15 +325,30 @@ The application is split into four main components:
 
 ## Configuration
 
-- Database configuration is managed through Laravel's `.env` as well as the root `.env` file
+### Database Configuration
+- PostgreSQL with Apache AGE extension configuration in root `.env` file
+- Laravel database settings in `runarion-laravel/.env`  
+- Graph database settings: `AGE_ENABLED`, `AGE_GRAPH_NAME`
+
+### Service Configuration
 - AI settings can be adjusted in the Python service's configuration
 - Docker settings are defined in `docker-compose.dev.yml`
 - Environment-specific settings should be configured in respective `.env` files
 - Stable Diffusion settings can be configured in `runarion-stable-diffusion/.env`
 
+### Apache AGE Graph Database
+```bash
+# Enable/disable Apache AGE extension
+AGE_ENABLED=true
+
+# Graph name for novel pipeline operations  
+AGE_GRAPH_NAME=novel_pipeline_graph
+```
+
 Key configuration files:
 
 - `.env` files (root, Laravel, Python, and Stable-Diffusion directories)
+- `01-init-age.sql` (Apache AGE initialization script)
 - `config/app.php` (Laravel configuration)
 - `docker-compose.dev.yml` (Docker configuration)
 - `runarion-stable-diffusion/src/main.py` (Stable Diffusion API configuration)
@@ -344,7 +379,15 @@ Common issues and solutions:
    - Ensure the database service is running
    - Check network connectivity between containers
 
-5. **Stable Diffusion Issues**
+5. **Apache AGE Graph Database Issues**
+
+   - Check AGE extension installation: Development environment will show AGE status during startup
+   - Verify PostgreSQL 17 compatibility: AGE uses unofficial PG17 branch
+   - Graph operations failing: Ensure `novel_pipeline_graph` exists and permissions are correct
+   - Disable AGE if needed: Set `AGE_ENABLED=false` in `.env` file
+   - Check container logs for AGE compilation errors during build
+
+6. **Stable Diffusion Issues**
 
    - Verify NVIDIA GPU is properly detected: `nvidia-smi`
    - Check NVIDIA Container Toolkit installation

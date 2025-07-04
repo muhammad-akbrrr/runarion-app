@@ -224,6 +224,24 @@ docker_setup_db() {
 	fi
 }
 
+# Verify Apache AGE extension availability
+docker_verify_age_extension() {
+	local ageAvailable
+	ageAvailable="$(
+		docker_process_sql --dbname postgres --tuples-only <<-'EOSQL'
+			SELECT 1 FROM pg_available_extensions WHERE name = 'age';
+		EOSQL
+	)"
+	
+	if [ -n "$ageAvailable" ]; then
+		printf 'Apache AGE extension is available\n'
+		return 0
+	else
+		printf 'WARNING: Apache AGE extension is not available - graph functionality will be disabled\n'
+		return 1
+	fi
+}
+
 #=============================================================================
 # Environment Setup
 #=============================================================================
@@ -378,6 +396,7 @@ _main() {
 			docker_temp_server_start "$@"
 
 			docker_setup_db
+			docker_verify_age_extension
 			docker_process_init_files /docker-entrypoint-initdb.d/*
 
 			docker_temp_server_stop

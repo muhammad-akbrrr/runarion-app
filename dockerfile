@@ -21,6 +21,11 @@ RUN set -ex; \
   libnss-wrapper \
   xz-utils \
   zstd \
+  git \
+  make \
+  gcc \
+  build-essential \
+  ca-certificates \
   ; \
   rm -rf /var/lib/apt/lists/*
 
@@ -59,7 +64,9 @@ RUN set -eux; \
   locale -a | grep 'en_US.utf8'
 
 # Create initialization directory
-RUN mkdir /docker-entrypoint-initdb.d
+RUN mkdir -p /docker-entrypoint-initdb.d && \
+    chown postgres:postgres /docker-entrypoint-initdb.d && \
+    chmod 755 /docker-entrypoint-initdb.d
 
 # Add PostgreSQL repository
 RUN set -ex; \
@@ -120,12 +127,68 @@ RUN set -ex; \
   find /usr -name '*.pyc' -type f -exec bash -c 'for pyc; do dpkg -S "$pyc" &> /dev/null || rm -vf "$pyc"; done' -- '{}' +; \
   postgres --version
 
+# Install Apache AGE extension for PostgreSQL 17
+RUN set -eux; \
+  apt-get update; \
+  apt-get install -y --no-install-recommends \
+  postgresql-server-dev-$PG_MAJOR \
+  build-essential \
+  libreadline-dev \
+  zlib1g-dev \
+  flex \
+  bison \
+  curl \
+  ; \
+  # Update CA certificates and configure git for HTTPS
+  update-ca-certificates; \
+  git config --global http.sslverify true; \
+  # Clone Apache AGE with retry mechanism
+  cd /tmp; \
+  for i in 1 2 3; do \
+    if git clone -b PG17 --depth 1 https://github.com/apache/age.git; then \
+      break; \
+    else \
+      echo "Git clone attempt $i failed, retrying..."; \
+      sleep 5; \
+    fi; \
+  done; \
+  # Verify clone succeeded
+  if [ ! -d "age" ]; then \
+    echo "Failed to clone Apache AGE repository after 3 attempts"; \
+    exit 1; \
+  fi; \
+  cd age; \
+  # Use official AGE build commands per documentation
+  make install; \
+  cd /; \
+  rm -rf /tmp/age; \
+  apt-get purge -y --auto-remove \
+  postgresql-server-dev-$PG_MAJOR \
+  git \
+  make \
+  gcc \
+  build-essential \
+  libreadline-dev \
+  zlib1g-dev \
+  flex \
+  bison \
+  curl \
+  ; \
+  rm -rf /var/lib/apt/lists/*
+
 # Configure PostgreSQL
 RUN set -eux; \
   dpkg-divert --add --rename --divert "/usr/share/postgresql/postgresql.conf.sample.dpkg" "/usr/share/postgresql/$PG_MAJOR/postgresql.conf.sample"; \
   cp -v /usr/share/postgresql/postgresql.conf.sample.dpkg /usr/share/postgresql/postgresql.conf.sample; \
   ln -sv ../postgresql.conf.sample "/usr/share/postgresql/$PG_MAJOR/"; \
   sed -ri "s!^#?(listen_addresses)\s*=\s*\S+.*!\1 = '*'!" /usr/share/postgresql/postgresql.conf.sample; \
+  # Only add AGE to shared_preload_libraries if it was successfully installed
+  if [ -f "/usr/lib/postgresql/$PG_MAJOR/lib/age.so" ]; then \
+    sed -ri "s!^#?(shared_preload_libraries)\s*=.*!\1 = 'age'!" /usr/share/postgresql/postgresql.conf.sample; \
+    echo "AGE extension found and added to shared_preload_libraries"; \
+  else \
+    echo "AGE extension not found, skipping shared_preload_libraries configuration"; \
+  fi; \
   grep -F "listen_addresses = '*'" /usr/share/postgresql/postgresql.conf.sample
 
 # Set up runtime directories
@@ -138,6 +201,11 @@ VOLUME /var/lib/postgresql/data
 # Copy entrypoint scripts
 COPY docker-entrypoint.sh docker-ensure-initdb.sh /usr/local/bin/
 RUN ln -sT docker-ensure-initdb.sh /usr/local/bin/docker-enforce-initdb.sh
+
+# Copy AGE initialization script
+COPY 01-init-age.sql /docker-entrypoint-initdb.d/
+RUN chown postgres:postgres /docker-entrypoint-initdb.d/01-init-age.sql && \
+    chmod 644 /docker-entrypoint-initdb.d/01-init-age.sql
 
 # Set entrypoint and default command
 ENTRYPOINT ["docker-entrypoint.sh"]

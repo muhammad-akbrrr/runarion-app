@@ -38,6 +38,8 @@ services:
       VITE_REVERB_HOST: ${VITE_REVERB_HOST}
       VITE_REVERB_PORT: ${VITE_REVERB_PORT}
       VITE_REVERB_SCHEME: ${VITE_REVERB_SCHEME}
+      AGE_ENABLED: ${AGE_ENABLED:-true}
+      AGE_GRAPH_NAME: ${AGE_GRAPH_NAME:-novel_pipeline_graph}
       NODE_OPTIONS: ${NODE_OPTIONS:-"--max_old_space_size=2048"}
       npm_config_cache: ${NPM_CONFIG_CACHE:-"/tmp/npm-cache"}
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-"true"}
@@ -108,6 +110,8 @@ services:
       PYTHONDONTWRITEBYTECODE: ${PYTHON_PYTHONDONTWRITEBYTECODE:-1}
       PYTHONUNBUFFERED: ${PYTHON_PYTHONUNBUFFERED:-1}
       UPLOAD_PATH: ${PYTHON_UPLOAD_PATH:-/app/uploads}
+      AGE_ENABLED: ${AGE_ENABLED:-true}
+      AGE_GRAPH_NAME: ${AGE_GRAPH_NAME:-novel_pipeline_graph}
     volumes:
       - ./runarion-python/src:/app/src
       - ./runarion-python/tests:/app/tests
@@ -155,6 +159,8 @@ services:
       - POSTGRES_UID=${POSTGRES_UID:-999}
       - GOSU_VERSION=${GOSU_VERSION:-1.17}
       - LANG=${LANG:-en_US.utf8}
+      - AGE_ENABLED=${AGE_ENABLED:-true}
+      - AGE_GRAPH_NAME=${AGE_GRAPH_NAME:-novel_pipeline_graph}
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:

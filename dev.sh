@@ -57,6 +57,10 @@ check_env_vars() {
         "DB_PASSWORD"
         "POSTGRES_HOST_AUTH_METHOD"
         
+        # Apache AGE Configuration
+        "AGE_ENABLED"
+        "AGE_GRAPH_NAME"
+        
         # API Keys
         "GEMINI_API_KEY"
         "OPENAI_API_KEY"
@@ -232,6 +236,34 @@ wait_for_db() {
         sleep 1
     done
     echo "Database is ready!"
+}
+
+# Function to verify Apache AGE extension
+check_age_extension() {
+    if [ "${AGE_ENABLED:-true}" = "true" ]; then
+        echo "Verifying Apache AGE extension..."
+        
+        # Use a simpler approach with timeout - check the initialization logs
+        local age_logs=$(docker compose -f docker-compose.dev.yml logs postgres-db 2>/dev/null | grep -E "(AGE INITIALIZATION COMPLETE|Ready for graph operations)" | wc -l)
+        
+        if [ "$age_logs" -ge 1 ]; then
+            echo "Apache AGE extension is installed and ready!"
+            echo "AGE initialization logs confirmed successful setup"
+            echo "Graph 'novel_pipeline_graph' is available for operations"
+        else
+            echo "⚠️  Apache AGE extension verification inconclusive"
+            echo "   Checking if extension exists in database..."
+            
+            # Fallback: try a quick extension check with timeout
+            if timeout 5 docker compose -f docker-compose.dev.yml exec postgres-db bash -c "PGPASSWORD='${DB_PASSWORD}' psql -U postgres -d '${DB_DATABASE:-runarion}' -c '\\dx age'" 2>/dev/null | grep -q "age"; then
+                echo "Apache AGE extension found in database"
+            else
+                echo "Apache AGE extension not found - graph functionality may be disabled"
+            fi
+        fi
+    else
+        echo "Apache AGE extension disabled via AGE_ENABLED=false"
+    fi
 }
 
 # Function to wait for Vite server to be ready
@@ -430,6 +462,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 
 # Wait for services to be ready
 wait_for_db
+check_age_extension
 wait_for_vite
 wait_for_sd
 

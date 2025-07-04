@@ -6,12 +6,26 @@ The Laravel component of Runarion provides the web interface and API endpoints f
 
 ## Features
 
+### Core Features
 -   User authentication and authorization
--   Story management interface
--   Real-time pipeline status monitoring
+-   3-phase novel pipeline processing
+-   Real-time pipeline status monitoring with WebSockets
 -   API integration with Python service
--   Database management for story data
--   File storage for generated content
+-   Advanced manuscript deconstruction and analysis
+
+### Novel Pipeline Features
+-   **Manuscript Upload & Processing**: PDF upload with automatic text extraction
+-   **Scene Analysis**: Automatic scene detection and character identification
+-   **Plot Issue Detection**: Plot hole and inconsistency identification
+-   **Author Style Analysis**: AI-powered writing style analysis and profiling
+-   **Graph Database Integration**: Character and plot relationship mapping via Apache AGE
+-   **Enhanced Novel Generation**: Graph-aware novel rewriting and improvement
+
+### Technical Features
+-   PostgreSQL 17 with Apache AGE graph database extension
+-   Real-time collaborative editing
+-   File storage for manuscripts and generated content
+-   Comprehensive audit trails with soft deletes
 
 ## Setup and Installation
 
@@ -20,7 +34,8 @@ The Laravel component of Runarion provides the web interface and API endpoints f
 -   PHP 8.4
 -   Composer
 -   Node.js and NPM
--   PostgreSQL 17
+-   PostgreSQL 17 with Apache AGE extension
+-   Docker (for development environment)
 
 ### Installation Steps
 
@@ -118,9 +133,25 @@ runarion-laravel/
 
 2. **Models**
 
-    - `User` - User data
-    - `Story` - Story information
-    - `Pipeline` - Pipeline status
+#### Core Application Models
+    - `User` - User data and authentication
+    - `Workspace` - Workspace management and collaboration
+    - `Projects` - Project organization and settings
+
+#### Novel Pipeline Models (Phase 1: Deconstruction)
+    - `Draft` - Core manuscript tracking with file metadata and processing status
+    - `DraftChunk` - Text segmentation for processing large documents
+    - `Scene` - Scene-level analysis with character and setting extraction
+    - `PlotIssue` - Plot hole and inconsistency identification
+
+#### Novel Pipeline Models (Phase 2 & 3: Analysis & Rewriting)
+    - `AnalysisReport` - Author style analysis and reporting
+    - `Chapter` - Final chapter organization and structure
+    - `FinalManuscript` - Complete generated novels with processing metadata
+
+#### Existing Legacy Models
+    - `ProjectContent` - Legacy project content management
+    - `StructuredAuthorStyle` - Legacy author style storage
 
 3. **Services**
     - `PythonService` - Python API integration
@@ -160,6 +191,55 @@ php artisan queue:work
 
 # Monitor failed jobs
 php artisan queue:failed
+```
+
+## Database Schema
+
+### Novel Pipeline Tables
+
+The Laravel application includes comprehensive database tables for the 3-phase novel pipeline:
+
+#### Phase 1: Deconstruction Tables
+- **`drafts`**: Core manuscript tracking (UUID primary key, workspace relationships, file metadata)
+- **`draft_chunks`**: Text chunking for large document processing
+- **`scenes`**: Scene-level analysis with character extraction and plot identification
+- **`plot_issues`**: Plot consistency issues (plot holes, inconsistencies)
+
+#### Phase 2: Analysis Tables  
+- **`analysis_reports`**: Style analysis reports and author profiling data
+
+#### Phase 3: Generation Tables
+- **`chapters`**: Final chapter organization and content structure
+- **`final_manuscripts`**: Complete generated novels with processing metadata
+
+#### Graph Database Integration
+- **Apache AGE Extension**: Character and plot relationships stored in graph format
+- **Graph Operations**: Complex narrative analysis using Cypher-like queries
+- **Relationship Mapping**: Character interactions, setting connections, plot dependencies
+
+### Migration Commands
+
+```bash
+# Run novel pipeline migrations
+php artisan migrate
+
+# Fresh migration with sample data
+php artisan migrate:fresh --seed
+
+# Check migration status
+php artisan migrate:status
+```
+
+### AGE Extension Setup
+
+The PostgreSQL database includes Apache AGE extension for graph operations:
+
+```bash
+# Verify AGE extension (via Docker)
+docker compose exec postgres-db psql -U postgres -d runarion -c "SELECT * FROM pg_extension WHERE extname = 'age';"
+
+# Test graph operations
+docker compose exec postgres-db psql -U postgres -d runarion -c "SELECT ag_catalog.age_version();"
 ```
 
 ## Testing
