@@ -38,5 +38,29 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
+    
+    'google' => [
+        'drive' => [
+            'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
+            'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
+            'redirect_uri' => env('GOOGLE_DRIVE_REDIRECT_URI'),
+            'scopes' => [
+                'https://www.googleapis.com/auth/drive',
+                'https://www.googleapis.com/auth/drive.file',
+                'https://www.googleapis.com/auth/drive.appdata',
+            ],
+        ],
+    ],
+
+    'dropbox' => [
+        'client_id' => env('DROPBOX_CLIENT_ID'),
+        'client_secret' => env('DROPBOX_CLIENT_SECRET'),
+        'redirect_uri' => env('DROPBOX_REDIRECT_URI'),
+        'scopes' => [
+            'files.metadata.read',
+            'files.content.read',
+            'files.content.write',
+        ],
+    ],
 
 ];

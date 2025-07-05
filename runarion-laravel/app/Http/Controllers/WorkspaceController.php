@@ -87,15 +87,17 @@ class WorkspaceController extends Controller
         $isUserOwner = $userRole === 'owner';
         $isUserAdmin = $userRole === 'admin';
 
-        $cloudStorage = DB::table('workspaces')
+        $workspace = DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->value('cloud_storage');
+            ->first(['id', 'cloud_storage']);
 
-        $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
+        $cloudStorage = $workspace->cloud_storage ? json_decode($workspace->cloud_storage, true) : [];
 
         $cloudStorage = array_map(
             fn($m) => [
-                'enabled' => $m['enabled'],
+                'enabled' => $m['enabled'] ?? false,
+                'connected_at' => $m['connected_at'] ?? null,
+                'has_token' => isset($m['token']),
             ],
             $cloudStorage
         );
