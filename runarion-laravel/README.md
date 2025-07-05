@@ -2,26 +2,40 @@
 
 ## Overview
 
-The Laravel component of Runarion provides the web interface and API endpoints for the AI-powered novel generation pipeline. It handles user authentication, story management, and integration with the Python service.
+The Laravel component serves as the **application glue and bridge** for the Runarion ecosystem. It acts as the central orchestrator that connects the frontend interface to the backend AI processing services, while managing the core business logic (excluding AI/LLM operations). 
+
+**Key Responsibilities:**
+- **Frontend Bridge**: Provides the React+Inertia.js web interface and user experience
+- **Database Controller**: Handles all database migrations, schema management, and data persistence
+- **API Gateway**: Routes and manages communication between frontend and Python AI services
+- **Business Logic Hub**: Manages user authentication, project organization, and non-AI workflows
+- **Pipeline Coordinator**: Orchestrates the novel generation pipeline by communicating with Python service via HTTP API
+
+**What it does NOT handle:** The actual AI processing, LLM operations, and novel pipeline execution - these are delegated to the Python service.
 
 ## Features
 
 ### Core Features
--   User authentication and authorization
--   3-phase novel pipeline processing
--   Real-time pipeline status monitoring with WebSockets
--   API integration with Python service
--   Advanced manuscript deconstruction and analysis
 
-### Novel Pipeline Features
--   **Manuscript Upload & Processing**: PDF upload with automatic text extraction
--   **Scene Analysis**: Automatic scene detection and character identification
--   **Plot Issue Detection**: Plot hole and inconsistency identification
--   **Author Style Analysis**: AI-powered writing style analysis and profiling
--   **Graph Database Integration**: Character and plot relationship mapping via Apache AGE
--   **Enhanced Novel Generation**: Graph-aware novel rewriting and improvement
+-   User authentication and authorization
+-   **Pipeline Orchestration**: Coordinates 3-phase novel pipeline by communicating with Python service
+-   Real-time pipeline status monitoring with WebSockets
+-   **API Integration**: Serves as bridge between frontend and Python AI service
+-   Database management for all pipeline data and user content
+
+### Novel Pipeline Coordination (via Python Service)
+
+The Laravel application coordinates these features by delegating AI processing to the Python service:
+
+-   **Manuscript Upload & Processing**: Handles file uploads, delegates text extraction to Python service
+-   **Scene Analysis**: Coordinates scene detection and character identification via API calls
+-   **Plot Issue Detection**: Manages plot analysis workflow through Python service integration
+-   **Author Style Analysis**: Orchestrates AI-powered style analysis via Python service
+-   **Graph Database Integration**: Manages AGE database operations, coordinates with Python for relationship mapping
+-   **Enhanced Novel Generation**: Coordinates graph-aware novel generation through Python service
 
 ### Technical Features
+
 -   PostgreSQL 17 with Apache AGE graph database extension
 -   Real-time collaborative editing
 -   File storage for manuscripts and generated content
@@ -60,6 +74,10 @@ cp .env.example .env
 
 # Generate application key
 php artisan key:generate
+
+# Generate App-ID, secrets, and key for reverb-related variables
+php artisan tinker
+Str::random(32);
 ```
 
 4. Configure database in `.env`:
@@ -107,20 +125,62 @@ Database management should be done through GUI tools like DBeaver (recommended) 
 ```
 runarion-laravel/
 ├── app/
+│   ├── Events/                         # Real-time events (LLMStreamChunk, ProjectContentUpdated)
 │   ├── Http/
 │   │   ├── Controllers/
-│   │   └── Middleware/
-│   ├── Models/
-│   └── Services/
+│   │   │   ├── Auth/                   # Authentication controllers
+│   │   │   ├── ProjectEditor/          # Project editor controllers
+│   │   │   │   ├── MainEditorController.php
+│   │   │   │   ├── ImageGeneratorController.php
+│   │   │   │   ├── MultiPromptController.php
+│   │   │   │   └── ProjectDatabaseController.php
+│   │   │   ├── DashboardController.php
+│   │   │   ├── ProjectController.php
+│   │   │   └── WorkspaceController.php
+│   │   ├── Middleware/
+│   │   │   ├── ResolveProjectEditor.php
+│   │   │   └── ResolveWorkspace.php
+│   │   └── Requests/
+│   ├── Jobs/                           # Background jobs
+│   │   ├── ManuscriptDeconstructionJob.php
+│   │   └── StreamLLMJob.php
+│   ├── Models/                         # Database models
+│   │   ├── Draft.php                   # Novel pipeline models
+│   │   ├── Scene.php
+│   │   ├── Chapter.php
+│   │   ├── FinalManuscript.php
+│   │   ├── Projects.php                # Core application models
+│   │   ├── Workspace.php
+│   │   └── User.php
+│   ├── Notifications/                  # Email/push notifications
+│   └── Providers/
 ├── database/
-│   ├── migrations/
-│   └── seeders/
+│   ├── migrations/                     # Database schema migrations
+│   │   ├── 2025_07_04_010000_create_novel_pipeline_drafts_table.php
+│   │   ├── 2025_07_04_020000_create_novel_pipeline_scenes_table.php
+│   │   └── ... (other migrations)
+│   ├── seeders/                        # Database seeders
+│   └── factories/                      # Model factories for testing
 ├── resources/
-│   ├── js/
-│   └── views/
-└── routes/
-    ├── api.php
-    └── web.php
+│   ├── js/                             # React/TypeScript frontend
+│   │   ├── Components/
+│   │   │   ├── ui/                     # UI components (shadcn/ui)
+│   │   │   └── react-flow/             # React Flow components
+│   │   ├── Pages/
+│   │   │   ├── Projects/
+│   │   │   │   └── Editor/             # Project editor pages
+│   │   │   ├── Workspace/              # Workspace management
+│   │   │   └── Auth/                   # Authentication pages
+│   │   ├── Layouts/                    # Layout components
+│   │   └── types/                      # TypeScript type definitions
+│   ├── css/                            # Tailwind CSS
+│   └── views/                          # Blade templates
+├── routes/
+│   ├── web.php                         # Web routes
+│   ├── auth.php                        # Authentication routes
+│   ├── editor.php                      # Project editor routes
+│   └── channels.php                    # WebSocket channels
+└── config/                             # Laravel configuration files
 ```
 
 ### Key Components
@@ -134,29 +194,33 @@ runarion-laravel/
 2. **Models**
 
 #### Core Application Models
+
     - `User` - User data and authentication
     - `Workspace` - Workspace management and collaboration
     - `Projects` - Project organization and settings
 
 #### Novel Pipeline Models (Phase 1: Deconstruction)
+
     - `Draft` - Core manuscript tracking with file metadata and processing status
     - `DraftChunk` - Text segmentation for processing large documents
     - `Scene` - Scene-level analysis with character and setting extraction
     - `PlotIssue` - Plot hole and inconsistency identification
 
 #### Novel Pipeline Models (Phase 2 & 3: Analysis & Rewriting)
+
     - `AnalysisReport` - Author style analysis and reporting
     - `Chapter` - Final chapter organization and structure
     - `FinalManuscript` - Complete generated novels with processing metadata
 
 #### Existing Legacy Models
+
     - `ProjectContent` - Legacy project content management
     - `StructuredAuthorStyle` - Legacy author style storage
 
 3. **Services**
-    - `PythonService` - Python API integration
-    - `StoryService` - Story business logic
-    - `FileService` - File management
+    - `PythonService` - **Primary service for AI operations** - Routes all AI/LLM requests to Python service
+    - `StoryService` - Story business logic and coordination
+    - `FileService` - File management and upload handling
 
 ## Configuration
 
@@ -200,22 +264,26 @@ php artisan queue:failed
 The Laravel application includes comprehensive database tables for the 3-phase novel pipeline:
 
 #### Phase 1: Deconstruction Tables
-- **`drafts`**: Core manuscript tracking (UUID primary key, workspace relationships, file metadata)
-- **`draft_chunks`**: Text chunking for large document processing
-- **`scenes`**: Scene-level analysis with character extraction and plot identification
-- **`plot_issues`**: Plot consistency issues (plot holes, inconsistencies)
 
-#### Phase 2: Analysis Tables  
-- **`analysis_reports`**: Style analysis reports and author profiling data
+-   **`drafts`**: Core manuscript tracking (UUID primary key, workspace relationships, file metadata)
+-   **`draft_chunks`**: Text chunking for large document processing
+-   **`scenes`**: Scene-level analysis with character extraction and plot identification
+-   **`plot_issues`**: Plot consistency issues (plot holes, inconsistencies)
+
+#### Phase 2: Analysis Tables
+
+-   **`analysis_reports`**: Style analysis reports and author profiling data
 
 #### Phase 3: Generation Tables
-- **`chapters`**: Final chapter organization and content structure
-- **`final_manuscripts`**: Complete generated novels with processing metadata
+
+-   **`chapters`**: Final chapter organization and content structure
+-   **`final_manuscripts`**: Complete generated novels with processing metadata
 
 #### Graph Database Integration
-- **Apache AGE Extension**: Character and plot relationships stored in graph format
-- **Graph Operations**: Complex narrative analysis using Cypher-like queries
-- **Relationship Mapping**: Character interactions, setting connections, plot dependencies
+
+-   **Apache AGE Extension**: Character and plot relationships stored in graph format
+-   **Graph Operations**: Complex narrative analysis using Cypher-like queries
+-   **Relationship Mapping**: Character interactions, setting connections, plot dependencies
 
 ### Migration Commands
 
