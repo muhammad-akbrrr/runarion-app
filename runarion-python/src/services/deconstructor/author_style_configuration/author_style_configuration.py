@@ -209,7 +209,7 @@ class AuthorStyleConfiguration:
 
         engine = GenerationEngine(request)
 
-        response = engine.generate()
+        response = engine.generate(skip_quota=True)
 
         if not response.success:
             error_text = f"LLM call failed: {response.error_message}"
