@@ -96,6 +96,7 @@ README.md
 
 # Database files
 *.sql
+!01-init-age.sql
 *.sqlite
 
 # Test files

@@ -4,8 +4,9 @@ from dotenv import load_dotenv
 import os
 from psycopg2 import pool
 from api.generation import generate
-from api.author_style import author_style
-from api.story_rewrite import story_rewrite
+from api.deconstructor import deconstruct
+from api.style_analyzer import analyze_style
+from api.novel_writer import rewrite_novel
 
 load_dotenv()
 
@@ -73,10 +74,12 @@ app.config['UPLOAD_PATH'] = upload_path
 # --- Blueprint Registration ---
 
 app.register_blueprint(generate, url_prefix='/api')
-app.register_blueprint(author_style, url_prefix='/api')
-app.register_blueprint(story_rewrite, url_prefix='/api')
+app.register_blueprint(deconstruct, url_prefix='/api')
+app.register_blueprint(analyze_style, url_prefix='/api')
+app.register_blueprint(rewrite_novel, url_prefix='/api')
 
 # --- Health Check ---
+
 
 @app.route('/health', methods=['GET'])
 def health_check():
@@ -102,6 +105,7 @@ def health_check():
 
 # --- Root Endpoint ---
 
+
 @app.route('/', methods=['GET'])
 def root():
     return jsonify({
@@ -109,8 +113,10 @@ def root():
         "status": "running",
         "endpoints": {
             "generation": "/api/generate",
-            "story_rewrite": "/api/story-rewrite",
             "streaming": "/api/stream",
+            "story_deconstructor": "/api/deconstruct",
+            "style_analysis": "/api/analyze_style",
+            "novel_rewrite": "/api/rewrite_novel",
             "health": "/health"
         }
     })
