@@ -31,7 +31,7 @@ Runarion is a comprehensive AI-powered pipeline that revolutionizes the book cre
 
 ### Core Novel Pipeline (Graph-Enhanced)
 1. **Novel Deconstruction**: Manuscript analysis, scene extraction, and plot issue identification
-2. **Author Style Analysis**: AI-powered style analysis with graph-based character and setting relationships  
+2. **Author Style Builder**: AI-powered style analysis with smart sampling on sample files  
 3. **Novel Rewriter Pipeline**: Enhanced novel generation utilizing graph database insights
 
 ### Additional Processing Phases
@@ -56,7 +56,6 @@ Runarion is a comprehensive AI-powered pipeline that revolutionizes the book cre
 - Professional PDF formatting and enhancement
 - Integrated illustration generation with Stable Diffusion
 - ControlNet-based image generation for consistent style
-- Real-time collaborative editing with WebSocket support
 
 ## Cross-Platform Compatibility
 
@@ -284,6 +283,9 @@ docker compose -f docker-compose.dev.yml restart
 # Cleanup and restart
 ./dev.sh cleanup
 ./dev.sh
+
+# Access container to execute commands
+docker exec -it <CONTAINER_ID> bash
 ```
 
 ### Port Management
