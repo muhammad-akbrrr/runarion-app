@@ -128,4 +128,74 @@ class Workspace extends Model
     {
         return $this->hasMany(StructuredAuthorStyle::class, 'workspace_id');
     }
+
+    /**
+     * Get the Cloud Storage token for the workspace.
+     */
+    public function getCloudToken(string $provider): ?string
+    {
+        $cloudStorage = $this->cloud_storage ?? [];
+
+        $encrypted = $cloudStorage[$provider]['token'] ?? null;
+        if (!$encrypted) return null;
+
+        try {
+            return \Crypt::decryptString($encrypted);
+        } catch (\Exception $e) {
+            report($e);
+            return null;
+        }
+    }
+
+    /**
+     * Set the Cloud Storage token for the workspace.
+     */
+    public function setCloudToken(string $provider, ?string $plainToken): void
+    {
+        $cloudStorage = $this->cloud_storage ?? [];
+
+        if (!isset($cloudStorage[$provider])) {
+            $cloudStorage[$provider] = [];
+        }
+
+        $cloudStorage[$provider]['token'] = $plainToken
+            ? \Crypt::encryptString($plainToken)
+            : null;
+
+        $this->cloud_storage = $cloudStorage;
+    }
+
+    public function isCloudConnected(string $provider): bool
+    {
+        $data = $this->cloud_storage[$provider] ?? [];
+
+        if (empty($data['enabled'])) {
+            return false;
+        }
+
+        return match ($provider) {
+            'google_drive' => !empty($data['refresh_token']),
+            default        => !empty($data['token']),
+        };
+    }
+
+
+    public function getCloudRefreshToken(string $provider): ?string
+    {
+        $data = $this->cloud_storage[$provider] ?? null;
+        if (! $data || empty($data['refresh_token'])) {
+            return null;
+        }
+        try {
+            return \Crypt::decryptString($data['refresh_token']);
+        } catch (\Throwable $e) {
+            report($e);
+            return null;
+        }
+    }
+
+    public function getCloudFolderId(string $provider): ?string
+    {
+        return $this->cloud_storage[$provider]['folder_id'] ?? null;
+    }
 }
