@@ -22,8 +22,7 @@ Route::get('/', function () {
 
 // Dashboard Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
-    // main dashboard page
-    Route::get( '/{workspace_id}/dashboard',[DashboardController::class, 'show'])->name('workspace.dashboard');
+    Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
 
     Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
 });
@@ -44,6 +43,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 // File Manager Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/files', [FileManagerController::class, 'show'])->name('workspace.files');
+
     Route::get('/files', fn() => '')->name('raw.workspace.files');
 });
 
@@ -103,13 +103,9 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/settings/members', fn() => '')->name('raw.workspace.edit.member');
 });
 
-// Workspace invitation accept route (no auth required)
-Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
-
 // OAuth callback & connect/disconnect
 Route::middleware(['auth'])->group(function () {
-    Route::get('/oauth/callback/{provider}', [CloudStorageController::class, 'callback'])
-        ->name('cloudstorage.callback');
+    Route::get('/oauth/callback/{provider}', [CloudStorageController::class, 'callback'])->name('cloudstorage.callback');
 
     Route::prefix('/{workspace_id}/settings/cloud-storage')
         ->middleware('workspace')
@@ -132,6 +128,9 @@ Route::middleware(['auth'])->group(function () {
                 ->name('cloudstorage.files.delete');
         });
 });
+
+// Workspace invitation accept route (no auth required)
+Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
 
 require __DIR__ . '/auth.php';
 require __DIR__ . '/editor.php';

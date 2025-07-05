@@ -31,7 +31,7 @@ class FileManagerController extends Controller
         // Get projects with their shared users
         $projects = $this->getProjects($workspace_id);
         
-        return Inertia::render('FileManager/Index', [
+        return Inertia::render('FileManager/Main', [
             'workspaceId' => $workspace_id,
             'workspaceName' => $workspace->name,
             'storageProviders' => $storageProviders,
