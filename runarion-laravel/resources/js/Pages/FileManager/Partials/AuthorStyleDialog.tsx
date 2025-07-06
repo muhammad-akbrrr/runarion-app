@@ -7,9 +7,17 @@ import {
 } from "@/Components/ui/dialog";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
-import { router } from "@inertiajs/react";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/Components/ui/select";
+import { router, usePage } from "@inertiajs/react";
 import { CloudUpload, X } from "lucide-react";
 import { AuthorStyle } from "@/types/files";
+import { PageProps } from "@/types";
 
 interface AuthorStyleDialogProps {
     open: boolean;
@@ -22,10 +30,14 @@ export default function AuthorStyleDialog({
     onClose,
     authorStyles,
 }: AuthorStyleDialogProps) {
+    const { projects } = usePage<PageProps<{ projects: { id: string; name: string }[] }>>().props;
+    
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [authorName, setAuthorName] = React.useState("");
     const [authorFiles, setAuthorFiles] = React.useState<File[]>([]);
+    const [selectedProjectId, setSelectedProjectId] = React.useState("");
     const [authorNameTouched, setAuthorNameTouched] = React.useState(false);
+    const [projectTouched, setProjectTouched] = React.useState(false);
     const [authorStyleError, setAuthorStyleError] = React.useState<string | null>(null);
 
     // Reset state on open/close
@@ -33,8 +45,10 @@ export default function AuthorStyleDialog({
         if (!open) {
             setAuthorName("");
             setAuthorFiles([]);
+            setSelectedProjectId("");
             setIsProcessing(false);
             setAuthorNameTouched(false);
+            setProjectTouched(false);
             setAuthorStyleError(null);
         }
     }, [open]);
@@ -59,6 +73,11 @@ export default function AuthorStyleDialog({
             return;
         }
         
+        if (!selectedProjectId) {
+            setAuthorStyleError("Please select a project.");
+            return;
+        }
+        
         // Check for duplicate name
         const existingNames = authorStyles.map(style => style.name.toLowerCase());
         if (existingNames.includes(authorName.toLowerCase())) {
@@ -71,14 +90,20 @@ export default function AuthorStyleDialog({
         // Prepare form data for submission
         const formData = new FormData();
         formData.append("author_name", authorName);
+        formData.append("project_id", selectedProjectId);
         authorFiles.forEach((file, index) => {
             formData.append(`author_files[${index}]`, file);
         });
 
         // Here you would typically make an API call to create the author style
         setTimeout(() => {
+            // Find the selected project name for logging
+            const selectedProject = projects.find(p => p.id === selectedProjectId);
+            
             console.log("Creating author style:", {
                 authorName,
+                projectId: selectedProjectId,
+                projectName: selectedProject?.name,
                 authorFiles,
             });
             
@@ -185,6 +210,50 @@ export default function AuthorStyleDialog({
                             </p>
                         )}
                     </div>
+
+                    <div className="w-full h-[1px] bg-gray-200 rounded-[1px]"></div>
+
+                    <div className="flex flex-col justify-stretch items-start gap-2">
+                        <div className="flex flex-col justify-start items-start gap-0.5">
+                            <label className="text-sm">Associated Project</label>
+                            <p className="text-xs text-muted-foreground">
+                                Select the project associated with this author style
+                            </p>
+                        </div>
+                        <Select
+                            value={selectedProjectId}
+                            onValueChange={(value) => {
+                                setSelectedProjectId(value);
+                                setProjectTouched(true);
+                                setAuthorStyleError(null);
+                            }}
+                        >
+                            <SelectTrigger 
+                                className="w-full"
+                                onBlur={() => setProjectTouched(true)}
+                            >
+                                <SelectValue placeholder="Select a project" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {projects && projects.length > 0 ? (
+                                    projects.map((project) => (
+                                        <SelectItem key={project.id} value={project.id}>
+                                            {project.name}
+                                        </SelectItem>
+                                    ))
+                                ) : (
+                                    <SelectItem value="__no_project__" disabled>
+                                        No projects available
+                                    </SelectItem>
+                                )}
+                            </SelectContent>
+                        </Select>
+                        {projectTouched && !selectedProjectId && (
+                            <p className="text-xs text-destructive mt-1">
+                                Project selection is required.
+                            </p>
+                        )}
+                    </div>
                 </div>
 
                 {authorStyleError && (
@@ -202,7 +271,8 @@ export default function AuthorStyleDialog({
                         disabled={
                             isProcessing ||
                             authorFiles.length === 0 ||
-                            !authorName
+                            !authorName ||
+                            !selectedProjectId
                         }
                     >
                         {isProcessing ? "Creating..." : "Create Author Style"}

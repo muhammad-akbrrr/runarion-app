@@ -150,9 +150,10 @@ class ParagraphExtractor:
             list[str]: List of extracted paragraphs.
         """
         doc = self.read_file()
+        end_page = self.end_page or doc.page_count
 
         warnings.simplefilter("once", UserWarning)
-        for page in doc[self.start_page - 1 : self.end_page]:
+        for page in doc[self.start_page - 1 : end_page]:
             blocks = page.get_text("blocks")  # type: ignore
             for block in blocks:
                 # skip non-text blocks
