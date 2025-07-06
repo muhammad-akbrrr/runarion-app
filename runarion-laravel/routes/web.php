@@ -43,6 +43,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 // File Manager Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/files', [FileManagerController::class, 'show'])->name('workspace.files');
+    Route::post('/{workspace_id}/files/author-styles', [FileManagerController::class, 'storeAuthorStyle'])->name('workspace.files.author-styles.store');
 
     Route::get('/files', fn() => '')->name('raw.workspace.files');
 });

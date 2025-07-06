@@ -2,11 +2,15 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\AuthorStyleJob;
 use App\Models\Projects;
 use App\Models\StructuredAuthorStyle;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Validator;
 use Inertia\Inertia;
 
 class FileManagerController extends Controller
@@ -39,6 +43,84 @@ class FileManagerController extends Controller
             'projects' => $projects,
         ]);
     }
+    
+    /**
+     * Create a new author style.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $workspace_id
+     * @return \Illuminate\Http\RedirectResponse
+     */
+    public function storeAuthorStyle(Request $request, $workspace_id)
+    {
+        // Validate the request
+        $validator = Validator::make($request->all(), [
+            'author_name' => ['required', 'string', 'max:255'],
+            'project_id' => ['required', 'string', 'exists:projects,id'],
+            'author_files' => ['required', 'array', 'min:1'],
+            'author_files.*' => ['required', 'file', 'mimes:pdf,doc,docx,txt', 'max:102400'], // 100MB max
+        ]);
+        
+        if ($validator->fails()) {
+            \Log::warning('Validation failed in storeAuthorStyle', [
+                'errors' => $validator->errors()->toArray(),
+            ]);
+            return back()->withErrors($validator)->withInput();
+        }
+        
+        // Check if author style name already exists for this workspace
+        $existingStyle = StructuredAuthorStyle::where('workspace_id', $workspace_id)
+            ->where('author_name', $request->author_name)
+            ->first();
+            
+        if ($existingStyle) {
+            \Log::info('Author style name already exists', [
+                'workspace_id' => $workspace_id,
+                'author_name' => $request->author_name,
+            ]);
+            return back()->withErrors(['author_name' => 'An author style with this name already exists.'])->withInput();
+        }
+        
+        // Check if project belongs to the workspace
+        $project = Projects::where('id', $request->project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+            
+        if (!$project) {
+            \Log::warning('Project does not belong to workspace', [
+                'project_id' => $request->project_id,
+                'workspace_id' => $workspace_id,
+            ]);
+            return back()->withErrors(['project_id' => 'The selected project does not belong to this workspace.'])->withInput();
+        }
+        
+        // Store the uploaded files
+        $filePaths = [];
+        foreach ($request->file('author_files') as $file) {
+            $path = $file->store('author_styles/' . $workspace_id, 'local');
+            $filePaths[] = Storage::disk('local')->path($path);
+        }
+        
+        // Dispatch the job to analyze the author style
+        AuthorStyleJob::dispatch(
+            Auth::id(),
+            $workspace_id,
+            $request->project_id,
+            $request->author_name,
+            $filePaths
+        );
+        \Log::info('AuthorStyleJob dispatched', [
+            'user_id' => Auth::id(),
+            'workspace_id' => $workspace_id,
+            'project_id' => $request->project_id,
+            'author_name' => $request->author_name,
+            'file_paths' => $filePaths,
+        ]);
+        
+        return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
+            ->with('success', 'Author style creation has been initiated. This may take a few minutes to complete.');
+    }
+    
     
     /**
      * Get storage providers from workspace cloud_storage JSON column.

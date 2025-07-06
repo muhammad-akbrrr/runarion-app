@@ -30,7 +30,10 @@ export default function AuthorStyleDialog({
     onClose,
     authorStyles,
 }: AuthorStyleDialogProps) {
-    const { projects } = usePage<PageProps<{ projects: { id: string; name: string }[] }>>().props;
+    const { projects, workspaceId } = usePage<PageProps<{ 
+        projects: { id: string; name: string }[],
+        workspaceId: string
+    }>>().props;
     
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [authorName, setAuthorName] = React.useState("");
@@ -94,35 +97,33 @@ export default function AuthorStyleDialog({
         authorFiles.forEach((file, index) => {
             formData.append(`author_files[${index}]`, file);
         });
-
-        // Here you would typically make an API call to create the author style
-        setTimeout(() => {
-            // Find the selected project name for logging
-            const selectedProject = projects.find(p => p.id === selectedProjectId);
-            
-            console.log("Creating author style:", {
-                authorName,
-                projectId: selectedProjectId,
-                projectName: selectedProject?.name,
-                authorFiles,
-            });
-            
-            // In a real implementation, you would use router.post to submit the form
-            // router.post(route("workspace.files.author-styles.store"), formData, {
-            //     forceFormData: true,
-            //     onSuccess: () => {
-            //         setIsProcessing(false);
-            //         onClose();
-            //     },
-            //     onError: (errors) => {
-            //         setIsProcessing(false);
-            //         setAuthorStyleError(errors.message || "Failed to create author style.");
-            //     },
-            // });
-            
-            setIsProcessing(false);
-            onClose();
-        }, 1000);
+        
+        console.log("Creating author style:", {
+            authorName,
+            projectId: selectedProjectId,
+            authorFiles,
+        });
+        
+        // Submit the form to the backend
+        router.post(route("workspace.files.author-styles.store", { workspace_id: workspaceId }), formData, {
+            forceFormData: true,
+            onSuccess: () => {
+                setIsProcessing(false);
+                onClose();
+            },
+            onError: (errors) => {
+                setIsProcessing(false);
+                if (errors.author_name) {
+                    setAuthorStyleError(errors.author_name);
+                } else if (errors.project_id) {
+                    setAuthorStyleError(errors.project_id);
+                } else if (errors.author_files) {
+                    setAuthorStyleError(errors.author_files);
+                } else {
+                    setAuthorStyleError("An error occurred while creating the author style.");
+                }
+            },
+        });
     };
 
     return (
@@ -217,7 +218,7 @@ export default function AuthorStyleDialog({
                         <div className="flex flex-col justify-start items-start gap-0.5">
                             <label className="text-sm">Associated Project</label>
                             <p className="text-xs text-muted-foreground">
-                                Select the project associated with this author style
+                                Select the project this author style will be used for
                             </p>
                         </div>
                         <Select
