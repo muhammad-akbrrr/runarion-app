@@ -6,7 +6,9 @@ import {
     CardTitle,
 } from "@/Components/ui/card";
 import { Separator } from "@/Components/ui/separator";
-import AuthenticatedLayout, { BreadcrumbItem } from "@/Layouts/AuthenticatedLayout";
+import AuthenticatedLayout, {
+    BreadcrumbItem,
+} from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
 import { Head, router } from "@inertiajs/react";
 import { useState } from "react";
@@ -52,19 +54,22 @@ export default function CloudStorage({
             key: "google_drive",
             logo_url: "/images/google_drive.png",
             name: "Google Drive",
-            description: "Attach, preview, share and create Google Drive items inside of Runarion.",
+            description:
+                "Attach, preview, share and create Google Drive items inside of Runarion.",
         },
         {
             key: "dropbox",
             logo_url: "/images/dropbox.png",
             name: "Dropbox",
-            description: "Attach, preview, share and create Dropbox items inside of Runarion.",
+            description:
+                "Attach, preview, share and create Dropbox items inside of Runarion.",
         },
         {
             key: "onedrive",
             logo_url: "/images/onedrive.png",
             name: "OneDrive",
-            description: "Attach, preview, share and create OneDrive items inside of Runarion.",
+            description:
+                "Attach, preview, share and create OneDrive items inside of Runarion.",
         },
     ];
 
@@ -84,21 +89,24 @@ export default function CloudStorage({
         setDialogOpen(true);
     };
 
-    const selected = selectedKey ? connections.find(c => c.key === selectedKey) : null;
+    const selected = selectedKey
+        ? connections.find((c) => c.key === selectedKey)
+        : null;
     const isConnected = selectedKey ? data[selectedKey]?.enabled : false;
 
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Cloud Storage" />
 
-            <Card className="w-full">
+            <Card className="w-full h-full ">
                 <CardHeader>
                     <CardTitle className="text-2xl">Cloud Storage</CardTitle>
                     <CardDescription className="text-sm">
-                        Enable or disable cloud storage integrations with your workspace.
+                        Enable or disable cloud storage integrations with your
+                        workspace.
                     </CardDescription>
                 </CardHeader>
-                <Separator className="w-full" />
+                <Separator className="mx-6" style={{ width: "auto" }} />
                 <CardContent className="flex flex-col gap-4 overflow-x-hidden">
                     {connections.map((connection) => (
                         <ConnectionCard
@@ -118,7 +126,9 @@ export default function CloudStorage({
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>
-                            {isConnected ? "Disconnect Storage" : "Connect Storage"}
+                            {isConnected
+                                ? "Disconnect Storage"
+                                : "Connect Storage"}
                         </DialogTitle>
                         <DialogDescription>
                             {isConnected
@@ -127,7 +137,10 @@ export default function CloudStorage({
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setDialogOpen(false)}>
+                        <Button
+                            variant="outline"
+                            onClick={() => setDialogOpen(false)}
+                        >
                             Cancel
                         </Button>
                         <Button

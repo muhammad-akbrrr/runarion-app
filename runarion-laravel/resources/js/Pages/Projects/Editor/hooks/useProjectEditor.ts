@@ -30,6 +30,7 @@ export function useProjectEditor({
     const lastSavedContent = useRef<string>('');
     const lastSavedSettings = useRef<any>({});
     const saveTimeout = useRef<NodeJS.Timeout | null>(null);
+    const originalChapterContent = useRef<string>(''); // Track content at chapter load
 
     // Event-driven save hook
     const { saveContent, saveSettings, forceSave } = useEventDrivenSave({
@@ -106,9 +107,11 @@ export function useProjectEditor({
             const chapterContent = selectedChapter.content || "";
             setContent(chapterContent);
             lastSavedContent.current = chapterContent;
+            originalChapterContent.current = chapterContent; // Store original content
         } else {
             setContent("");
             lastSavedContent.current = "";
+            originalChapterContent.current = "";
         }
         
         // Initialize settings
@@ -125,7 +128,7 @@ export function useProjectEditor({
         return () => clearTimeout(timer);
     }, [selectedChapter, project.settings]);
 
-    // Auto-save effect with debouncing - only for manual changes
+    // Settings auto-save effect (keep only settings auto-save, content save moved to Main.tsx)
     useEffect(() => {
         if (!isInitialized.current || isGenerating || isStreaming) {
             return;
@@ -136,22 +139,15 @@ export function useProjectEditor({
             clearTimeout(saveTimeout.current);
         }
 
-        // Check if content or settings changed
-        const contentChanged = content !== lastSavedContent.current;
+        // Check if settings changed (removed content auto-save to prevent conflicts)
         const settingsChanged = JSON.stringify(settings) !== JSON.stringify(lastSavedSettings.current);
 
-        if (!contentChanged && !settingsChanged) {
+        if (!settingsChanged) {
             return;
         }
 
-        // Set debounced save
+        // Set debounced save for settings only
         saveTimeout.current = setTimeout(() => {
-            if (contentChanged && selectedChapter) {
-                console.log('Auto-saving content changes');
-                saveContent(selectedChapter.order, content, 'auto');
-                lastSavedContent.current = content;
-            }
-
             if (settingsChanged) {
                 console.log('Auto-saving settings changes');
                 saveSettings(settings);
@@ -164,7 +160,7 @@ export function useProjectEditor({
                 clearTimeout(saveTimeout.current);
             }
         };
-    }, [content, settings, selectedChapter, saveContent, saveSettings, isGenerating, isStreaming]);
+    }, [settings, saveSettings, isGenerating, isStreaming]); // Removed content and selectedChapter dependencies
 
     // Update content when streaming
     useEffect(() => {
@@ -353,5 +349,38 @@ export function useProjectEditor({
         handleSettingChange,
         handleGenerateText,
         handleCancelGeneration,
+        
+        // Save functions
+        saveContent: (order: number, content: string, trigger: string) => saveContent(order, content, trigger),
+        smartSave: (order: number, content: string, trigger: string) => {
+            // Normalize both contents to plain text for comparison
+            const normalizeContent = (htmlContent: string) => {
+                if (!htmlContent) return '';
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlContent;
+                return (tempDiv.textContent || tempDiv.innerText || '').trim();
+            };
+
+            const currentPlainText = normalizeContent(content);
+            const originalPlainText = normalizeContent(originalChapterContent.current);
+
+            // Only save if the plain text content has actually changed
+            if (selectedChapter && currentPlainText !== originalPlainText) {
+                console.log('Content changed, saving:', { 
+                    originalText: originalPlainText?.substring(0, 50) + '...', 
+                    currentText: currentPlainText?.substring(0, 50) + '...',
+                    originalHTML: originalChapterContent.current?.substring(0, 100),
+                    currentHTML: content?.substring(0, 100)
+                });
+                saveContent(order, content, trigger);
+                // Update original content after successful save to prevent duplicate saves
+                originalChapterContent.current = content;
+            } else {
+                console.log('No content change detected, skipping save:', {
+                    originalText: originalPlainText,
+                    currentText: currentPlainText
+                });
+            }
+        },
     };
 }

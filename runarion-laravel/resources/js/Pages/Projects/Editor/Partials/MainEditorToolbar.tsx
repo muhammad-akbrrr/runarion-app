@@ -23,13 +23,13 @@ interface EditorToolbarProps {
     wordCount?: number;
 }
 
-export function EditorToolbar({ 
-    onSend, 
+export function EditorToolbar({
+    onSend,
     isGenerating = false,
-    wordCount = 0
+    wordCount = 0,
 }: EditorToolbarProps) {
     const [isButtonDisabled, setIsButtonDisabled] = useState(false);
-    
+
     // Add a cooldown period after generation to prevent accidental double-clicks
     useEffect(() => {
         if (!isGenerating) {
@@ -63,11 +63,11 @@ export function EditorToolbar({
                 {/* Left side - Controls */}
                 <div className="flex items-center space-x-2">
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-                        <Book className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                         <SlidersHorizontal className="h-4 w-4" />
                     </Button>
+                    <span className="text-sm text-gray-500">
+                        {displayWordCount} Words
+                    </span>
                     {/* Auto dropdown - opens upward */}
                     <DropdownMenu>
                         <DropdownMenuTrigger>
@@ -82,7 +82,6 @@ export function EditorToolbar({
                             <DropdownMenuItem>Custom Settings</DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
-                    <span className="text-sm text-gray-500">{displayWordCount} Words</span>
                 </div>
 
                 {/* Right side - Action buttons */}
@@ -108,8 +107,8 @@ export function EditorToolbar({
                     <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
                         <RefreshCw className="h-4 w-4" />
                     </Button>
-                    <Button 
-                        size="sm" 
+                    <Button
+                        size="sm"
                         onClick={handleSendClick}
                         disabled={isButtonDisabled}
                         className={isGenerating ? "animate-pulse" : ""}

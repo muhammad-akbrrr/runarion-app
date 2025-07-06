@@ -200,7 +200,7 @@ class MainEditorController extends Controller
     {
         $validated = $request->validate([
             'order' => 'required|integer',
-            'content' => 'nullable|string',
+            'content' => 'nullable|string|max:1000000', // content for HTML/markdown
             'trigger' => 'nullable|string|in:manual,auto,llm_generation',
         ]);
 
@@ -213,7 +213,11 @@ class MainEditorController extends Controller
 
         foreach ($chapters as &$chapter) {
             if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
-                $chapter['content'] = $validated['content'] ?? '';
+                // Sanitize HTML content to prevent XSS while preserving formatting
+                $content = $validated['content'] ?? '';
+                // Allow basic HTML tags for formatting
+                $allowedTags = '<p><h1><h2><h3><h4><h5><h6><strong><em><u><strike><ul><ol><li><br>';
+                $chapter['content'] = strip_tags($content, $allowedTags);
                 break;
             }
         }
