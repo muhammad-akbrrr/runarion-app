@@ -1,10 +1,11 @@
-import React, { useState } from "react";
-import { Head, usePage } from "@inertiajs/react";
+import React, { useState, useMemo } from "react";
+import { Head, usePage, Link } from "@inertiajs/react";
 import { 
   Card, 
   CardContent, 
   CardHeader, 
   CardTitle,
+  CardFooter,
 } from "@/Components/ui/card";
 import { Button } from "@/Components/ui/button";
 import { Badge } from "@/Components/ui/badge";
@@ -39,10 +40,13 @@ import {
   Folder, 
   HardDrive, 
   MoreVertical, 
-  Plus, 
+  CirclePlus, 
   ArrowUpDown,
   User,
   Users,
+  ChevronLeft,
+  ChevronRight,
+  Ellipsis,
 } from "lucide-react";
 
 // Define the storage provider type
@@ -92,6 +96,10 @@ export default function FileManager() {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [selectAll, setSelectAll] = useState(false);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 15;
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: "Dashboard", path: "workspace.dashboard" },
@@ -116,30 +124,39 @@ export default function FileManager() {
   });
 
   // Sort projects based on the selected column and direction
-  const sortedProjects = [...projects].sort((a, b) => {
-    if (!sortColumn) return 0;
-    
-    let comparison = 0;
-    
-    switch (sortColumn) {
-      case 'name':
-        comparison = a.name.localeCompare(b.name);
-        break;
-      case 'size':
-        // Extract numeric value from size string (e.g., "2.4 MB" -> 2.4)
-        const sizeA = parseFloat(a.size);
-        const sizeB = parseFloat(b.size);
-        comparison = sizeA - sizeB;
-        break;
-      case 'createdAt':
-        comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-        break;
-      default:
-        return 0;
-    }
-    
-    return sortDirection === 'asc' ? comparison : -comparison;
-  });
+  const sortedProjects = useMemo(() => {
+    return [...projects].sort((a, b) => {
+      if (!sortColumn) return 0;
+      
+      let comparison = 0;
+      
+      switch (sortColumn) {
+        case 'name':
+          comparison = a.name.localeCompare(b.name);
+          break;
+        case 'size':
+          // Extract numeric value from size string (e.g., "2.4 MB" -> 2.4)
+          const sizeA = parseFloat(a.size);
+          const sizeB = parseFloat(b.size);
+          comparison = sizeA - sizeB;
+          break;
+        case 'createdAt':
+          comparison = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          break;
+        default:
+          return 0;
+      }
+      
+      return sortDirection === 'asc' ? comparison : -comparison;
+    });
+  }, [projects, sortColumn, sortDirection]);
+
+  // Calculate pagination
+  const totalPages = Math.ceil(sortedProjects.length / itemsPerPage);
+  const paginatedProjects = useMemo(() => {
+    const startIndex = (currentPage - 1) * itemsPerPage;
+    return sortedProjects.slice(startIndex, startIndex + itemsPerPage);
+  }, [sortedProjects, currentPage, itemsPerPage]);
 
   const handleSort = (column: string) => {
     if (sortColumn === column) {
@@ -154,7 +171,7 @@ export default function FileManager() {
     if (selectAll) {
       setSelectedProjects([]);
     } else {
-      setSelectedProjects(projects.map(project => project.id));
+      setSelectedProjects(paginatedProjects.map(project => project.id));
     }
     setSelectAll(!selectAll);
   };
@@ -162,9 +179,19 @@ export default function FileManager() {
   const handleSelectProject = (projectId: string) => {
     if (selectedProjects.includes(projectId)) {
       setSelectedProjects(selectedProjects.filter(id => id !== projectId));
+      if (selectAll) setSelectAll(false);
     } else {
       setSelectedProjects([...selectedProjects, projectId]);
+      if (selectedProjects.length + 1 === paginatedProjects.length) {
+        setSelectAll(true);
+      }
     }
+  };
+
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    setSelectedProjects([]);
+    setSelectAll(false);
   };
 
   // Function to get the appropriate icon component based on the icon name
@@ -189,7 +216,7 @@ export default function FileManager() {
         {/* File Manager Section */}
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">File Manager</h2>
+            <h2 className="text-xl">File Manager</h2>
           </div>
           
           {/* Storage Cards - 4 column grid on md+, 2 column on sm, 1 column on xs */}
@@ -234,11 +261,12 @@ export default function FileManager() {
         {/* Author Styles */}
         <div className="space-y-4">
           <div className="flex justify-between items-center">
-            <h2 className="text-xl font-semibold">Author Styles</h2>
+            <h2 className="text-xl">Author Styles</h2>
             <Button 
-              className="bg-black text-white hover:bg-black/90"
+              variant="default"
+              onClick={() => setIsAuthorStyleModalOpen(true)}
             >
-              <Plus className="h-4 w-4 mr-1" />
+              <CirclePlus />
               Add Style
             </Button>
           </div>
@@ -309,8 +337,8 @@ export default function FileManager() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {sortedProjects.length > 0 ? (
-                  sortedProjects.map((project) => (
+                {paginatedProjects.length > 0 ? (
+                  paginatedProjects.map((project) => (
                     <TableRow key={project.id}>
                       <TableCell>
                         <Checkbox 
@@ -350,17 +378,30 @@ export default function FileManager() {
                       </TableCell>
                       <TableCell>
                         <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8">
-                              <MoreVertical className="h-4 w-4" />
-                              <span className="sr-only">Open menu</span>
-                            </Button>
+                          <DropdownMenuTrigger>
+                            <div className="cursor-pointer relative z-20 p-2 m-[-8px]">
+                              <Ellipsis className="h-4 w-4" />
+                            </div>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>Open</DropdownMenuItem>
-                            <DropdownMenuItem>Share</DropdownMenuItem>
-                            <DropdownMenuItem>Rename</DropdownMenuItem>
-                            <DropdownMenuItem className="text-red-600">Delete</DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {}}>
+                              <span>Project Settings</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {}}>
+                              <span>Move to Folder</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {}}>
+                              <span>Open Project</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {}}>
+                              <span>Duplicate Project</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {}}>
+                              <span>Share Project</span>
+                            </DropdownMenuItem>
+                            <DropdownMenuItem onClick={() => {}}>
+                              <span>Archive Project</span>
+                            </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
@@ -376,8 +417,66 @@ export default function FileManager() {
               </TableBody>
             </Table>
           </CardContent>
+          {totalPages > 1 && (
+            <CardFooter className="flex justify-between items-center border-t px-6 py-4">
+              <div className="text-sm text-muted-foreground">
+                Showing {((currentPage - 1) * itemsPerPage) + 1} to {Math.min(currentPage * itemsPerPage, projects.length)} of {projects.length} projects
+              </div>
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  disabled={currentPage === 1}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <div className="flex items-center space-x-1">
+                  {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
+                    <Button
+                      key={page}
+                      variant={page === currentPage ? "default" : "outline"}
+                      size="sm"
+                      className="w-8 h-8 p-0"
+                      onClick={() => handlePageChange(page)}
+                    >
+                      {page}
+                    </Button>
+                  ))}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  disabled={currentPage === totalPages}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </CardFooter>
+          )}
         </Card>
       </div>
+
+      {/* Author Style Modal (placeholder) */}
+      <Dialog open={isAuthorStyleModalOpen} onOpenChange={setIsAuthorStyleModalOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Author Style</DialogTitle>
+            <DialogDescription>
+              Create a new author style for your projects.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            {/* Form content would go here */}
+            <p className="text-sm text-muted-foreground">Author style creation form placeholder.</p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsAuthorStyleModalOpen(false)}>Cancel</Button>
+            <Button onClick={() => setIsAuthorStyleModalOpen(false)}>Create</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AuthenticatedLayout>
   );
 }
