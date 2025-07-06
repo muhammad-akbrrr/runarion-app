@@ -202,10 +202,13 @@ VOLUME /var/lib/postgresql/data
 COPY docker-entrypoint.sh docker-ensure-initdb.sh /usr/local/bin/
 RUN ln -sT docker-ensure-initdb.sh /usr/local/bin/docker-enforce-initdb.sh
 
-# Copy AGE initialization script
+# Copy AGE initialization scripts
 COPY 01-init-age.sql /docker-entrypoint-initdb.d/
+COPY 02-init-novel-graph-schema.sql /docker-entrypoint-initdb.d/
 RUN chown postgres:postgres /docker-entrypoint-initdb.d/01-init-age.sql && \
-    chmod 644 /docker-entrypoint-initdb.d/01-init-age.sql
+    chmod 644 /docker-entrypoint-initdb.d/01-init-age.sql && \
+    chown postgres:postgres /docker-entrypoint-initdb.d/02-init-novel-graph-schema.sql && \
+    chmod 644 /docker-entrypoint-initdb.d/02-init-novel-graph-schema.sql
 
 # Set entrypoint and default command
 ENTRYPOINT ["docker-entrypoint.sh"]

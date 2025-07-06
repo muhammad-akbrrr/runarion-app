@@ -328,11 +328,10 @@ export default function ProjectEditorLayout({
                 name: value,
             },
             {
-                preserveState: true,
-                preserveScroll: true,
                 onSuccess: () => {
                     setIsSaving(false);
                     setIsSaved(true);
+                    router.reload({ only: ['project'] });
                 },
                 onError: () => {
                     setIsSaving(false);

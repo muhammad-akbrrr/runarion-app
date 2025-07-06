@@ -97,6 +97,7 @@ README.md
 # Database files
 *.sql
 !01-init-age.sql
+!02-init-novel-graph-schema.sql
 *.sqlite
 
 # Test files

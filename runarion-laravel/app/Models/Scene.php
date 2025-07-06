@@ -22,11 +22,15 @@ class Scene extends Model
         'original_content',
         'analysis_json',
         'enhanced_content',
+        'graph_analyzed',
+        'graph_last_updated',
     ];
 
     protected $casts = [
         'characters' => 'array',
         'analysis_json' => 'array',
+        'graph_analyzed' => 'boolean',
+        'graph_last_updated' => 'datetime',
     ];
 
     public function draft(): BelongsTo
@@ -37,5 +41,15 @@ class Scene extends Model
     public function plotIssues(): HasMany
     {
         return $this->hasMany(PlotIssue::class, 'affected_scene_id');
+    }
+
+    public function analyzeGraphRelationships(): bool
+    {
+        return app(\App\Services\NovelGraphService::class)->analyzeSceneRelationships($this);
+    }
+
+    public function graphEdges(): HasMany
+    {
+        return $this->hasMany(NovelGraphEdge::class);
     }
 }
