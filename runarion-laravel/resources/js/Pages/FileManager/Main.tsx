@@ -23,6 +23,7 @@ export default function FileManager() {
   }));
 
   const handleAddAuthorStyle = () => {
+    // This would typically make an API call to refresh the data
     console.log("Author style added");
   };
 
@@ -41,7 +42,10 @@ export default function FileManager() {
         />
 
         {/* Projects Table Section */}
-        <ProjectsTable projects={projects} />
+        <ProjectsTable 
+          projects={projects} 
+          workspaceId={workspaceId} 
+        />
       </div>
 
       {/* Author Style Modal */}
