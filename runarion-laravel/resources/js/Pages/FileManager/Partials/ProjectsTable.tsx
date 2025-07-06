@@ -30,10 +30,10 @@ import {
   ArrowUpDown,
   User,
   Users,
-  Archive,
+  Trash2,
 } from "lucide-react";
 import { router } from "@inertiajs/react";
-import ArchiveProjectDialog from "./ArchiveProjectDialog";
+import DeleteProjectDialog from "./DeleteProjectDialog";
 
 interface ProjectsTableProps {
   projects: Project[];
@@ -50,12 +50,12 @@ export default function ProjectsTable({ projects, workspaceId }: ProjectsTablePr
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
 
-  // Archive dialog state
-  const [archiveDialogOpen, setArchiveDialogOpen] = useState(false);
-  const [archiveProjectId, setArchiveProjectId] = useState<string | null>(null);
-  const [archiveProjectName, setArchiveProjectName] = useState("");
-  const [archiveConfirmInput, setArchiveConfirmInput] = useState("");
-  const [archiveLoading, setArchiveLoading] = useState(false);
+  // Delete dialog state
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteProjectId, setDeleteProjectId] = useState<string | null>(null);
+  const [deleteProjectName, setDeleteProjectName] = useState("");
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState("");
+  const [deleteLoading, setDeleteLoading] = useState(false);
 
   // Sort projects based on the selected column and direction
   const sortedProjects = useMemo(() => {
@@ -149,36 +149,73 @@ export default function ProjectsTable({ projects, workspaceId }: ProjectsTablePr
     }));
   };
 
-  const openArchiveDialog = (projectId?: string, projectName?: string) => {
+  const openDeleteDialog = (projectId?: string, projectName?: string) => {
     if (projectId && projectName) {
-      // Single project archive
-      setArchiveProjectId(projectId);
-      setArchiveProjectName(projectName);
-      setArchiveConfirmInput("");
+      // Single project delete
+      setDeleteProjectId(projectId);
+      setDeleteProjectName(projectName);
+      setDeleteConfirmInput("");
     } else {
-      // Multiple projects archive
-      setArchiveProjectId(null);
-      setArchiveProjectName("");
-      setArchiveConfirmInput("");
+      // Multiple projects delete
+      setDeleteProjectId(null);
+      setDeleteProjectName("");
+      setDeleteConfirmInput("");
     }
-    setArchiveDialogOpen(true);
+    setDeleteDialogOpen(true);
   };
 
-  const handleArchiveProjects = () => {
-    setArchiveLoading(true);
-    
-    // This would typically make an API call to archive the projects
-    // For now, we'll just simulate it with a timeout
-    setTimeout(() => {
-      console.log("Archiving projects:", archiveProjectId ? [archiveProjectId] : selectedProjects);
-      setArchiveLoading(false);
-      setArchiveDialogOpen(false);
-      setArchiveProjectId(null);
-      setArchiveProjectName("");
-      setArchiveConfirmInput("");
-      setSelectedProjects([]);
-      setSelectAll(false);
-    }, 1000);
+  const handleDeleteProjects = async () => {
+    setDeleteLoading(true);
+
+    // Single delete
+    if (deleteProjectId) {
+      router.delete(
+        route("workspace.projects.destroy", {
+          workspace_id: workspaceId,
+          project_id: deleteProjectId,
+        }),
+        {
+          preserveScroll: true,
+          onFinish: () => {
+            setDeleteLoading(false);
+            setDeleteDialogOpen(false);
+            setDeleteProjectId(null);
+            setDeleteProjectName("");
+          },
+        }
+      );
+      return;
+    }
+
+    // Multiple delete
+    if (selectedProjects.length > 0) {
+      // You may want to implement a batch delete route on the backend
+      const deleteNext = (ids: string[]) => {
+        if (ids.length === 0) {
+          setDeleteLoading(false);
+          setDeleteDialogOpen(false);
+          setSelectedProjects([]);
+          setSelectAll(false);
+          return;
+        }
+        const id = ids[0];
+        router.delete(
+          route("workspace.projects.destroy", {
+            workspace_id: workspaceId,
+            project_id: id,
+          }),
+          {
+            preserveScroll: true,
+            onSuccess: () => deleteNext(ids.slice(1)),
+            onError: () => deleteNext(ids.slice(1)),
+          }
+        );
+      };
+      deleteNext([...selectedProjects]);
+    } else {
+      setDeleteLoading(false);
+      setDeleteDialogOpen(false);
+    }
   };
 
   // Find project by ID
@@ -289,8 +326,8 @@ export default function ProjectsTable({ projects, workspaceId }: ProjectsTablePr
                           <DropdownMenuItem onClick={() => {}}>
                             <span>Share Project</span>
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openArchiveDialog(project.id, project.name)}>
-                            <span>Archive Project</span>
+                          <DropdownMenuItem onClick={() => openDeleteDialog(project.id, project.name)}>
+                            <span>Delete Project</span>
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -337,25 +374,31 @@ export default function ProjectsTable({ projects, workspaceId }: ProjectsTablePr
             </div>
             <Button
               variant="destructive"
-              onClick={() => openArchiveDialog()}
+              onClick={() => openDeleteDialog()}
               className="flex items-center gap-2"
             >
-              <Archive className="h-4 w-4" />
-              Archive Selected
+              <Trash2 className="h-4 w-4" />
+              Delete Selected
             </Button>
           </CardFooter>
         )}
       </Card>
 
-      <ArchiveProjectDialog
-        open={archiveDialogOpen}
-        setOpen={setArchiveDialogOpen}
-        projectName={archiveProjectName}
-        isMultiple={!archiveProjectId}
-        confirmationInput={archiveConfirmInput}
-        setConfirmationInput={setArchiveConfirmInput}
-        loading={archiveLoading}
-        handleArchive={handleArchiveProjects}
+      <DeleteProjectDialog
+        open={deleteDialogOpen}
+        setOpen={setDeleteDialogOpen}
+        projectName={
+          deleteProjectId
+            ? deleteProjectName // single delete
+            : selectedProjects.length === 1
+              ? getProjectById(selectedProjects[0])?.name || ""
+              : ""
+        }
+        isMultiple={deleteProjectId === null && selectedProjects.length > 1}
+        confirmationInput={deleteConfirmInput}
+        setConfirmationInput={setDeleteConfirmInput}
+        loading={deleteLoading}
+        handleDelete={handleDeleteProjects}
         selectedCount={selectedProjects.length}
       />
     </>
