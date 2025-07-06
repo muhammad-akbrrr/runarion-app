@@ -23,12 +23,16 @@ class Draft extends Model
         'processing_completed_at',
         'error_message',
         'metadata',
+        'graph_initialized',
+        'graph_last_updated',
     ];
 
     protected $casts = [
         'metadata' => 'array',
         'processing_started_at' => 'datetime',
         'processing_completed_at' => 'datetime',
+        'graph_initialized' => 'boolean',
+        'graph_last_updated' => 'datetime',
     ];
 
     public const STATUS_PENDING = 'pending';
@@ -79,5 +83,45 @@ class Draft extends Model
     public function analysisReports(): HasMany
     {
         return $this->hasMany(AnalysisReport::class);
+    }
+
+    public function graphVertices(): HasMany
+    {
+        return $this->hasMany(NovelGraphVertex::class);
+    }
+
+    public function graphEdges(): HasMany
+    {
+        return $this->hasMany(NovelGraphEdge::class);
+    }
+
+    public function graphCharacters(): HasMany
+    {
+        return $this->hasMany(NovelGraphVertex::class)->where('entity_type', 'character');
+    }
+
+    public function graphLocations(): HasMany
+    {
+        return $this->hasMany(NovelGraphVertex::class)->where('entity_type', 'location');
+    }
+
+    public function initializeGraph(): bool
+    {
+        return app(\App\Services\NovelGraphService::class)->initializeDraftGraph($this);
+    }
+
+    public function getGraphStats(): array
+    {
+        return app(\App\Services\NovelGraphService::class)->getDraftGraphStats($this);
+    }
+
+    public function cleanupGraphData(): int
+    {
+        return app(\App\Services\NovelGraphService::class)->cleanupOrphanedData($this);
+    }
+
+    public function deleteGraphData(): int
+    {
+        return app(\App\Services\NovelGraphService::class)->deleteDraftGraphData($this);
     }
 }

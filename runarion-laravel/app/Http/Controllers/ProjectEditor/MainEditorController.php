@@ -65,16 +65,7 @@ class MainEditorController extends Controller
         $project->slug = Str::slug($validated['name']);
         $project->save();
 
-        // Extract chapters from JSON content field
-        $chapters = [];
-        if ($project && $project->content && is_array($project->content)) {
-            $chapters = $project->content;
-        }
-
-        return redirect()->route('workspace.projects.editor', [
-            'workspace_id' => $workspace_id,
-            'project_id' => $project_id,
-        ]);
+        return back()->with('success', 'Project name updated successfully.');
     }
 
     /**
@@ -377,7 +368,7 @@ class MainEditorController extends Controller
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
             ]);
-            
+
         } catch (\Exception $e) {
             Log::error('Error starting text generation', [
                 'error' => $e->getMessage(),
@@ -390,7 +381,7 @@ class MainEditorController extends Controller
             ], 500);
         }
     }
-    
+
     /**
      * Function to handle cancellation of text generation.
      */
