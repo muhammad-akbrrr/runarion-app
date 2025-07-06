@@ -17,7 +17,7 @@ export default function AuthorStyleCard({ authorStyles, onAddClick }: AuthorStyl
           variant="default"
           onClick={onAddClick}
         >
-          <CirclePlus className="mr-2 h-4 w-4" />
+          <CirclePlus/>
           Add Author Style
         </Button>
       </div>
