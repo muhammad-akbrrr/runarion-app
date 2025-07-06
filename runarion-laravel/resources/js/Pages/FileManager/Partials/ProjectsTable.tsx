@@ -224,126 +224,181 @@ export default function ProjectsTable({ projects, workspaceId }: ProjectsTablePr
   };
 
   return (
-    <>
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle>Projects</CardTitle>
-          <Button variant="default" size="sm" onClick={handleViewAll}>View All</Button>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[40px]">
-                  <Checkbox 
-                    checked={selectAll} 
-                    onCheckedChange={handleSelectAll}
-                  />
-                </TableHead>
-                <TableHead className="cursor-pointer" onClick={() => handleSort('name')}>
-                  <div className="flex items-center">
-                    Name
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </div>
-                </TableHead>
-                <TableHead className="cursor-pointer" onClick={() => handleSort('size')}>
-                  <div className="flex items-center">
-                    Size
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </div>
-                </TableHead>
-                <TableHead className="cursor-pointer" onClick={() => handleSort('createdAt')}>
-                  <div className="flex items-center">
-                    Created At
-                    <ArrowUpDown className="ml-2 h-4 w-4" />
-                  </div>
-                </TableHead>
-                <TableHead>Shared With</TableHead>
-                <TableHead>Saved In</TableHead>
-                <TableHead className="w-[60px]">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paginatedProjects.length > 0 ? (
-                paginatedProjects.map((project) => (
-                  <TableRow key={project.id}>
-                    <TableCell>
-                      <Checkbox 
-                        checked={selectedProjects.includes(project.id)}
-                        onCheckedChange={() => handleSelectProject(project.id)}
-                      />
-                    </TableCell>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center">
-                        <Folder className="h-4 w-4 mr-2 text-blue-500" />
-                        {project.name}
-                      </div>
-                    </TableCell>
-                    <TableCell>{project.size}</TableCell>
-                    <TableCell>{project.createdAt}</TableCell>
-                    <TableCell>
-                      {project.sharedWith.length > 0 ? (
-                        <div className="flex items-center">
-                          {project.sharedWith.length === 1 ? (
-                            <>
-                              <User className="h-4 w-4 mr-1" />
-                              <span>{project.sharedWith[0]}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Users className="h-4 w-4 mr-1" />
-                              <span>{project.sharedWith.length} users</span>
-                            </>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">Not shared</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{project.savedIn}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <DropdownMenu>
-                        <DropdownMenuTrigger>
-                          <div className="cursor-pointer relative z-20 p-2 m-[-8px]">
-                            <Ellipsis className="h-4 w-4" />
-                          </div>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => openProjectSettings(project.id)}>
-                            <span>Project Settings</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {}}>
-                            <span>Move to Folder</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openProjectEditor(project.id)}>
-                            <span>Open Project</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {}}>
-                            <span>Duplicate Project</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => {}}>
-                            <span>Share Project</span>
-                          </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => openDeleteDialog(project.id, project.name)}>
-                            <span>Delete Project</span>
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={7} className="text-center py-8 text-muted-foreground">
-                    No projects found.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
+    <div className="space-y-4">
+        <div className="flex justify-between items-center">
+            <h2 className="text-xl">Project Files</h2>
+            <Button variant="outline" onClick={handleViewAll}>View All</Button>
+        </div>
+
+        <Card className="rounded-md py-2">
+            <CardContent className="px-2">
+                <Table>
+                    <TableHeader>
+                        <TableRow>
+                            <TableHead className="w-[40px]">
+                                <Checkbox
+                                    checked={selectAll}
+                                    onCheckedChange={
+                                        handleSelectAll
+                                    }
+                                />
+                            </TableHead>
+                            <TableHead
+                                className="cursor-pointer"
+                                onClick={() => handleSort("name")}
+                            >
+                                <div className="flex items-center">
+                                    Name
+                                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                                </div>
+                            </TableHead>
+                            <TableHead
+                                className="cursor-pointer"
+                                onClick={() => handleSort("size")}
+                            >
+                                <div className="flex items-center">
+                                    Size
+                                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                                </div>
+                            </TableHead>
+                            <TableHead
+                                className="cursor-pointer"
+                                onClick={() =>
+                                    handleSort("createdAt")
+                                }
+                            >
+                                <div className="flex items-center">
+                                    Created At
+                                    <ArrowUpDown className="ml-2 h-4 w-4" />
+                                </div>
+                            </TableHead>
+                            <TableHead>Shared With</TableHead>
+                            <TableHead>Saved In</TableHead>
+                            <TableHead className="w-[60px]">
+                                Actions
+                            </TableHead>
+                        </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                        {paginatedProjects.length > 0 ? (
+                            paginatedProjects.map((project) => (
+                                <TableRow key={project.id}>
+                                    <TableCell>
+                                        <Checkbox
+                                            checked={selectedProjects.includes(
+                                                project.id
+                                            )}
+                                            onCheckedChange={() =>
+                                                handleSelectProject(
+                                                    project.id
+                                                )
+                                            }
+                                        />
+                                    </TableCell>
+                                    <TableCell className="font-medium">
+                                        <div className="flex items-center gap-2">
+                                            <Folder className="h-4 w-4" />
+                                            {project.name}
+                                        </div>
+                                    </TableCell>
+                                    <TableCell>
+                                        {project.size}
+                                    </TableCell>
+                                    <TableCell>
+                                        {project.createdAt}
+                                    </TableCell>
+                                    <TableCell>
+                                        {project.sharedWith.length >
+                                        0 ? (
+                                            <div className="flex items-center">
+                                                {project.sharedWith
+                                                    .length ===
+                                                1 ? (
+                                                    <>
+                                                        <User className="h-4 w-4 mr-1" />
+                                                        <span>
+                                                            {
+                                                                project
+                                                                    .sharedWith[0]
+                                                            }
+                                                        </span>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <Users className="h-4 w-4 mr-1" />
+                                                        <span>
+                                                            {
+                                                                project
+                                                                    .sharedWith
+                                                                    .length
+                                                            }{" "}
+                                                            users
+                                                        </span>
+                                                    </>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <span className="text-muted-foreground">
+                                                Not shared
+                                            </span>
+                                        )}
+                                    </TableCell>
+                                    <TableCell>
+                                        <Badge variant="outline">
+                                            {project.savedIn}
+                                        </Badge>
+                                    </TableCell>
+                                    <TableCell>
+                                        <DropdownMenu>
+                                            <DropdownMenuTrigger>
+                                              <Button
+                                                  variant="ghost"
+                                                  size="icon"
+                                                  className="h-8 w-8"
+                                              >
+                                                  <Ellipsis className="h-4 w-4"/>
+                                                  <span className="sr-only">
+                                                      Open menu
+                                                  </span>
+                                              </Button>
+                                            </DropdownMenuTrigger>
+                                            <DropdownMenuContent align="end">
+                                              <DropdownMenuItem onClick={() => openProjectSettings(project.id)}>
+                                                <span>Project Settings</span>
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem onClick={() => {}}>
+                                                <span>Move to Folder</span>
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem onClick={() => openProjectEditor(project.id)}>
+                                                <span>Open Project</span>
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem onClick={() => {}}>
+                                                <span>Duplicate Project</span>
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem onClick={() => {}}>
+                                                <span>Share Project</span>
+                                              </DropdownMenuItem>
+                                              <DropdownMenuItem className="text-red-600" onClick={() => openDeleteDialog(project.id, project.name)}>
+                                                <span>Delete Project</span>
+                                              </DropdownMenuItem>
+                                            </DropdownMenuContent>
+                                        </DropdownMenu>
+                                    </TableCell>
+                                </TableRow>
+                            ))
+                        ) : (
+                            <TableRow>
+                                <TableCell
+                                    colSpan={7}
+                                    className="!text-base text-center py-8 text-gray-500 !h-[42svh]"
+                                >
+                                    No projects found.
+                                </TableCell>
+                            </TableRow>
+                        )}
+                    </TableBody>
+                </Table>
+            </CardContent>
         {totalPages > 1 && selectedProjects.length === 0 && (
           <CardFooter className="flex justify-between items-center border-t px-6 py-4">
             <div className="text-sm text-muted-foreground">
@@ -401,6 +456,6 @@ export default function ProjectsTable({ projects, workspaceId }: ProjectsTablePr
         handleDelete={handleDeleteProjects}
         selectedCount={selectedProjects.length}
       />
-    </>
+    </div>
   );
 }

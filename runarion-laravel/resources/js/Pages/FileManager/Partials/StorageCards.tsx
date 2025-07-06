@@ -43,40 +43,60 @@ export default function StorageCards({ storageProviders }: StorageCardsProps) {
       
       {/* Storage Cards - 4 column grid on md+, 2 column on sm, 1 column on xs */}
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {sortedStorageProviders.map((provider) => {
-          const IconComponent = getIconComponent(provider.icon);
-          return (
-            <div key={provider.id} className={`bg-white rounded-lg border ${!provider.enabled ? 'opacity-60' : ''}`}>
-              <div className="p-6">
-                <div className="flex items-center gap-4">
-                  <div className={`${provider.color} p-2 rounded-full bg-gray-100`}>
-                    <IconComponent className="h-6 w-6" />
+          {sortedStorageProviders.map((provider) => {
+              const IconComponent = getIconComponent(
+                  provider.icon
+              );
+              return (
+                  <div
+                      key={provider.id}
+                      className={`bg-white rounded-md border ${
+                          !provider.enabled ? "opacity-60" : ""
+                      }`}
+                  >
+                      <div className="p-4">
+                          <div className="flex items-center gap-3">
+                              <div
+                                  className={`${provider.color} p-2 rounded-full bg-gray-100`}
+                              >
+                                  <IconComponent className="h-4 w-4" />
+                              </div>
+                              <div className="flex-1">
+                                  <h3 className="font-medium">
+                                      {provider.name}
+                                  </h3>
+                              </div>
+                          </div>
+
+                          {provider.enabled && (
+                              <div className="mt-3 space-y-2">
+                                  <div className="h-1 w-full bg-gray-200 rounded">
+                                      <div
+                                          className="h-1 rounded bg-gray-700"
+                                          style={{
+                                              width: `${provider.percentage}%`,
+                                          }}
+                                      />
+                                  </div>
+                                  <div className="text-sm text-muted-foreground">
+                                      {provider.used}GB /{" "}
+                                      {provider.total}GB
+                                  </div>
+                              </div>
+                          )}
+
+                          {!provider.enabled && (
+                              <div className="mt-3 space-y-2">
+                                  <div className="h-1 w-full bg-gray-200 rounded"></div>
+                                  <div className="text-sm text-muted-foreground">
+                                      ∞ / ∞
+                                  </div>
+                              </div>
+                          )}
+                      </div>
                   </div>
-                  <div className="flex-1">
-                    <h3 className="font-medium">{provider.name}</h3>
-                    {!provider.enabled && (
-                      <span className="text-xs text-muted-foreground">Disabled</span>
-                    )}
-                  </div>
-                </div>
-                
-                {provider.enabled && (
-                  <div className="mt-4 space-y-2">
-                    <div className="h-2 w-full bg-gray-200 rounded">
-                      <div 
-                        className="h-2 rounded bg-blue-500" 
-                        style={{ width: `${provider.percentage}%` }}
-                      />
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {provider.used}GB / {provider.total}GB
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          );
-        })}
+              );
+          })}
       </div>
     </div>
   );

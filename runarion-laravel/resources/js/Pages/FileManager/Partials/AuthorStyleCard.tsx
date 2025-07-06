@@ -11,41 +11,50 @@ interface AuthorStyleCardProps {
 export default function AuthorStyleCard({ authorStyles, onAddClick }: AuthorStyleCardProps) {
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl">Author Styles</h2>
-        <Button 
-          variant="default"
-          onClick={onAddClick}
-        >
-          <CirclePlus/>
-          Add Author Style
-        </Button>
-      </div>
-      <div className="flex space-x-4 overflow-auto pb-2">
-        {authorStyles.length > 0 ? (
-          authorStyles.map((style) => (
-            <div key={style.id} className="min-w-[250px] max-w-[300px] bg-white rounded-lg border">
-              <div className="p-4 relative">
-                <span className="absolute top-2 right-2 text-xs bg-gray-100 px-2 py-0.5 rounded">
-                  {style.fileCount} Files
-                </span>
-                <div className="flex items-center gap-3 mt-4">
-                  <div className={`${style.color} w-10 h-10 rounded-full flex items-center justify-center font-medium`}>
-                    {style.avatar}
-                  </div>
-                  <div className="truncate">
-                    <h3 className="font-medium text-sm">{style.name}</h3>
-                  </div>
+        <div className="flex justify-between items-center">
+            <h2 className="text-xl">Author Styles</h2>
+            <Button
+              variant="default"
+              onClick={onAddClick}
+            >
+                <CirclePlus className="h-4 w-4" />
+                Add Author Style
+            </Button>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            {authorStyles.length > 0 ? (
+                authorStyles.map((style) => (
+                    <div
+                        key={style.id}
+                        className="w-full bg-white rounded-md border"
+                    >
+                        <div className="p-4 relative flex flex-col items-stretch justofy-between gap-3">
+                            <div className="flex flex-row items-start justify-between gap-3">
+                                <div
+                                    className={`${style.color} p-2 rounded-full flex items-center justify-center font-medium`}
+                                >
+                                    <div className="w-4 h-4">
+                                        {style.avatar}
+                                    </div>
+                                </div>
+                                <span className="text-xs bg-gray-100 px-2 py-0.5 rounded">
+                                    {style.fileCount} Files
+                                </span>
+                            </div>
+                            <div className="truncate">
+                                <p className="font-medium text-sm">
+                                    {style.name}
+                                </p>
+                            </div>
+                        </div>
+                    </div>
+                ))
+            ) : (
+                <div className="w-full col-span-4 text-center py-8 text-muted-foreground">
+                    You don't have any author styles yet.
                 </div>
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="w-full text-center py-8 text-muted-foreground">
-            No author styles found. Create one by clicking the "Add Author Style" button.
-          </div>
-        )}
-      </div>
+            )}
+        </div>
     </div>
   );
 }
