@@ -62,7 +62,7 @@ class ProjectContent extends Model
       'content' => ['required', 'array'],
       'content.*.order' => ['required', 'integer', 'min:0'],
       'content.*.chapter_name' => ['required', 'string', 'max:255'],
-      'content.*.content' => ['required', 'string'],
+      'content.*.content' => ['required', 'string', 'max:1000000'], // content for HTML/markdown
       'content.*.summary' => ['nullable', 'string'],
       'content.*.plot_points' => ['nullable', 'array'],
       'metadata' => ['nullable', 'array'],
@@ -81,7 +81,9 @@ class ProjectContent extends Model
 
     $totalWords = 0;
     foreach ($this->content as $chapter) {
-      $totalWords += str_word_count(strip_tags($chapter['content'] ?? ''));
+      // Strip HTML tags for accurate word count
+      $plainText = strip_tags($chapter['content'] ?? '');
+      $totalWords += str_word_count($plainText);
     }
 
     return $totalWords;

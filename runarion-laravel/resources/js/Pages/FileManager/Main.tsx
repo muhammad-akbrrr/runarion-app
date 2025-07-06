@@ -275,7 +275,7 @@ export default function FileManager() {
                                     className="w-full bg-white rounded-md border"
                                 >
                                     <div className="p-4 relative flex flex-col items-stretch justofy-between gap-3">
-                                        <div className="flex flex-row items-center justify-between gap-3">
+                                        <div className="flex flex-row items-start justify-between gap-3">
                                             <div
                                                 className={`${style.color} p-2 rounded-full flex items-center justify-center font-medium`}
                                             >
