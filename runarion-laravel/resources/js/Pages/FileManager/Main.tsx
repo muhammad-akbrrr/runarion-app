@@ -8,11 +8,11 @@ import { FileManagerProps } from "@/types/files";
 import StorageCards from "./Partials/StorageCards";
 import AuthorStyleCard from "./Partials/AuthorStyleCard";
 import ProjectsTable from "./Partials/ProjectsTable";
-import AddAuthorStyleDialog from "./Partials/AddAuthorStyleDialog";
+import AuthorStyleDialog from "./Partials/AuthorStyleDialog";
 
 export default function FileManager() {
   const { workspaceId, workspaceName, storageProviders, authorStyles, projects } = usePage<PageProps<FileManagerProps>>().props;
-  const [isAuthorStyleModalOpen, setIsAuthorStyleModalOpen] = useState(false);
+  const [isAuthorStyleDialogOpen, setIsAuthorStyleDialogOpen] = useState(false);
 
   const breadcrumbs: BreadcrumbItem[] = [
     { label: "Dashboard", path: "workspace.dashboard" },
@@ -21,11 +21,6 @@ export default function FileManager() {
     ...item,
     param: { workspace_id: workspaceId },
   }));
-
-  const handleAddAuthorStyle = () => {
-    // This would typically make an API call to refresh the data
-    console.log("Author style added");
-  };
 
   return (
     <AuthenticatedLayout breadcrumbs={breadcrumbs}>
@@ -38,7 +33,7 @@ export default function FileManager() {
         {/* Author Styles Section */}
         <AuthorStyleCard 
           authorStyles={authorStyles} 
-          onAddClick={() => setIsAuthorStyleModalOpen(true)} 
+          onAddClick={() => setIsAuthorStyleDialogOpen(true)} 
         />
 
         {/* Projects Table Section */}
@@ -48,11 +43,11 @@ export default function FileManager() {
         />
       </div>
 
-      {/* Author Style Modal */}
-      <AddAuthorStyleDialog 
-        open={isAuthorStyleModalOpen} 
-        setOpen={setIsAuthorStyleModalOpen} 
-        onSubmit={handleAddAuthorStyle}
+      {/* Author Style Dialog */}
+      <AuthorStyleDialog 
+        open={isAuthorStyleDialogOpen} 
+        onClose={() => setIsAuthorStyleDialogOpen(false)} 
+        authorStyles={authorStyles}
       />
     </AuthenticatedLayout>
   );

@@ -18,7 +18,7 @@ export default function AuthorStyleCard({ authorStyles, onAddClick }: AuthorStyl
           onClick={onAddClick}
         >
           <CirclePlus className="mr-2 h-4 w-4" />
-          Add Style
+          Add Author Style
         </Button>
       </div>
       <div className="flex space-x-4 overflow-auto pb-2">
@@ -42,7 +42,7 @@ export default function AuthorStyleCard({ authorStyles, onAddClick }: AuthorStyl
           ))
         ) : (
           <div className="w-full text-center py-8 text-muted-foreground">
-            No author styles found. Create one by clicking the "Add Style" button.
+            No author styles found. Create one by clicking the "Add Author Style" button.
           </div>
         )}
       </div>
