@@ -217,7 +217,7 @@ make_scripts_executable() {
         dos2unix docker-ensure-initdb.sh
         dos2unix runarion-laravel/docker-entrypoint.sh
         dos2unix runarion-python/docker-entrypoint.sh
-        dos2unix runarion-stable-diffusion/docker-entrypoint.sh
+        # dos2unix runarion-stable-diffusion/docker-entrypoint.sh
     else
         echo "Warning: dos2unix not found. Line endings may not be fixed properly."
     fi
@@ -225,7 +225,7 @@ make_scripts_executable() {
     chmod +x docker-ensure-initdb.sh
     chmod +x runarion-laravel/docker-entrypoint.sh
     chmod +x runarion-python/docker-entrypoint.sh
-    chmod +x runarion-stable-diffusion/docker-entrypoint.sh
+    # chmod +x runarion-stable-diffusion/docker-entrypoint.sh
 }
 
 # Function to wait for database to be ready
@@ -450,11 +450,11 @@ echo "Starting development environment setup..."
 check_docker
 check_env_vars
 check_ports
-check_gpu
+# check_gpu
 make_scripts_executable
 
 # Setup Stable Diffusion
-setup_stable_diffusion
+# setup_stable_diffusion
 
 # Build and start containers
 echo "Building and starting containers..."
@@ -464,7 +464,7 @@ docker compose -f docker-compose.dev.yml up -d --build
 wait_for_db
 check_age_extension
 wait_for_vite
-wait_for_sd
+# wait_for_sd
 
 # Setup services
 setup_laravel
@@ -475,7 +475,7 @@ echo "Laravel frontend: http://localhost:8000"
 echo "Python service: http://python-app:5000"
 echo "Database: localhost:5432"
 echo "Vite HMR: http://localhost:5173"
-echo "Stable Diffusion: http://stable-diffusion:7860 (internal network only)"
+# echo "Stable Diffusion: http://stable-diffusion:7860 (internal network only)"
 
 # Show logs
 echo "Showing logs (press Ctrl+C to stop)..."
