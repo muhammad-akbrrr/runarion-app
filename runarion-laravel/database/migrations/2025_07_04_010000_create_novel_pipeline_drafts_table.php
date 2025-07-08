@@ -10,10 +10,22 @@ return new class extends Migration {
         Schema::create('drafts', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->ulid('workspace_id');
+            $table->bigInteger('user_id')->unsigned();
             $table->string('original_filename');
             $table->string('file_path');
             $table->bigInteger('file_size');
-            $table->string('status')->default('pending');
+            $table->enum('status', [
+                'pending',
+                'processing', 
+                'stage_1_complete',
+                'stage_2_complete',
+                'stage_3_complete',
+                'stage_4_complete',
+                'stage_5_complete',
+                'stage_6_complete',
+                'completed',
+                'failed'
+            ])->default('pending');
             $table->timestamp('processing_started_at')->nullable();
             $table->timestamp('processing_completed_at')->nullable();
             $table->string('error_message')->nullable();
@@ -22,7 +34,9 @@ return new class extends Migration {
             $table->softDeletes();
 
             $table->foreign('workspace_id')->references('id')->on('workspaces')->onDelete('cascade');
+            $table->foreign('user_id')->references('id')->on('users')->onDelete('cascade');
             $table->index(['workspace_id', 'status']);
+            $table->index(['user_id', 'workspace_id']);
         });
 
         Schema::create('draft_chunks', function (Blueprint $table) {
