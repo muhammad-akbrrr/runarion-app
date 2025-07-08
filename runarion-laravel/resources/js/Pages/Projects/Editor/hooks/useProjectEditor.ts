@@ -267,10 +267,14 @@ export function useProjectEditor({
             prompt: content || "<please start writing here>",
             order: selectedChapter.order,
             settings: {
+                // General Settings
+                currentPreset: settings.currentPreset || "creative-writing",
+
                 // Model settings
                 aiModel: settings.aiModel || 'gpt-4o-mini',
                 
                 // Story settings
+                memory: settings.memory || '',
                 storyGenre: settings.storyGenre || '',
                 storyTone: settings.storyTone || '',
                 storyPov: settings.storyPov || '',

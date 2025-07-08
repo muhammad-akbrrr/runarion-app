@@ -149,7 +149,8 @@ class StreamLLMJob implements ShouldQueue
                 'stop_sequences' => $this->settings['stopSequences'] ?? [],
             ],
             'prompt_config' => [
-                'context' => $currentChapterContent,
+                'current_preset' => $this->settings['currentPreset'] ?? '',
+                'context' => $this->settings['memory'] ?? '',
                 'genre' => $this->settings['storyGenre'] ?? '',
                 'tone' => $this->settings['storyTone'] ?? '',
                 'pov' => $this->settings['storyPov'] ?? '',
