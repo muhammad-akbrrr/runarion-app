@@ -53,6 +53,7 @@ export function useEventDrivenSave({
                     console.log('Saving content changes', {
                         order: contentData.order,
                         length: contentData.content.length,
+                        content: contentData.content,
                         trigger: contentData.trigger || 'manual',
                     });
 

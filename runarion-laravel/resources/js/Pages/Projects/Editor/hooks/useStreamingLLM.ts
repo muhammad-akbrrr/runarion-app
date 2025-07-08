@@ -118,12 +118,12 @@ export function useStreamingLLM({
             channelRef.current.listen('.project.content.updated', (data: any) => {
                 console.log('Content updated:', data);
                 
-                // Handle content updates from other sources if needed
+                // Handle content updates from LLM generation
                 if (data.chapter_order === chapterOrder && 
                     data.trigger === 'llm_generation' &&
                     !state.isStreaming) {
                     // This is a completed generation update
-                    // We might want to refresh the content
+                    // The parent component will handle updating the content
                 }
             });
             

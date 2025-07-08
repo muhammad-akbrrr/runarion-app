@@ -133,7 +133,7 @@ class StreamLLMJob implements ShouldQueue
             'provider' => $this->determineProvider(),
             'model' => $this->settings['aiModel'] ?? 'gpt-4o-mini',
             'prompt' => $this->prompt,
-            'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice.',
+            'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice. Return the continuation exclusively in Markdown format with no HTML escaping or wrappers.',
             'stream' => true, // Enable streaming
             'generation_config' => [
                 'temperature' => $this->settings['temperature'] ?? 1,
@@ -350,11 +350,15 @@ class StreamLLMJob implements ShouldQueue
             if (isset($chapter['order']) && $chapter['order'] === $this->chapterOrder) {
                 $existingContent = $chapter['content'] ?? '';
                 
-                // Add space if needed
-                if ($existingContent !== '' && 
-                    substr($existingContent, -1) !== ' ' && 
-                    substr($generatedText, 0, 1) !== ' ') {
-                    $existingContent .= ' ';
+                // For markdown content, add proper spacing
+                if ($existingContent !== '') {
+                    // Check if existing content ends with newline or if generated text starts with newline
+                    if (!str_ends_with($existingContent, "\n") && !str_starts_with($generatedText, "\n")) {
+                        // Add a space if neither has newlines and existing doesn't end with space
+                        if (!str_ends_with($existingContent, " ")) {
+                            $existingContent .= " ";
+                        }
+                    }
                 }
                 
                 $chapter['content'] = $existingContent . $generatedText;
@@ -376,7 +380,7 @@ class StreamLLMJob implements ShouldQueue
             'llm_generation'
         ));
 
-        Log::info('Project content updated', [
+        Log::info('Project content updated with markdown', [
             'session_id' => $this->sessionId,
             'chapter_order' => $this->chapterOrder,
             'generated_length' => strlen($generatedText),

@@ -62,7 +62,7 @@ class ProjectContent extends Model
       'content' => ['required', 'array'],
       'content.*.order' => ['required', 'integer', 'min:0'],
       'content.*.chapter_name' => ['required', 'string', 'max:255'],
-      'content.*.content' => ['required', 'string', 'max:1000000'], // content for HTML/markdown
+      'content.*.content' => ['required', 'string', 'max:1000000'], // content for markdown
       'content.*.summary' => ['nullable', 'string'],
       'content.*.plot_points' => ['nullable', 'array'],
       'metadata' => ['nullable', 'array'],
@@ -81,12 +81,24 @@ class ProjectContent extends Model
 
     $totalWords = 0;
     foreach ($this->content as $chapter) {
-      // Strip HTML tags for accurate word count
-      $plainText = strip_tags($chapter['content'] ?? '');
+      // Remove markdown syntax for accurate word count
+      $plainText = $this->stripMarkdown($chapter['content'] ?? '');
       $totalWords += str_word_count($plainText);
     }
 
     return $totalWords;
+  }
+
+  /**
+   * Strip markdown syntax from text for word counting
+   */
+  private function stripMarkdown($text)
+  {
+    // Remove markdown syntax
+    $text = preg_replace('/[#*_`~\[\]()]/u', '', $text);
+    // Replace multiple whitespace with single space
+    $text = preg_replace('/\s+/u', ' ', $text);
+    return trim($text);
   }
 
   /**

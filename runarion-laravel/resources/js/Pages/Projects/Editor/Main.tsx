@@ -24,7 +24,20 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin";
-import { HEADING, UNORDERED_LIST, ORDERED_LIST } from "@lexical/markdown";
+import { 
+    HEADING,
+    UNORDERED_LIST,
+    ORDERED_LIST,
+    QUOTE,
+    BOLD_STAR,
+    BOLD_UNDERSCORE,
+    ITALIC_STAR,
+    ITALIC_UNDERSCORE,
+    STRIKETHROUGH,
+    INLINE_CODE,
+    $convertFromMarkdownString, 
+    $convertToMarkdownString 
+} from "@lexical/markdown";
 import {
     $getRoot,
     $createParagraphNode,
@@ -32,18 +45,20 @@ import {
     $getSelection,
     $isRangeSelection,
     FORMAT_TEXT_COMMAND,
+    TextNode,
 } from "lexical";
 import {
     HeadingNode,
     $createHeadingNode,
+    QuoteNode,
     $createQuoteNode,
 } from "@lexical/rich-text";
 import { ListNode, ListItemNode, $createListItemNode } from "@lexical/list";
 import { $setBlocksType } from "@lexical/selection";
 import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
-import { $generateHtmlFromNodes, $generateNodesFromDOM } from "@lexical/html";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
+import { StreamingPlugin } from "./Partials/StreamingPlugin";
 import { useProjectEditor } from "./hooks";
 import {
     ContextMenu,
@@ -56,69 +71,83 @@ import {
 // Import Echo for WebSocket connection
 import "@/echo";
 
+// Define supported transformers using the correct exports
+const SUPPORTED_TRANSFORMERS = [
+    HEADING,
+    UNORDERED_LIST,
+    ORDERED_LIST,
+    QUOTE,
+    BOLD_STAR,
+    BOLD_UNDERSCORE,
+    ITALIC_STAR,
+    ITALIC_UNDERSCORE,
+    STRIKETHROUGH,
+    INLINE_CODE,
+];
+
+// Debug: Log supported transformers
+console.log('Supported transformers:', SUPPORTED_TRANSFORMERS.map(t => ({
+    type: t.type,
+    tag: (t as any).tag ?? undefined
+})));
+
 // Custom plugin to update editor content when chapter changes
-function ContentUpdatePlugin({ content }: { content: string }) {
+function ContentUpdatePlugin({ content, isStreaming }: { content: string; isStreaming: boolean }) {
     const [editor] = useLexicalComposerContext();
 
     useEffect(() => {
-        editor.getEditorState().read(() => {
+        // Don't update content during streaming to avoid conflicts
+        if (isStreaming) {
+            console.log('ContentUpdatePlugin: Skipping update during streaming');
+            return;
+        }
+
+        editor.update(() => {
             const root = $getRoot();
-            // Compare HTML content instead of plain text
-            const currentContent = $generateHtmlFromNodes(editor, null);
-            if (currentContent === content) {
+            
+            // Get current markdown content to compare
+            const currentMarkdown = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
+            
+            if (currentMarkdown === content) {
+                console.log('ContentUpdatePlugin: Content unchanged, skipping update');
                 return; // No need to update
             }
-            editor.update(() => {
-                const root = $getRoot();
-                root.clear();
+            
+            // Clear the editor
+            root.clear();
 
-                if (content && content.trim()) {
-                    // If content is HTML, parse it properly using Lexical's HTML import
-                    if (content.startsWith('<') && content.includes('>')) {
-                        try {
-                            const parser = new DOMParser();
-                            const doc = parser.parseFromString(content, 'text/html');
-                            const nodes = $generateNodesFromDOM(editor, doc);
-                            root.append(...nodes);
-                        } catch (error) {
-                            console.error('Error parsing HTML content:', error);
-                            // Fallback to plain text
-                            const paragraph = $createParagraphNode();
-                            const textNode = $createTextNode(content);
-                            paragraph.append(textNode);
-                            root.append(paragraph);
-                        }
-                    } else {
-                        // Handle plain text content as before
-                        const lines = content.split("\n");
-                        lines.forEach((line, index) => {
-                            if (line.trim() || index === 0) {
-                                const paragraph = $createParagraphNode();
-                                const textNode = $createTextNode(line);
-                                paragraph.append(textNode);
-                                root.append(paragraph);
-                            }
-                        });
-                    }
-                } else {
-                    // Add empty paragraph if no content
+            if (content && content.trim()) {
+                try {
+                    // Convert markdown to Lexical nodes
+                    $convertFromMarkdownString(content, SUPPORTED_TRANSFORMERS);
+                    console.log('ContentUpdatePlugin: Successfully converted markdown to Lexical nodes');
+                } catch (error) {
+                    console.error('ContentUpdatePlugin: Error parsing markdown content:', error);
+                    // Fallback to plain text
                     const paragraph = $createParagraphNode();
+                    const textNode = $createTextNode(content);
+                    paragraph.append(textNode);
                     root.append(paragraph);
                 }
+            } else {
+                // Add empty paragraph if no content
+                const paragraph = $createParagraphNode();
+                root.append(paragraph);
+            }
 
-                // Set cursor to end after content is loaded
-                if (root.getChildrenSize() > 0) {
-                    const lastChild = root.getLastChild();
-                    if (lastChild) {
-                        lastChild.selectEnd();
+            // Set cursor to end after content is loaded - use setTimeout to avoid race conditions
+            setTimeout(() => {
+                editor.update(() => {
+                    if (root.getChildrenSize() > 0) {
+                        const lastChild = root.getLastChild();
+                        if (lastChild) {
+                            lastChild.selectEnd();
+                        }
                     }
-                } else {
-                    // If no content, select the root
-                    root.selectEnd();
-                }
-            });
+                });
+            }, 0);
         });
-    }, [content, editor]);
+    }, [content, editor, isStreaming]);
 
     return null;
 }
@@ -134,11 +163,15 @@ function EditorRefPlugin({ editorRef }: { editorRef: React.MutableRefObject<any>
     return null;
 }
 
-
-
 const editorConfig: InitialConfigType = {
     namespace: "MyEditor",
-    nodes: [HeadingNode, ListNode, ListItemNode],
+    nodes: [
+        HeadingNode,
+        ListNode,
+        ListItemNode,
+        QuoteNode,
+        TextNode,
+    ],
     theme: {
         paragraph: "text-base leading-relaxed text-gray-900",
         heading: {
@@ -154,6 +187,7 @@ const editorConfig: InitialConfigType = {
             italic: "italic",
             underline: "underline",
             strikethrough: "line-through",
+            code: "bg-gray-100 px-1 py-0.5 rounded text-sm font-mono",
         },
         textAlignLeft: "text-left",
         textAlignCenter: "text-center",
@@ -167,6 +201,7 @@ const editorConfig: InitialConfigType = {
             ul: "list-disc ml-6 my-2",
             listitem: "mb-1",
         },
+        quote: "border-l-4 border-gray-300 pl-4 italic text-gray-700 my-4",
     },
     onError(error) {
         throw error;
@@ -227,6 +262,12 @@ export default function ProjectEditorPage({
 
     // Handle focus out save - only save if content has changed
     const handleEditorBlur = useCallback(() => {
+        console.log('Editor blur event', {
+            hasSelectedChapter: !!selectedChapter,
+            isInteracting,
+            isStreaming,
+            contentLength: content?.length || 0
+        });
         if (selectedChapter && !isInteracting && !isStreaming) {
             smartSave(selectedChapter.order, content, 'manual');
         }
@@ -425,26 +466,24 @@ export default function ProjectEditorPage({
                                 />
                                 <HistoryPlugin />
                                 <ListPlugin />
-                                <MarkdownShortcutPlugin
-                                    transformers={[
-                                        HEADING,
-                                        UNORDERED_LIST,
-                                        ORDERED_LIST,
-                                    ]}
-                                />
+                                <MarkdownShortcutPlugin transformers={SUPPORTED_TRANSFORMERS} />
                                 <OnChangePlugin
                                     onChange={(editorState, editor) => {
                                         // Only update content state, let the hook handle saving
                                         if (!isStreaming && !isInteracting) {
                                             editorState.read(() => {
-                                                const root = $getRoot();
-                                                const newContent = $generateHtmlFromNodes(editor, null);
+                                                const newContent = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
                                                 setContent(newContent);
                                             });
                                         }
                                     }}
                                 />
-                                        <ContentUpdatePlugin content={content} />
+                                        <ContentUpdatePlugin content={content} isStreaming={isStreaming} />
+                                        <StreamingPlugin 
+                                            isStreaming={isStreaming}
+                                            streamingText={streamingText}
+                                            baseContent={selectedChapter?.content || ''}
+                                        />
                                         <EditorRefPlugin editorRef={editorRef} />
                                     </LexicalComposer>
                                 </div>
@@ -487,11 +526,13 @@ export default function ProjectEditorPage({
                             wordCount={
                                 content
                                     ? (() => {
-                                        // Strip HTML tags for accurate word count
-                                        const tempDiv = document.createElement('div');
-                                        tempDiv.innerHTML = content;
-                                        const plainText = tempDiv.textContent || tempDiv.innerText || '';
-                                        return plainText.split(/\s+/).filter(Boolean).length;
+                                        // Count words from markdown content directly
+                                        const plainText = content
+                                            .replace(/[#*_`~\[\]()]/g, '') // Remove markdown syntax
+                                            .replace(/\n+/g, ' ') // Replace newlines with spaces
+                                            .trim();
+                                        const wordCount = plainText.split(/\s+/).filter(Boolean).length;
+                                        return wordCount;
                                     })()
                                     : 0
                             }

@@ -64,12 +64,28 @@ export function useProjectEditor({
         workspaceId,
         projectId,
         chapterOrder: selectedChapter?.order ?? 0,
-        onStreamComplete: (fullText) => {
-            console.log('Stream completed, updating content');
+        onStreamComplete: (updatedContent) => {
+            console.log('Stream completed, updating content with:', updatedContent?.substring(0, 100));
             setIsGenerating(false);
             
-            // The content will be updated via the ProjectContentUpdated event
-            // which is broadcasted from the StreamLLMJob
+            // // Update the content state with the final content from the broadcast
+            // if (updatedContent && selectedChapter) {
+            //     console.log('Updating content after stream completion');
+            //     setContent(updatedContent);
+            //     lastSavedContent.current = updatedContent;
+            //     originalChapterContent.current = updatedContent;
+                
+            //     // Also update the selected chapter in local state
+            //     setLocalChapters(prev => prev.map(ch => 
+            //         ch.order === selectedChapter.order 
+            //             ? { ...ch, content: updatedContent }
+            //             : ch
+            //     ));
+                
+            //     setSelectedChapter(prev => prev ? { ...prev, content: updatedContent } : prev);
+            // } else {
+            //     console.log('No updated content received or no selected chapter');
+            // }
         },
         onStreamError: (error) => {
             console.error('Stream error:', error);
@@ -85,36 +101,45 @@ export function useProjectEditor({
         if (preservedChapterOrder !== null) {
             const chapterToRestore = initialChapters.find(ch => ch.order === preservedChapterOrder);
             if (chapterToRestore) {
+                console.log("Restoring chapter after generation:", chapterToRestore.chapter_name);
                 setSelectedChapter(chapterToRestore);
                 setPreservedChapterOrder(null);
-                console.log("Restored chapter after generation:", chapterToRestore.chapter_name);
                 return;
             }
         }
         
-        // Update selectedChapter if it exists in the new chapters
+        // Update selectedChapter if it exists in the new chapters, but only if content actually changed
         if (selectedChapter) {
             const updatedChapter = initialChapters.find(ch => ch.order === selectedChapter.order);
-            if (updatedChapter) {
+            if (updatedChapter && updatedChapter.content !== selectedChapter.content) {
+                console.log('Chapter content updated from server:', {
+                    order: updatedChapter.order,
+                    oldContentLength: selectedChapter.content?.length || 0,
+                    newContentLength: updatedChapter.content?.length || 0
+                });
                 setSelectedChapter(updatedChapter);
             }
         }
-    }, [initialChapters, preservedChapterOrder, selectedChapter]);
+    }, [initialChapters, preservedChapterOrder]); // Removed selectedChapter dependency to prevent loops
 
-    // Initialize component
+    // Initialize component - separate content and settings initialization
     useEffect(() => {
+        console.log('Initializing content for chapter:', selectedChapter?.chapter_name);
         if (selectedChapter) {
             const chapterContent = selectedChapter.content || "";
             setContent(chapterContent);
             lastSavedContent.current = chapterContent;
             originalChapterContent.current = chapterContent; // Store original content
         } else {
+            console.log('No chapter selected, clearing content');
             setContent("");
             lastSavedContent.current = "";
             originalChapterContent.current = "";
         }
-        
-        // Initialize settings
+    }, [selectedChapter?.order, selectedChapter?.content]); // Only depend on order and content
+
+    // Initialize settings separately
+    useEffect(() => {
         const initialSettings = project.settings || {};
         setSettings(initialSettings);
         lastSavedSettings.current = initialSettings;
@@ -123,10 +148,10 @@ export function useProjectEditor({
         const timer = setTimeout(() => {
             isInitialized.current = true;
             console.log("Project editor initialized");
-        }, 500);
+        }, 100);
 
         return () => clearTimeout(timer);
-    }, [selectedChapter, project.settings]);
+    }, [project.settings]);
 
     // Settings auto-save effect (keep only settings auto-save, content save moved to Main.tsx)
     useEffect(() => {
@@ -162,12 +187,20 @@ export function useProjectEditor({
         };
     }, [settings, saveSettings, isGenerating, isStreaming]); // Removed content and selectedChapter dependencies
 
-    // Update content when streaming
+    // Update content when streaming - removed since StreamingPlugin handles this
     useEffect(() => {
         if (isStreaming && streamingText) {
             // Show streaming text in real-time without saving
             const baseContent = lastSavedContent.current;
-            const separator = baseContent && !baseContent.endsWith(' ') && !streamingText.startsWith(' ') ? ' ' : '';
+            // For markdown, handle spacing more carefully
+            let separator = '';
+            if (baseContent) {
+                // Add space if base content doesn't end with newline or space
+                if (!baseContent.endsWith('\n') && !baseContent.endsWith(' ') && 
+                    !streamingText.startsWith('\n') && !streamingText.startsWith(' ')) {
+                    separator = ' ';
+                }
+            }
             setContent(baseContent + separator + streamingText);
         }
     }, [isStreaming, streamingText]);
@@ -357,32 +390,30 @@ export function useProjectEditor({
         // Save functions
         saveContent: (order: number, content: string, trigger: string) => saveContent(order, content, trigger),
         smartSave: (order: number, content: string, trigger: string) => {
-            // Normalize both contents to plain text for comparison
-            const normalizeContent = (htmlContent: string) => {
-                if (!htmlContent) return '';
-                const tempDiv = document.createElement('div');
-                tempDiv.innerHTML = htmlContent;
-                return (tempDiv.textContent || tempDiv.innerText || '').trim();
-            };
 
-            const currentPlainText = normalizeContent(content);
-            const originalPlainText = normalizeContent(originalChapterContent.current);
+            const currentNormalized = content;
+            const originalNormalized = originalChapterContent.current;
 
-            // Only save if the plain text content has actually changed
-            if (selectedChapter && currentPlainText !== originalPlainText) {
-                console.log('Content changed, saving:', { 
-                    originalText: originalPlainText?.substring(0, 50) + '...', 
-                    currentText: currentPlainText?.substring(0, 50) + '...',
-                    originalHTML: originalChapterContent.current?.substring(0, 100),
-                    currentHTML: content?.substring(0, 100)
+            // Only save if the normalized markdown content has actually changed
+            if (selectedChapter && currentNormalized !== originalNormalized) {
+                console.log('Markdown content changed, saving:', { 
+                    originalLength: originalNormalized?.length || 0, 
+                    currentLength: currentNormalized?.length || 0,
+                    originalMarkdown: originalNormalized.substring(0,100),
+                    currentMarkdown: currentNormalized.substring(0,100),
+                    trigger: trigger
                 });
                 saveContent(order, content, trigger);
                 // Update original content after successful save to prevent duplicate saves
                 originalChapterContent.current = content;
+                lastSavedContent.current = content;
             } else {
-                console.log('No content change detected, skipping save:', {
-                    originalText: originalPlainText,
-                    currentText: currentPlainText
+                console.log('No significant markdown content change detected, skipping save:', {
+                    originalLength: originalNormalized?.length || 0, 
+                    currentLength: currentNormalized?.length || 0,
+                    originalMarkdown: originalNormalized.substring(0,100),
+                    currentMarkdown: currentNormalized.substring(0,100),
+                    trigger: trigger
                 });
             }
         },
