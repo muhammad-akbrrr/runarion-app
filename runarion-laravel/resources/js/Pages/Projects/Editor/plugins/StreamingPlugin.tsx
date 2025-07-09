@@ -35,6 +35,10 @@ interface StreamingPluginProps {
     baseContent: string;
 }
 
+/**
+ * Plugin to handle real-time streaming text updates from LLM
+ * Combines base content with streaming text and renders in real-time
+ */
 export function StreamingPlugin({ isStreaming, streamingText, baseContent }: StreamingPluginProps) {
     const [editor] = useLexicalComposerContext();
 

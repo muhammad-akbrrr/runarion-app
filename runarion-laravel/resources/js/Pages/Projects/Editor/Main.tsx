@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useCallback } from "react";
 import { Head, usePage } from "@inertiajs/react";
-import { ChevronDown, Square } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { EditorSidebar } from "./Partials/Sidebar/EditorSidebar";
 import { EditorToolbar } from "./Partials/MainEditorToolbar";
@@ -35,30 +35,25 @@ import {
     ITALIC_UNDERSCORE,
     STRIKETHROUGH,
     INLINE_CODE,
-    $convertFromMarkdownString, 
     $convertToMarkdownString 
 } from "@lexical/markdown";
 import {
-    $getRoot,
-    $createParagraphNode,
-    $createTextNode,
     $getSelection,
     $isRangeSelection,
     FORMAT_TEXT_COMMAND,
     TextNode,
+    $createParagraphNode,
 } from "lexical";
 import {
     HeadingNode,
     $createHeadingNode,
     QuoteNode,
-    $createQuoteNode,
 } from "@lexical/rich-text";
-import { ListNode, ListItemNode, $createListItemNode } from "@lexical/list";
+import { ListNode, ListItemNode } from "@lexical/list";
 import { $setBlocksType } from "@lexical/selection";
-import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
-import { StreamingPlugin } from "./Partials/StreamingPlugin";
+import { ContentUpdatePlugin, EditorRefPlugin, StreamingPlugin } from "./plugins";
 import { useProjectEditor } from "./hooks";
 import {
     ContextMenu,
@@ -90,78 +85,6 @@ console.log('Supported transformers:', SUPPORTED_TRANSFORMERS.map(t => ({
     type: t.type,
     tag: (t as any).tag ?? undefined
 })));
-
-// Custom plugin to update editor content when chapter changes
-function ContentUpdatePlugin({ content, isStreaming }: { content: string; isStreaming: boolean }) {
-    const [editor] = useLexicalComposerContext();
-
-    useEffect(() => {
-        // Don't update content during streaming to avoid conflicts
-        if (isStreaming) {
-            console.log('ContentUpdatePlugin: Skipping update during streaming');
-            return;
-        }
-
-        editor.update(() => {
-            const root = $getRoot();
-            
-            // Get current markdown content to compare
-            const currentMarkdown = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
-            
-            if (currentMarkdown === content) {
-                console.log('ContentUpdatePlugin: Content unchanged, skipping update');
-                return; // No need to update
-            }
-            
-            // Clear the editor
-            root.clear();
-
-            if (content && content.trim()) {
-                try {
-                    // Convert markdown to Lexical nodes
-                    $convertFromMarkdownString(content, SUPPORTED_TRANSFORMERS);
-                    console.log('ContentUpdatePlugin: Successfully converted markdown to Lexical nodes');
-                } catch (error) {
-                    console.error('ContentUpdatePlugin: Error parsing markdown content:', error);
-                    // Fallback to plain text
-                    const paragraph = $createParagraphNode();
-                    const textNode = $createTextNode(content);
-                    paragraph.append(textNode);
-                    root.append(paragraph);
-                }
-            } else {
-                // Add empty paragraph if no content
-                const paragraph = $createParagraphNode();
-                root.append(paragraph);
-            }
-
-            // Set cursor to end after content is loaded - use setTimeout to avoid race conditions
-            setTimeout(() => {
-                editor.update(() => {
-                    if (root.getChildrenSize() > 0) {
-                        const lastChild = root.getLastChild();
-                        if (lastChild) {
-                            lastChild.selectEnd();
-                        }
-                    }
-                });
-            }, 0);
-        });
-    }, [content, editor, isStreaming]);
-
-    return null;
-}
-
-// Plugin to store editor reference
-function EditorRefPlugin({ editorRef }: { editorRef: React.MutableRefObject<any> }) {
-    const [editor] = useLexicalComposerContext();
-    
-    useEffect(() => {
-        editorRef.current = editor;
-    }, [editor, editorRef]);
-    
-    return null;
-}
 
 const editorConfig: InitialConfigType = {
     namespace: "MyEditor",
