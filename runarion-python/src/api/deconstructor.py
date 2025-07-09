@@ -11,8 +11,7 @@ from werkzeug.utils import secure_filename
 
 from services.deconstructor.orchestrator import DeconstructorOrchestrator
 from services.generation_engine import GenerationEngine
-from models.request import BaseGenerationRequest
-from models.quota import QuotaCaller
+from models.request import BaseGenerationRequest, CallerInfo
 from utils.api_response import DeconstructorResponse, validation_error, internal_error, error
 from utils.logging_config import get_pipeline_logger
 
@@ -151,7 +150,7 @@ def start_deconstruction():
                 connection_pool.putconn(conn)
         
         # Create caller object for generation engine
-        caller = QuotaCaller(
+        caller = CallerInfo(
             user_id=user_id,
             workspace_id=workspace_id,
             project_id=project_id,
