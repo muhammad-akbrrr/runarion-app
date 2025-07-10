@@ -273,7 +273,7 @@ export function useProjectEditor({
         console.log("Starting text generation");
 
         const generationSettings = {
-            prompt: content || "<please start writing here>",
+            prompt: content || "",
             order: selectedChapter.order,
             settings: {
                 currentPreset: settings.currentPreset || "creative-writing",

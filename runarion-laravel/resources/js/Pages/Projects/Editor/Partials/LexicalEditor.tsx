@@ -37,7 +37,7 @@ import {
 } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
 import { $setBlocksType } from "@lexical/selection";
-import { ContentUpdatePlugin, EditorRefPlugin, StreamingPlugin } from "../plugins";
+import { ContentUpdatePlugin, EditorRefPlugin, StreamingPlugin } from "../Plugins";
 import {
     ContextMenu,
     ContextMenuContent,

@@ -293,7 +293,7 @@ class MainEditorController extends Controller
     {
         try {
             $validated = $request->validate([
-                'prompt' => 'required|string',
+                'prompt' => 'nullable|string',
                 'order' => 'required|integer',
                 'settings' => 'nullable|array',
                 'settings.currentPreset' => 'nullable|string',
@@ -364,7 +364,7 @@ class MainEditorController extends Controller
                 $workspace_id,
                 $project_id,
                 $validated['order'],
-                $validated['prompt'],
+                $validated['prompt'] ?? '',
                 $settings,
                 $user->id,
                 $sessionId
