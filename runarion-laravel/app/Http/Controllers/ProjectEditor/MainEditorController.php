@@ -393,11 +393,12 @@ class MainEditorController extends Controller
      */
     public function updateProjectUnified(Request $request, string $workspace_id, string $project_id)
     {
+        Log::info('Incoming request payload', $request->all());
         $validated = $request->validate([
             // Content validation
             'content' => 'nullable|array',
             'content.order' => 'required_with:content|integer',
-            'content.content' => 'required_with:content|string|max:1000000',
+            'content.content' => 'sometimes|nullable|string|max:1000000',
             'content.trigger' => 'nullable|string|in:manual,auto,llm_generation',
             
             // Settings validation
@@ -458,7 +459,7 @@ class MainEditorController extends Controller
                     $workspace_id,
                     $project_id,
                     $contentData['order'],
-                    $contentData['content'],
+                    $contentData['content'] ?? '',
                     $contentData['trigger'] ?? 'manual'
                 ));
             }

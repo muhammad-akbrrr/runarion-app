@@ -188,7 +188,7 @@ export function useProjectEditor({
                 forceSave({
                     content: {
                         order: selectedChapter.order,
-                        content,
+                        content: content ?? '', // Treat null as empty string
                         trigger: 'manual'
                     }
                 });
@@ -210,7 +210,7 @@ export function useProjectEditor({
                 forceSave({
                     content: {
                         order: selectedChapter.order,
-                        content,
+                        content: content ?? '', // Treat null as empty string
                         trigger: 'manual'
                     }
                 });
@@ -264,7 +264,7 @@ export function useProjectEditor({
             forceSave({
                 content: {
                     order: selectedChapter.order,
-                    content,
+                    content: content ?? '', // Treat null as empty string
                     trigger: 'manual'
                 }
             });
@@ -327,18 +327,21 @@ export function useProjectEditor({
     }, [isStreaming, cancelStream]);
 
     // Smart save function that only saves if content actually changed
-    const smartSave = useCallback((order: number, content: string, trigger: string) => {
-        if (selectedChapter && content !== originalContent.current) {
+    const smartSave = useCallback((order: number, content: string | null, trigger: string) => {
+        const normalizedContent = content ?? ''; // Treat null as empty string
+        const normalizedOriginal = originalContent.current ?? ''; // Treat null as empty string
+        
+        if (selectedChapter && normalizedContent !== normalizedOriginal) {
             console.log('Content changed, saving:', { 
-                originalLength: originalContent.current?.length || 0, 
-                currentLength: content?.length || 0,
+                originalLength: normalizedOriginal.length, 
+                currentLength: normalizedContent.length,
                 trigger
             });
             
             if (trigger === 'auto') {
-                debouncedSaveContent(order, content, trigger);
+                debouncedSaveContent(order, normalizedContent, trigger);
             } else {
-                saveContent(order, content, trigger);
+                saveContent(order, normalizedContent, trigger);
             }
         } else {
             console.log('No content change detected, skipping save');
@@ -378,7 +381,7 @@ export function useProjectEditor({
         handleCancelGeneration,
         
         // Save functions
-        saveContent: (order: number, content: string, trigger: string) => saveContent(order, content, trigger),
+        saveContent: (order: number, content: string | null, trigger: string) => saveContent(order, content ?? '', trigger),
         smartSave,
     };
 }

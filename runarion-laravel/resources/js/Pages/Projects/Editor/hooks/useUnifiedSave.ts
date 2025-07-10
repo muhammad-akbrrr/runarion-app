@@ -8,7 +8,7 @@ interface SaveOperation {
     data: {
         content?: {
             order: number;
-            content: string;
+            content: string | null;
             trigger?: string;
         };
         settings?: any;
@@ -56,7 +56,7 @@ export function useUnifiedSave({
         try {
             // Get the most recent operation for each type (content/settings)
             const operations = saveQueue.current;
-            saveQueue.current = []; // Clear queue immediately
+            saveQueue.current = [];
 
             // Consolidate operations - take the latest content and settings
             let latestContent: SaveOperation['data']['content'] | undefined;
@@ -78,7 +78,7 @@ export function useUnifiedSave({
             const contentChanged = latestContent && (
                 !lastSaveData.current.content ||
                 lastSaveData.current.content.order !== latestContent.order ||
-                lastSaveData.current.content.content !== latestContent.content
+                (lastSaveData.current.content.content ?? '') !== (latestContent.content ?? '') // Compare with null handling
             );
 
             const settingsChanged = latestSettings && (
@@ -103,7 +103,7 @@ export function useUnifiedSave({
             if (latestContent) {
                 saveData.content = {
                     order: latestContent.order,
-                    content: latestContent.content,
+                    content: latestContent.content ?? '',
                     trigger: latestContent.trigger || 'manual'
                 };
             }
@@ -114,6 +114,7 @@ export function useUnifiedSave({
 
             // Make unified save request
             const savePromise = new Promise((resolve, reject) => {
+                console.log('Saving payload:', saveData);
                 router.patch(
                     route("editor.project.updateUnified", {
                         workspace_id: workspaceId,
@@ -130,7 +131,7 @@ export function useUnifiedSave({
                             if (latestContent) {
                                 lastSaveData.current.content = {
                                     order: latestContent.order,
-                                    content: latestContent.content
+                                    content: latestContent.content ?? ''
                                 };
                             }
                             if (latestSettings) {
@@ -222,9 +223,9 @@ export function useUnifiedSave({
     }, [queueSave]);
 
     // Save content only
-    const saveContent = useCallback(async (order: number, content: string, trigger: string = 'manual'): Promise<any> => {
+    const saveContent = useCallback(async (order: number, content: string | null, trigger: string = 'manual'): Promise<any> => {
         return queueSave({
-            content: { order, content, trigger }
+            content: { order, content: content ?? '', trigger }
         });
     }, [queueSave]);
 
@@ -236,17 +237,17 @@ export function useUnifiedSave({
     }, [queueSave]);
 
     // Save both content and settings
-    const saveBoth = useCallback(async (order: number, content: string, settings: any, trigger: string = 'manual'): Promise<any> => {
+    const saveBoth = useCallback(async (order: number, content: string | null, settings: any, trigger: string = 'manual'): Promise<any> => {
         return queueSave({
-            content: { order, content, trigger },
+            content: { order, content: content ?? '', trigger },
             settings
         });
     }, [queueSave]);
 
     // Debounced content save
-    const debouncedSaveContent = useCallback(async (order: number, content: string, trigger: string = 'auto', delay: number = 1000): Promise<any> => {
+    const debouncedSaveContent = useCallback(async (order: number, content: string | null, trigger: string = 'auto', delay: number = 1000): Promise<any> => {
         return debouncedSave({
-            content: { order, content, trigger }
+            content: { order, content: content ?? '', trigger }
         }, delay);
     }, [debouncedSave]);
 

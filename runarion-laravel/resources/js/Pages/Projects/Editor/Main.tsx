@@ -70,7 +70,7 @@ export default function ProjectEditorPage({
             hasSelectedChapter: !!selectedChapter,
             isInteracting,
             isStreaming,
-            contentLength: content?.length || 0
+            contentLength: (content ?? '').length // Handle null content
         });
         if (selectedChapter && !isInteracting && !isStreaming) {
             smartSave(selectedChapter.order, content, 'manual');
@@ -218,7 +218,7 @@ export default function ProjectEditorPage({
                                 content
                                     ? (() => {
                                         // Count words from markdown content directly
-                                        const plainText = content
+                                        const plainText = (content ?? '') // Handle null content
                                             .replace(/[#*_`~\[\]()]/g, '') // Remove markdown syntax
                                             .replace(/\n+/g, ' ') // Replace newlines with spaces
                                             .trim();
