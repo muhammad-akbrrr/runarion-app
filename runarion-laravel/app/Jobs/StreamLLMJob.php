@@ -28,6 +28,8 @@ class StreamLLMJob implements ShouldQueue
     public array $settings;
     public string $sessionId;
     public int $userId;
+    public bool $isRegenerate;
+    public ?string $parentStepId;
     public int $timeout = 180; // 3 minutes timeout
     public int $tries = 1; // No retries for streaming jobs
 
@@ -41,7 +43,9 @@ class StreamLLMJob implements ShouldQueue
         string $prompt,
         array $settings,
         int $userId,
-        ?string $sessionId = null
+        ?string $sessionId = null,
+        bool $isRegenerate = false,
+        ?string $parentStepId = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
@@ -50,6 +54,8 @@ class StreamLLMJob implements ShouldQueue
         $this->settings = $settings;
         $this->sessionId = $sessionId ?? Str::uuid()->toString();
         $this->userId = $userId;
+        $this->isRegenerate = $isRegenerate;
+        $this->parentStepId = $parentStepId;
     }
 
     /**
@@ -63,6 +69,8 @@ class StreamLLMJob implements ShouldQueue
                 'workspace_id' => $this->workspaceId,
                 'project_id' => $this->projectId,
                 'chapter_order' => $this->chapterOrder,
+                'is_regenerate' => $this->isRegenerate,
+                'parent_step_id' => $this->parentStepId,
             ]);
 
             // Broadcast stream started event
@@ -239,8 +247,8 @@ class StreamLLMJob implements ShouldQueue
             $this->processStreamLine($buffer, $fullText, $chunkIndex);
         }
 
-        // Update project content with final text
-        $this->updateProjectContent($fullText);
+        // Update project content with final text using version control
+        $this->updateProjectContentWithVersionControl($fullText);
 
         // Broadcast completion event
         broadcast(new LLMStreamCompleted(
@@ -256,6 +264,7 @@ class StreamLLMJob implements ShouldQueue
             'session_id' => $this->sessionId,
             'total_chunks' => $chunkIndex,
             'total_length' => strlen($fullText),
+            'is_regenerate' => $this->isRegenerate,
         ]);
     }
 
@@ -325,9 +334,9 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
-     * Update project content with generated text
+     * Update project content with generated text using version control
      */
-    private function updateProjectContent(string $generatedText): void
+    private function updateProjectContentWithVersionControl(string $generatedText): void
     {
         if (empty($generatedText)) {
             return;
@@ -343,48 +352,63 @@ class StreamLLMJob implements ShouldQueue
             return;
         }
 
-        $chapters = $projectContent->content ?? [];
-        $updatedContent = '';
+        // Get the base content (what was there before generation)
+        $baseContent = $this->prompt;
+        $finalContent = $baseContent;
         
-        foreach ($chapters as &$chapter) {
-            if (isset($chapter['order']) && $chapter['order'] === $this->chapterOrder) {
-                $existingContent = $chapter['content'] ?? '';
-                
-                // For markdown content, add proper spacing
-                if ($existingContent !== '') {
-                    // Check if existing content ends with newline or if generated text starts with newline
-                    if (!str_ends_with($existingContent, "\n") && !str_starts_with($generatedText, "\n")) {
-                        // Add a space if neither has newlines and existing doesn't end with space
-                        if (!str_ends_with($existingContent, " ")) {
-                            $existingContent .= " ";
-                        }
-                    }
+        // Add proper spacing between base content and generated text
+        if ($baseContent !== '') {
+            if (!str_ends_with($baseContent, "\n") && !str_starts_with($generatedText, "\n")) {
+                if (!str_ends_with($baseContent, " ")) {
+                    $finalContent .= " ";
                 }
-                
-                $chapter['content'] = $existingContent . $generatedText;
-                $updatedContent = $chapter['content'];
-                break;
             }
         }
         
-        $projectContent->content = $chapters;
-        $projectContent->updateLastEdited($this->userId);
-        $projectContent->save();
+        $finalContent .= $generatedText;
+
+        if ($this->isRegenerate && $this->parentStepId) {
+            // This is a regeneration - add new version to existing step
+            $versionIndex = $projectContent->addVersionToStep(
+                $this->chapterOrder,
+                $this->parentStepId,
+                $finalContent
+            );
+            
+            Log::info('Added new version to existing step', [
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'step_id' => $this->parentStepId,
+                'version_index' => $versionIndex,
+                'generated_length' => strlen($generatedText),
+            ]);
+        } else {
+            // This is a new generation - create new step
+            $stepId = $projectContent->addGenerationStep(
+                $this->chapterOrder,
+                $finalContent,
+                $this->settings,
+                true, // isUserGenerated
+                $this->parentStepId
+            );
+            
+            Log::info('Created new generation step', [
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'step_id' => $stepId,
+                'parent_step_id' => $this->parentStepId,
+                'generated_length' => strlen($generatedText),
+            ]);
+        }
 
         // Broadcast content updated event
         broadcast(new ProjectContentUpdated(
             $this->workspaceId,
             $this->projectId,
             $this->chapterOrder,
-            $updatedContent,
-            'llm_generation'
+            $finalContent,
+            $this->isRegenerate ? 'llm_regeneration' : 'llm_generation'
         ));
-
-        Log::info('Project content updated with markdown', [
-            'session_id' => $this->sessionId,
-            'chapter_order' => $this->chapterOrder,
-            'generated_length' => strlen($generatedText),
-        ]);
     }
 
     /**

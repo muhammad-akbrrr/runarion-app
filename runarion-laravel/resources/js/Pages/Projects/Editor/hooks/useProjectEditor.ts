@@ -3,12 +3,31 @@ import { router } from '@inertiajs/react';
 import { Project, ProjectChapter } from '@/types';
 import { useUnifiedSave } from './useUnifiedSave';
 import { useStreamingLLM } from './useStreamingLLM';
+import { useVersionControl } from './useVersionControl';
 
 interface UseProjectEditorProps {
     workspaceId: string;
     projectId: string;
     project: Project;
     initialChapters: ProjectChapter[];
+}
+
+interface GenerationHistory {
+    steps: Array<{
+        id: string;
+        parentId: string | null;
+        content: string;
+        timestamp: number;
+        settings: any;
+        isUserGenerated: boolean;
+        versions: Array<{
+            index: number;
+            content: string;
+            timestamp: number;
+        }>;
+    }>;
+    currentStepId: string | null;
+    lastSelectedVersions: Record<string, number>;
 }
 
 export function useProjectEditor({
@@ -24,6 +43,7 @@ export function useProjectEditor({
     const [localChapters, setLocalChapters] = useState<ProjectChapter[]>(initialChapters);
     const [selectedChapter, setSelectedChapter] = useState<ProjectChapter | null>(null);
     const [preservedChapterOrder, setPreservedChapterOrder] = useState<number | null>(null);
+    const [generationHistory, setGenerationHistory] = useState<Record<number, GenerationHistory>>({});
     
     // Refs for tracking state
     const isInitialized = useRef(false);
@@ -83,9 +103,38 @@ export function useProjectEditor({
         },
     });
 
+    // Version control hook
+    const versionControl = useVersionControl({
+        workspaceId,
+        projectId,
+        chapterOrder: selectedChapter?.order ?? 0,
+        generationHistory: selectedChapter ? generationHistory[selectedChapter.order] || null : null,
+        onHistoryUpdate: (history) => {
+            if (selectedChapter) {
+                setGenerationHistory(prev => ({
+                    ...prev,
+                    [selectedChapter.order]: history,
+                }));
+            }
+        },
+        onContentUpdate: (newContent) => {
+            setContent(newContent);
+            originalContent.current = newContent;
+        },
+    });
+
     // Update local chapters when prop changes
     useEffect(() => {
         setLocalChapters(initialChapters);
+        
+        // Extract generation history from chapters
+        const newGenerationHistory: Record<number, GenerationHistory> = {};
+        initialChapters.forEach(chapter => {
+            if (chapter.generation_history) {
+                newGenerationHistory[chapter.order] = chapter.generation_history;
+            }
+        });
+        setGenerationHistory(newGenerationHistory);
         
         // Restore preserved chapter after generation
         if (preservedChapterOrder !== null) {
@@ -317,6 +366,61 @@ export function useProjectEditor({
         );
     }, [workspaceId, projectId, selectedChapter, content, isGenerating, isStreaming, settings, forceSave]);
 
+    // Text regeneration
+    const handleRegenerateText = useCallback(() => {
+        if (!selectedChapter || isGenerating || isStreaming || !versionControl.canRegenerate) {
+            return;
+        }
+
+        setPreservedChapterOrder(selectedChapter.order);
+        setIsGenerating(true);
+
+        console.log("Starting text regeneration");
+
+        const regenerationSettings = {
+            order: selectedChapter.order,
+            settings: {
+                currentPreset: settings.currentPreset || "creative-writing",
+                aiModel: settings.aiModel || 'gpt-4o-mini',
+                memory: settings.memory || '',
+                storyGenre: settings.storyGenre || '',
+                storyTone: settings.storyTone || '',
+                storyPov: settings.storyPov || '',
+                temperature: settings.temperature || 1.0,
+                repetitionPenalty: settings.repetitionPenalty || 0.0,
+                outputLength: settings.outputLength || 300,
+                minOutputToken: settings.minOutputToken || 50,
+                topP: settings.topP || 0.85,
+                tailFree: settings.tailFree || 0.85,
+                topA: settings.topA || 0.85,
+                topK: settings.topK || 0.85,
+                phraseBias: settings.phraseBias || [],
+                bannedPhrases: settings.bannedPhrases || [],
+                stopSequences: settings.stopSequences || [],
+            }
+        };
+
+        router.post(
+            route("editor.project.regenerate", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            }),
+            regenerationSettings,
+            {
+                preserveState: true,
+                preserveScroll: true,
+                onSuccess: () => {
+                    console.log("Text regeneration request sent successfully");
+                },
+                onError: (errors) => {
+                    console.error("Failed to start text regeneration:", errors);
+                    setIsGenerating(false);
+                    setPreservedChapterOrder(null);
+                },
+            }
+        );
+    }, [workspaceId, projectId, selectedChapter, isGenerating, isStreaming, settings, versionControl.canRegenerate]);
+
     const handleCancelGeneration = useCallback(() => {
         if (isStreaming) {
             cancelStream();
@@ -370,6 +474,9 @@ export function useProjectEditor({
         streamingText,
         streamError,
         
+        // Version control state
+        versionControl,
+        
         // Computed values
         selectedChapterOrder: selectedChapter?.order ?? 0,
         
@@ -378,6 +485,7 @@ export function useProjectEditor({
         handleAddChapter,
         handleSettingChange,
         handleGenerateText,
+        handleRegenerateText,
         handleCancelGeneration,
         
         // Save functions

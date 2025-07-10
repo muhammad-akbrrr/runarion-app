@@ -47,10 +47,12 @@ export default function ProjectEditorPage({
         isStreaming,
         streamingText,
         streamError,
+        versionControl,
         handleChapterSelect,
         handleAddChapter,
         handleSettingChange,
         handleGenerateText,
+        handleRegenerateText,
         handleCancelGeneration,
         saveContent,
         smartSave,
@@ -96,6 +98,43 @@ export default function ProjectEditorPage({
         } finally {
             setAddChapterLoading(false);
         }
+    };
+
+    // Prepare version control state for toolbar
+    const versionControlState = {
+        currentVersionIndex: versionControl.currentVersionIndex,
+        totalVersions: versionControl.totalVersions,
+        canUndo: versionControl.canUndo,
+        canRedo: versionControl.canRedo,
+        canRegenerate: versionControl.canRegenerate,
+        isLoading: versionControl.isLoading,
+        versionDisplayText: versionControl.versionDisplayText,
+        onUndo: versionControl.undo,
+        onRedo: versionControl.redo,
+        onSwitchVersion: versionControl.switchVersion,
+        onRegenerate: () => {
+            // Pass current settings to regenerate function
+            const currentSettings = {
+                currentPreset: settings.currentPreset || "creative-writing",
+                aiModel: settings.aiModel || 'gpt-4o-mini',
+                memory: settings.memory || '',
+                storyGenre: settings.storyGenre || '',
+                storyTone: settings.storyTone || '',
+                storyPov: settings.storyPov || '',
+                temperature: settings.temperature || 1.0,
+                repetitionPenalty: settings.repetitionPenalty || 0.0,
+                outputLength: settings.outputLength || 300,
+                minOutputToken: settings.minOutputToken || 50,
+                topP: settings.topP || 0.85,
+                tailFree: settings.tailFree || 0.85,
+                topA: settings.topA || 0.85,
+                topK: settings.topK || 0.85,
+                phraseBias: settings.phraseBias || [],
+                bannedPhrases: settings.bannedPhrases || [],
+                stopSequences: settings.stopSequences || [],
+            };
+            handleRegenerateText();
+        },
     };
 
     return (
@@ -214,6 +253,7 @@ export default function ProjectEditorPage({
                         <EditorToolbar
                             onSend={handleGenerateText}
                             isGenerating={isGenerating}
+                            versionControl={versionControlState}
                             wordCount={
                                 content
                                     ? (() => {

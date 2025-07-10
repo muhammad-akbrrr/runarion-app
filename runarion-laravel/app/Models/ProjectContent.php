@@ -7,11 +7,13 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Validation\Rule;
+use Illuminate\Support\Str;
 
 /**
  * ProjectContent Model
  * 
  * Stores consolidated project content in JSON format with one-to-one relationship to projects
+ * Includes version control for generation history and step management
  */
 class ProjectContent extends Model
 {
@@ -23,6 +25,9 @@ class ProjectContent extends Model
     'project_id',
     'content',
     'metadata',
+    'generation_history',
+    'current_step_id',
+    'last_selected_versions',
     'last_edited_at',
     'last_edited_by',
   ];
@@ -30,6 +35,8 @@ class ProjectContent extends Model
   protected $casts = [
     'content' => 'array',
     'metadata' => 'array',
+    'generation_history' => 'array',
+    'last_selected_versions' => 'array',
     'last_edited_at' => 'datetime',
     'last_edited_by' => 'integer',
   ];
@@ -217,5 +224,381 @@ class ProjectContent extends Model
       'last_edited_at' => now(),
       'last_edited_by' => $userId ?? auth()->id(),
     ]);
+  }
+
+  /**
+   * Initialize generation history for a chapter if it doesn't exist
+   */
+  public function initializeGenerationHistory($chapterOrder)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      $history[$chapterOrder] = [
+        'steps' => [],
+        'currentStepId' => null,
+        'lastSelectedVersions' => [],
+      ];
+      
+      $this->update(['generation_history' => $history]);
+    }
+    
+    return $history[$chapterOrder];
+  }
+
+  /**
+   * Add a new generation step
+   */
+  public function addGenerationStep($chapterOrder, $content, $settings, $isUserGenerated = true, $parentStepId = null)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      $this->initializeGenerationHistory($chapterOrder);
+      $history = $this->generation_history;
+    }
+    
+    $stepId = Str::uuid()->toString();
+    $timestamp = now()->timestamp;
+    
+    $newStep = [
+      'id' => $stepId,
+      'parentId' => $parentStepId,
+      'content' => $content,
+      'timestamp' => $timestamp,
+      'settings' => $settings,
+      'isUserGenerated' => $isUserGenerated,
+      'versions' => [
+        [
+          'index' => 0,
+          'content' => $content,
+          'timestamp' => $timestamp,
+        ]
+      ],
+    ];
+    
+    $history[$chapterOrder]['steps'][] = $newStep;
+    $history[$chapterOrder]['currentStepId'] = $stepId;
+    $history[$chapterOrder]['lastSelectedVersions'][$stepId] = 0;
+    
+    $this->update(['generation_history' => $history]);
+    
+    return $stepId;
+  }
+
+  /**
+   * Add a new version to an existing step (regenerate)
+   */
+  public function addVersionToStep($chapterOrder, $stepId, $content)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return false;
+    }
+    
+    $stepIndex = $this->findStepIndex($chapterOrder, $stepId);
+    if ($stepIndex === -1) {
+      return false;
+    }
+    
+    $versions = $history[$chapterOrder]['steps'][$stepIndex]['versions'];
+    $newVersionIndex = count($versions);
+    
+    $versions[] = [
+      'index' => $newVersionIndex,
+      'content' => $content,
+      'timestamp' => now()->timestamp,
+    ];
+    
+    $history[$chapterOrder]['steps'][$stepIndex]['versions'] = $versions;
+    $history[$chapterOrder]['lastSelectedVersions'][$stepId] = $newVersionIndex;
+    
+    $this->update(['generation_history' => $history]);
+    
+    return $newVersionIndex;
+  }
+
+  /**
+   * Switch to a different step
+   */
+  public function switchToStep($chapterOrder, $stepId, $versionIndex = null)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return false;
+    }
+    
+    $stepIndex = $this->findStepIndex($chapterOrder, $stepId);
+    if ($stepIndex === -1) {
+      return false;
+    }
+    
+    $step = $history[$chapterOrder]['steps'][$stepIndex];
+    
+    // Use provided version index or last selected version
+    if ($versionIndex === null) {
+      $versionIndex = $history[$chapterOrder]['lastSelectedVersions'][$stepId] ?? 0;
+    }
+    
+    // Validate version index
+    if ($versionIndex >= count($step['versions'])) {
+      $versionIndex = count($step['versions']) - 1;
+    }
+    
+    $history[$chapterOrder]['currentStepId'] = $stepId;
+    $history[$chapterOrder]['lastSelectedVersions'][$stepId] = $versionIndex;
+    
+    $this->update(['generation_history' => $history]);
+    
+    // Update chapter content
+    $content = $step['versions'][$versionIndex]['content'];
+    $this->updateChapterContent($chapterOrder, $content);
+    
+    return [
+      'stepId' => $stepId,
+      'versionIndex' => $versionIndex,
+      'content' => $content,
+    ];
+  }
+
+  /**
+   * Switch to a different version within the current step
+   */
+  public function switchVersion($chapterOrder, $versionIndex)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return false;
+    }
+    
+    $currentStepId = $history[$chapterOrder]['currentStepId'];
+    if (!$currentStepId) {
+      return false;
+    }
+    
+    return $this->switchToStep($chapterOrder, $currentStepId, $versionIndex);
+  }
+
+  /**
+   * Get navigation info for undo/redo
+   */
+  public function getNavigationInfo($chapterOrder)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return [
+        'canUndo' => false,
+        'canRedo' => false,
+        'currentStep' => null,
+        'availableVersions' => [],
+        'currentVersionIndex' => 0,
+      ];
+    }
+    
+    $currentStepId = $history[$chapterOrder]['currentStepId'];
+    $currentStep = null;
+    $canUndo = false;
+    $canRedo = false;
+    
+    if ($currentStepId) {
+      $stepIndex = $this->findStepIndex($chapterOrder, $currentStepId);
+      if ($stepIndex !== -1) {
+        $currentStep = $history[$chapterOrder]['steps'][$stepIndex];
+        $canUndo = $currentStep['parentId'] !== null;
+        $canRedo = $this->hasChildSteps($chapterOrder, $currentStepId);
+      }
+    }
+    
+    $availableVersions = $currentStep ? $currentStep['versions'] : [];
+    $currentVersionIndex = $currentStepId ? 
+      ($history[$chapterOrder]['lastSelectedVersions'][$currentStepId] ?? 0) : 0;
+    
+    return [
+      'canUndo' => $canUndo,
+      'canRedo' => $canRedo,
+      'currentStep' => $currentStep,
+      'availableVersions' => $availableVersions,
+      'currentVersionIndex' => $currentVersionIndex,
+    ];
+  }
+
+  /**
+   * Undo to parent step
+   */
+  public function undoToParent($chapterOrder)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return false;
+    }
+    
+    $currentStepId = $history[$chapterOrder]['currentStepId'];
+    if (!$currentStepId) {
+      return false;
+    }
+    
+    $stepIndex = $this->findStepIndex($chapterOrder, $currentStepId);
+    if ($stepIndex === -1) {
+      return false;
+    }
+    
+    $currentStep = $history[$chapterOrder]['steps'][$stepIndex];
+    $parentStepId = $currentStep['parentId'];
+    
+    if (!$parentStepId) {
+      return false;
+    }
+    
+    // Remember current step as last selected version for parent
+    $parentStepIndex = $this->findStepIndex($chapterOrder, $parentStepId);
+    if ($parentStepIndex !== -1) {
+      $childSteps = $this->getChildSteps($chapterOrder, $parentStepId);
+      $childIndex = array_search($currentStepId, array_column($childSteps, 'id'));
+      if ($childIndex !== false) {
+        $history[$chapterOrder]['lastSelectedVersions'][$parentStepId . '_child'] = $childIndex;
+      }
+    }
+    
+    return $this->switchToStep($chapterOrder, $parentStepId);
+  }
+
+  /**
+   * Redo to last selected child step
+   */
+  public function redoToChild($chapterOrder)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return false;
+    }
+    
+    $currentStepId = $history[$chapterOrder]['currentStepId'];
+    if (!$currentStepId) {
+      return false;
+    }
+    
+    $childSteps = $this->getChildSteps($chapterOrder, $currentStepId);
+    if (empty($childSteps)) {
+      return false;
+    }
+    
+    // Get last selected child or first child
+    $lastSelectedChildIndex = $history[$chapterOrder]['lastSelectedVersions'][$currentStepId . '_child'] ?? 0;
+    if ($lastSelectedChildIndex >= count($childSteps)) {
+      $lastSelectedChildIndex = 0;
+    }
+    
+    $targetStepId = $childSteps[$lastSelectedChildIndex]['id'];
+    
+    return $this->switchToStep($chapterOrder, $targetStepId);
+  }
+
+  /**
+   * Find step index by step ID
+   */
+  public function findStepIndex($chapterOrder, $stepId)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return -1;
+    }
+    
+    foreach ($history[$chapterOrder]['steps'] as $index => $step) {
+      if ($step['id'] === $stepId) {
+        return $index;
+      }
+    }
+    
+    return -1;
+  }
+
+  /**
+   * Check if step has child steps
+   */
+  private function hasChildSteps($chapterOrder, $stepId)
+  {
+    return count($this->getChildSteps($chapterOrder, $stepId)) > 0;
+  }
+
+  /**
+   * Get child steps for a given step
+   */
+  private function getChildSteps($chapterOrder, $stepId)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return [];
+    }
+    
+    $childSteps = [];
+    foreach ($history[$chapterOrder]['steps'] as $step) {
+      if ($step['parentId'] === $stepId) {
+        $childSteps[] = $step;
+      }
+    }
+    
+    // Sort by timestamp
+    usort($childSteps, function($a, $b) {
+      return $a['timestamp'] <=> $b['timestamp'];
+    });
+    
+    return $childSteps;
+  }
+
+  /**
+   * Update chapter content directly
+   */
+  private function updateChapterContent($chapterOrder, $content)
+  {
+    $chapters = $this->content ?? [];
+    
+    foreach ($chapters as &$chapter) {
+      if (isset($chapter['order']) && $chapter['order'] === $chapterOrder) {
+        $chapter['content'] = $content;
+        break;
+      }
+    }
+    
+    $this->update(['content' => $chapters]);
+  }
+
+  /**
+   * Get current step and version info for a chapter
+   */
+  public function getCurrentStepInfo($chapterOrder)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return null;
+    }
+    
+    $currentStepId = $history[$chapterOrder]['currentStepId'];
+    if (!$currentStepId) {
+      return null;
+    }
+    
+    $stepIndex = $this->findStepIndex($chapterOrder, $currentStepId);
+    if ($stepIndex === -1) {
+      return null;
+    }
+    
+    $step = $history[$chapterOrder]['steps'][$stepIndex];
+    $versionIndex = $history[$chapterOrder]['lastSelectedVersions'][$currentStepId] ?? 0;
+    
+    return [
+      'stepId' => $currentStepId,
+      'step' => $step,
+      'versionIndex' => $versionIndex,
+      'totalVersions' => count($step['versions']),
+    ];
   }
 }
