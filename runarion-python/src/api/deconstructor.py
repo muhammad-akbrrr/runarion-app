@@ -151,7 +151,7 @@ def start_deconstruction():
                 connection_pool.putconn(conn)
         
         # Create caller object for generation engine
-        caller = QuotaCaller(
+        caller = QuotaCaller.from_request_data(
             user_id=user_id,
             workspace_id=workspace_id,
             project_id=project_id,
