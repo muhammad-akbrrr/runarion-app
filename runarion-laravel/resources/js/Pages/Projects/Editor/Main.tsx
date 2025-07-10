@@ -16,7 +16,7 @@ import {
 } from "@/Components/ui/dropdown-menu";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
-import { useProjectEditor } from "./hooks";
+import { useProjectEditor } from "./Hooks";
 
 // Import Echo for WebSocket connection
 import "@/echo";
@@ -104,7 +104,7 @@ export default function ProjectEditorPage({
             projectId={projectId}
             workspaceId={workspaceId}
             isSaving={isSaving}
-            setIsSaving={() => {}} // Managed by hook now
+            setIsSaving={() => {}} // No longer needed since saves are async
         >
             <Head title="Project Editor" />
 

@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use App\Jobs\ManuscriptDeconstructionJob;
 use App\Jobs\StreamLLMJob;
 use App\Events\ProjectContentUpdated;
@@ -385,6 +386,101 @@ class MainEditorController extends Controller
                 'message' => 'Failed to start text generation: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Function to handle unified project data and settings updates.
+     */
+    public function updateProjectUnified(Request $request, string $workspace_id, string $project_id)
+    {
+        $validated = $request->validate([
+            // Content validation
+            'content' => 'nullable|array',
+            'content.order' => 'required_with:content|integer',
+            'content.content' => 'required_with:content|string|max:1000000',
+            'content.trigger' => 'nullable|string|in:manual,auto,llm_generation',
+            
+            // Settings validation
+            'settings' => 'nullable|array',
+            'settings.currentPreset' => 'nullable|string',
+            'settings.authorProfile' => 'nullable|string',
+            'settings.aiModel' => 'nullable|string',
+            'settings.memory' => 'nullable|string',
+            'settings.storyGenre' => 'nullable|string',
+            'settings.storyTone' => 'nullable|string',
+            'settings.storyPov' => 'nullable|string',
+            'settings.temperature' => 'nullable|numeric|min:0|max:2',
+            'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
+            'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+            'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
+            'settings.topP' => 'nullable|numeric|min:0|max:1',
+            'settings.tailFree' => 'nullable|numeric|min:0|max:1',
+            'settings.topA' => 'nullable|numeric|min:0|max:1',
+            'settings.topK' => 'nullable|numeric|min:0|max:1',
+            'settings.phraseBias' => 'nullable|array',
+            'settings.phraseBias.*' => 'nullable|array',
+            'settings.bannedPhrases' => 'nullable|array',
+            'settings.bannedPhrases.*' => 'nullable|string',
+            'settings.stopSequences' => 'nullable|array',
+            'settings.stopSequences.*' => 'nullable|string',
+        ]);
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $updatedChapters = null;
+
+        // Use database transaction for consistency
+        \DB::transaction(function () use ($validated, $project, $project_id, $workspace_id, &$updatedChapters) {
+            // Update content if provided
+            if (isset($validated['content'])) {
+                $contentData = $validated['content'];
+                
+                $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+                $chapters = $projectContent->content ?? [];
+
+                foreach ($chapters as &$chapter) {
+                    if (isset($chapter['order']) && $chapter['order'] === $contentData['order']) {
+                        $chapter['content'] = $contentData['content'];
+                        break;
+                    }
+                }
+
+                $projectContent->content = $chapters;
+                $projectContent->updateLastEdited();
+                $projectContent->save();
+
+                $updatedChapters = $chapters;
+
+                // Broadcast content update event
+                broadcast(new ProjectContentUpdated(
+                    $workspace_id,
+                    $project_id,
+                    $contentData['order'],
+                    $contentData['content'],
+                    $contentData['trigger'] ?? 'manual'
+                ));
+            }
+
+            // Update settings if provided
+            if (isset($validated['settings'])) {
+                $project->settings = $validated['settings'];
+                $project->save();
+            }
+        });
+
+        Log::info('Unified project update completed', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
+            'content_updated' => isset($validated['content']),
+            'settings_updated' => isset($validated['settings']),
+        ]);
+
+        return redirect()->route('workspace.projects.editor', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
+        ]);
     }
 
     /**

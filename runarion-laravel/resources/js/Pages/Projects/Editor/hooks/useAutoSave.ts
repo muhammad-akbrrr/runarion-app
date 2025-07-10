@@ -1,3 +1,11 @@
+/**
+ * @deprecated This hook is deprecated. Use useUnifiedSave instead.
+ * 
+ * This file is kept for reference and will be removed in a future version.
+ * The new useUnifiedSave hook provides better performance, cleaner code,
+ * and eliminates race conditions.
+ */
+
 import { useRef, useCallback } from 'react';
 import { router } from '@inertiajs/react';
 import { ProjectChapter } from '@/types';

@@ -4,7 +4,7 @@ import time
 import uuid
 from flask import current_app
 from google import genai
-from google.genai.types import GenerateContentConfig
+from google.genai.types import GenerateContentConfig, SafetySetting, HarmCategory, HarmBlockThreshold
 from typing import Dict, Any, Generator
 from providers.base_provider import BaseProvider
 from models.request import BaseGenerationRequest, GenerationConfig
@@ -43,6 +43,13 @@ class GeminiProvider(BaseProvider):
                 stop_sequences=all_stop_sequences,
                 presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
                 frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
+                safety_settings=[
+                    SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.BLOCK_NONE),
+                    SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.BLOCK_NONE),
+                    SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.BLOCK_NONE),
+                    SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.BLOCK_NONE),
+                    SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.BLOCK_NONE)
+                    ]
             ),
         }
         
