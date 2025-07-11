@@ -5,6 +5,7 @@ from typing import Optional
 import google.generativeai as genai
 import tiktoken
 from transformers import AutoTokenizer
+from vertexai.preview import tokenization
 
 # Based on https://platform.openai.com/docs/models/{model_name}
 # Constants
@@ -98,9 +99,14 @@ def count_tokens_gemini_exact(text: str, model_name: str) -> int:
         Exception: If API call fails
     """
     try:
-        # Use the CountTokens API for exact token counting
-        response = genai.count_tokens(model=model_name, contents=[text])
-        return response.total_tokens
+        try:
+            # Use tokenizer from vertexai if available
+            tokenizer = tokenization.get_tokenizer_for_model(model_name)
+            return tokenizer.count_tokens(text).total_tokens
+        except ValueError:
+            # Fallback to API call if tokenizer not available for the model
+            response = genai.count_tokens(model=model_name, contents=[text])
+            return response.total_tokens
     except Exception as e:
         # Re-raise to allow fallback handling in caller
         raise Exception(f"Gemini token counting failed: {str(e)}")
