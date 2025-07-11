@@ -3,13 +3,20 @@ Document processor utility for handling file uploads and content extraction.
 Supports PDF, TXT, and DOCX files with intelligent chunking for large documents.
 """
 
-import re
 import logging
-from typing import List, Dict, Optional, Tuple
+import re
 from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
 import fitz  # PyMuPDF
 from docx import Document
-from .get_model_max_token import count_tokens, chunk_text_by_tokens, get_safe_max_tokens
+
+from .get_model_max_token import (
+    chunk_text_by_tokens,
+    count_tokens,
+    get_safe_max_tokens,
+    split_into_sentences,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -418,7 +425,7 @@ class DocumentProcessor:
         Helper for sentence-based chunking, used by fallback and paragraph splitting.
         If raw_only is True, returns only the raw text chunks (for paragraph splitting).
         """
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = split_into_sentences(text)
         chunks = []
         current_chunk = ""
         chunk_number = 1
@@ -558,7 +565,7 @@ class DocumentProcessor:
             Overlap text ending at sentence boundary
         """
         # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', text)
+        sentences = split_into_sentences(text)
 
         if len(sentences) <= max_sentences:
             return ""  # Not enough content for meaningful overlap

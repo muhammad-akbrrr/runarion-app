@@ -1,6 +1,6 @@
 import functools
-from typing import Optional
 import re
+from typing import Optional
 
 import google.generativeai as genai
 import tiktoken
@@ -79,7 +79,7 @@ def _split_into_sentences(text: str) -> list[str]:
         List of sentences
     """
     # Use regex for better sentence splitting
-    sentences = re.split(r'(?<=[.!?])\s+', text)
+    sentences = re.split(r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)""", text)
     return [s.strip() for s in sentences if s.strip()]
 
 
