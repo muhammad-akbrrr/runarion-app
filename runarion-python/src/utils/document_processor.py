@@ -233,71 +233,17 @@ class DocumentProcessor:
         paragraphs = []
 
         with fitz.open(str(file_path)) as doc:
-            for page_num in range(len(doc)):
-                page = doc[page_num]
-
-                # Get structured text data with blocks and lines
-                text_dict = page.get_text("dict")
-
-                page_paragraphs = self._extract_paragraphs_from_page_dict(
-                    text_dict)
-                paragraphs.extend(page_paragraphs)
+            for page in doc:
+                blocks = page.get_text("blocks")
+                for block in blocks:
+                    # skip if image block
+                    if block[6] != 0:
+                        continue
+                    # extract the text from the block
+                    paragraphs.append(block[4])
 
         # Join paragraphs with double line breaks to maintain structure
         return "\n\n".join(paragraph.strip() for paragraph in paragraphs if paragraph.strip())
-
-    def _extract_paragraphs_from_page_dict(self, page_dict: dict) -> List[str]:
-        """
-        Extract paragraphs from PyMuPDF page dictionary structure.
-
-        Args:
-            page_dict: PyMuPDF page dictionary from get_text("dict")
-
-        Returns:
-            List of paragraph strings
-        """
-        paragraphs = []
-        current_paragraph = []
-        last_y = None
-
-        for block in page_dict.get("blocks", []):
-            if "lines" not in block:  # Skip image blocks
-                continue
-
-            for line in block["lines"]:
-                line_text = ""
-
-                for span in line.get("spans", []):
-                    text = span.get("text", "")
-                    if text.strip():
-                        line_text += text
-
-                if line_text.strip():
-                    # Check for significant vertical gap (new paragraph indicator)
-                    current_y = line["bbox"][1]  # Top Y coordinate
-
-                    if last_y is not None:
-                        y_gap = abs(current_y - last_y)
-                        avg_line_height = 12  # Approximate line height
-
-                        # If gap is larger than 1.5x normal line spacing, it's likely a new paragraph
-                        if y_gap > avg_line_height * 1.5 and current_paragraph:
-                            paragraphs.append(" ".join(current_paragraph))
-                            current_paragraph = []
-
-                    current_paragraph.append(line_text.strip())
-                    last_y = current_y
-
-            # End of block typically indicates paragraph boundary
-            if current_paragraph:
-                paragraphs.append(" ".join(current_paragraph))
-                current_paragraph = []
-
-        # Add any remaining content
-        if current_paragraph:
-            paragraphs.append(" ".join(current_paragraph))
-
-        return paragraphs
 
     def _detect_paragraphs_from_text(self, text: str) -> List[str]:
         """
