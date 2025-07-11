@@ -4,6 +4,7 @@ import { router } from '@inertiajs/react';
 interface GenerationStep {
     id: string;
     parentId: string | null;
+    parentVersionIndex?: number | null;
     content: string;
     timestamp: number;
     settings: any;
@@ -63,6 +64,41 @@ export function useVersionControl({
     const [isLoading, setIsLoading] = useState(false);
     const lastHistoryRef = useRef<GenerationHistory | null>(null);
 
+    // Helper function to check if step has child steps
+    const hasChildSteps = useCallback((steps: GenerationStep[], stepId: string): boolean => {
+        return steps.some(step => step.parentId === stepId);
+    }, []);
+
+    // Helper function to check if step has valid child steps for current version
+    const hasValidChildStepsForCurrentVersion = useCallback((steps: GenerationStep[], stepId: string, currentVersionIndex: number): boolean => {
+        const childSteps = steps.filter(step => step.parentId === stepId);
+        
+        const validChildSteps = childSteps.filter(step => {
+            const childParentVersionIndex = step.parentVersionIndex;
+            const isValid = childParentVersionIndex === null || childParentVersionIndex === undefined || childParentVersionIndex === currentVersionIndex;
+            
+            console.log('Child step validation:', {
+                stepId: step.id,
+                parentId: step.parentId,
+                childParentVersionIndex,
+                currentVersionIndex,
+                isValid
+            });
+            
+            return isValid;
+        });
+        
+        console.log('Valid child steps check:', {
+            parentStepId: stepId,
+            currentVersionIndex,
+            totalChildSteps: childSteps.length,
+            validChildSteps: validChildSteps.length,
+            hasValidChildren: validChildSteps.length > 0
+        });
+        
+        return validChildSteps.length > 0;
+    }, []);
+
     // Update state when generation history changes
     useEffect(() => {
         if (!generationHistory) {
@@ -107,7 +143,8 @@ export function useVersionControl({
         const currentVersionIndex = lastSelectedVersions[currentStepId] ?? 0;
         const availableVersions = currentStep.versions || [];
         const canUndo = currentStep.parentId !== null;
-        const canRedo = hasChildSteps(steps, currentStepId);
+        
+        const canRedo = hasValidChildStepsForCurrentVersion(steps, currentStepId, currentVersionIndex);
 
         setState({
             currentStep,
@@ -124,13 +161,11 @@ export function useVersionControl({
             totalVersions: availableVersions.length,
             canUndo,
             canRedo,
+            currentStepParentId: currentStep?.parentId,
+            currentStepParentVersionIndex: currentStep?.parentVersionIndex,
+            hasValidChildSteps: hasValidChildStepsForCurrentVersion(steps, currentStepId, currentVersionIndex),
         });
-    }, [generationHistory]);
-
-    // Helper function to check if step has child steps
-    const hasChildSteps = useCallback((steps: GenerationStep[], stepId: string): boolean => {
-        return steps.some(step => step.parentId === stepId);
-    }, []);
+    }, [generationHistory, hasValidChildStepsForCurrentVersion]);
 
     // Switch to a different version within current step
     const switchVersion = useCallback(async (versionIndex: number) => {
@@ -167,7 +202,7 @@ export function useVersionControl({
                         preserveState: true,
                         preserveScroll: true,
                         onSuccess: (page) => {
-                            console.log('Version switched successfully');
+                            console.log('Version switched successfully - redo capability may have changed');
                             resolve(page);
                         },
                         onError: (errors) => {
@@ -235,7 +270,21 @@ export function useVersionControl({
     // Redo to last selected child step
     const redo = useCallback(async () => {
         if (!state.canRedo || isLoading) {
+            console.log('Redo blocked:', { canRedo: state.canRedo, isLoading });
             return;
+        }
+
+        if (generationHistory && state.currentStep) {
+            const hasValidChildren = hasValidChildStepsForCurrentVersion(
+                generationHistory.steps, 
+                state.currentStep.id, 
+                state.currentVersionIndex
+            );
+            
+            if (!hasValidChildren) {
+                console.log('Redo blocked: No valid child steps for current version');
+                return;
+            }
         }
 
         setIsLoading(true);
@@ -272,7 +321,7 @@ export function useVersionControl({
         } finally {
             setIsLoading(false);
         }
-    }, [workspaceId, projectId, chapterOrder, state.canRedo, isLoading]);
+    }, [workspaceId, projectId, chapterOrder, state.canRedo, state.currentStep, state.currentVersionIndex, isLoading, generationHistory, hasValidChildStepsForCurrentVersion]);
 
     // Regenerate current step (create new version)
     const regenerate = useCallback(async (settings: any) => {
@@ -336,9 +385,12 @@ export function useVersionControl({
             return true;
         }
 
-        // Check if there are any steps that are children of current step
-        return !hasChildSteps(generationHistory.steps, state.currentStep.id);
-    }, [generationHistory, state.currentStep, hasChildSteps]);
+        return !hasValidChildStepsForCurrentVersion(
+            generationHistory.steps, 
+            state.currentStep.id, 
+            state.currentVersionIndex
+        );
+    }, [generationHistory, state.currentStep, state.currentVersionIndex, hasValidChildStepsForCurrentVersion]);
 
     return {
         // State

@@ -162,7 +162,11 @@ export function EditorToolbar({
                         className="h-8 w-8 p-0"
                         onClick={handleRedoClick}
                         disabled={!versionControl?.canRedo || versionControl?.isLoading || isGenerating}
-                        title="Redo to next step"
+                        title={
+                            !versionControl?.canRedo 
+                                ? "No valid redo steps available for current version" 
+                                : "Redo to next step"
+                        }
                     >
                         {versionControl?.isLoading ? (
                             <Loader2 className="h-4 w-4 animate-spin" />

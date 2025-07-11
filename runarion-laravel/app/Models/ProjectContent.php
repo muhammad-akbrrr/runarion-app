@@ -261,9 +261,16 @@ class ProjectContent extends Model
     $stepId = Str::uuid()->toString();
     $timestamp = now()->timestamp;
     
+    // Get parent version index if parent step exists
+    $parentVersionIndex = null;
+    if ($parentStepId) {
+      $parentVersionIndex = $history[$chapterOrder]['lastSelectedVersions'][$parentStepId] ?? 0;
+    }
+    
     $newStep = [
       'id' => $stepId,
       'parentId' => $parentStepId,
+      'parentVersionIndex' => $parentVersionIndex,
       'content' => $content,
       'timestamp' => $timestamp,
       'settings' => $settings,
@@ -409,7 +416,9 @@ class ProjectContent extends Model
       if ($stepIndex !== -1) {
         $currentStep = $history[$chapterOrder]['steps'][$stepIndex];
         $canUndo = $currentStep['parentId'] !== null;
-        $canRedo = $this->hasChildSteps($chapterOrder, $currentStepId);
+        
+        // Check if we can redo - must have valid child steps for current version
+        $canRedo = $this->hasValidChildStepsForCurrentVersion($chapterOrder, $currentStepId);
       }
     }
     
@@ -457,10 +466,12 @@ class ProjectContent extends Model
     // Remember current step as last selected version for parent
     $parentStepIndex = $this->findStepIndex($chapterOrder, $parentStepId);
     if ($parentStepIndex !== -1) {
-      $childSteps = $this->getChildSteps($chapterOrder, $parentStepId);
-      $childIndex = array_search($currentStepId, array_column($childSteps, 'id'));
+      // Get valid child steps for the parent's current version
+      $validChildSteps = $this->getValidChildStepsForCurrentVersion($chapterOrder, $parentStepId);
+      $childIndex = array_search($currentStepId, array_column($validChildSteps, 'id'));
       if ($childIndex !== false) {
         $history[$chapterOrder]['lastSelectedVersions'][$parentStepId . '_child'] = $childIndex;
+        $this->update(['generation_history' => $history]);
       }
     }
     
@@ -483,18 +494,19 @@ class ProjectContent extends Model
       return false;
     }
     
-    $childSteps = $this->getChildSteps($chapterOrder, $currentStepId);
-    if (empty($childSteps)) {
+    // Get valid child steps for current version
+    $validChildSteps = $this->getValidChildStepsForCurrentVersion($chapterOrder, $currentStepId);
+    if (empty($validChildSteps)) {
       return false;
     }
     
     // Get last selected child or first child
     $lastSelectedChildIndex = $history[$chapterOrder]['lastSelectedVersions'][$currentStepId . '_child'] ?? 0;
-    if ($lastSelectedChildIndex >= count($childSteps)) {
+    if ($lastSelectedChildIndex >= count($validChildSteps)) {
       $lastSelectedChildIndex = 0;
     }
     
-    $targetStepId = $childSteps[$lastSelectedChildIndex]['id'];
+    $targetStepId = $validChildSteps[$lastSelectedChildIndex]['id'];
     
     return $this->switchToStep($chapterOrder, $targetStepId);
   }
@@ -528,6 +540,14 @@ class ProjectContent extends Model
   }
 
   /**
+   * Check if step has valid child steps for current version
+   */
+  private function hasValidChildStepsForCurrentVersion($chapterOrder, $stepId)
+  {
+    return count($this->getValidChildStepsForCurrentVersion($chapterOrder, $stepId)) > 0;
+  }
+
+  /**
    * Get child steps for a given step
    */
   private function getChildSteps($chapterOrder, $stepId)
@@ -551,6 +571,42 @@ class ProjectContent extends Model
     });
     
     return $childSteps;
+  }
+
+  /**
+   * Get valid child steps for current version of parent step
+   */
+  private function getValidChildStepsForCurrentVersion($chapterOrder, $stepId)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return [];
+    }
+    
+    // Get current version index of the parent step
+    $currentVersionIndex = $history[$chapterOrder]['lastSelectedVersions'][$stepId] ?? 0;
+    
+    $validChildSteps = [];
+    foreach ($history[$chapterOrder]['steps'] as $step) {
+      if ($step['parentId'] === $stepId) {
+        // Check if this child step was created from the current parent version
+        $childParentVersionIndex = $step['parentVersionIndex'] ?? null;
+        
+        // If parentVersionIndex is not set (legacy data), allow all child steps
+        // If it is set, only allow child steps created from current parent version
+        if ($childParentVersionIndex === null || $childParentVersionIndex === $currentVersionIndex) {
+          $validChildSteps[] = $step;
+        }
+      }
+    }
+    
+    // Sort by timestamp
+    usort($validChildSteps, function($a, $b) {
+      return $a['timestamp'] <=> $b['timestamp'];
+    });
+    
+    return $validChildSteps;
   }
 
   /**
