@@ -1,3 +1,9 @@
 """
-This directory is where we can store our unit tests.
+Test package for Runarion deconstructor pipeline.
 """
+
+import sys
+import os
+
+# Add src directory to path for imports
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))

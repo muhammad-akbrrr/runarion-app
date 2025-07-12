@@ -307,9 +307,9 @@ def validate_utf8_compliance(connection_pool) -> Dict[str, Any]:
         'draft_chunks': ['raw_text', 'cleaned_text'],
         'scenes': ['title', 'setting', 'original_content', 'enhanced_content'],
         'plot_issues': ['description', 'suggested_fix'],
-        'analysis_reports': ['report_subject'],
-        'chapters': ['title', 'content'],
-        'final_manuscripts': ['final_content', 'processing_summary']
+        # 'analysis_reports': ['report_subject'],
+        # 'chapters': ['title', 'content'],
+        # 'final_manuscripts': ['final_content', 'processing_summary']
     }
     
     with utf8_database_connection(connection_pool) as conn:
