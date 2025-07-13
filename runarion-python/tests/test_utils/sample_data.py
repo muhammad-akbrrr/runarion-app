@@ -163,7 +163,7 @@ class SampleDataGenerator:
     
     def generate_manuscript_content(self, 
                                   chapter_count: int = 3,
-                                  words_per_chapter: int = 2000,
+                                  words_per_chapter: int = 5000,
                                   genre: str = 'fiction') -> str:
         """
         Generate realistic manuscript content.

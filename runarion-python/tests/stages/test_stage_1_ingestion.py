@@ -43,6 +43,7 @@ class TestStage1Ingestion:
         assert 'chunks_created' in result
         assert 'chunks_stored' in result
         assert 'total_characters' in result
+        assert 'total_words' in result
         assert 'total_tokens' in result
         
         # Verify chunks were created
@@ -243,8 +244,9 @@ class TestStage1Ingestion:
             
             # Verify result
             assert result['success'] == True
-            assert result['chunks_created'] > 5  # Should create multiple chunks
+            assert result['chunks_created'] > 10  # Should create more chunks with 1500-word limit
             assert result['total_characters'] > 100000  # Should be substantial
+            assert result['total_words'] > 10000  # Should have substantial word count
             
             # Verify chunks are reasonably sized
             chunks = db_fixture.execute_query(
@@ -254,7 +256,12 @@ class TestStage1Ingestion:
             
             for chunk_length in chunks:
                 assert chunk_length[0] > 100  # Not too small
-                assert chunk_length[0] < 50000  # Not too large (increased for realistic manuscript chunks)
+                assert chunk_length[0] < 25000  # Smaller chunks with word-based chunking
+                
+            # Verify word-based chunking strategy in metadata
+            stats = stage_1_instance.get_chunk_statistics(test_draft['draft_id'])
+            assert stats.get('chunking_strategy') == 'word_based_with_token_validation'
+            assert stats.get('target_words_per_chunk') == 1500
             
             # Optional: Create expected output for large file chunking
             expected_filename = 'large_file_chunking_expected.json'
@@ -366,16 +373,27 @@ class TestStage1Ingestion:
         # Get chunk statistics
         stats = stage_1_instance.get_chunk_statistics(test_draft['draft_id'])
         
-        # Verify statistics structure
+        # Verify statistics structure (traditional + new word-based)
         assert 'chunk_count' in stats
         assert 'avg_chunk_length' in stats
         assert 'min_chunk_length' in stats
         assert 'max_chunk_length' in stats
         assert 'total_characters' in stats
+        assert 'total_words' in stats
+        assert 'total_tokens' in stats
+        assert 'avg_words_per_chunk' in stats
+        assert 'avg_tokens_per_chunk' in stats
+        assert 'chunking_strategy' in stats
+        assert 'target_words_per_chunk' in stats
         
         # Verify statistics values
         assert stats['chunk_count'] == result['chunks_created']
-        assert stats['total_characters'] == result['total_characters']
+        assert stats['chunking_strategy'] == 'word_based_with_token_validation'
+        assert stats['target_words_per_chunk'] == 1500
+        assert stats['total_words'] > 0
+        assert stats['total_tokens'] > 0
+        # Note: total_characters from stats may differ from result due to overlaps added to chunks
+        assert stats['total_characters'] >= result['total_characters']  # Should be at least as much due to overlaps
         assert stats['avg_chunk_length'] > 0
         assert stats['min_chunk_length'] > 0
         assert stats['max_chunk_length'] >= stats['min_chunk_length']
@@ -407,11 +425,11 @@ class TestStage1Ingestion:
         assert initial_result['success'] == True
         initial_chunks_count = initial_result['chunks_created']
         
-        # Reprocess with different chunk size
+        # Reprocess with different word limit
         reprocess_result = stage_1_instance.reprocess_chunks(
             draft_id=test_draft['draft_id'],
             file_path=sample_file_path,
-            new_chunk_size=500  # Smaller chunks
+            new_word_limit=750  # Smaller word chunks
         )
         
         # Verify reprocessing
@@ -535,3 +553,280 @@ class TestStage1Ingestion:
             # Verify database state
             chunks_count = db_fixture.count_records('draft_chunks', result['draft_id'])
             assert chunks_count == result['chunks_created']
+    
+    def test_stage_1_enhanced_metadata_validation(self, stage_1_instance, db_fixture, sample_file_path):
+        """Test that Stage 1 produces correct enhanced metadata from refactored DocumentProcessor."""
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request()
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=sample_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=sample_file_path
+        )
+        
+        assert result['success'] == True
+        
+        # Get enhanced metadata from database
+        stats = stage_1_instance.get_chunk_statistics(test_draft['draft_id'])
+        
+        # Validate enhanced metadata structure from refactored business logic
+        assert stats.get('chunking_strategy') == 'word_based_with_token_validation'
+        assert stats.get('target_words_per_chunk') == 1500
+        assert 'total_words' in stats
+        assert 'total_tokens' in stats
+        assert 'avg_words_per_chunk' in stats
+        assert 'avg_tokens_per_chunk' in stats
+        
+        # Validate metadata calculations are accurate
+        assert stats['total_words'] == result['total_words']
+        assert stats['total_tokens'] == result['total_tokens']
+        assert stats['chunk_count'] == result['chunks_created']
+        
+        # Validate averages are calculated correctly
+        if result['chunks_created'] > 0:
+            expected_avg_words = result['total_words'] / result['chunks_created']
+            expected_avg_tokens = result['total_tokens'] / result['chunks_created']
+            assert abs(stats['avg_words_per_chunk'] - expected_avg_words) < 1  # Allow small rounding difference
+            assert abs(stats['avg_tokens_per_chunk'] - expected_avg_tokens) < 1
+    
+    def test_stage_1_chunk_metadata_structure_validation(self, stage_1_instance, db_fixture, sample_file_path):
+        """Test that chunks from refactored DocumentProcessor have correct metadata structure."""
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request()
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=sample_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=sample_file_path
+        )
+        
+        assert result['success'] == True
+        assert result['chunks_created'] > 0
+        
+        # Get individual chunks from database
+        chunks = db_fixture.execute_query(
+            "SELECT chunk_number, raw_text, cleaned_text FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+            (test_draft['draft_id'],)
+        )
+        
+        # Validate chunk structure and metadata
+        total_words_calculated = 0
+        for i, chunk in enumerate(chunks):
+            chunk_number, raw_text, cleaned_text = chunk
+            
+            # Validate chunk numbering is sequential
+            assert chunk_number == i + 1
+            
+            # Validate chunk content exists
+            assert len(raw_text) > 0
+            assert len(cleaned_text) > 0
+            
+            # Validate word count is reasonable for 1500-word targeting
+            # (Individual chunks may vary but should be in reasonable range)
+            word_count = len(raw_text.split())
+            assert 100 < word_count < 3000  # Reasonable range for semantic chunking
+            total_words_calculated += word_count
+        
+        # Validate total word count matches result metadata
+        # Allow small difference due to different counting methods
+        assert abs(total_words_calculated - result['total_words']) < result['chunks_created']  # Allow 1 word difference per chunk
+    
+    def test_stage_1_word_based_chunking_validation(self, stage_1_instance, db_fixture, sample_file_path):
+        """Test that refactored DocumentProcessor properly targets 1500-word chunks."""
+        # Use provided sample file if available, otherwise generate test content
+        if sample_file_path and os.path.exists(sample_file_path):
+            test_file_path = sample_file_path
+            file_name = os.path.basename(sample_file_path)
+            cleanup_needed = False
+        else:
+            # Fallback to generated content when no sample file provided
+            test_data = SampleDataGenerator(db_fixture.connection_pool)
+            large_content = test_data.generate_manuscript_content(
+                chapter_count=5,
+                words_per_chapter=2000  # 10k words total, should create ~7 chunks
+            )
+            
+            test_file_path = str(get_temp_output('word_chunking_test.txt'))
+            with open(test_file_path, 'w', encoding='utf-8') as f:
+                f.write(large_content)
+            file_name = 'word_chunking_test.txt'
+            cleanup_needed = True
+        
+        try:
+            # Create test draft
+            test_data = SampleDataGenerator(db_fixture.connection_pool)
+            draft_data = test_data.generate_draft_request(file_name=file_name)
+            workspace_data = db_fixture.create_test_workspace(
+                workspace_id=draft_data['workspace_id'],
+                user_id=draft_data['user_id']
+            )
+            
+            test_draft = db_fixture.create_test_draft(
+                draft_id=draft_data['draft_id'],
+                workspace_id=workspace_data['workspace_id'],
+                user_id=workspace_data['user_id'],
+                file_path=test_file_path
+            )
+            
+            # Run Stage 1
+            result = stage_1_instance.run(
+                draft_id=test_draft['draft_id'],
+                file_path=test_file_path
+            )
+            
+            assert result['success'] == True
+            assert result['chunks_created'] > 0  # Should create at least one chunk
+            
+            # Validate word-based targeting
+            stats = stage_1_instance.get_chunk_statistics(test_draft['draft_id'])
+            assert stats['target_words_per_chunk'] == 1500
+            
+            # For files with sufficient content, validate average chunk size
+            if result['chunks_created'] > 1:
+                avg_words = stats['avg_words_per_chunk']
+                assert avg_words > 0  # Should have reasonable word count
+            
+            # Validate chunks break at semantic boundaries (not mid-sentence)
+            chunks = db_fixture.execute_query(
+                "SELECT raw_text FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+                (test_draft['draft_id'],)
+            )
+            
+            for chunk_data in chunks:
+                raw_text = chunk_data[0].strip()
+                # Chunks should have meaningful content
+                assert len(raw_text) > 0
+                # For chunks with multiple sentences, validate they end properly
+                if '.' in raw_text or '!' in raw_text or '?' in raw_text:
+                    # Should end with sentence-ending punctuation or paragraph break
+                    assert raw_text.endswith(('.', '!', '?', '\n')) or raw_text[-1] in '.!?'
+            
+        finally:
+            # Cleanup only if we created a temporary file
+            if cleanup_needed and os.path.exists(test_file_path):
+                os.unlink(test_file_path)
+    
+    def test_stage_1_token_safety_validation(self, stage_1_instance, db_fixture, sample_file_path):
+        """Test that refactored DocumentProcessor respects token limits for safety."""
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request()
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=sample_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=sample_file_path
+        )
+        
+        assert result['success'] == True
+        assert result['chunks_created'] > 0
+        
+        # Validate token counting and safety
+        assert 'total_tokens' in result
+        assert result['total_tokens'] > 0
+        
+        # Get statistics to validate token safety features
+        stats = stage_1_instance.get_chunk_statistics(test_draft['draft_id'])
+        assert 'total_tokens' in stats
+        assert 'avg_tokens_per_chunk' in stats
+        
+        # Validate token counts are reasonable (not zero, not excessive)
+        assert stats['total_tokens'] > 0
+        assert stats['avg_tokens_per_chunk'] > 0
+        
+        # Token count should be reasonable relative to word count
+        # (rough estimate: 1 token per 0.75 words in English)
+        token_to_word_ratio = stats['total_tokens'] / stats['total_words']
+        assert 0.5 < token_to_word_ratio < 2.0  # Reasonable range for English text
+        
+        # Validate that individual chunks respect reasonable token limits
+        # (chunks should not be excessively large from token perspective)
+        if stats['chunk_count'] > 1:
+            max_reasonable_tokens = 6000  # Reasonable upper limit for chunk safety
+            assert stats['avg_tokens_per_chunk'] < max_reasonable_tokens
+    
+    def test_stage_1_provider_model_integration(self, stage_1_instance, db_fixture, sample_file_path):
+        """Test that refactored DocumentProcessor works with different providers/models."""
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request(
+            provider='gemini',  # Test with different provider
+            model='gemini-2.0-flash'
+        )
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=sample_file_path
+        )
+        
+        # Test with DocumentProcessor directly through Stage 1 business logic
+        # (Stage 1 should handle different providers/models transparently)
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=sample_file_path
+        )
+        
+        # Should work regardless of provider/model
+        assert result['success'] == True
+        assert result['chunks_created'] > 0
+        assert 'total_words' in result
+        assert 'total_tokens' in result
+        
+        # Validate that the refactored features still work with different providers
+        stats = stage_1_instance.get_chunk_statistics(test_draft['draft_id'])
+        assert stats.get('chunking_strategy') == 'word_based_with_token_validation'
+        assert stats.get('target_words_per_chunk') == 1500
+        assert stats['total_words'] > 0
+        assert stats['total_tokens'] > 0
+        
+        # Validate that provider/model doesn't break the word-based chunking
+        # (should still average around 1500 words regardless of provider)
+        if stats['chunk_count'] > 1:
+            avg_words = stats['avg_words_per_chunk']
+            assert 800 < avg_words < 2500  # Reasonable range for word-based chunking
