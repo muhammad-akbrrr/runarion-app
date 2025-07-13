@@ -145,7 +145,9 @@ def count_tokens(text: str, provider: str, model_name: str) -> int:
             return len(text) // CHARS_PER_TOKEN_ESTIMATE
 
 
-def estimate_tokens_from_messages(messages: list, provider: str, model_name: str) -> int:
+def estimate_tokens_from_messages(
+    messages: list, provider: str, model_name: str
+) -> int:
     """
     Estimate token count for a list of messages (chat format).
 
@@ -167,8 +169,8 @@ def estimate_tokens_from_messages(messages: list, provider: str, model_name: str
 
         for message in messages:
             # Count tokens for role and content
-            role_tokens = len(tokenizer.encode(message.get('role', '')))
-            content_tokens = len(tokenizer.encode(message.get('content', '')))
+            role_tokens = len(tokenizer.encode(message.get("role", "")))
+            content_tokens = len(tokenizer.encode(message.get("content", "")))
 
             # Add overhead per message (varies by model, but ~4 is typical)
             message_overhead = 4
@@ -177,8 +179,8 @@ def estimate_tokens_from_messages(messages: list, provider: str, model_name: str
         # For Gemini and other providers, format messages into a single text
         formatted_messages = []
         for message in messages:
-            role = message.get('role', '')
-            content = message.get('content', '')
+            role = message.get("role", "")
+            content = message.get("content", "")
             formatted_messages.append(f"{role}: {content}")
 
         all_text = "\n".join(formatted_messages)
@@ -187,7 +189,9 @@ def estimate_tokens_from_messages(messages: list, provider: str, model_name: str
     return total_tokens
 
 
-def get_safe_max_tokens(provider: str, model_name: str, safety_margin: float = 0.1) -> int:
+def get_safe_max_tokens(
+    provider: str, model_name: str, safety_margin: float = 0.1
+) -> int:
     """
     Get the safe maximum tokens for a model, accounting for safety margin.
 
@@ -203,8 +207,9 @@ def get_safe_max_tokens(provider: str, model_name: str, safety_margin: float = 0
     return int(max_tokens * (1 - safety_margin))
 
 
-def chunk_text_by_tokens(text: str, max_tokens: int, provider: str, model_name: str,
-                         overlap_tokens: int = 50) -> list[str]:
+def chunk_text_by_tokens(
+    text: str, max_tokens: int, provider: str, model_name: str, overlap_tokens: int = 50
+) -> list[str]:
     """
     Split text into chunks based on token count rather than character count.
 
@@ -261,7 +266,10 @@ def chunk_text_by_tokens(text: str, max_tokens: int, provider: str, model_name: 
 
             except Exception:
                 # If token counting fails, fall back to character-based estimation
-                if len(test_chunk) > max_tokens * CHARS_PER_TOKEN_ESTIMATE and current_chunk:
+                if (
+                    len(test_chunk) > max_tokens * CHARS_PER_TOKEN_ESTIMATE
+                    and current_chunk
+                ):
                     chunks.append(current_chunk.strip())
                     current_chunk = sentence
                 else:
@@ -274,7 +282,8 @@ def chunk_text_by_tokens(text: str, max_tokens: int, provider: str, model_name: 
         # Add overlaps between chunks
         if overlap_tokens > 0 and len(chunks) > 1:
             chunks = _add_overlaps_to_chunks(
-                chunks, overlap_tokens, provider, model_name)
+                chunks, overlap_tokens, provider, model_name
+            )
 
         return chunks
     else:
@@ -291,7 +300,7 @@ def chunk_text_by_tokens(text: str, max_tokens: int, provider: str, model_name: 
 
             # Try to break at word boundaries
             if end < len(text) and not text[end].isspace():
-                last_space = chunk.rfind(' ')
+                last_space = chunk.rfind(" ")
                 if last_space > len(chunk) // 2:  # Don't break too early
                     end = start + last_space
                     chunk = text[start:end]
@@ -304,7 +313,9 @@ def chunk_text_by_tokens(text: str, max_tokens: int, provider: str, model_name: 
         return chunks
 
 
-def _add_overlaps_to_chunks(chunks: list[str], overlap_tokens: int, provider: str, model_name: str) -> list[str]:
+def _add_overlaps_to_chunks(
+    chunks: list[str], overlap_tokens: int, provider: str, model_name: str
+) -> list[str]:
     """
     Add overlaps between chunks for better context continuity.
 
@@ -324,7 +335,7 @@ def _add_overlaps_to_chunks(chunks: list[str], overlap_tokens: int, provider: st
 
     for i in range(1, len(chunks)):
         current_chunk = chunks[i]
-        previous_chunk = chunks[i-1]
+        previous_chunk = chunks[i - 1]
 
         # Get the last portion of previous chunk for overlap
         prev_sentences = _split_into_sentences(previous_chunk)
@@ -332,7 +343,7 @@ def _add_overlaps_to_chunks(chunks: list[str], overlap_tokens: int, provider: st
 
         # Try to get approximately overlap_tokens worth of text from end of previous chunk
         for j in range(len(prev_sentences) - 1, -1, -1):
-            test_overlap = ' '.join(prev_sentences[j:])
+            test_overlap = " ".join(prev_sentences[j:])
             try:
                 if count_tokens(test_overlap, provider, model_name) <= overlap_tokens:
                     overlap_text = test_overlap

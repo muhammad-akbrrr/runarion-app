@@ -26,7 +26,7 @@ class DocumentProcessor:
     Handles document ingestion, extraction, and chunking for the novel pipeline.
     """
 
-    SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.docx', '.doc'}
+    SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc"}
     DEFAULT_CHUNK_SIZE = 4000  # Conservative token limit for chunking
     OVERLAP_SIZE = 200  # Overlap between chunks to maintain context
 
@@ -65,11 +65,11 @@ class DocumentProcessor:
             raise ValueError(f"Unsupported file format: {extension}")
 
         try:
-            if extension == '.pdf':
+            if extension == ".pdf":
                 return self._extract_from_pdf(file_path)
-            elif extension == '.txt':
+            elif extension == ".txt":
                 return self._extract_from_txt(file_path)
-            elif extension in ['.docx', '.doc']:
+            elif extension in [".docx", ".doc"]:
                 return self._extract_from_docx(file_path)
         except Exception as e:
             logger.error(f"Failed to extract text from {file_path}: {str(e)}")
@@ -96,11 +96,11 @@ class DocumentProcessor:
     def _extract_from_txt(self, file_path: Path) -> str:
         """Extract text from TXT file with encoding detection."""
         try:
-            with open(file_path, 'r', encoding='utf-8') as file:
+            with open(file_path, "r", encoding="utf-8") as file:
                 return file.read()
         except UnicodeDecodeError:
             # Try with different encoding
-            with open(file_path, 'r', encoding='latin-1') as file:
+            with open(file_path, "r", encoding="latin-1") as file:
                 return file.read()
 
     def _extract_from_docx(self, file_path: Path) -> str:
@@ -125,24 +125,29 @@ class DocumentProcessor:
             Cleaned text
         """
         # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text)
+        text = re.sub(r"\s+", " ", text)
 
         # Remove page numbers and common PDF artifacts
-        text = re.sub(r'\b\d+\b(?=\s*$)', '', text, flags=re.MULTILINE)
+        text = re.sub(r"\b\d+\b(?=\s*$)", "", text, flags=re.MULTILINE)
 
         # Remove excessive line breaks
-        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+        text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
 
         # Remove zero-width characters
-        text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
+        text = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", text)
 
         # Strip leading/trailing whitespace
         text = text.strip()
 
         return text
 
-    def chunk_text(self, text: str, provider: str = "openai", model: str = "gpt-4o",
-                   max_chunk_size: Optional[int] = None) -> List[Dict[str, any]]:
+    def chunk_text(
+        self,
+        text: str,
+        provider: str = "openai",
+        model: str = "gpt-4o",
+        max_chunk_size: Optional[int] = None,
+    ) -> List[Dict[str, any]]:
         """
         Split text into chunks suitable for AI processing using proper tokenizers.
 
@@ -160,52 +165,62 @@ class DocumentProcessor:
 
         # Get model-specific token limit with safety margin
         try:
-            safe_max_tokens = get_safe_max_tokens(
-                provider, model, safety_margin=0.2)
+            safe_max_tokens = get_safe_max_tokens(provider, model, safety_margin=0.2)
             # Use conservative chunk size (25% of safe limit)
             chunk_size = max_chunk_size or min(
-                self.DEFAULT_CHUNK_SIZE, safe_max_tokens // 4)
+                self.DEFAULT_CHUNK_SIZE, safe_max_tokens // 4
+            )
         except Exception as e:
-            logger.warning(
-                f"Could not get token limit for {provider}/{model}: {e}")
+            logger.warning(f"Could not get token limit for {provider}/{model}: {e}")
             chunk_size = max_chunk_size or self.DEFAULT_CHUNK_SIZE
 
         # Use enhanced semantic boundary chunking
         if self.PARAGRAPH_PRIORITY:
             try:
-                return self._chunk_by_semantic_boundaries(text, chunk_size, provider, model)
+                return self._chunk_by_semantic_boundaries(
+                    text, chunk_size, provider, model
+                )
             except Exception as e:
                 logger.warning(
-                    f"Semantic boundary chunking failed, falling back to tokenizer-based: {e}")
+                    f"Semantic boundary chunking failed, falling back to tokenizer-based: {e}"
+                )
 
         # Use proper tokenizer-based chunking as fallback
         try:
             text_chunks = chunk_text_by_tokens(
-                text, chunk_size, provider, model, overlap_tokens=50)
+                text, chunk_size, provider, model, overlap_tokens=50
+            )
 
             chunks = []
             for i, chunk_text in enumerate(text_chunks, 1):
                 # Get accurate token count for the chunk
                 actual_token_count = self._safe_count_tokens(
-                    chunk_text, provider, model)
+                    chunk_text, provider, model
+                )
 
-                chunks.append({
-                    'chunk_number': i,
-                    'raw_text': chunk_text.strip(),
-                    'token_count': actual_token_count,
-                    'character_count': len(chunk_text)
-                })
+                chunks.append(
+                    {
+                        "chunk_number": i,
+                        "raw_text": chunk_text.strip(),
+                        "token_count": actual_token_count,
+                        "character_count": len(chunk_text),
+                    }
+                )
 
             logger.info(
-                f"Split text into {len(chunks)} chunks using tokenizer, total tokens: {sum(c['token_count'] for c in chunks)}")
+                f"Split text into {len(chunks)} chunks using tokenizer, total tokens: {sum(c['token_count'] for c in chunks)}"
+            )
             return chunks
 
         except Exception as e:
             logger.warning(
-                f"Tokenizer-based chunking failed, falling back to sentence-based: {e}")
+                f"Tokenizer-based chunking failed, falling back to sentence-based: {e}"
+            )
             return self._sentence_based_chunking(text, chunk_size, provider, model)
 
-    def _chunk_text_fallback(self, text: str, chunk_size: int, provider: str, model: str) -> List[Dict[str, any]]:
+    def _chunk_text_fallback(
+        self, text: str, chunk_size: int, provider: str, model: str
+    ) -> List[Dict[str, any]]:
         """
         Fallback chunking method using sentence boundaries with improved token estimation.
 
@@ -243,7 +258,9 @@ class DocumentProcessor:
                     paragraphs.append(block[4])
 
         # Join paragraphs with double line breaks to maintain structure
-        return "\n\n".join(paragraph.strip() for paragraph in paragraphs if paragraph.strip())
+        return "\n\n".join(
+            paragraph.strip() for paragraph in paragraphs if paragraph.strip()
+        )
 
     def _detect_paragraphs_from_text(self, text: str) -> List[str]:
         """
@@ -256,13 +273,13 @@ class DocumentProcessor:
             List of paragraph strings
         """
         # Split on double line breaks (most common paragraph separator)
-        paragraphs = re.split(r'\n\s*\n', text)
+        paragraphs = re.split(r"\n\s*\n", text)
 
         # Clean and filter paragraphs
         cleaned_paragraphs = []
         for para in paragraphs:
             # Clean whitespace and normalize line breaks within paragraph
-            para = re.sub(r'\s+', ' ', para.strip())
+            para = re.sub(r"\s+", " ", para.strip())
 
             # Filter out very short "paragraphs" that are likely artifacts
             if len(para) > 20:  # Minimum paragraph length
@@ -270,7 +287,9 @@ class DocumentProcessor:
 
         return cleaned_paragraphs
 
-    def _chunk_by_semantic_boundaries(self, text: str, chunk_size: int, provider: str, model: str) -> List[Dict[str, any]]:
+    def _chunk_by_semantic_boundaries(
+        self, text: str, chunk_size: int, provider: str, model: str
+    ) -> List[Dict[str, any]]:
         """
         Chunk text using hierarchical semantic boundaries: paragraphs > sentences > words.
 
@@ -293,37 +312,49 @@ class DocumentProcessor:
 
         for paragraph in paragraphs:
             # Count tokens for this paragraph
-            paragraph_tokens = self._safe_count_tokens(
-                paragraph, provider, model)
+            paragraph_tokens = self._safe_count_tokens(paragraph, provider, model)
 
             # Check if paragraph alone exceeds max chunk size
             if paragraph_tokens > self.MAX_PARAGRAPH_TOKENS:
                 # Save current chunk if it has content
                 if current_chunk_content:
-                    chunk_text = self._join_chunk_content(
-                        current_chunk_content)
-                    chunks.append(self._create_chunk_dict(
-                        chunk_number, chunk_text, current_chunk_tokens))
+                    chunk_text = self._join_chunk_content(current_chunk_content)
+                    chunks.append(
+                        self._create_chunk_dict(
+                            chunk_number, chunk_text, current_chunk_tokens
+                        )
+                    )
                     chunk_number += 1
                     current_chunk_content = []
                     current_chunk_tokens = 0
 
                 # Split oversized paragraph and add as separate chunks
                 paragraph_chunks = self._split_oversized_paragraph(
-                    paragraph, chunk_size, provider, model)
+                    paragraph, chunk_size, provider, model
+                )
                 for para_chunk in paragraph_chunks:
                     para_chunk_tokens = self._safe_count_tokens(
-                        para_chunk, provider, model)
-                    chunks.append(self._create_chunk_dict(
-                        chunk_number, para_chunk, para_chunk_tokens))
+                        para_chunk, provider, model
+                    )
+                    chunks.append(
+                        self._create_chunk_dict(
+                            chunk_number, para_chunk, para_chunk_tokens
+                        )
+                    )
                     chunk_number += 1
 
             # Check if adding this paragraph would exceed chunk size
-            elif current_chunk_tokens + paragraph_tokens > chunk_size and current_chunk_content:
+            elif (
+                current_chunk_tokens + paragraph_tokens > chunk_size
+                and current_chunk_content
+            ):
                 # Save current chunk
                 chunk_text = self._join_chunk_content(current_chunk_content)
-                chunks.append(self._create_chunk_dict(
-                    chunk_number, chunk_text, current_chunk_tokens))
+                chunks.append(
+                    self._create_chunk_dict(
+                        chunk_number, chunk_text, current_chunk_tokens
+                    )
+                )
                 chunk_number += 1
 
                 # Start new chunk with current paragraph
@@ -337,20 +368,27 @@ class DocumentProcessor:
         # Add final chunk if it has content
         if current_chunk_content:
             chunk_text = self._join_chunk_content(current_chunk_content)
-            final_tokens = self._safe_count_tokens(
-                chunk_text, provider, model) if chunk_text else 0
-            chunks.append(self._create_chunk_dict(
-                chunk_number, chunk_text, final_tokens))
+            final_tokens = (
+                self._safe_count_tokens(chunk_text, provider, model)
+                if chunk_text
+                else 0
+            )
+            chunks.append(
+                self._create_chunk_dict(chunk_number, chunk_text, final_tokens)
+            )
 
         # Add semantic overlaps between chunks
         if self.SEMANTIC_OVERLAP and len(chunks) > 1:
             chunks = self._add_semantic_overlaps(chunks, provider, model)
 
         logger.info(
-            f"Split text into {len(chunks)} chunks using semantic boundaries, total tokens: {sum(c['token_count'] for c in chunks)}")
+            f"Split text into {len(chunks)} chunks using semantic boundaries, total tokens: {sum(c['token_count'] for c in chunks)}"
+        )
         return chunks
 
-    def _split_oversized_paragraph(self, paragraph: str, chunk_size: int, provider: str, model: str) -> List[str]:
+    def _split_oversized_paragraph(
+        self, paragraph: str, chunk_size: int, provider: str, model: str
+    ) -> List[str]:
         """
         Split a paragraph that exceeds token limits at sentence boundaries.
 
@@ -364,9 +402,21 @@ class DocumentProcessor:
             List of paragraph chunks
         """
         # Use the unified sentence-based chunking helper
-        return [chunk['raw_text'] for chunk in self._sentence_based_chunking(paragraph, chunk_size, provider, model, raw_only=True)]
+        return [
+            chunk["raw_text"]
+            for chunk in self._sentence_based_chunking(
+                paragraph, chunk_size, provider, model, raw_only=True
+            )
+        ]
 
-    def _sentence_based_chunking(self, text: str, chunk_size: int, provider: str, model: str, raw_only: bool = False) -> List[Dict[str, any]]:
+    def _sentence_based_chunking(
+        self,
+        text: str,
+        chunk_size: int,
+        provider: str,
+        model: str,
+        raw_only: bool = False,
+    ) -> List[Dict[str, any]]:
         """
         Helper for sentence-based chunking, used by fallback and paragraph splitting.
         If raw_only is True, returns only the raw text chunks (for paragraph splitting).
@@ -382,17 +432,18 @@ class DocumentProcessor:
             test_chunk = current_chunk + " " + sentence if current_chunk else sentence
             test_tokens = self._safe_count_tokens(test_chunk, provider, model)
             if test_tokens > chunk_size and current_chunk:
-                current_tokens = self._safe_count_tokens(
-                    current_chunk, provider, model)
+                current_tokens = self._safe_count_tokens(current_chunk, provider, model)
                 if raw_only:
-                    chunks.append({'raw_text': current_chunk.strip()})
+                    chunks.append({"raw_text": current_chunk.strip()})
                 else:
-                    chunks.append({
-                        'chunk_number': chunk_number,
-                        'raw_text': current_chunk.strip(),
-                        'token_count': current_tokens,
-                        'character_count': len(current_chunk)
-                    })
+                    chunks.append(
+                        {
+                            "chunk_number": chunk_number,
+                            "raw_text": current_chunk.strip(),
+                            "token_count": current_tokens,
+                            "character_count": len(current_chunk),
+                        }
+                    )
                 current_chunk = sentence
                 chunk_number += 1
             else:
@@ -401,21 +452,23 @@ class DocumentProcessor:
                 else:
                     current_chunk = sentence
         if current_chunk.strip():
-            final_tokens = self._safe_count_tokens(
-                current_chunk, provider, model)
+            final_tokens = self._safe_count_tokens(current_chunk, provider, model)
             if raw_only:
-                chunks.append({'raw_text': current_chunk.strip()})
+                chunks.append({"raw_text": current_chunk.strip()})
             else:
-                chunks.append({
-                    'chunk_number': chunk_number,
-                    'raw_text': current_chunk.strip(),
-                    'token_count': final_tokens,
-                    'character_count': len(current_chunk)
-                })
+                chunks.append(
+                    {
+                        "chunk_number": chunk_number,
+                        "raw_text": current_chunk.strip(),
+                        "token_count": final_tokens,
+                        "character_count": len(current_chunk),
+                    }
+                )
         if raw_only:
             return chunks
         logger.info(
-            f"Split text into {len(chunks)} chunks using sentence-based chunking, total tokens: {sum(c.get('token_count', 0) for c in chunks)}")
+            f"Split text into {len(chunks)} chunks using sentence-based chunking, total tokens: {sum(c.get('token_count', 0) for c in chunks)}"
+        )
         return chunks
 
     def _join_chunk_content(self, content_list: List[str]) -> str:
@@ -428,9 +481,13 @@ class DocumentProcessor:
         Returns:
             Joined text with proper spacing
         """
-        return "\n\n".join(content.strip() for content in content_list if content.strip())
+        return "\n\n".join(
+            content.strip() for content in content_list if content.strip()
+        )
 
-    def _create_chunk_dict(self, chunk_number: int, text: str, token_count: int) -> Dict[str, any]:
+    def _create_chunk_dict(
+        self, chunk_number: int, text: str, token_count: int
+    ) -> Dict[str, any]:
         """
         Create a standardized chunk dictionary.
 
@@ -443,13 +500,15 @@ class DocumentProcessor:
             Chunk dictionary matching expected format
         """
         return {
-            'chunk_number': chunk_number,
-            'raw_text': text.strip(),
-            'token_count': token_count,
-            'character_count': len(text)
+            "chunk_number": chunk_number,
+            "raw_text": text.strip(),
+            "token_count": token_count,
+            "character_count": len(text),
         }
 
-    def _add_semantic_overlaps(self, chunks: List[Dict[str, any]], provider: str, model: str) -> List[Dict[str, any]]:
+    def _add_semantic_overlaps(
+        self, chunks: List[Dict[str, any]], provider: str, model: str
+    ) -> List[Dict[str, any]]:
         """
         Add semantic-aware overlaps between chunks.
 
@@ -468,30 +527,28 @@ class DocumentProcessor:
 
         for i in range(1, len(chunks)):
             current_chunk = chunks[i]
-            previous_chunk = chunks[i-1]
+            previous_chunk = chunks[i - 1]
 
             # Create semantic overlap from previous chunk
-            overlap_text = self._create_semantic_overlap(
-                previous_chunk['raw_text'])
+            overlap_text = self._create_semantic_overlap(previous_chunk["raw_text"])
 
             if overlap_text:
                 # Prepend overlap to current chunk
-                enhanced_text = overlap_text + \
-                    "\n\n" + current_chunk['raw_text']
+                enhanced_text = overlap_text + "\n\n" + current_chunk["raw_text"]
 
                 # Recalculate token count
                 try:
-                    new_token_count = count_tokens(
-                        enhanced_text, provider, model)
+                    new_token_count = count_tokens(enhanced_text, provider, model)
                 except Exception:
-                    new_token_count = current_chunk['token_count'] + \
-                        len(overlap_text) // 4
+                    new_token_count = (
+                        current_chunk["token_count"] + len(overlap_text) // 4
+                    )
 
                 enhanced_chunk = {
-                    'chunk_number': current_chunk['chunk_number'],
-                    'raw_text': enhanced_text,
-                    'token_count': new_token_count,
-                    'character_count': len(enhanced_text)
+                    "chunk_number": current_chunk["chunk_number"],
+                    "raw_text": enhanced_text,
+                    "token_count": new_token_count,
+                    "character_count": len(enhanced_text),
                 }
                 enhanced_chunks.append(enhanced_chunk)
             else:
@@ -535,8 +592,9 @@ class DocumentProcessor:
         except Exception:
             return len(text) // 4
 
-    def process_document(self, file_path: str, provider: str = "openai",
-                         model: str = "gpt-4o") -> Dict[str, any]:
+    def process_document(
+        self, file_path: str, provider: str = "openai", model: str = "gpt-4o"
+    ) -> Dict[str, any]:
         """
         Complete document processing pipeline.
 
@@ -560,31 +618,26 @@ class DocumentProcessor:
 
             # Calculate metadata
             metadata = {
-                'file_path': file_path,
-                'file_size': Path(file_path).stat().st_size,
-                'original_length': len(raw_text),
-                'cleaned_length': len(cleaned_text),
-                'chunk_count': len(chunks),
-                'total_tokens': sum(c['token_count'] for c in chunks),
-                'processing_model': f"{provider}/{model}"
+                "file_path": file_path,
+                "file_size": Path(file_path).stat().st_size,
+                "original_length": len(raw_text),
+                "cleaned_length": len(cleaned_text),
+                "chunk_count": len(chunks),
+                "total_tokens": sum(c["token_count"] for c in chunks),
+                "processing_model": f"{provider}/{model}",
             }
 
             return {
-                'success': True,
-                'raw_text': raw_text,
-                'cleaned_text': cleaned_text,
-                'chunks': chunks,
-                'metadata': metadata
+                "success": True,
+                "raw_text": raw_text,
+                "cleaned_text": cleaned_text,
+                "chunks": chunks,
+                "metadata": metadata,
             }
 
         except Exception as e:
-            logger.error(
-                f"Document processing failed for {file_path}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'file_path': file_path
-            }
+            logger.error(f"Document processing failed for {file_path}: {str(e)}")
+            return {"success": False, "error": str(e), "file_path": file_path}
 
     def validate_file(self, file_path: str) -> Tuple[bool, str]:
         """
