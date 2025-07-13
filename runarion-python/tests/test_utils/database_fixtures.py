@@ -70,10 +70,8 @@ class DatabaseFixture:
                         ids = self.created_records[table_name]
                         placeholders = ','.join(['%s'] * len(ids))
                         
-                        if table_name == 'workspace_members':
-                            cursor.execute(f"DELETE FROM {table_name} WHERE user_id IN ({placeholders})", ids)
-                        else:
-                            cursor.execute(f"DELETE FROM {table_name} WHERE id IN ({placeholders})", ids)
+                        # All tables use 'id' as primary key, including workspace_members
+                        cursor.execute(f"DELETE FROM {table_name} WHERE id IN ({placeholders})", ids)
                         
                         logger.debug(f"Cleaned {cursor.rowcount} records from {table_name}")
                 
@@ -88,12 +86,12 @@ class DatabaseFixture:
                     if graph_exists:
                         # Use direct cypher call for cleanup
                         cursor.execute("""
-                            SELECT ag_catalog.cypher('novel_pipeline_graph_test', $cypher$
+                            SELECT * FROM ag_catalog.cypher('novel_pipeline_graph_test', $$
                                 MATCH (n)
                                 WHERE n.test_data = true
                                 DETACH DELETE n
                                 RETURN count(n)
-                            $cypher$) AS (deleted_count agtype)
+                            $$) AS (deleted_count agtype)
                         """)
                         logger.debug("Cleaned up test graph data")
                 except Exception as graph_error:
@@ -184,13 +182,38 @@ class DatabaseFixture:
         finally:
             self.connection_pool.putconn(conn)
     
-    def create_test_workspace(self, workspace_id: str = None, user_id: int = 1) -> Dict[str, Any]:
+    def get_existing_user_id(self) -> int:
+        """
+        Get a random existing user ID from the seeded database.
+        
+        Returns:
+            A valid user ID from the users table
+            
+        Raises:
+            Exception: If no users are found in the database
+        """
+        conn = self.connection_pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT id FROM users 
+                ORDER BY RANDOM() 
+                LIMIT 1
+            """)
+            result = cursor.fetchone()
+            if not result:
+                raise Exception("No users found in database. Ensure Laravel seeders have been run.")
+            return result[0]
+        finally:
+            self.connection_pool.putconn(conn)
+    
+    def create_test_workspace(self, workspace_id: str = None, user_id: int = None) -> Dict[str, Any]:
         """
         Create a test workspace with user membership.
         
         Args:
             workspace_id: Optional workspace ID (generates one if not provided)
-            user_id: User ID for workspace membership
+            user_id: Optional user ID for workspace membership (uses existing user if not provided)
             
         Returns:
             Created workspace data
@@ -198,42 +221,74 @@ class DatabaseFixture:
         if workspace_id is None:
             workspace_id = generate_ulid()
         
-        with self.transaction() as conn:
-            cursor = conn.cursor()
+        if user_id is None:
+            user_id = self.get_existing_user_id()
+        
+        # Create workspace with unique slug handling - retry with fresh transactions
+        workspace_name = f"Test Workspace {workspace_id[:8]}"
+        base_slug = f"test-workspace-{workspace_id[:8].lower()}"
+        
+        max_attempts = 5
+        workspace_slug = None
+        
+        for attempt in range(max_attempts):
+            if attempt == 0:
+                workspace_slug = base_slug
+            else:
+                # Add random suffix to ensure uniqueness
+                import random
+                random_suffix = ''.join(random.choices('0123456789abcdef', k=4))
+                workspace_slug = f"{base_slug}-{random_suffix}"
             
-            # Create workspace with required slug field
-            workspace_name = f"Test Workspace {workspace_id[:8]}"
-            workspace_slug = f"test-workspace-{workspace_id[:8].lower()}"
-            
-            cursor.execute("""
-                INSERT INTO workspaces (id, name, slug, created_at, updated_at)
-                VALUES (%s, %s, %s, NOW(), NOW())
-                RETURNING id
-            """, (workspace_id, workspace_name, workspace_slug))
-            
-            workspace_result = cursor.fetchone()
-            if workspace_result:
-                self.created_records['workspaces'].append(workspace_result[0])
-            
-            # Create workspace membership
-            cursor.execute("""
-                INSERT INTO workspace_members (workspace_id, user_id, role, created_at, updated_at)
-                VALUES (%s, %s, 'owner', NOW(), NOW())
-            """, (workspace_id, user_id))
-            
-            self.created_records['workspace_members'].append(user_id)
-            
-            workspace_data = {
-                'workspace_id': workspace_id,
-                'user_id': user_id,
-                'role': 'owner'
-            }
-            
-            logger.debug(f"Created test workspace: {workspace_id}")
-            return workspace_data
+            try:
+                # Use a fresh transaction for each attempt
+                with self.transaction() as conn:
+                    cursor = conn.cursor()
+                    
+                    # Try to create workspace
+                    cursor.execute("""
+                        INSERT INTO workspaces (id, name, slug, created_at, updated_at)
+                        VALUES (%s, %s, %s, NOW(), NOW())
+                        RETURNING id
+                    """, (workspace_id, workspace_name, workspace_slug))
+                    
+                    workspace_result = cursor.fetchone()
+                    if workspace_result:
+                        self.created_records['workspaces'].append(workspace_result[0])
+                    
+                    # Create workspace membership in the same transaction
+                    membership_id = generate_ulid()
+                    cursor.execute("""
+                        INSERT INTO workspace_members (id, workspace_id, user_id, role, created_at, updated_at)
+                        VALUES (%s, %s, %s, 'owner', NOW(), NOW())
+                    """, (membership_id, workspace_id, user_id))
+                    
+                    self.created_records['workspace_members'].append(membership_id)
+                    
+                    # If we get here, both insertions succeeded
+                    break
+                    
+            except Exception as e:
+                if "unique constraint" in str(e).lower() and "slug" in str(e).lower():
+                    if attempt == max_attempts - 1:
+                        raise Exception(f"Failed to create unique workspace slug after {max_attempts} attempts")
+                    # Try again with a different slug and fresh transaction
+                    continue
+                else:
+                    # Re-raise non-slug related errors
+                    raise
+        
+        workspace_data = {
+            'workspace_id': workspace_id,
+            'user_id': user_id,
+            'role': 'owner'
+        }
+        
+        logger.debug(f"Created test workspace: {workspace_id} with slug: {workspace_slug}")
+        return workspace_data
     
     def create_test_draft(self, draft_id: str = None, workspace_id: str = None, 
-                         user_id: int = 1, file_name: str = 'test_manuscript.txt') -> Dict[str, Any]:
+                         user_id: int = 1, file_path: str = '/app/tests/sample_files/inputs/test_manuscript.txt') -> Dict[str, Any]:
         """
         Create a test draft record.
         
@@ -241,29 +296,33 @@ class DatabaseFixture:
             draft_id: Optional draft ID (generates one if not provided)
             workspace_id: Workspace ID (creates one if not provided)
             user_id: User ID
-            file_name: File name for the draft
+            file_path: Full path to the file for the draft
             
         Returns:
             Created draft data
         """
         if draft_id is None:
-            draft_id = str(uuid.uuid4())
+            draft_id = generate_ulid()
         
         if workspace_id is None:
             workspace_data = self.create_test_workspace(user_id=user_id)
             workspace_id = workspace_data['workspace_id']
+        
+        # Extract filename from path
+        import os
+        original_filename = os.path.basename(file_path)
         
         with self.transaction() as conn:
             cursor = conn.cursor()
             
             cursor.execute("""
                 INSERT INTO drafts (
-                    id, workspace_id, user_id, file_name, file_size, 
+                    id, workspace_id, user_id, original_filename, file_path, file_size, 
                     status, created_at, updated_at
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), NOW())
                 RETURNING id
-            """, (draft_id, workspace_id, user_id, file_name, 1024, 'pending'))
+            """, (draft_id, workspace_id, user_id, original_filename, file_path, 1024, 'pending'))
             
             result = cursor.fetchone()
             if result:
@@ -273,7 +332,7 @@ class DatabaseFixture:
                 'draft_id': draft_id,
                 'workspace_id': workspace_id,
                 'user_id': user_id,
-                'file_name': file_name,
+                'original_filename': original_filename,
                 'status': 'pending'
             }
             

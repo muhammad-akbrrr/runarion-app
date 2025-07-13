@@ -248,11 +248,11 @@ def sample_draft_data():
     """Provide sample draft data for testing."""
     from test_utils.sample_data import generate_ulid
     return {
-        'draft_id': str(uuid.uuid4()),
+        'draft_id': generate_ulid(),
         'file_name': 'test_manuscript.txt',
         'user_id': 1,
         'workspace_id': generate_ulid(),
-        'project_id': str(uuid.uuid4()),
+        'project_id': generate_ulid(),
         'provider': 'openai',
         'model': 'gpt-4o-mini',
         'chaptering_mode': 'flexible',

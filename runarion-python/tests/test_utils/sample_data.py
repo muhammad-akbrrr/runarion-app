@@ -44,8 +44,9 @@ class SampleDataGenerator:
     Note: This is not a pytest test class, it's a utility class.
     """
     
-    def __init__(self):
+    def __init__(self, connection_pool=None):
         # Use built-in random data instead of faker
+        self.connection_pool = connection_pool
         self.sample_names = [
             "Alice Johnson", "Bob Smith", "Charlie Brown", "Diana Prince",
             "Edward Norton", "Fiona Apple", "George Lucas", "Hannah Montana"
@@ -57,6 +58,35 @@ class SampleDataGenerator:
         self.sample_companies = [
             "TechCorp", "DataSystems", "CloudWorks", "DevStudio", "CodeLabs"
         ]
+    
+    def get_existing_user_id(self) -> int:
+        """
+        Get a random existing user ID from the seeded database.
+        
+        Returns:
+            A valid user ID from the users table, or a random number if no DB connection
+        """
+        if self.connection_pool:
+            try:
+                conn = self.connection_pool.getconn()
+                try:
+                    cursor = conn.cursor()
+                    cursor.execute("""
+                        SELECT id FROM users 
+                        ORDER BY RANDOM() 
+                        LIMIT 1
+                    """)
+                    result = cursor.fetchone()
+                    if result:
+                        return result[0]
+                finally:
+                    self.connection_pool.putconn(conn)
+            except Exception:
+                # Fall back to random if database query fails
+                pass
+        
+        # Fallback to random number for backward compatibility
+        return random.randint(1, 1000)
     
     def generate_draft_request(self, 
                              draft_id: str = None,
@@ -78,13 +108,13 @@ class SampleDataGenerator:
             Draft request data
         """
         request_data = {
-            'draft_id': draft_id or str(uuid.uuid4()),
+            'draft_id': draft_id or generate_ulid(),
             'file_name': kwargs.get('file_name', 'test_manuscript.txt'),
             'provider': provider,
             'model': kwargs.get('model', self._get_default_model(provider)),
-            'user_id': user_id or random.randint(1, 1000),
+            'user_id': user_id or self.get_existing_user_id(),
             'workspace_id': workspace_id or generate_ulid(),
-            'project_id': kwargs.get('project_id', str(uuid.uuid4())),
+            'project_id': kwargs.get('project_id', generate_ulid()),
             'chaptering_mode': kwargs.get('chaptering_mode', random.choice(['flexible', 'constrained'])),
             'target_chapter_length': kwargs.get('target_chapter_length', random.choice([1000, 2500, 5000]))
         }
@@ -188,7 +218,7 @@ class SampleDataGenerator:
         characters = [random.choice(self.sample_names) for _ in range(random.randint(1, 4))]
         
         return {
-            'draft_id': draft_id or str(uuid.uuid4()),
+            'draft_id': draft_id or generate_ulid(),
             'scene_number': scene_number,
             'title': f"Scene {scene_number}: {random.choice(self.sample_words).title()}",
             'summary': f"A {random.choice(self.sample_words)} scene involving {', '.join(characters[:2])}",
@@ -222,7 +252,7 @@ class SampleDataGenerator:
         raw_text = " ".join(random.choices(self.sample_words, k=words_needed))
         
         return {
-            'draft_id': draft_id or str(uuid.uuid4()),
+            'draft_id': draft_id or generate_ulid(),
             'chunk_number': chunk_number,
             'raw_text': raw_text,
             'cleaned_text': raw_text,  # Initially same as raw
@@ -284,7 +314,7 @@ class SampleDataGenerator:
         }
         
         return {
-            'draft_id': draft_id or str(uuid.uuid4()),
+            'draft_id': draft_id or generate_ulid(),
             'report_type': report_type,
             'report_subject': 'manuscript_analysis',
             'content_json': report_content.get(report_type, report_content['character_analysis']),
@@ -321,7 +351,7 @@ class SampleDataGenerator:
         }
         
         return {
-            'draft_id': draft_id or str(uuid.uuid4()),
+            'draft_id': draft_id or generate_ulid(),
             'issue_type': issue_type,
             'description': random.choice(issue_descriptions.get(issue_type, issue_descriptions['01'])),
             'severity': random.choice(['low', 'medium', 'high']),
@@ -347,7 +377,7 @@ class SampleDataGenerator:
         content = " ".join(random.choices(self.sample_words, k=word_count))
         
         return {
-            'draft_id': draft_id or str(uuid.uuid4()),
+            'draft_id': draft_id or generate_ulid(),
             'chapter_number': chapter_number,
             'title': f"Chapter {chapter_number}: {random.choice(self.sample_words).title()} {random.choice(self.sample_words).title()}",
             'content': content,
@@ -377,7 +407,7 @@ class SampleDataGenerator:
                 'data': data or {},
                 'message': 'Request processed successfully',
                 'timestamp': datetime.now().isoformat(),
-                'request_id': str(uuid.uuid4())
+                'request_id': generate_ulid()
             }
         else:
             return {
@@ -388,7 +418,7 @@ class SampleDataGenerator:
                     'details': {}
                 },
                 'timestamp': datetime.now().isoformat(),
-                'request_id': str(uuid.uuid4())
+                'request_id': generate_ulid()
             }
     
     def generate_processing_timeline(self, 
@@ -424,7 +454,7 @@ class SampleDataGenerator:
             current_time += timedelta(minutes=stage_duration)
             
             timeline.append({
-                'draft_id': draft_id or str(uuid.uuid4()),
+                'draft_id': draft_id or generate_ulid(),
                 'status': status,
                 'description': description,
                 'timestamp': current_time.isoformat(),
