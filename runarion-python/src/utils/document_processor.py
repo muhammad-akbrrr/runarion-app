@@ -12,10 +12,12 @@ import fitz  # PyMuPDF
 from docx import Document
 
 from .get_model_max_token import (
-    chunk_text_by_tokens,
-    count_tokens,
     get_safe_max_tokens,
-    split_into_sentences,
+)
+from .token_counter import (
+    CHARS_PER_TOKEN_ESTIMATE,
+    count_tokens,
+    get_openai_tokenizer,
 )
 
 logger = logging.getLogger(__name__)
@@ -187,7 +189,7 @@ class DocumentProcessor:
 
         # Use proper tokenizer-based chunking as fallback
         try:
-            text_chunks = chunk_text_by_tokens(
+            text_chunks = self._chunk_by_tokens(
                 text, chunk_size, provider, model, overlap_tokens=50
             )
 
@@ -409,6 +411,185 @@ class DocumentProcessor:
             )
         ]
 
+    def _chunk_by_tokens(
+        self,
+        text: str,
+        max_tokens: int,
+        provider: str,
+        model_name: str,
+        overlap_tokens: int = 50,
+    ) -> list[str]:
+        """
+        Split text into chunks based on token count rather than character count.
+
+        Args:
+            text: Text to chunk
+            max_tokens: Maximum tokens per chunk
+            provider: AI provider
+            model_name: Model name
+            overlap_tokens: Number of tokens to overlap between chunks
+
+        Returns:
+            List of text chunks
+        """
+        if provider == "openai":
+            tokenizer = get_openai_tokenizer(model_name)
+            tokens = tokenizer.encode(text)
+
+            chunks = []
+            start = 0
+
+            while start < len(tokens):
+                end = min(start + max_tokens, len(tokens))
+                chunk_tokens = tokens[start:end]
+                chunk_text = tokenizer.decode(chunk_tokens)
+                chunks.append(chunk_text)
+
+                # Move start position, accounting for overlap
+                start = end - overlap_tokens
+                if start >= len(tokens):
+                    break
+
+            return chunks
+        elif provider == "gemini":
+            # For Gemini, we need to use iterative chunking since we can't encode/decode directly
+            # Split text into sentences first for better chunking boundaries
+            sentences = self._split_into_sentences(text)
+            chunks = []
+            current_chunk = ""
+
+            for sentence in sentences:
+                # Test if adding this sentence would exceed max tokens
+                test_chunk = (
+                    current_chunk + " " + sentence if current_chunk else sentence
+                )
+
+                try:
+                    test_tokens = count_tokens(test_chunk, provider, model_name)
+
+                    if test_tokens > max_tokens and current_chunk:
+                        # Save current chunk and start new one
+                        chunks.append(current_chunk.strip())
+                        current_chunk = sentence
+                    else:
+                        # Add sentence to current chunk
+                        current_chunk = test_chunk
+
+                except Exception:
+                    # If token counting fails, fall back to character-based estimation
+                    if (
+                        len(test_chunk) > max_tokens * CHARS_PER_TOKEN_ESTIMATE
+                        and current_chunk
+                    ):
+                        chunks.append(current_chunk.strip())
+                        current_chunk = sentence
+                    else:
+                        current_chunk = test_chunk
+
+            # Add final chunk
+            if current_chunk.strip():
+                chunks.append(current_chunk.strip())
+
+            # Add overlaps between chunks
+            if overlap_tokens > 0 and len(chunks) > 1:
+                chunks = self._add_token_overlaps_to_chunks(
+                    chunks, overlap_tokens, provider, model_name
+                )
+
+            return chunks
+        else:
+            # Fallback to character-based chunking with token estimation
+            max_chars = max_tokens * CHARS_PER_TOKEN_ESTIMATE
+            overlap_chars = overlap_tokens * CHARS_PER_TOKEN_ESTIMATE
+
+            chunks = []
+            start = 0
+
+            while start < len(text):
+                end = min(start + max_chars, len(text))
+                chunk = text[start:end]
+
+                # Try to break at word boundaries
+                if end < len(text) and not text[end].isspace():
+                    last_space = chunk.rfind(" ")
+                    if last_space > len(chunk) // 2:  # Don't break too early
+                        end = start + last_space
+                        chunk = text[start:end]
+
+                chunks.append(chunk)
+                start = end - overlap_chars
+                if start >= len(text):
+                    break
+
+            return chunks
+
+    def _add_token_overlaps_to_chunks(
+        self, chunks: list[str], overlap_tokens: int, provider: str, model_name: str
+    ) -> list[str]:
+        """
+        Add overlaps between chunks for better context continuity.
+
+        Args:
+            chunks: List of text chunks
+            overlap_tokens: Number of tokens to overlap
+            provider: AI provider
+            model_name: Model name
+
+        Returns:
+            List of chunks with overlaps added
+        """
+        if len(chunks) <= 1:
+            return chunks
+
+        overlapped_chunks = [chunks[0]]  # First chunk unchanged
+
+        for i in range(1, len(chunks)):
+            current_chunk = chunks[i]
+            previous_chunk = chunks[i - 1]
+
+            # Get the last portion of previous chunk for overlap
+            prev_sentences = self._split_into_sentences(previous_chunk)
+            overlap_text = ""
+
+            # Try to get approximately overlap_tokens worth of text from end of previous chunk
+            for j in range(len(prev_sentences) - 1, -1, -1):
+                test_overlap = " ".join(prev_sentences[j:])
+                try:
+                    if (
+                        count_tokens(test_overlap, provider, model_name)
+                        <= overlap_tokens
+                    ):
+                        overlap_text = test_overlap
+                        break
+                except Exception:
+                    # Fallback to character-based estimation
+                    if len(test_overlap) <= overlap_tokens * CHARS_PER_TOKEN_ESTIMATE:
+                        overlap_text = test_overlap
+                        break
+
+            # Add overlap to current chunk
+            if overlap_text:
+                overlapped_chunk = overlap_text + " " + current_chunk
+                overlapped_chunks.append(overlapped_chunk)
+            else:
+                overlapped_chunks.append(current_chunk)
+
+        return overlapped_chunks
+
+    def _split_into_sentences(self, text: str) -> list[str]:
+        """
+        Split text into sentences using improved regex pattern.
+
+        Args:
+            text: Text to split
+
+        Returns:
+            List of sentences
+        """
+        # Use regex for better sentence splitting
+        sentences = re.split(r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)""", text)
+        return [s.strip() for s in sentences if s.strip()]
+
     def _sentence_based_chunking(
         self,
         text: str,
@@ -421,7 +602,7 @@ class DocumentProcessor:
         Helper for sentence-based chunking, used by fallback and paragraph splitting.
         If raw_only is True, returns only the raw text chunks (for paragraph splitting).
         """
-        sentences = split_into_sentences(text)
+        sentences = self._split_into_sentences(text)
         chunks = []
         current_chunk = ""
         chunk_number = 1
@@ -568,7 +749,7 @@ class DocumentProcessor:
             Overlap text ending at sentence boundary
         """
         # Split into sentences
-        sentences = split_into_sentences(text)
+        sentences = self._split_into_sentences(text)
 
         if len(sentences) <= max_sentences:
             return ""  # Not enough content for meaningful overlap
