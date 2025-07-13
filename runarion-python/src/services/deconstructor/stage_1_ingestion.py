@@ -5,8 +5,8 @@ Handles document extraction and creates initial chunks for processing.
 
 import logging
 from typing import Dict, Any, List
-from utils.document_processor import DocumentProcessor
-from utils.database_utils import safe_insert_text, safe_update_text, clean_text_for_database, utf8_database_connection
+from utils.document_processor import ChunkWithStart, DocumentProcessor, ProcessedDocumentMetadata
+from utils.database_utils import safe_update_text, clean_text_for_database, utf8_database_connection
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +48,11 @@ class PDFIngestionStage:
             # Process document
             processing_result = self.document_processor.process_document(file_path)
             
-            if not processing_result['success']:
+            if processing_result['status'] != "success":
                 raise Exception(f"Document processing failed: {processing_result['error']}")
             
             # Extract components
-            raw_text = processing_result['raw_text']
+            _ = processing_result['raw_text']
             cleaned_text = processing_result['cleaned_text']
             chunks = processing_result['chunks']
             metadata = processing_result['metadata']
@@ -83,7 +83,7 @@ class PDFIngestionStage:
                 'draft_id': draft_id
             }
     
-    def _store_chunks_in_database(self, draft_id: str, chunks: List[Dict[str, Any]]) -> int:
+    def _store_chunks_in_database(self, draft_id: str, chunks: List[ChunkWithStart]) -> int:
         """
         Store text chunks in the database with UTF-8 encoding safety.
         
@@ -132,7 +132,7 @@ class PDFIngestionStage:
             logger.error(f"Failed to store chunks for draft {draft_id}: {e}")
             raise
     
-    def _update_draft_metadata(self, draft_id: str, metadata: Dict[str, Any]) -> None:
+    def _update_draft_metadata(self, draft_id: str, metadata: ProcessedDocumentMetadata) -> None:
         """
         Update draft metadata with processing information using UTF-8 safe operations.
         
@@ -215,7 +215,7 @@ class PDFIngestionStage:
             return {'error': str(e)}
     
     def reprocess_chunks(self, draft_id: str, file_path: str, 
-                        new_chunk_size: int = None) -> Dict[str, Any]:
+                        new_chunk_size: int | None = None) -> Dict[str, Any]:
         """
         Reprocess chunks with different parameters.
         
@@ -243,14 +243,14 @@ class PDFIngestionStage:
             # Reprocess with new parameters
             if new_chunk_size:
                 # Override chunk size in document processor
-                original_chunk_size = self.document_processor.DEFAULT_CHUNK_SIZE
-                self.document_processor.DEFAULT_CHUNK_SIZE = new_chunk_size
+                original_chunk_size = self.document_processor.max_chunk_size
+                self.document_processor.max_chunk_size = new_chunk_size
             
             result = self.run(draft_id, file_path)
             
             # Restore original chunk size
             if new_chunk_size:
-                self.document_processor.DEFAULT_CHUNK_SIZE = original_chunk_size
+                self.document_processor.max_chunk_size = original_chunk_size
             
             result['reprocessed'] = True
             result['deleted_chunks'] = deleted_count
