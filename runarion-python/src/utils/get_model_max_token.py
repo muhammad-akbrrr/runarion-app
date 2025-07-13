@@ -48,29 +48,6 @@ def get_huggingface_model_max_token(model: str) -> Optional[int]:
         return None
 
 
-def get_safe_model_max_tokens(
-    provider: str, model: str, safety_margin: float | int = 0.1
-) -> int:
-    """
-    Get the safe maximum tokens for a model, accounting for safety margin.
-
-    Args:
-        provider: AI provider
-        model: Model name
-        safety_margin: Portion of tokens to reserve, int means number of tokens, float means ratio of model max tokens
-
-    Returns:
-        Safe maximum token count
-    """
-    max_tokens = get_model_max_tokens(provider, model)
-    if isinstance(safety_margin, int):
-        return max_tokens - safety_margin
-    else:
-        if safety_margin < 0 or safety_margin >= 1:
-            raise ValueError("Safety margin must be a float between 0 and 1.")
-        return int(max_tokens * (1 - safety_margin))
-
-
 def get_model_max_tokens(provider: str, model: str) -> int:
     """
     Get the max token limit for a model based on the provider and model name.
@@ -98,3 +75,26 @@ def get_model_max_tokens(provider: str, model: str) -> int:
             f"Max token limit for provider {provider} model {model} not found in the records."
         )
     return max_token
+
+
+def get_safe_model_max_tokens(
+    provider: str, model: str, safety_margin: float | int = 0.1
+) -> int:
+    """
+    Get the safe maximum tokens for a model, accounting for safety margin.
+
+    Args:
+        provider: AI provider
+        model: Model name
+        safety_margin: Portion of tokens to reserve, int means number of tokens, float means ratio of model max tokens
+
+    Returns:
+        Safe maximum token count
+    """
+    max_tokens = get_model_max_tokens(provider, model)
+    if isinstance(safety_margin, int):
+        return max_tokens - safety_margin
+    else:
+        if safety_margin < 0 or safety_margin >= 1:
+            raise ValueError("Safety margin must be a float between 0 and 1.")
+        return int(max_tokens * (1 - safety_margin))

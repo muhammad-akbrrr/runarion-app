@@ -175,6 +175,43 @@ class DocumentProcessor:
 
             return "\n".join(texts)
 
+    def _extract_paragraphs_from_pdf(self, file_path: Path) -> str:
+        """
+        Extract text from PDF with enhanced paragraph detection using PyMuPDF structural analysis.
+
+        Args:
+            file_path: Path to PDF file
+
+        Returns:
+            Text with properly preserved paragraph boundaries
+        """
+        endings = [".", "!", "?"]
+        endings = endings + [e + "'" for e in endings] + [e + '"' for e in endings]
+
+        paragraphs = []
+        temp_paragraph = ""
+        with fitz.open(str(file_path)) as doc:
+            for page in doc:
+                blocks = page.get_text("blocks")  # type: ignore
+                for i, block in enumerate(blocks):
+                    # skip if image block
+                    if block[6] != 0:
+                        continue
+                    # extract the text from the block
+                    text: str = block[4].strip()
+                    # skip if empty
+                    if not text:
+                        continue
+                    # handle paragraph break at end of page
+                    if i == len(blocks) - 1 and not text.endswith(tuple(endings)):
+                        temp_paragraph = text
+                        continue
+                    paragraphs.append(temp_paragraph + text)
+                    temp_paragraph = ""
+
+        # Join paragraphs with double line breaks to maintain structure
+        return "\n\n".join(paragraphs)
+
     def _extract_from_txt(self, file_path: Path) -> str:
         """Extract text from TXT file with encoding detection."""
         try:
@@ -277,68 +314,6 @@ class DocumentProcessor:
             )
             return self._sentence_based_chunking(text, chunk_size)
 
-    def _extract_paragraphs_from_pdf(self, file_path: Path) -> str:
-        """
-        Extract text from PDF with enhanced paragraph detection using PyMuPDF structural analysis.
-
-        Args:
-            file_path: Path to PDF file
-
-        Returns:
-            Text with properly preserved paragraph boundaries
-        """
-        endings = [".", "!", "?"]
-        endings = endings + [e + "'" for e in endings] + [e + '"' for e in endings]
-
-        paragraphs = []
-        temp_paragraph = ""
-        with fitz.open(str(file_path)) as doc:
-            for page in doc:
-                blocks = page.get_text("blocks")  # type: ignore
-                for i, block in enumerate(blocks):
-                    # skip if image block
-                    if block[6] != 0:
-                        continue
-                    # extract the text from the block
-                    text: str = block[4].strip()
-                    # skip if empty
-                    if not text:
-                        continue
-                    # handle paragraph break at end of page
-                    if i == len(blocks) - 1 and not text.endswith(tuple(endings)):
-                        temp_paragraph = text
-                        continue
-                    paragraphs.append(temp_paragraph + text)
-                    temp_paragraph = ""
-
-        # Join paragraphs with double line breaks to maintain structure
-        return "\n\n".join(paragraphs)
-
-    def _detect_paragraphs_from_text(self, text: str) -> List[str]:
-        """
-        Detect paragraphs in plain text using heuristics.
-
-        Args:
-            text: Raw text content
-
-        Returns:
-            List of paragraph strings
-        """
-        # Split on double line breaks (most common paragraph separator)
-        paragraphs = re.split(r"\n\s*\n", text)
-
-        # Clean and filter paragraphs
-        cleaned_paragraphs = []
-        for para in paragraphs:
-            # Clean whitespace and normalize line breaks within paragraph
-            para = re.sub(r"\s+", " ", para.strip())
-
-            # Filter out very short "paragraphs" that are likely artifacts
-            if len(para) > 20:  # Minimum paragraph length
-                cleaned_paragraphs.append(para)
-
-        return cleaned_paragraphs
-
     def _chunk_by_semantic_boundaries(self, text: str, chunk_size: int) -> List[Chunk]:
         """
         Chunk text using hierarchical semantic boundaries: paragraphs > sentences > words.
@@ -430,6 +405,31 @@ class DocumentProcessor:
         )
         return chunks
 
+    def _detect_paragraphs_from_text(self, text: str) -> List[str]:
+        """
+        Detect paragraphs in plain text using heuristics.
+
+        Args:
+            text: Raw text content
+
+        Returns:
+            List of paragraph strings
+        """
+        # Split on double line breaks (most common paragraph separator)
+        paragraphs = re.split(r"\n\s*\n", text)
+
+        # Clean and filter paragraphs
+        cleaned_paragraphs = []
+        for para in paragraphs:
+            # Clean whitespace and normalize line breaks within paragraph
+            para = re.sub(r"\s+", " ", para.strip())
+
+            # Filter out very short "paragraphs" that are likely artifacts
+            if len(para) > 20:  # Minimum paragraph length
+                cleaned_paragraphs.append(para)
+
+        return cleaned_paragraphs
+
     def _split_oversized_paragraph(self, paragraph: str, chunk_size: int) -> List[str]:
         """
         Split a paragraph that exceeds token limits at sentence boundaries.
@@ -448,6 +448,79 @@ class DocumentProcessor:
                 paragraph, chunk_size, raw_only=True
             )
         ]
+
+    def _add_semantic_overlaps(self, chunks: List[Chunk]) -> List[Chunk]:
+        """
+        Add semantic-aware overlaps between chunks.
+
+        Args:
+            chunks: List of chunk dictionaries
+
+        Returns:
+            Chunks with semantic overlaps added
+        """
+        if len(chunks) <= 1:
+            return chunks
+
+        enhanced_chunks = [chunks[0]]  # First chunk unchanged
+
+        for i in range(1, len(chunks)):
+            current_chunk = chunks[i]
+            previous_chunk = chunks[i - 1]
+
+            # Create semantic overlap from previous chunk
+            overlap_text = self._create_semantic_overlap(previous_chunk["raw_text"])
+
+            if overlap_text:
+                # Prepend overlap to current chunk
+                enhanced_text = overlap_text + "\n\n" + current_chunk["raw_text"]
+
+                # Recalculate token count
+                new_token_count = self.token_counter.safe_count(enhanced_text)
+
+                enhanced_chunks.append(
+                    self._create_chunk_dict(
+                        current_chunk["chunk_number"],
+                        enhanced_text,
+                        new_token_count,
+                    )
+                )
+            else:
+                enhanced_chunks.append(current_chunk)
+
+        return enhanced_chunks
+
+    def _create_semantic_overlap(self, text: str) -> str:
+        """
+        Create overlap text that ends at sentence boundaries.
+
+        Args:
+            text: Source text
+
+        Returns:
+            Overlap text ending at sentence boundary
+        """
+        # Split into sentences
+        sentences = self.split_into_sentences(text)
+
+        overlap = min(self.sentence_overlap, len(sentences))
+
+        # Take last N sentences as overlap
+        overlap_sentences = sentences[-overlap:]
+        overlap_text = " ".join(overlap_sentences).strip()
+
+        # Ensure reasonable overlap length (not too long or short)
+        if len(overlap_text) < 50:
+            return ""
+        if len(overlap_text) > 500:
+            overlap_text = ""
+            for sentence in overlap_sentences:
+                if len(overlap_text) + len(sentence) + 1 <= 500:
+                    overlap_text += " " + sentence
+                else:
+                    break
+
+        return overlap_text
 
     def _chunk_by_tokens(self, text: str, chunk_size: int) -> list[str]:
         """
@@ -602,21 +675,6 @@ class DocumentProcessor:
 
         return overlapped_chunks
 
-    @staticmethod
-    def split_into_sentences(text: str) -> list[str]:
-        """
-        Split text into sentences using improved regex pattern.
-
-        Args:
-            text: Text to split
-
-        Returns:
-            List of sentences
-        """
-        # Use regex for better sentence splitting
-        sentences = re.split(r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)""", text)
-        return [s.strip() for s in sentences if s.strip()]
-
     @overload
     def _sentence_based_chunking(
         self,
@@ -728,78 +786,20 @@ class DocumentProcessor:
             "character_count": len(text),
         }
 
-    def _add_semantic_overlaps(self, chunks: List[Chunk]) -> List[Chunk]:
+    @staticmethod
+    def split_into_sentences(text: str) -> list[str]:
         """
-        Add semantic-aware overlaps between chunks.
+        Split text into sentences using improved regex pattern.
 
         Args:
-            chunks: List of chunk dictionaries
+            text: Text to split
 
         Returns:
-            Chunks with semantic overlaps added
+            List of sentences
         """
-        if len(chunks) <= 1:
-            return chunks
-
-        enhanced_chunks = [chunks[0]]  # First chunk unchanged
-
-        for i in range(1, len(chunks)):
-            current_chunk = chunks[i]
-            previous_chunk = chunks[i - 1]
-
-            # Create semantic overlap from previous chunk
-            overlap_text = self._create_semantic_overlap(previous_chunk["raw_text"])
-
-            if overlap_text:
-                # Prepend overlap to current chunk
-                enhanced_text = overlap_text + "\n\n" + current_chunk["raw_text"]
-
-                # Recalculate token count
-                new_token_count = self.token_counter.safe_count(enhanced_text)
-
-                enhanced_chunks.append(
-                    self._create_chunk_dict(
-                        current_chunk["chunk_number"],
-                        enhanced_text,
-                        new_token_count,
-                    )
-                )
-            else:
-                enhanced_chunks.append(current_chunk)
-
-        return enhanced_chunks
-
-    def _create_semantic_overlap(self, text: str) -> str:
-        """
-        Create overlap text that ends at sentence boundaries.
-
-        Args:
-            text: Source text
-
-        Returns:
-            Overlap text ending at sentence boundary
-        """
-        # Split into sentences
-        sentences = self.split_into_sentences(text)
-
-        overlap = min(self.sentence_overlap, len(sentences))
-
-        # Take last N sentences as overlap
-        overlap_sentences = sentences[-overlap:]
-        overlap_text = " ".join(overlap_sentences).strip()
-
-        # Ensure reasonable overlap length (not too long or short)
-        if len(overlap_text) < 50:
-            return ""
-        if len(overlap_text) > 500:
-            overlap_text = ""
-            for sentence in overlap_sentences:
-                if len(overlap_text) + len(sentence) + 1 <= 500:
-                    overlap_text += " " + sentence
-                else:
-                    break
-
-        return overlap_text
+        # Use regex for better sentence splitting
+        sentences = re.split(r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)""", text)
+        return [s.strip() for s in sentences if s.strip()]
 
     def process_document(
         self, file_path: str
