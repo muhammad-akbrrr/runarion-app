@@ -4,8 +4,8 @@ Handles document extraction and creates initial chunks for processing.
 """
 
 import logging
-from typing import Dict, Any, List
-from utils.document_processor import ChunkWithStart, DocumentProcessor, ProcessedDocumentMetadata
+from typing import Dict, Any, List, Optional
+from utils.document_processor import Chunk, DocumentProcessor, ProcessedDocumentMetadata
 from utils.database_utils import safe_update_text, clean_text_for_database, utf8_database_connection
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class PDFIngestionStage:
                 'draft_id': draft_id
             }
     
-    def _store_chunks_in_database(self, draft_id: str, chunks: List[ChunkWithStart]) -> int:
+    def _store_chunks_in_database(self, draft_id: str, chunks: List[Chunk]) -> int:
         """
         Store text chunks in the database with UTF-8 encoding safety.
         
@@ -215,7 +215,7 @@ class PDFIngestionStage:
             return {'error': str(e)}
     
     def reprocess_chunks(self, draft_id: str, file_path: str, 
-                        new_chunk_size: int | None = None) -> Dict[str, Any]:
+                        new_chunk_size: Optional[int] = None) -> Dict[str, Any]:
         """
         Reprocess chunks with different parameters.
         
