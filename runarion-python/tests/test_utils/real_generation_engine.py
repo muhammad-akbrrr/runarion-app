@@ -19,7 +19,7 @@ class RealGenerationEngineFactory:
     def __init__(self):
         self.default_config = {
             'temperature': 0.7,
-            'max_output_tokens': 1000,
+            'max_output_tokens': 6000,  # Match Stage 1's chunk size capacity (1500 words)
             'min_output_tokens': 50,
             'nucleus_sampling': 0.9,
             'repetition_penalty': 0.0,
@@ -217,7 +217,11 @@ Return only the cleaned text without any additional commentary."""
             provider=provider,
             prompt=prompt,
             instruction=instruction,
-            generation_config={'temperature': 0.3}  # Lower temperature for cleaning
+            generation_config={
+                'temperature': 0.3,  # Lower temperature for cleaning
+                'max_output_tokens': 6000,  # Handle Stage 1's 1500-word chunks
+                'min_output_tokens': 100
+            }
         )
     
     def create_scene_detection_engine(
