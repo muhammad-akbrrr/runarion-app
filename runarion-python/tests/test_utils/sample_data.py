@@ -15,24 +15,41 @@ def generate_ulid():
     """
     Generate a ULID (Universally Unique Lexicographically Sortable Identifier).
     Compatible with Laravel's ULID format (26 characters).
+    Enhanced for test environments with microsecond precision and additional entropy.
     """
-    # ULID timestamp (48 bits) + randomness (80 bits)
-    timestamp = int(time.time() * 1000)  # Current time in milliseconds
+    import time
+    import random
+    import threading
+    import os
+    
+    # ULID timestamp with microsecond precision for test uniqueness
+    timestamp = int(time.time() * 1000000)  # Microsecond precision
+    
+    # Add additional entropy sources for test environment
+    thread_id = threading.get_ident() % 1000  # Thread ID component
+    process_id = os.getpid() % 1000  # Process ID component
+    random_component = random.randint(0, 999)  # Additional randomness
+    
+    # Combine entropy sources
+    enhanced_timestamp = timestamp + (thread_id << 10) + (process_id << 5) + random_component
     
     # Crockford's Base32 alphabet (excludes I, L, O, U to avoid confusion)
     alphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
     
-    # Generate timestamp part (10 characters)
+    # Generate timestamp part (10 characters) from enhanced timestamp
     timestamp_part = ""
-    temp_timestamp = timestamp
+    temp_timestamp = enhanced_timestamp
     for _ in range(10):
         timestamp_part = alphabet[temp_timestamp % 32] + timestamp_part
         temp_timestamp //= 32
     
-    # Generate random part (16 characters)
+    # Generate random part (16 characters) with cryptographic randomness
     random_part = ""
     for _ in range(16):
         random_part += alphabet[random.randint(0, 31)]
+    
+    # Add a small delay to ensure uniqueness in rapid succession (test environment only)
+    time.sleep(0.001)  # 1ms delay
     
     return timestamp_part + random_part
 
@@ -201,268 +218,6 @@ class SampleDataGenerator:
             chapters.append(chapter_content)
         
         return "\n\n" + "="*50 + "\n\n".join(chapters)
-    
-    def generate_scene_data(self, 
-                          scene_number: int = 1,
-                          draft_id: str = None) -> Dict[str, Any]:
-        """
-        Generate realistic scene data.
-        
-        Args:
-            scene_number: Scene number
-            draft_id: Associated draft ID
-            
-        Returns:
-            Scene data
-        """
-        characters = [random.choice(self.sample_names) for _ in range(random.randint(1, 4))]
-        
-        return {
-            'draft_id': draft_id or generate_ulid(),
-            'scene_number': scene_number,
-            'title': f"Scene {scene_number}: {random.choice(self.sample_words).title()}",
-            'summary': f"A {random.choice(self.sample_words)} scene involving {', '.join(characters[:2])}",
-            'setting': f"A {random.choice(['dark', 'bright', 'mysterious', 'peaceful'])} {random.choice(['forest', 'room', 'street', 'building'])}",
-            'characters': characters,
-            'original_content': f"Scene {scene_number} content with {random.choice(self.sample_words)} and {random.choice(self.sample_words)} elements. " * 20,
-            'analysis_json': {
-                'emotional_tone': random.choice(['tense', 'peaceful', 'exciting', 'melancholic']),
-                'pacing': random.choice(['slow', 'moderate', 'fast']),
-                'conflict_level': random.choice(['low', 'medium', 'high'])
-            }
-        }
-    
-    def generate_chunk_data(self, 
-                          chunk_number: int = 1,
-                          draft_id: str = None,
-                          chunk_size: int = 1000) -> Dict[str, Any]:
-        """
-        Generate realistic chunk data.
-        
-        Args:
-            chunk_number: Chunk number
-            draft_id: Associated draft ID
-            chunk_size: Approximate size in characters
-            
-        Returns:
-            Chunk data
-        """
-        # Generate text that approximates the chunk size
-        words_needed = chunk_size // 6  # Rough estimate
-        raw_text = " ".join(random.choices(self.sample_words, k=words_needed))
-        
-        return {
-            'draft_id': draft_id or generate_ulid(),
-            'chunk_number': chunk_number,
-            'raw_text': raw_text,
-            'cleaned_text': raw_text,  # Initially same as raw
-            'token_count': len(raw_text.split()),
-            'character_count': len(raw_text)
-        }
-    
-    def generate_analysis_report(self, 
-                               draft_id: str = None,
-                               report_type: str = 'character_analysis') -> Dict[str, Any]:
-        """
-        Generate realistic analysis report data.
-        
-        Args:
-            draft_id: Associated draft ID
-            report_type: Type of analysis report
-            
-        Returns:
-            Analysis report data
-        """
-        report_content = {
-            'character_analysis': {
-                'main_characters': [
-                    {
-                        'name': random.choice(self.sample_names),
-                        'role': random.choice(['protagonist', 'antagonist', 'supporting']),
-                        'traits': [random.choice(self.sample_words) for _ in range(3)],
-                        'development_arc': f"Character shows {random.choice(self.sample_words)} throughout the story"
-                    }
-                    for _ in range(random.randint(2, 5))
-                ],
-                'character_relationships': [
-                    {
-                        'character_1': random.choice(self.sample_names),
-                        'character_2': random.choice(self.sample_names),
-                        'relationship_type': random.choice(['friendship', 'rivalry', 'romance', 'family']),
-                        'strength': random.uniform(0.1, 1.0)
-                    }
-                    for _ in range(random.randint(1, 3))
-                ]
-            },
-            'plot_analysis': {
-                'plot_structure': random.choice(['three_act', 'five_act', 'episodic']),
-                'themes': [random.choice(self.sample_words) for _ in range(random.randint(2, 4))],
-                'conflicts': [
-                    {
-                        'type': random.choice(['internal', 'external', 'interpersonal']),
-                        'description': f"Conflict involving {random.choice(self.sample_words)}"
-                    }
-                    for _ in range(random.randint(1, 3))
-                ]
-            },
-            'style_analysis': {
-                'writing_style': random.choice(['descriptive', 'dialogue-heavy', 'action-oriented']),
-                'tone': random.choice(['formal', 'casual', 'poetic']),
-                'vocabulary_complexity': random.choice(['simple', 'moderate', 'complex']),
-                'sentence_structure': random.choice(['simple', 'compound', 'complex'])
-            }
-        }
-        
-        return {
-            'draft_id': draft_id or generate_ulid(),
-            'report_type': report_type,
-            'report_subject': 'manuscript_analysis',
-            'content_json': report_content.get(report_type, report_content['character_analysis']),
-            'created_at': datetime.now(),
-            'analysis_confidence': random.uniform(0.6, 0.95)
-        }
-    
-    def generate_plot_issue(self, 
-                          draft_id: str = None,
-                          issue_type: str = '01') -> Dict[str, Any]:
-        """
-        Generate realistic plot issue data.
-        
-        Args:
-            draft_id: Associated draft ID
-            issue_type: Type of plot issue ('01' = plot_hole, '02' = inconsistency)
-            
-        Returns:
-            Plot issue data
-        """
-        issue_descriptions = {
-            '01': [  # Plot holes
-                'Character motivation unclear',
-                'Missing setup for plot point',
-                'Unexplained character knowledge',
-                'Timeline inconsistency'
-            ],
-            '02': [  # Inconsistencies
-                'Character trait contradiction',
-                'Setting description mismatch',
-                'Dialog style inconsistency',
-                'World-building contradiction'
-            ]
-        }
-        
-        return {
-            'draft_id': draft_id or generate_ulid(),
-            'issue_type': issue_type,
-            'description': random.choice(issue_descriptions.get(issue_type, issue_descriptions['01'])),
-            'severity': random.choice(['low', 'medium', 'high']),
-            'location': f"scene_{random.randint(1, 10)}",
-            'suggested_fix': f"Fix by addressing {random.choice(self.sample_words)} issues",
-            'created_at': datetime.now()
-        }
-    
-    def generate_chapter_data(self, 
-                            chapter_number: int = 1,
-                            draft_id: str = None) -> Dict[str, Any]:
-        """
-        Generate realistic chapter data.
-        
-        Args:
-            chapter_number: Chapter number
-            draft_id: Associated draft ID
-            
-        Returns:
-            Chapter data
-        """
-        word_count = random.randint(1500, 3500)
-        content = " ".join(random.choices(self.sample_words, k=word_count))
-        
-        return {
-            'draft_id': draft_id or generate_ulid(),
-            'chapter_number': chapter_number,
-            'title': f"Chapter {chapter_number}: {random.choice(self.sample_words).title()} {random.choice(self.sample_words).title()}",
-            'content': content,
-            'word_count': word_count,
-            'scene_count': random.randint(1, 4),
-            'created_at': datetime.now()
-        }
-    
-    def generate_api_response(self, 
-                            success: bool = True,
-                            data: Dict[str, Any] = None,
-                            error_message: str = None) -> Dict[str, Any]:
-        """
-        Generate realistic API response.
-        
-        Args:
-            success: Whether the response indicates success
-            data: Response data payload
-            error_message: Error message if not successful
-            
-        Returns:
-            API response data
-        """
-        if success:
-            return {
-                'success': True,
-                'data': data or {},
-                'message': 'Request processed successfully',
-                'timestamp': datetime.now().isoformat(),
-                'request_id': generate_ulid()
-            }
-        else:
-            return {
-                'success': False,
-                'error': {
-                    'message': error_message or 'An error occurred',
-                    'code': random.choice(['VALIDATION_ERROR', 'PROCESSING_ERROR', 'SYSTEM_ERROR']),
-                    'details': {}
-                },
-                'timestamp': datetime.now().isoformat(),
-                'request_id': generate_ulid()
-            }
-    
-    def generate_processing_timeline(self, 
-                                   draft_id: str = None,
-                                   total_duration_minutes: int = 30) -> List[Dict[str, Any]]:
-        """
-        Generate realistic processing timeline events.
-        
-        Args:
-            draft_id: Associated draft ID
-            total_duration_minutes: Total processing duration in minutes
-            
-        Returns:
-            List of timeline events
-        """
-        stages = [
-            ('processing', 'Processing started'),
-            ('stage_1_complete', 'Document ingestion completed'),
-            ('stage_2_complete', 'Text cleaning completed'),
-            ('stage_3_complete', 'Scene extraction completed'),
-            ('stage_4_complete', 'Analysis completed'),
-            ('stage_5_complete', 'Coherence check completed'),
-            ('stage_6_complete', 'Enhancement completed'),
-            ('completed', 'Processing completed')
-        ]
-        
-        timeline = []
-        current_time = datetime.now() - timedelta(minutes=total_duration_minutes)
-        
-        for i, (status, description) in enumerate(stages):
-            # Add some randomness to timing
-            stage_duration = random.uniform(2, 8)  # 2-8 minutes per stage
-            current_time += timedelta(minutes=stage_duration)
-            
-            timeline.append({
-                'draft_id': draft_id or generate_ulid(),
-                'status': status,
-                'description': description,
-                'timestamp': current_time.isoformat(),
-                'stage_number': i + 1,
-                'duration_minutes': stage_duration
-            })
-        
-        return timeline
     
     def _get_default_model(self, provider: str) -> str:
         """Get default model for a provider."""

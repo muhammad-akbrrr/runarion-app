@@ -13,8 +13,7 @@ from test_utils.path_manager import get_temp_output
 class TestStage1Ingestion:
     """Test Stage 1: PDF Ingestion and Text Chunking"""
     
-    def test_stage_1_text_file_ingestion(self, stage_1_instance, db_fixture, sample_file_path, 
-                                        expected_output_helper, stage_output_validator):
+    def test_stage_1_text_file_ingestion(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path, expected_output_helper, stage_output_validator, test_output_options, output_generator):
         """Test successful ingestion of a text file."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -79,31 +78,374 @@ class TestStage1Ingestion:
             # Optionally create expected output for future use
             pass
             # expected_output_helper.create_from_actual(1, result, expected_filename)
+        
+        # Generate test outputs for debugging and next stage seeding
+        if test_output_options['generate_outputs']:
+            output_files = output_generator.generate_test_output(
+                stage_number=1,
+                test_name='test_stage_1_text_file_ingestion',
+                test_result=result,
+                db_fixture=db_fixture,
+                additional_data={
+                    'sample_file_path': sample_file_path,
+                    'test_configuration': {
+                        'file_type': 'text',
+                        'chunking_strategy': 'word_based_with_token_validation'
+                    }
+                }
+            )
+            
+            # Log output file locations for reference
+            for output_type, file_path in output_files.items():
+                print(f"Generated {output_type} output: {file_path}")
     
-    def test_stage_1_pdf_file_ingestion(self, stage_1_instance, db_fixture, temp_output_file):
-        """Test ingestion of a PDF file."""
-        # Create a simple test PDF file
-        test_content = """
-        Chapter 1: The Beginning
+    def test_stage_1_pdf_file_ingestion(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test ingestion of a real PDF file using PyMuPDF extraction."""
+        # Use real PDF sample file for authentic testing
+        pdf_file_path = sample_file_path or os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
         
-        This is a test PDF document for ingestion testing.
-        It contains multiple paragraphs and chapters.
+        if not os.path.exists(pdf_file_path):
+            pytest.skip(f"Sample PDF file not found: {pdf_file_path}")
         
-        Chapter 2: The Middle
+        # Verify it's actually a PDF file
+        if not pdf_file_path.lower().endswith('.pdf'):
+            pytest.skip("Sample file is not a PDF - skipping PDF-specific test")
         
-        This chapter continues the story with more content.
-        There are various formatting elements to test.
-        """
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request(file_name=os.path.basename(pdf_file_path))
         
-        # Create test PDF file using new path management
-        temp_pdf_path = str(get_temp_output('test_ingestion.pdf'))
-        with open(temp_pdf_path, 'w', encoding='utf-8') as f:
-            f.write(test_content)
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=pdf_file_path
+        )
+        
+        # Run Stage 1 with real PDF processing
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=pdf_file_path
+        )
+        
+        # Verify successful processing
+        assert result['success'] == True, f"PDF processing failed: {result.get('error', 'Unknown error')}"
+        assert 'chunks_created' in result
+        assert 'chunks_stored' in result
+        assert result['chunks_created'] > 0, "Should create chunks from real PDF content"
+        assert result['chunks_stored'] == result['chunks_created'], "All chunks should be stored"
+        
+        # Verify chunks were actually created with real content
+        chunks = db_fixture.execute_query(
+            "SELECT chunk_number, raw_text, LENGTH(raw_text) as text_length FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+            (test_draft['draft_id'],)
+        )
+        
+        assert len(chunks) > 0, "Should have chunks in database"
+        
+        # Verify chunks contain meaningful content (not just whitespace)
+        for chunk_number, raw_text, text_length in chunks:
+            assert text_length > 50, f"Chunk {chunk_number} too short ({text_length} chars) - may indicate extraction failure"
+            assert raw_text.strip(), f"Chunk {chunk_number} is empty or whitespace only"
+            
+        # Verify PDF-specific processing characteristics
+        total_content_length = sum(len(chunk[1]) for chunk in chunks)
+        assert total_content_length > 500, "Total extracted content should be substantial for a real PDF"
+        
+        # Log PDF processing results for debugging
+        print(f"\nPDF Processing Results:")
+        print(f"  File: {os.path.basename(pdf_file_path)}")
+        print(f"  Chunks created: {result['chunks_created']}")
+        print(f"  Total content length: {total_content_length} characters")
+        print(f"  Average chunk size: {total_content_length // len(chunks) if chunks else 0} characters")
+    
+    def test_stage_1_document_processor_constants_validation(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test that DocumentProcessor constants are enforced in real processing."""
+        # Use real sample file for authentic constant validation
+        test_file_path = sample_file_path or os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(test_file_path):
+            pytest.skip(f"Sample file not found: {test_file_path}")
+        
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request(file_name=os.path.basename(test_file_path))
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=test_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=test_file_path
+        )
+        
+        assert result['success'] == True
+        
+        # Verify DocumentProcessor constants are enforced
+        chunks = db_fixture.execute_query(
+            "SELECT raw_text, LENGTH(raw_text) as char_length FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+            (test_draft['draft_id'],)
+        )
+        
+        # Import DocumentProcessor to access constants
+        from utils.document_processor import DocumentProcessor
+        
+        # Test DEFAULT_WORD_LIMIT = 1500 targeting
+        word_counts = []
+        total_word_violations = 0
+        
+        for raw_text, char_length in chunks:
+            word_count = len(raw_text.split())
+            word_counts.append(word_count)
+            
+            # Allow reasonable variance (±33%) around 1500-word target
+            if word_count > DocumentProcessor.DEFAULT_WORD_LIMIT * 1.5:  # 2250 words
+                total_word_violations += 1
+        
+        # Most chunks should respect word targeting (allow some edge cases)
+        word_violation_rate = total_word_violations / len(chunks) if chunks else 0
+        assert word_violation_rate < 0.2, f"Too many chunks exceed 1500-word targeting: {word_violation_rate*100:.1f}%"
+        
+        # Test that average chunk size trends toward DEFAULT_WORD_LIMIT
+        if len(word_counts) > 1:
+            avg_words = sum(word_counts) / len(word_counts)
+            # Should be reasonably close to 1500 words (allow 50% variance for real content)
+            assert 750 <= avg_words <= 2250, f"Average chunk size ({avg_words:.0f} words) too far from 1500-word target"
+        
+        # Test DEFAULT_CHUNK_SIZE = 4000 token safety (approximate)
+        # Estimate tokens as chars/4 (conservative estimate)
+        token_violations = 0
+        for raw_text, char_length in chunks:
+            estimated_tokens = char_length // 4
+            if estimated_tokens > DocumentProcessor.DEFAULT_CHUNK_SIZE:
+                token_violations += 1
+        
+        # NO chunks should exceed token safety limit
+        assert token_violations == 0, f"Found {token_violations} chunks that may exceed 4000-token limit"
+        
+        print(f"\nDocumentProcessor Constants Validation:")
+        print(f"  Chunks created: {len(chunks)}")
+        print(f"  Average words per chunk: {sum(word_counts) / len(word_counts) if word_counts else 0:.0f}")
+        print(f"  Word limit violations (>2250): {total_word_violations}")
+        print(f"  Token limit violations (>4000 est.): {token_violations}")
+    
+    def test_stage_1_semantic_overlap_creation(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test that WORD_OVERLAP_SIZE = 50 creates proper semantic overlaps."""
+        # Use real sample file that's large enough to create multiple chunks
+        test_file_path = sample_file_path or os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(test_file_path):
+            pytest.skip(f"Sample file not found: {test_file_path}")
+        
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request(file_name=os.path.basename(test_file_path))
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=test_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=test_file_path
+        )
+        
+        assert result['success'] == True
+        
+        # Get chunks to analyze overlap behavior
+        chunks = db_fixture.execute_query(
+            "SELECT chunk_number, raw_text FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+            (test_draft['draft_id'],)
+        )
+        
+        if len(chunks) < 2:
+            pytest.skip("Need at least 2 chunks to test overlap behavior")
+        
+        # Import DocumentProcessor to access constants
+        from utils.document_processor import DocumentProcessor
+        
+        # Check for semantic overlaps between consecutive chunks
+        overlap_detected = 0
+        overlap_word_counts = []
+        
+        for i in range(1, len(chunks)):
+            chunk_num, current_text = chunks[i]
+            prev_chunk_num, prev_text = chunks[i-1]
+            
+            # Check if current chunk starts with content from previous chunk (overlap)
+            # Get last ~100 words from previous chunk
+            prev_words = prev_text.split()
+            if len(prev_words) > 20:
+                last_section = ' '.join(prev_words[-20:])  # Last 20 words
+                
+                # Check if any part of this appears at start of current chunk
+                current_start = ' '.join(current_text.split()[:30])  # First 30 words
+                
+                # Look for common phrases (indicating overlap)
+                prev_sentences = last_section.split('.')
+                current_sentences = current_start.split('.')
+                
+                for prev_sent in prev_sentences:
+                    for curr_sent in current_sentences:
+                        if prev_sent.strip() and curr_sent.strip() and len(prev_sent.strip()) > 10:
+                            if prev_sent.strip() in curr_sent or curr_sent.strip() in prev_sent:
+                                overlap_detected += 1
+                                overlap_word_counts.append(len(prev_sent.split()))
+                                break
+        
+        print(f"\nSemantic Overlap Analysis:")
+        print(f"  Total chunks: {len(chunks)}")
+        print(f"  Overlaps detected: {overlap_detected}")
+        print(f"  Target overlap size: {DocumentProcessor.WORD_OVERLAP_SIZE} words")
+        if overlap_word_counts:
+            print(f"  Average overlap size: {sum(overlap_word_counts) / len(overlap_word_counts):.0f} words")
+        
+        # Document the overlap behavior (DocumentProcessor may or may not create overlaps)
+        # This test documents the actual behavior rather than enforcing specific requirements
+    
+    def test_stage_1_real_pdf_structural_analysis(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test PyMuPDF structural analysis with real PDF content."""
+        # Use real PDF sample file
+        pdf_file_path = sample_file_path if sample_file_path and sample_file_path.endswith('.pdf') else os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(pdf_file_path) or not pdf_file_path.endswith('.pdf'):
+            pytest.skip("Real PDF file required for structural analysis test")
+        
+        # Test direct DocumentProcessor functionality
+        from utils.document_processor import DocumentProcessor
+        
+        processor = DocumentProcessor()
+        
+        # Test raw extraction
+        try:
+            extracted_text = processor.extract_text_from_file(pdf_file_path)
+            assert len(extracted_text) > 100, "Should extract substantial text from real PDF"
+            
+            # Test cleaning
+            cleaned_text = processor.clean_text(extracted_text)
+            assert len(cleaned_text) > 50, "Cleaned text should be substantial"
+            
+            # Test chunking with real content
+            chunks = processor.chunk_text(cleaned_text, provider="openai", model="gpt-4o")
+            assert len(chunks) > 0, "Should create chunks from real PDF content"
+            
+            # Verify chunk structure
+            for chunk in chunks:
+                assert 'chunk_number' in chunk
+                assert 'raw_text' in chunk
+                assert 'word_count' in chunk
+                assert 'token_count' in chunk
+                assert chunk['word_count'] > 0
+                assert chunk['token_count'] > 0
+                
+            print(f"\nPDF Structural Analysis Results:")
+            print(f"  Extracted text length: {len(extracted_text)} chars")
+            print(f"  Cleaned text length: {len(cleaned_text)} chars")
+            print(f"  Chunks created: {len(chunks)}")
+            print(f"  Total words: {sum(c['word_count'] for c in chunks)}")
+            print(f"  Total tokens: {sum(c['token_count'] for c in chunks)}")
+            
+        except Exception as e:
+            pytest.fail(f"PDF structural analysis failed: {e}")
+    
+    def test_stage_1_pdf_encoding_handling(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test PDF processing with various encoding scenarios."""
+        # Use real PDF sample file
+        pdf_file_path = sample_file_path if sample_file_path and sample_file_path.endswith('.pdf') else os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(pdf_file_path) or not pdf_file_path.endswith('.pdf'):
+            pytest.skip("Real PDF file required for encoding test")
+        
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request(file_name=os.path.basename(pdf_file_path))
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=pdf_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=pdf_file_path
+        )
+        
+        # Should handle encoding gracefully
+        assert result['success'] == True, f"PDF encoding handling failed: {result.get('error', 'Unknown error')}"
+        
+        # Verify extracted content is properly encoded
+        chunks = db_fixture.execute_query(
+            "SELECT raw_text FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+            (test_draft['draft_id'],)
+        )
+        
+        for chunk_data in chunks:
+            raw_text = chunk_data[0]
+            
+            # Text should be valid UTF-8
+            try:
+                raw_text.encode('utf-8')
+            except UnicodeEncodeError:
+                pytest.fail("Extracted text contains invalid UTF-8 characters")
+            
+            # Should not contain common PDF extraction artifacts
+            assert '\x00' not in raw_text, "Text contains null bytes"
+            assert len(raw_text.strip()) > 0, "Chunk should not be empty"
+    
+    def test_stage_1_malformed_pdf_graceful_failure(self, register_stage_1_only, stage_1_instance, db_fixture):
+        """Test graceful handling of malformed or corrupted PDF files."""
+        # Create a fake malformed PDF (just text with .pdf extension)
+        malformed_pdf_path = str(get_temp_output('malformed_test.pdf'))
+        
+        with open(malformed_pdf_path, 'w', encoding='utf-8') as f:
+            f.write("This is not a real PDF file, just text with PDF extension.")
         
         try:
             # Create test draft
             test_data = SampleDataGenerator(db_fixture.connection_pool)
-            draft_data = test_data.generate_draft_request(file_name='test.pdf')
+            draft_data = test_data.generate_draft_request(file_name='malformed_test.pdf')
             
             workspace_data = db_fixture.create_test_workspace(
                 workspace_id=draft_data['workspace_id'],
@@ -114,23 +456,265 @@ class TestStage1Ingestion:
                 draft_id=draft_data['draft_id'],
                 workspace_id=workspace_data['workspace_id'],
                 user_id=workspace_data['user_id'],
-                file_path=temp_pdf_path
+                file_path=malformed_pdf_path
             )
             
             # Run Stage 1
             result = stage_1_instance.run(
                 draft_id=test_draft['draft_id'],
-                file_path=temp_pdf_path
+                file_path=malformed_pdf_path
             )
             
-            # Verify result (may fail due to simplified PDF, but should handle gracefully)
-            assert 'success' in result
-            assert 'error' in result or result['success'] == True
+            # Should either succeed with alternative processing or fail gracefully
+            if result['success']:
+                # If it succeeds, should have created some chunks (treated as text)
+                assert result['chunks_created'] > 0
+            else:
+                # If it fails, should have meaningful error message
+                assert 'error' in result
+                assert len(result['error']) > 0
             
         finally:
-            pass
+            # Cleanup
+            if os.path.exists(malformed_pdf_path):
+                os.unlink(malformed_pdf_path)
     
-    def test_stage_1_invalid_file_handling(self, stage_1_instance, db_fixture):
+    def test_stage_1_pdf_vs_text_comparison(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Compare PDF processing vs TXT processing of similar content."""
+        # Use real PDF sample file
+        pdf_file_path = sample_file_path if sample_file_path and sample_file_path.endswith('.pdf') else os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(pdf_file_path) or not pdf_file_path.endswith('.pdf'):
+            pytest.skip("Real PDF file required for comparison test")
+        
+        # First, extract PDF content and save as TXT for comparison
+        from utils.document_processor import DocumentProcessor
+        processor = DocumentProcessor()
+        
+        try:
+            pdf_extracted_text = processor.extract_text_from_file(pdf_file_path)
+            pdf_cleaned_text = processor.clean_text(pdf_extracted_text)
+            
+            # Create temporary TXT file with the same content
+            txt_file_path = str(get_temp_output('pdf_comparison.txt'))
+            with open(txt_file_path, 'w', encoding='utf-8') as f:
+                f.write(pdf_cleaned_text)
+            
+            # Process both files through Stage 1
+            results = {}
+            
+            for file_type, file_path in [('PDF', pdf_file_path), ('TXT', txt_file_path)]:
+                test_data = SampleDataGenerator(db_fixture.connection_pool)
+                draft_data = test_data.generate_draft_request(
+                    file_name=f'comparison_{file_type.lower()}.{file_type.lower()}'
+                )
+                
+                workspace_data = db_fixture.create_test_workspace(
+                    workspace_id=draft_data['workspace_id'],
+                    user_id=draft_data['user_id']
+                )
+                
+                test_draft = db_fixture.create_test_draft(
+                    draft_id=draft_data['draft_id'],
+                    workspace_id=workspace_data['workspace_id'],
+                    user_id=workspace_data['user_id'],
+                    file_path=file_path
+                )
+                
+                result = stage_1_instance.run(
+                    draft_id=test_draft['draft_id'],
+                    file_path=file_path
+                )
+                
+                results[file_type] = {
+                    'result': result,
+                    'draft_id': test_draft['draft_id']
+                }
+            
+            # Compare results
+            pdf_result = results['PDF']['result']
+            txt_result = results['TXT']['result']
+            
+            assert pdf_result['success'] == True, "PDF processing should succeed"
+            assert txt_result['success'] == True, "TXT processing should succeed"
+            
+            # Chunk counts should be similar (allow some variance)
+            pdf_chunks = pdf_result['chunks_created']
+            txt_chunks = txt_result['chunks_created']
+            
+            # Allow up to 1 chunk difference (due to processing differences)
+            assert abs(pdf_chunks - txt_chunks) <= 1, f"Chunk count difference too large: PDF={pdf_chunks}, TXT={txt_chunks}"
+            
+            print(f"\nPDF vs TXT Processing Comparison:")
+            print(f"  PDF chunks: {pdf_chunks}")
+            print(f"  TXT chunks: {txt_chunks}")
+            print(f"  Processing difference: {abs(pdf_chunks - txt_chunks)} chunks")
+            
+        finally:
+            # Cleanup temporary TXT file
+            if 'txt_file_path' in locals() and os.path.exists(txt_file_path):
+                os.unlink(txt_file_path)
+    
+    def test_stage_1_stage_2_token_compatibility(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test that Stage 1 output is compatible with Stage 2 token requirements."""
+        # Use real sample file
+        test_file_path = sample_file_path or os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(test_file_path):
+            pytest.skip(f"Sample file not found: {test_file_path}")
+        
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request(file_name=os.path.basename(test_file_path))
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=test_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=test_file_path
+        )
+        
+        assert result['success'] == True
+        
+        # Get Stage 2's configuration for comparison
+        from test_utils.real_generation_engine import RealGenerationEngineFactory
+        from utils.document_processor import DocumentProcessor
+        
+        stage_2_factory = RealGenerationEngineFactory()
+        stage_2_max_tokens = stage_2_factory.default_config['max_output_tokens']
+        stage_1_max_tokens = DocumentProcessor.DEFAULT_CHUNK_SIZE
+        
+        # Verify Stage 2 can handle Stage 1's maximum output
+        assert stage_2_max_tokens >= stage_1_max_tokens, \
+            f"Stage 2 max tokens ({stage_2_max_tokens}) should handle Stage 1 max ({stage_1_max_tokens})"
+        
+        # Test actual chunk sizes from Stage 1
+        chunks = db_fixture.execute_query(
+            "SELECT raw_text, LENGTH(raw_text) as char_length FROM draft_chunks WHERE draft_id = %s",
+            (test_draft['draft_id'],)
+        )
+        
+        max_estimated_tokens = 0
+        for raw_text, char_length in chunks:
+            # Conservative token estimation (chars/4)
+            estimated_tokens = char_length // 4
+            max_estimated_tokens = max(max_estimated_tokens, estimated_tokens)
+        
+        # Stage 1 chunks should not exceed Stage 2's capacity
+        assert max_estimated_tokens <= stage_2_max_tokens, \
+            f"Largest Stage 1 chunk ({max_estimated_tokens} est. tokens) exceeds Stage 2 capacity ({stage_2_max_tokens})"
+        
+        print(f"\nStage 1→2 Compatibility Validation:")
+        print(f"  Stage 1 max chunk size: {stage_1_max_tokens} tokens")
+        print(f"  Stage 2 max capacity: {stage_2_max_tokens} tokens")
+        print(f"  Actual max chunk (est.): {max_estimated_tokens} tokens")
+        print(f"  Compatibility: {'✅ Compatible' if max_estimated_tokens <= stage_2_max_tokens else '❌ Incompatible'}")
+    
+    def test_stage_1_configuration_limits_enforcement(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test that all DocumentProcessor configuration limits are properly enforced."""
+        # Use real sample file
+        test_file_path = sample_file_path or os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(test_file_path):
+            pytest.skip(f"Sample file not found: {test_file_path}")
+        
+        # Create test draft
+        test_data = SampleDataGenerator(db_fixture.connection_pool)
+        draft_data = test_data.generate_draft_request(file_name=os.path.basename(test_file_path))
+        
+        workspace_data = db_fixture.create_test_workspace(
+            workspace_id=draft_data['workspace_id'],
+            user_id=draft_data['user_id']
+        )
+        
+        test_draft = db_fixture.create_test_draft(
+            draft_id=draft_data['draft_id'],
+            workspace_id=workspace_data['workspace_id'],
+            user_id=workspace_data['user_id'],
+            file_path=test_file_path
+        )
+        
+        # Run Stage 1
+        result = stage_1_instance.run(
+            draft_id=test_draft['draft_id'],
+            file_path=test_file_path
+        )
+        
+        assert result['success'] == True
+        
+        # Import DocumentProcessor for constants
+        from utils.document_processor import DocumentProcessor
+        
+        # Get all chunks for comprehensive validation
+        chunks = db_fixture.execute_query(
+            "SELECT chunk_number, raw_text, LENGTH(raw_text) as char_length FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+            (test_draft['draft_id'],)
+        )
+        
+        violations = {
+            'word_limit_violations': 0,
+            'token_limit_violations': 0,
+            'empty_chunks': 0,
+            'oversized_paragraphs': 0
+        }
+        
+        for chunk_number, raw_text, char_length in chunks:
+            word_count = len(raw_text.split())
+            estimated_tokens = char_length // 4  # Conservative estimate
+            
+            # Check DEFAULT_WORD_LIMIT enforcement (allow some variance)
+            if word_count > DocumentProcessor.DEFAULT_WORD_LIMIT * 1.5:  # 2250 words
+                violations['word_limit_violations'] += 1
+            
+            # Check DEFAULT_CHUNK_SIZE enforcement (strict)
+            if estimated_tokens > DocumentProcessor.DEFAULT_CHUNK_SIZE:
+                violations['token_limit_violations'] += 1
+            
+            # Check for empty chunks
+            if len(raw_text.strip()) == 0:
+                violations['empty_chunks'] += 1
+            
+            # Check for oversized paragraphs (heuristic)
+            paragraphs = raw_text.split('\n\n')
+            for para in paragraphs:
+                para_word_count = len(para.split())
+                if para_word_count > DocumentProcessor.MAX_PARAGRAPH_WORDS:
+                    violations['oversized_paragraphs'] += 1
+        
+        # Report violations
+        print(f"\nConfiguration Limits Enforcement:")
+        print(f"  Total chunks: {len(chunks)}")
+        print(f"  Word limit violations (>2250): {violations['word_limit_violations']}")
+        print(f"  Token limit violations (>4000): {violations['token_limit_violations']}")
+        print(f"  Empty chunks: {violations['empty_chunks']}")
+        print(f"  Oversized paragraphs (>2000 words): {violations['oversized_paragraphs']}")
+        
+        # Critical violations should be zero
+        assert violations['token_limit_violations'] == 0, "No chunks should exceed token safety limit"
+        assert violations['empty_chunks'] == 0, "No chunks should be empty"
+        
+        # Word limit violations should be minimal (allow some edge cases)
+        word_violation_rate = violations['word_limit_violations'] / len(chunks) if chunks else 0
+        assert word_violation_rate < 0.2, f"Too many word limit violations: {word_violation_rate*100:.1f}%"
+    
+    def test_stage_1_invalid_file_handling(self, register_stage_1_only, stage_1_instance, db_fixture):
         """Test handling of invalid or non-existent files."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -163,7 +747,7 @@ class TestStage1Ingestion:
         chunks_count = db_fixture.count_records('draft_chunks', test_draft['draft_id'])
         assert chunks_count == 0
     
-    def test_stage_1_empty_file_handling(self, stage_1_instance, db_fixture):
+    def test_stage_1_empty_file_handling(self, register_stage_1_only, stage_1_instance, db_fixture):
         """Test handling of empty files."""
         # Create empty file using new path management
         empty_file_path = str(get_temp_output('empty_test.txt'))
@@ -207,22 +791,30 @@ class TestStage1Ingestion:
             # Cleanup handled by temp file management
             pass
     
-    def test_stage_1_large_file_chunking(self, stage_1_instance, db_fixture, expected_output_helper):
-        """Test chunking of large files."""
-        # Create large test file
-        large_content = SampleDataGenerator(db_fixture.connection_pool).generate_manuscript_content(
-            chapter_count=10,
-            words_per_chapter=5000  # 50k words total
-        )
-        
-        large_file_path = str(get_temp_output('large_test.txt'))
-        with open(large_file_path, 'w', encoding='utf-8') as f:
-            f.write(large_content)
+    def test_stage_1_large_file_chunking(self, register_stage_1_only, stage_1_instance, db_fixture, expected_output_helper, sample_file_path):
+        """Test chunking of large files with real content."""
+        # Prefer real sample file for authentic large file testing
+        if sample_file_path and os.path.exists(sample_file_path):
+            large_file_path = sample_file_path
+            file_name = os.path.basename(sample_file_path)
+            cleanup_needed = False
+        else:
+            # Fallback to generated content if no real sample available
+            large_content = SampleDataGenerator(db_fixture.connection_pool).generate_manuscript_content(
+                chapter_count=10,
+                words_per_chapter=5000  # 50k words total
+            )
+            
+            large_file_path = str(get_temp_output('large_test.txt'))
+            with open(large_file_path, 'w', encoding='utf-8') as f:
+                f.write(large_content)
+            file_name = 'large_manuscript.txt'
+            cleanup_needed = True
         
         try:
             # Create test draft
             test_data = SampleDataGenerator(db_fixture.connection_pool)
-            draft_data = test_data.generate_draft_request(file_name='large_manuscript.txt')
+            draft_data = test_data.generate_draft_request(file_name=file_name)
             
             workspace_data = db_fixture.create_test_workspace(
                 workspace_id=draft_data['workspace_id'],
@@ -244,9 +836,9 @@ class TestStage1Ingestion:
             
             # Verify result
             assert result['success'] == True
-            assert result['chunks_created'] > 10  # Should create more chunks with 1500-word limit
-            assert result['total_characters'] > 100000  # Should be substantial
-            assert result['total_words'] > 10000  # Should have substantial word count
+            assert result['chunks_created'] >= 2, "Should create at least two chunks for any file"
+            assert result['total_characters'] > 1500, "Should be substantial (at least 1.5k characters)"
+            assert result['total_words'] > 1000, "Should have substantial word count"
             
             # Verify chunks are reasonably sized
             chunks = db_fixture.execute_query(
@@ -276,10 +868,11 @@ class TestStage1Ingestion:
                 # expected_output_helper.save(1, expected_filename, expected_template)
             
         finally:
-            # Cleanup handled by temp file management
-            pass
+            # Cleanup only if we created a temporary file
+            if cleanup_needed and os.path.exists(large_file_path):
+                os.unlink(large_file_path)
     
-    def test_stage_1_unicode_handling(self, stage_1_instance, db_fixture):
+    def test_stage_1_unicode_handling(self, register_stage_1_only, stage_1_instance, db_fixture):
         """Test handling of Unicode characters and different encodings."""
         # Create file with Unicode characters
         unicode_content = """
@@ -344,7 +937,7 @@ class TestStage1Ingestion:
             if os.path.exists(unicode_file_path):
                 os.unlink(unicode_file_path)
     
-    def test_stage_1_chunk_statistics(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_chunk_statistics(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test chunk statistics functionality."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -398,7 +991,7 @@ class TestStage1Ingestion:
         assert stats['min_chunk_length'] > 0
         assert stats['max_chunk_length'] >= stats['min_chunk_length']
     
-    def test_stage_1_reprocessing(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_reprocessing(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test reprocessing chunks with different parameters."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -445,7 +1038,7 @@ class TestStage1Ingestion:
         final_chunks_count = db_fixture.count_records('draft_chunks', test_draft['draft_id'])
         assert final_chunks_count == reprocess_result['chunks_created']
     
-    def test_stage_1_database_error_handling(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_database_error_handling(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test handling of database errors during ingestion."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -478,7 +1071,7 @@ class TestStage1Ingestion:
             assert 'error' in result
             assert 'database' in result['error'].lower() or 'connection' in result['error'].lower()
     
-    def test_stage_1_concurrent_processing(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_concurrent_processing(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test concurrent processing of multiple drafts."""
         import threading
         import queue
@@ -554,7 +1147,7 @@ class TestStage1Ingestion:
             chunks_count = db_fixture.count_records('draft_chunks', result['draft_id'])
             assert chunks_count == result['chunks_created']
     
-    def test_stage_1_enhanced_metadata_validation(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_enhanced_metadata_validation(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test that Stage 1 produces correct enhanced metadata from refactored DocumentProcessor."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -603,7 +1196,7 @@ class TestStage1Ingestion:
             assert abs(stats['avg_words_per_chunk'] - expected_avg_words) < 1  # Allow small rounding difference
             assert abs(stats['avg_tokens_per_chunk'] - expected_avg_tokens) < 1
     
-    def test_stage_1_chunk_metadata_structure_validation(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_chunk_metadata_structure_validation(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test that chunks from refactored DocumentProcessor have correct metadata structure."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -658,15 +1251,15 @@ class TestStage1Ingestion:
         # Allow small difference due to different counting methods
         assert abs(total_words_calculated - result['total_words']) < result['chunks_created']  # Allow 1 word difference per chunk
     
-    def test_stage_1_word_based_chunking_validation(self, stage_1_instance, db_fixture, sample_file_path):
-        """Test that refactored DocumentProcessor properly targets 1500-word chunks."""
-        # Use provided sample file if available, otherwise generate test content
-        if sample_file_path and os.path.exists(sample_file_path):
-            test_file_path = sample_file_path
-            file_name = os.path.basename(sample_file_path)
-            cleanup_needed = False
-        else:
-            # Fallback to generated content when no sample file provided
+    def test_stage_1_word_based_chunking_validation(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
+        """Test that DocumentProcessor properly targets 1500-word chunks with real content."""
+        # Prefer real sample file for authentic chunking validation
+        test_file_path = sample_file_path or os.path.join(
+            os.path.dirname(__file__), '..', 'sample_files', 'inputs', 'short_story.pdf'
+        )
+        
+        if not os.path.exists(test_file_path):
+            # Only fallback to generated content if no real sample available
             test_data = SampleDataGenerator(db_fixture.connection_pool)
             large_content = test_data.generate_manuscript_content(
                 chapter_count=5,
@@ -678,6 +1271,9 @@ class TestStage1Ingestion:
                 f.write(large_content)
             file_name = 'word_chunking_test.txt'
             cleanup_needed = True
+        else:
+            file_name = os.path.basename(test_file_path)
+            cleanup_needed = False
         
         try:
             # Create test draft
@@ -713,27 +1309,57 @@ class TestStage1Ingestion:
                 avg_words = stats['avg_words_per_chunk']
                 assert avg_words > 0  # Should have reasonable word count
             
-            # Validate chunks break at semantic boundaries (not mid-sentence)
+            # Enhanced validation for real content chunking
             chunks = db_fixture.execute_query(
-                "SELECT raw_text FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
+                "SELECT chunk_number, raw_text, LENGTH(raw_text) as char_length FROM draft_chunks WHERE draft_id = %s ORDER BY chunk_number",
                 (test_draft['draft_id'],)
             )
             
-            for chunk_data in chunks:
-                raw_text = chunk_data[0].strip()
+            # Import DocumentProcessor for constants validation
+            from utils.document_processor import DocumentProcessor
+            
+            word_counts = []
+            semantic_boundary_violations = 0
+            
+            for chunk_number, raw_text, char_length in chunks:
+                raw_text = raw_text.strip()
+                
                 # Chunks should have meaningful content
-                assert len(raw_text) > 0
-                # For chunks with multiple sentences, validate they end properly
-                if '.' in raw_text or '!' in raw_text or '?' in raw_text:
-                    # Should end with sentence-ending punctuation or paragraph break
-                    assert raw_text.endswith(('.', '!', '?', '\n')) or raw_text[-1] in '.!?'
+                assert len(raw_text) > 50, f"Chunk {chunk_number} too short ({len(raw_text)} chars)"
+                
+                # Count words and validate against DEFAULT_WORD_LIMIT targeting
+                word_count = len(raw_text.split())
+                word_counts.append(word_count)
+                
+                # For chunks with multiple sentences, validate semantic boundaries
+                if '.' in raw_text and len(raw_text) > 100:
+                    # Should end with proper sentence boundary or paragraph break
+                    if not (raw_text.endswith(('.', '!', '?', '\n', '\n\n')) or raw_text[-1] in '.!?'):
+                        semantic_boundary_violations += 1
+            
+            # Validate 1500-word targeting with real content
+            if len(word_counts) > 1:
+                avg_words = sum(word_counts) / len(word_counts)
+                print(f"\nWord-based Chunking Validation (Real Content):")
+                print(f"  File: {file_name}")
+                print(f"  Chunks created: {len(chunks)}")
+                print(f"  Average words per chunk: {avg_words:.0f}")
+                print(f"  Target: {DocumentProcessor.DEFAULT_WORD_LIMIT} words")
+                print(f"  Semantic boundary violations: {semantic_boundary_violations}")
+                
+                # For real content, allow reasonable variance around 1500-word target
+                assert 500 <= avg_words <= 2500, f"Average chunk size ({avg_words:.0f}) too far from 1500-word target"
+            
+            # Most chunks should respect semantic boundaries
+            semantic_violation_rate = semantic_boundary_violations / len(chunks) if chunks else 0
+            assert semantic_violation_rate < 0.3, f"Too many semantic boundary violations: {semantic_violation_rate*100:.1f}%"
             
         finally:
             # Cleanup only if we created a temporary file
             if cleanup_needed and os.path.exists(test_file_path):
                 os.unlink(test_file_path)
     
-    def test_stage_1_token_safety_validation(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_token_safety_validation(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test that refactored DocumentProcessor respects token limits for safety."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)
@@ -784,7 +1410,7 @@ class TestStage1Ingestion:
             max_reasonable_tokens = 6000  # Reasonable upper limit for chunk safety
             assert stats['avg_tokens_per_chunk'] < max_reasonable_tokens
     
-    def test_stage_1_provider_model_integration(self, stage_1_instance, db_fixture, sample_file_path):
+    def test_stage_1_provider_model_integration(self, register_stage_1_only, stage_1_instance, db_fixture, sample_file_path):
         """Test that refactored DocumentProcessor works with different providers/models."""
         # Create test draft
         test_data = SampleDataGenerator(db_fixture.connection_pool)

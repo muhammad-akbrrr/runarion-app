@@ -64,6 +64,14 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Ignore all files and subdirectories in outputs/{directory}, but keep the directories itself and .gitkeep
+tests/outputs/temp/*
+tests/outputs/deconstructor/*
+!tests/outputs/temp/
+!tests/outputs/temp/.gitkeep
+!runarion-python/tests/outputs/deconstructor/
+!runarion-python/tests/outputs/deconstructor/.gitkeep
+
 # Jupyter Notebook
 .ipynb_checkpoints
 

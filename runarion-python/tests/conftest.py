@@ -23,11 +23,13 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
 sys.path.insert(0, os.path.dirname(__file__))
 
 # Import test utilities
-from test_utils.expected_output_loader import get_expected_output_loader, ExpectedOutputLoader
+from test_utils.expected_output_loader import ExpectedOutputLoader
 from test_utils.path_manager import get_path_manager, TestPathManager
 from test_utils.sample_data import SampleDataGenerator
 from test_utils.real_generation_engine import RealGenerationEngineFactory
 from test_utils.database_fixtures import DatabaseFixture
+from test_utils.stage_dependencies import get_dependency_manager, register_stage_instance, reset_stage_dependencies
+from test_utils.output_generator import get_output_generator
 
 
 def build_test_database_url():
@@ -160,7 +162,7 @@ def path_manager():
 @pytest.fixture
 def expected_output_loader():
     """Provide the expected output loader instance."""
-    return get_expected_output_loader()
+    return ExpectedOutputLoader()
 
 
 @pytest.fixture
@@ -175,19 +177,6 @@ def test_paths(path_manager):
         'sample_files': path_manager.sample_files_dir
     }
 
-
-@pytest.fixture
-def temp_output_file(path_manager):
-    """Provide a temporary output file path that gets cleaned up."""
-    import uuid
-    filename = f"temp_test_{uuid.uuid4().hex[:8]}.json"
-    file_path = path_manager.create_temp_output_path(filename)
-
-    yield file_path
-
-    # Cleanup if file exists
-    if file_path.exists():
-        file_path.unlink()
 
 
 @pytest.fixture
@@ -314,23 +303,145 @@ def stage_1_instance(test_database_pool):
 def stage_2_instance(test_database_pool, generation_engine_factory):
     """Provide a Stage 2 (cleaning) instance for testing with real API calls."""
     from services.deconstructor.stage_2_cleaning import TextCleaningStage
+    from flask import Flask
 
-    # Check if API keys are available
-    factory = generation_engine_factory
-    available_providers = factory.get_available_providers()
+    # Create minimal Flask app for testing context
+    app = Flask(__name__)
+    app.config['TESTING'] = True
+    
+    with app.app_context():
+        # Check if API keys are available
+        factory = generation_engine_factory
+        available_providers = factory.get_available_providers()
 
-    if not available_providers:
-        pytest.skip("No API keys available for generation engine testing")
+        if not available_providers:
+            pytest.skip("No API keys available for generation engine testing")
 
-    # Use the first available provider (prefer Gemini)
-    provider = "gemini" if "gemini" in available_providers else available_providers[0]
+        # Use the first available provider (prefer Gemini)
+        provider = "gemini" if "gemini" in available_providers else available_providers[0]
 
-    # Create a generation engine for cleaning
-    generation_engine = factory.create_cleaning_stage_engine(provider=provider)
+        # Create a generation engine for cleaning
+        generation_engine = factory.create_cleaning_stage_engine(provider=provider)
 
-    stage = TextCleaningStage(test_database_pool, generation_engine)
+        stage = TextCleaningStage(test_database_pool, generation_engine)
 
-    yield stage
+        yield stage
+
+
+@pytest.fixture
+def register_stage_1_only(stage_1_instance):
+    """Register only Stage 1 instance for Stage 1 tests."""
+    # Register stage instance with the dependency manager
+    register_stage_instance(1, stage_1_instance)
+    
+    yield
+    
+    # Clean up stage dependencies after test
+    reset_stage_dependencies()
+
+
+@pytest.fixture  
+def register_stages_1_and_2(stage_1_instance, stage_2_instance):
+    """Register Stage 1 and Stage 2 instances for Stage 2+ tests."""
+    # Register stage instances with the dependency manager
+    register_stage_instance(1, stage_1_instance)
+    register_stage_instance(2, stage_2_instance)
+    
+    yield
+    
+    # Clean up stage dependencies after test
+    reset_stage_dependencies()
+
+
+@pytest.fixture
+def output_generator():
+    """Provide test output generator instance."""
+    return get_output_generator()
+
+
+@pytest.fixture
+def stage_dependency_manager():
+    """Provide stage dependency manager instance."""
+    return get_dependency_manager()
+
+
+@pytest.fixture
+def dependency_results(request, db_fixture, sample_file_path, stage_dependency_manager):
+    """
+    Provide dependency results for tests that require previous stages.
+    Works with the @requires_previous_stages decorator to ensure stage dependencies.
+    """
+    # Check if the test function has the @requires_previous_stages decorator
+    test_func = request.function
+    if not hasattr(test_func, '__wrapped__'):
+        # No decorator, return None
+        return None
+    
+    # Look for required stages in the decorator
+    required_stages = []
+    
+    # Check if this is a Stage 2+ test by looking for the decorator pattern
+    test_name = request.node.name
+    if 'stage_2' in test_name.lower():
+        required_stages = [1]  # Stage 2 tests need Stage 1
+    elif 'stage_3' in test_name.lower():
+        required_stages = [1, 2]  # Stage 3 tests need Stages 1 and 2
+    # Add more stages as needed
+    
+    if not required_stages:
+        return None
+    
+    # Get test configuration
+    use_cached_outputs = request.config.getoption("--use-stage-outputs", False)
+    skip_dependencies = request.config.getoption("--skip-dependencies", False)
+    
+    # Enable dependency mode on database fixture
+    db_fixture.enable_dependency_mode()
+    
+    try:
+        # Ensure stage dependencies
+        dependency_results = stage_dependency_manager.ensure_stage_dependencies(
+            required_stages=required_stages,
+            db_fixture=db_fixture,
+            sample_file_path=sample_file_path,
+            use_cached_outputs=use_cached_outputs,
+            skip_dependencies=skip_dependencies
+        )
+        
+        # Protect records created by dependency stages from cleanup
+        if dependency_results and dependency_results.get('stage_data'):
+            for stage_num, stage_data in dependency_results['stage_data'].items():
+                if 'draft_id' in stage_data:
+                    # Protect the draft and its related records
+                    db_fixture.protect_records('drafts', [stage_data['draft_id']])
+                    
+                    # Also protect chunks that were created
+                    chunks_count = db_fixture.count_records('draft_chunks', stage_data['draft_id'])
+                    if chunks_count > 0:
+                        chunk_ids = db_fixture.execute_query(
+                            "SELECT id FROM draft_chunks WHERE draft_id = %s",
+                            (stage_data['draft_id'],)
+                        )
+                        chunk_id_list = [str(row[0]) for row in chunk_ids]
+                        db_fixture.protect_records('draft_chunks', chunk_id_list)
+        
+        return dependency_results
+        
+    except Exception as e:
+        # If dependency resolution fails, skip the test
+        import pytest
+        pytest.skip(f"Unable to resolve stage dependencies: {e}")
+
+
+@pytest.fixture
+def test_output_options(request):
+    """Provide test output configuration options."""
+    return {
+        'use_stage_outputs': request.config.getoption("--use-stage-outputs"),
+        'skip_dependencies': request.config.getoption("--skip-dependencies"),
+        'generate_outputs': request.config.getoption("--generate-outputs")
+    }
+
 
 # Parameterized fixtures for different test scenarios
 
@@ -380,9 +491,6 @@ def expected_output_helper(expected_output_loader, path_manager):
 
         def save(self, stage, filename, data):
             return expected_output_loader.save_expected_output(stage, filename, data)
-
-        def create_from_actual(self, stage, actual_output, filename):
-            return expected_output_loader.create_expected_output_from_actual(stage, actual_output, filename)
 
         def list_files(self, stage):
             return expected_output_loader.list_expected_outputs_for_stage(stage)
@@ -443,6 +551,24 @@ def pytest_addoption(parser):
         action="store",
         default="short_story.pdf",
         help="Sample file to use for testing (from tests/sample_files/inputs/)"
+    )
+    parser.addoption(
+        "--use-stage-outputs",
+        action="store_true",
+        default=False,
+        help="Use pre-generated stage outputs instead of running previous stages"
+    )
+    parser.addoption(
+        "--skip-dependencies",
+        action="store_true", 
+        default=False,
+        help="Skip stage dependency resolution (assume data already exists)"
+    )
+    parser.addoption(
+        "--generate-outputs",
+        action="store_true",
+        default=True,
+        help="Generate test output files after test execution (default: True)"
     )
 
 
