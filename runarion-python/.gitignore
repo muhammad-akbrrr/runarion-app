@@ -69,8 +69,8 @@ tests/outputs/temp/*
 tests/outputs/deconstructor/*
 !tests/outputs/temp/
 !tests/outputs/temp/.gitkeep
-!runarion-python/tests/outputs/deconstructor/
-!runarion-python/tests/outputs/deconstructor/.gitkeep
+!tests/outputs/deconstructor/
+!tests/outputs/deconstructor/.gitkeep
 
 # Jupyter Notebook
 .ipynb_checkpoints
