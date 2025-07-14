@@ -1,3 +1,4 @@
+import logging
 import os
 
 import google.generativeai as genai
@@ -6,6 +7,8 @@ from dotenv import load_dotenv
 from transformers import AutoTokenizer
 from vertexai.preview import tokenization
 from vertexai.tokenization._tokenizers import PreviewTokenizer
+
+logger = logging.getLogger(__name__)
 
 CHARS_PER_TOKEN_ESTIMATE = 4  # Approximate character-to-token ratio
 TIKTOKEN_FALLBACK_ENCODING = (
@@ -34,6 +37,9 @@ class TokenCounter:
             try:
                 self.tokenizer = tiktoken.encoding_for_model(model)
             except KeyError:
+                logger.warning(
+                    f"Model {model} not found in tiktoken. Falling back to {TIKTOKEN_FALLBACK_ENCODING} encoding."
+                )
                 self.tokenizer = tiktoken.get_encoding(TIKTOKEN_FALLBACK_ENCODING)
         elif provider == "gemini":
             try:
@@ -46,8 +52,11 @@ class TokenCounter:
         else:
             try:
                 self.tokenizer = AutoTokenizer.from_pretrained(model)
-            except Exception as e:
-                raise ValueError(f"Failed to load tokenizer for model {model}: {e}")
+            except Exception:
+                logger.warning(
+                    f"Model {model} not found in Hugging Face. Falling back to character-based estimation."
+                )
+                self.tokenizer = None
 
     def count(self, text: str) -> int:
         if isinstance(self.tokenizer, tiktoken.Encoding):
@@ -56,8 +65,10 @@ class TokenCounter:
             return self.tokenizer.count_tokens(text).total_tokens
         elif isinstance(self.tokenizer, genai.GenerativeModel):  # type: ignore
             return self.tokenizer.count_tokens(text).total_tokens
+        elif isinstance(self.tokenizer, AutoTokenizer):
+            return len(self.tokenizer.encode(text, add_special_tokens=False))  # type: ignore
         else:
-            return len(self.tokenizer.encode(text, add_special_tokens=False))
+            return len(text) // CHARS_PER_TOKEN_ESTIMATE
 
     def safe_count(self, text: str) -> int:
         """
@@ -72,7 +83,9 @@ class TokenCounter:
         try:
             return self.count(text)
         except Exception:
-            # Fallback to rough approximation
+            logger.warning(
+                "Failed to count tokens using the tokenizer. Falling back to character-based estimation."
+            )
             return len(text) // CHARS_PER_TOKEN_ESTIMATE
 
     def estimate_tokens_from_chat_messages(self, messages: list) -> int:
