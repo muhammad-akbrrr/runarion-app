@@ -1,6 +1,6 @@
 # Runarion Deconstructor Pipeline Test Suite
 
-This comprehensive test suite provides testing infrastructure for the Runarion deconstructor pipeline using real AI providers. The test suite focuses on practical, production-like testing that validates actual API integration.
+This test suite provides comprehensive testing for the Runarion deconstructor pipeline with real AI provider integration. Tests are designed to run in Docker containers with dependencies on PostgreSQL and Laravel services.
 
 ## Overview
 
@@ -10,566 +10,366 @@ The test suite includes:
 - **Stage-specific tests** for individual pipeline stages (currently Stage 1 and Stage 2)
 - **Database integration** with PostgreSQL and Apache AGE
 - **Real AI provider integration** using Gemini, OpenAI, and DeepSeek APIs
-- **Cost-aware testing** with appropriate markers for expensive operations
 
 ## Test Structure
 
 ```
 tests/
 ├── conftest.py                    # Global pytest configuration and fixtures
-├── pytest.ini                    # Pytest settings and markers
 ├── test_imports.py                # Import validation tests
 ├── test_real_api_environment.py   # Environment validation tests
 ├── test_utils/                    # Testing utilities and helpers
-│   ├── __init__.py
-│   ├── database_fixtures.py       # Database setup/teardown utilities
-│   ├── real_generation_engine.py  # Real AI provider factory
-│   ├── sample_data.py             # Test data generators
-│   └── assertions.py              # Custom test assertions
 ├── integration/                   # End-to-end integration tests
-│   ├── __init__.py
-│   ├── test_deconstructor_api.py  # API endpoint tests with real AI
-│   └── test_pipeline_flow.py      # Full pipeline integration tests
 ├── stages/                        # Individual stage tests
-│   ├── __init__.py
-│   ├── test_stage_1_ingestion.py  # Stage 1: Document ingestion (no AI required)
-│   └── test_stage_2_cleaning.py   # Stage 2: Text cleaning with real AI
-└── sample_files/                  # Sample files for testing
-    ├── README.md                  # Instructions for sample files
-    └── test_configs/              # Test configuration files
-        ├── minimal_config.json
-        └── full_config.json
+│   ├── test_stage_1_ingestion.py  # Stage 1: Document ingestion
+│   └── test_stage_2_cleaning.py   # Stage 2: Text cleaning with AI
+├── sample_files/                  # Sample files for testing
+│   ├── inputs/                    # Sample manuscripts
+│   │   └── short_story.pdf        # ~3,300 words - basic functionality testing
+│   └── test_configs/              # Test configuration files
+│       ├── minimal_config.json
+│       ├── full_config.json
+│       └── performance_config.json
+└── outputs/                       # Test outputs (auto-generated)
+    ├── deconstructor/             # Stage-specific outputs
+    │   ├── stage_1/ ... stage_7/  # Results, logs, performance data
+    └── temp/                      # Temporary test files
 ```
 
-## Environment Setup
+## Docker Environment Setup
 
-### API Keys Required
+**IMPORTANT**: All tests must be run from within the Docker environment due to dependencies on PostgreSQL and Laravel services.
 
-The test suite requires API keys for at least one AI provider:
+### Prerequisites
 
-```bash
-# Gemini (Google) - Recommended
-export GEMINI_API_KEY=your-gemini-api-key-here
-export GEMINI_MODEL_NAME=gemini-2.0-flash
+1. Start the development environment:
 
-# OpenAI (Optional)
-export OPENAI_API_KEY=your-openai-api-key-here
-export OPENAI_MODEL_NAME=gpt-4o-mini
+   ```bash
+   ./dev.sh
+   ```
 
-# DeepSeek (Optional)
-export DEEPSEEK_API_KEY=your-deepseek-api-key-here
-export DEEPSEEK_MODEL_NAME=deepseek-chat
-```
+2. Ensure all containers are running:
+   ```bash
+   docker ps
+   # Should show: python-app, postgres-db, laravel-app
+   ```
 
-### Database Configuration
+### Environment Variables
 
-```bash
-# Test database
-export TEST_DATABASE_URL="postgresql://postgres:password@postgres-db:5432/runarion_test"
-
-# Test environment paths are managed automatically by the path manager
-
-# Test environment
-export ENVIRONMENT="test"
-export TESTING="true"
-```
-
-### Environment Validation
-
-Check your environment setup before running tests:
+Set at least one AI provider API key:
 
 ```bash
-# Run environment validation
-python tests/test_real_api_environment.py
+# In your .env file or Docker environment
+GEMINI_API_KEY=your-gemini-api-key-here
+OPENAI_API_KEY=your-openai-api-key-here
+DEEPSEEK_API_KEY=your-deepseek-api-key-here
 
-# Or run as pytest
-pytest tests/test_real_api_environment.py -v
+# Database (handled by Docker)
+TEST_DATABASE_URL="postgresql://postgres:password@postgres-db:5432/runarion_test"
 ```
 
 ## Running Tests
 
-### Prerequisites
+### Basic Test Commands
 
-1. **Docker Environment**: Ensure your Docker development environment is running
-2. **Database**: PostgreSQL with Apache AGE extension must be available
-3. **API Keys**: At least one AI provider API key must be set
-
-### Basic Commands
+All tests must be run from within the Docker container:
 
 ```bash
-# Run all tests (requires API keys)
+# Run all tests
 docker exec python-app pytest tests/ -v
 
 # Run specific test categories
 docker exec python-app pytest tests/ -m integration -v
 docker exec python-app pytest tests/ -m stage -v
-docker exec python-app pytest tests/ -m database -v
 
 # Run specific test files
-docker exec python-app pytest tests/integration/test_deconstructor_api.py -v
+docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v
 docker exec python-app pytest tests/stages/test_stage_2_cleaning.py -v
-
-# Run with coverage
-docker exec python-app pytest tests/ --cov=src --cov-report=html
 ```
 
-### Running Tests with Specific Sample Files
+### Key Testing Flags
 
-The test suite can be configured to use specific sample files for testing:
+The test suite supports three critical flags for controlling test behavior:
 
-#### **Sample File Selection**
+#### 1. `--sample-file` Flag
+
+Specify which sample file to use for testing:
 
 ```bash
-# Run stage tests with a specific sample file
+# Run stage tests with specific sample file
 docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v \
   --sample-file="short_story.pdf"
 
-# Run integration tests with specific sample file
-docker exec python-app pytest tests/integration/test_deconstructor_api.py -v \
+# Run all stage tests with sample file
+docker exec python-app pytest tests/stages/ -v \
   --sample-file="short_story.pdf"
 
-# Run all stage tests with different sample files
-docker exec python-app pytest tests/stages/ -v --sample-file="short_story.pdf"
+# Run integration tests with sample file
+docker exec python-app pytest tests/integration/ -v \
+  --sample-file="short_story.pdf"
 ```
 
-#### **Available Sample Files**
+**Available Sample Files:**
 
-Currently available sample files in `tests/sample_files/inputs/`:
+- `short_story.pdf` - ~3,300 words, recommended for development
 
-- **`short_story.pdf`** - ~2,000 words, basic functionality testing (recommended for development)
+#### 2. `--cleanup-test-data` Flag
 
-Future sample files (when added):
-
-- **`medium_novel.pdf`** - ~20,000 words, medium complexity testing
-- **`complex_novel.pdf`** - ~50,000 words, full pipeline stress testing
-- **`malformed_document.txt`** - Edge cases and error handling
-- **`multilingual_test.txt`** - Unicode and encoding testing
-
-#### **Environment Variables for Sample Files**
-
-You can also specify sample files via environment variables:
+Control test data cleanup behavior:
 
 ```bash
-# Set default sample file for all tests
-docker exec python-app bash -c "export TEST_SAMPLE_FILE=short_story.pdf && pytest tests/stages/ -v"
+# Clean up test data after each test (default)
+docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v \
+  --cleanup-test-data
 
-# Set sample file and run specific test
-docker exec python-app bash -c "export TEST_SAMPLE_FILE=short_story.pdf && pytest tests/stages/test_stage_1_ingestion.py::TestStage1Ingestion::test_pdf_ingestion -v"
+# Keep test data for debugging
+docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v \
+  --no-cleanup-test-data
 ```
 
-#### **Test Configuration Files**
+#### 3. `--persist-data` Flag
 
-Run tests with specific configuration files:
+Control data persistence between test runs:
 
 ```bash
-# Use minimal configuration
-docker exec python-app pytest tests/ -v --config-file="minimal_config.json"
+# Persist data between tests for faster subsequent runs
+docker exec python-app pytest tests/stages/test_stage_2_cleaning.py -v \
+  --persist-data
 
-# Use performance configuration
-docker exec python-app pytest tests/ -v --config-file="performance_config.json"
-
-# Use full configuration
-docker exec python-app pytest tests/ -v --config-file="full_config.json"
+# Don't persist data (clean slate each time)
+docker exec python-app pytest tests/stages/test_stage_2_cleaning.py -v \
+  --no-persist-data
 ```
 
-#### **Combined Sample File and Configuration**
+### Combined Flag Usage
 
 ```bash
-# Run with specific sample file AND configuration
+# Run stage 2 tests with all key flags
 docker exec python-app pytest tests/stages/test_stage_2_cleaning.py -v \
   --sample-file="short_story.pdf" \
-  --config-file="performance_config.json"
+  --cleanup-test-data \
+  --persist-data
 
-# Run integration test with custom settings
+# Run full pipeline with specific configuration
 docker exec python-app pytest tests/integration/test_pipeline_flow.py -v \
   --sample-file="short_story.pdf" \
-  --config-file="minimal_config.json" \
-  --provider="gemini"
+  --cleanup-test-data \
+  --persist-data
 ```
 
-#### **Specific Test Examples**
+### Test Configuration Files
+
+Use specific configuration files for different test scenarios:
 
 ```bash
-# Test PDF ingestion with short story
+# Minimal configuration for fast testing
+docker exec python-app pytest tests/ -v \
+  --config-file="minimal_config.json"
+
+# Performance configuration for load testing
+docker exec python-app pytest tests/ -v \
+  --config-file="performance_config.json"
+
+# Full configuration for comprehensive testing
+docker exec python-app pytest tests/ -v \
+  --config-file="full_config.json"
+```
+
+## Test Markers
+
+Use pytest markers to run specific test categories:
+
+```bash
+# Run only integration tests
+docker exec python-app pytest tests/ -m integration -v
+
+# Run only stage tests
+docker exec python-app pytest tests/ -m stage -v
+
+# Run only database tests
+docker exec python-app pytest tests/ -m database -v
+
+# Skip expensive tests (saves API costs)
+docker exec python-app pytest tests/ -m "not expensive" -v
+
+# Run only fast tests
+docker exec python-app pytest tests/ -m "not slow and not expensive" -v
+```
+
+## Stage-Specific Testing
+
+### Stage 1: Document Ingestion
+
+```bash
+# Test PDF ingestion
 docker exec python-app pytest tests/stages/test_stage_1_ingestion.py::TestStage1Ingestion::test_pdf_ingestion -v \
   --sample-file="short_story.pdf"
 
-# Test text cleaning with specific AI provider
+# Test text chunking
+docker exec python-app pytest tests/stages/test_stage_1_ingestion.py::TestStage1Ingestion::test_text_chunking -v \
+  --sample-file="short_story.pdf"
+```
+
+### Stage 2: Text Cleaning
+
+```bash
+# Test text cleaning with AI
 docker exec python-app pytest tests/stages/test_stage_2_cleaning.py::TestStage2Cleaning::test_cleaning_success -v \
   --sample-file="short_story.pdf" \
   --provider="gemini"
 
-# Test full API workflow with sample file
-docker exec python-app pytest tests/integration/test_deconstructor_api.py::TestDeconstructorAPI::test_complete_workflow -v \
+# Test error handling
+docker exec python-app pytest tests/stages/test_stage_2_cleaning.py::TestStage2Cleaning::test_error_handling -v \
   --sample-file="short_story.pdf"
 ```
 
-#### **Adding New Sample Files**
+## Database Dependencies
 
-To add and test new sample files:
+The test suite requires:
 
-1. **Add the file** to `tests/sample_files/inputs/`:
+- **PostgreSQL** with Apache AGE extension
+- **Laravel migrations** for database schema
+- **Laravel seeders** for test data
+- **Laravel factories** for data generation
 
-   ```bash
-   # Copy your new sample file
-   cp my_new_novel.pdf tests/sample_files/inputs/
-   ```
+These dependencies are automatically handled when running tests from the Docker environment.
 
-2. **Test with your new file**:
+## Environment Validation
 
-   ```bash
-   # Test ingestion with new file
-   docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v \
-     --sample-file="my_new_novel.pdf"
-   ```
-
-3. **Run full pipeline test**:
-   ```bash
-   # Test complete workflow with new file
-   docker exec python-app pytest tests/integration/test_pipeline_flow.py -v \
-     --sample-file="my_new_novel.pdf" \
-     --config-file="minimal_config.json"
-   ```
-
-#### **Sample File Debugging**
+Before running tests, validate your environment:
 
 ```bash
-# Debug sample file processing with verbose output
+# Check environment setup
+docker exec python-app python tests/test_real_api_environment.py
+
+# Validate imports
+docker exec python-app pytest tests/test_imports.py -v
+```
+
+## Output Management
+
+Test outputs are automatically organized in the `outputs/` directory:
+
+- **Results**: JSON files with test outcomes
+- **Logs**: Detailed execution logs
+- **Performance**: Timing and metrics data
+- **Database Seeds**: Generated test data for next stages
+
+## Cost Management
+
+Real AI tests consume API tokens:
+
+```bash
+# Skip expensive tests
+docker exec python-app pytest tests/ -m "not expensive" -v
+
+# Run only cheap tests
+docker exec python-app pytest tests/ -m "not slow and not expensive" -v
+```
+
+## Sample File Management
+
+### Adding New Sample Files
+
+1. Add file to `tests/sample_files/inputs/`:
+
+   ```bash
+   cp my_novel.pdf tests/sample_files/inputs/
+   ```
+
+2. Test with new file:
+   ```bash
+   docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v \
+     --sample-file="my_novel.pdf"
+   ```
+
+### Sample File Debugging
+
+```bash
+# Debug sample file processing
 docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v -s \
   --sample-file="short_story.pdf" \
   --log-cli-level=DEBUG
-
-# Check sample file path resolution
-docker exec python-app python -c "
-from test_utils.path_manager import get_sample_file
-print(f'Sample file path: {get_sample_file(\"short_story.pdf\")}')
-"
 ```
 
-### Test Markers
+## Common Test Patterns
 
-The test suite uses pytest markers to categorize tests:
-
-- `@pytest.mark.integration`: Integration tests requiring full services
-- `@pytest.mark.stage`: Tests for individual pipeline stages
-- `@pytest.mark.database`: Tests requiring database access
-- `@pytest.mark.real_api`: Tests that make real API calls (most tests)
-- `@pytest.mark.expensive`: Tests that consume significant API quota/costs
-- `@pytest.mark.slow`: Tests that take more than 30 seconds
-- `@pytest.mark.api`: Tests for API endpoints
-- `@pytest.mark.performance`: Performance and load tests
-
-### Cost-Aware Testing
+### Basic Stage Testing
 
 ```bash
-# Run all tests except expensive ones
-docker exec python-app pytest tests/ -m "not expensive" -v
+# Test a single stage with default settings
+docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v
 
-# Run only expensive tests (use sparingly)
-docker exec python-app pytest tests/ -m expensive -v
-
-# Run fast tests only
-docker exec python-app pytest tests/ -m "not slow and not expensive" -v
-
-# Run integration tests without expensive ones
-docker exec python-app pytest tests/ -m "integration and not expensive" -v
+# Test with specific sample file and cleanup
+docker exec python-app pytest tests/stages/test_stage_1_ingestion.py -v \
+  --sample-file="short_story.pdf" \
+  --cleanup-test-data
 ```
 
-### Skipping Tests Without API Keys
-
-Tests automatically skip when API keys are not available:
+### Integration Testing
 
 ```bash
-# This will skip real API tests if no keys are found
-docker exec python-app pytest tests/ -v
+# Test full pipeline flow
+docker exec python-app pytest tests/integration/test_pipeline_flow.py -v \
+  --sample-file="short_story.pdf" \
+  --persist-data
+
+# Test API endpoints
+docker exec python-app pytest tests/integration/test_deconstructor_api.py -v \
+  --sample-file="short_story.pdf"
 ```
 
-## Test Features
-
-### Real AI Provider Integration
-
-The test suite uses actual AI providers for realistic testing:
-
-```python
-def test_example(generation_engine_factory, db_fixture):
-    """Example test using real AI providers."""
-    # Check if API keys are available
-    available_providers = generation_engine_factory.get_available_providers()
-    if not available_providers:
-        pytest.skip("No API keys available")
-
-    # Create real generation engine
-    engine = generation_engine_factory.create_generation_engine(
-        provider="gemini",
-        prompt="Test prompt",
-        instruction="Test instruction"
-    )
-
-    # Use engine for testing...
-```
-
-### Database Fixtures
-
-Database fixtures provide transaction isolation and cleanup:
-
-```python
-def test_example(db_fixture):
-    """Example test using database fixtures."""
-    # Create test data
-    draft = db_fixture.create_test_draft()
-    chunks = db_fixture.create_test_chunks(draft['draft_id'], 3)
-
-    # Test operations
-    # ...
-
-    # Automatic cleanup after test
-```
-
-### Real API Assertions
-
-Use specialized assertions for real API responses:
-
-```python
-from test_utils.assertions import RealAPIAssertions, PipelineAssertions
-
-# Validate real API responses
-RealAPIAssertions.assert_successful_generation(response)
-RealAPIAssertions.assert_token_usage(response, min_tokens=10)
-RealAPIAssertions.assert_processing_time_reasonable(response, max_seconds=30)
-
-# Validate pipeline results
-PipelineAssertions.assert_draft_status(status, 'completed')
-PipelineAssertions.assert_api_response_structure(response, success=True)
-```
-
-## Writing New Tests
-
-### Test Organization
-
-1. **Integration Tests**: Place in `tests/integration/`
-
-   - Test complete workflows with real AI
-   - Use real database connections
-   - Test API endpoints
-
-2. **Stage Tests**: Place in `tests/stages/`
-   - Test individual pipeline stages
-   - Use database fixtures
-   - Test both success and error conditions
-
-### Test Patterns
-
-Follow these patterns for consistency:
-
-```python
-@pytest.mark.real_api
-@pytest.mark.database
-class TestNewFeature:
-    """Test new feature functionality."""
-
-    def test_feature_success(self, generation_engine_factory, db_fixture):
-        """Test successful feature execution."""
-        # Skip if no API keys
-        available_providers = generation_engine_factory.get_available_providers()
-        if not available_providers:
-            pytest.skip("No API keys available")
-
-        # Test implementation
-        # ...
-
-        # Use appropriate assertions
-        RealAPIAssertions.assert_successful_generation(result)
-        PipelineAssertions.assert_database_record_exists(db_fixture, 'table', 'id')
-
-    @pytest.mark.expensive
-    def test_feature_large_input(self, generation_engine_factory, db_fixture):
-        """Test feature with large input (expensive test)."""
-        # Implementation for high-cost test
-        pass
-```
-
-### Cost Management
-
-- Mark expensive tests with `@pytest.mark.expensive`
-- Include skip logic for missing API keys
-- Use realistic but minimal test data
-- Document token consumption in test docstrings
-
-## Current Test Coverage
-
-### Available Tests
-
-1. **Stage 1 Tests** (`test_stage_1_ingestion.py`)
-
-   - Document ingestion and chunking
-   - File format support
-   - Database operations
-   - No AI required
-
-2. **Stage 2 Tests** (`test_stage_2_cleaning.py`)
-
-   - Text cleaning with real AI
-   - Unicode handling
-   - Performance monitoring
-   - Error handling
-
-3. **Integration Tests** (`test_deconstructor_api.py`)
-
-   - Complete API workflow
-   - Error handling
-   - Provider validation
-   - Performance monitoring
-
-4. **Pipeline Flow Tests** (`test_pipeline_flow.py`)
-   - End-to-end pipeline execution
-   - Stage isolation testing
-   - Data flow validation
-   - Error handling and recovery
-
-### Adding New Stage Tests
-
-To add tests for additional stages (3-7):
-
-1. Create new test file: `tests/stages/test_stage_X_name.py`
-2. Follow the pattern from `test_stage_2_cleaning.py`
-3. Add appropriate fixtures to `conftest.py`
-4. Use real API assertions and cost-aware markers
-
-Example structure:
-
-```python
-@pytest.mark.real_api
-@pytest.mark.database
-class TestStageX:
-    """Test Stage X: Description"""
-
-    def test_stage_x_success(self, stage_x_instance, db_fixture):
-        """Test successful stage execution."""
-        # Implementation
-        pass
-
-    @pytest.mark.expensive
-    def test_stage_x_large_input(self, stage_x_instance, db_fixture):
-        """Test stage with large input."""
-        # Implementation
-        pass
-```
-
-## Debugging Tests
-
-### Verbose Output
+### Performance Testing
 
 ```bash
-# Run with maximum verbosity
-docker exec python-app pytest tests/ -vvv
-
-# Show print statements
-docker exec python-app pytest tests/ -s
-
-# Show test durations
-docker exec python-app pytest tests/ --durations=10
-```
-
-### Environment Issues
-
-```bash
-# Check environment
-python tests/test_real_api_environment.py
-
-# Validate imports
-pytest tests/test_imports.py -v
-
-# Check database connection
-pytest tests/conftest.py::test_database_connection -v
-```
-
-### API Issues
-
-- Verify API keys are set correctly
-- Check network connectivity
-- Monitor rate limits and quotas
-- Review API provider status pages
-
-## Performance Considerations
-
-### Token Usage
-
-- Real API tests consume tokens and cost money
-- Use `@pytest.mark.expensive` for high-consumption tests
-- Monitor and optimize test data sizes
-- Consider using smaller models for basic testing
-
-### Test Speed
-
-- Database tests use transaction isolation for speed
-- Real API calls add network latency
-- Use appropriate timeouts
-- Run expensive tests selectively
-
-### Best Practices
-
-1. Use minimal test data that still validates functionality
-2. Run expensive tests only when necessary
-3. Monitor API costs and usage
-4. Keep real API tests focused and efficient
-
-## CI/CD Integration
-
-### GitHub Actions Example
-
-```yaml
-name: Test Deconstructor Pipeline
-
-on: [push, pull_request]
-
-jobs:
-  test:
-    runs-on: ubuntu-latest
-
-    steps:
-      - uses: actions/checkout@v2
-
-      - name: Start services
-        run: docker-compose -f docker-compose.test.yml up -d
-
-      - name: Run tests (excluding expensive)
-        run: |
-          docker exec python-app pytest tests/ -v \
-            -m "not expensive" \
-            --cov=src --cov-report=xml \
-            --junitxml=test-results.xml
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-
-      - name: Upload coverage
-        uses: codecov/codecov-action@v1
+# Run with performance configuration
+docker exec python-app pytest tests/stages/test_stage_2_cleaning.py -v \
+  --sample-file="short_story.pdf" \
+  --config-file="performance_config.json" \
+  --persist-data
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Missing API Keys**: Tests skip automatically - set environment variables
-2. **Database Connection**: Check `TEST_DATABASE_URL` and Docker services
-3. **Import Errors**: Run `pytest tests/test_imports.py` to validate setup
-4. **Rate Limits**: Use `@pytest.mark.expensive` and run selectively
+1. **Container not running**: Ensure `./dev.sh` completed successfully
+2. **Database connection**: Check postgres-db container is running
+3. **API keys missing**: Set environment variables in Docker environment
+4. **Import errors**: Run `pytest tests/test_imports.py` to validate
 
-### Getting Help
+### Debug Commands
 
-- Check existing test examples for patterns
-- Review pytest documentation for advanced features
-- Examine real API response structures in `RealAPIAssertions`
-- Validate environment with `test_real_api_environment.py`
+```bash
+# Check container status
+docker ps
 
-## Contributing
+# View container logs
+docker logs python-app
+docker logs postgres-db
 
-When adding new tests:
+# Access container shell
+docker exec -it python-app bash
 
-1. Follow existing patterns and conventions
-2. Add appropriate documentation and markers
-3. Include both success and failure scenarios
-4. Use cost-aware testing practices
-5. Test with multiple providers when possible
-6. Add comprehensive error handling
+# Test database connection
+docker exec python-app python -c "
+from src.utils.database_utils import get_db_connection
+print('Database connection:', get_db_connection())
+"
+```
 
-For questions about the test suite, consult existing examples and documentation.
+## Development Workflow
+
+1. **Start environment**: `./dev.sh`
+2. **Run environment check**: `docker exec python-app python tests/test_real_api_environment.py`
+3. **Run specific tests**: Use the key flags `--sample-file`, `--cleanup-test-data`, `--persist-data`
+4. **Check outputs**: Review `tests/outputs/` for results and logs
+5. **Debug issues**: Use verbose flags and container logs
+
+## Current Test Coverage
+
+- ✅ **Stage 1**: Document ingestion and chunking
+- ✅ **Stage 2**: Text cleaning with AI
+- ⏳ **Stages 3-7**: Planned for future implementation
+
+For questions about the test suite, examine existing test examples and consult the Docker container logs for detailed execution information.

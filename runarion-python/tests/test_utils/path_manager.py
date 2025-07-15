@@ -10,8 +10,12 @@ This module provides utilities for managing test file paths, including:
 
 import os
 import glob
+import shutil
+import logging
 from typing import Dict, List, Optional, Union
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class TestPathManager:
@@ -188,6 +192,54 @@ class TestPathManager:
             if file_path.is_file() and file_path.name != '.gitkeep':
                 file_path.unlink()
     
+    def recreate_output_directories(self):
+        """
+        Completely recreate all test output directories.
+        
+        This removes and recreates the entire output directory structure,
+        ensuring a completely clean state for testing. This method is 
+        designed to be run sequentially to avoid race conditions.
+        """
+        logger.info("Starting complete recreation of test output directories")
+        
+        try:
+            # Remove entire outputs directory if it exists
+            if self.outputs_dir.exists():
+                logger.debug(f"Removing existing outputs directory: {self.outputs_dir}")
+                shutil.rmtree(self.outputs_dir)
+            
+            # Recreate base outputs directory
+            self.outputs_dir.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created base outputs directory: {self.outputs_dir}")
+            
+            # Recreate temp outputs directory
+            self.temp_outputs_dir.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created temp outputs directory: {self.temp_outputs_dir}")
+            
+            # Recreate deconstructor base directory
+            self.expected_outputs_dir.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created expected outputs directory: {self.expected_outputs_dir}")
+            
+            # Recreate all stage directories with subdirectories
+            stage_subdirs = ['database_seeds', 'logs', 'performance', 'results']
+            
+            for stage in range(1, 8):
+                stage_dir = self.get_stage_expected_outputs_dir(stage)
+                stage_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Create subdirectories for each stage
+                for subdir in stage_subdirs:
+                    subdir_path = stage_dir / subdir
+                    subdir_path.mkdir(parents=True, exist_ok=True)
+                
+                logger.debug(f"Created stage {stage} directory with subdirectories: {stage_dir}")
+            
+            logger.info(f"Successfully recreated test output directories: 7 stages x {len(stage_subdirs)} subdirectories")
+            
+        except Exception as e:
+            logger.error(f"Failed to recreate output directories: {e}")
+            raise
+    
     def find_sample_by_name(self, name_pattern: str) -> Optional[Path]:
         """
         Find sample file by name pattern.
@@ -264,3 +316,8 @@ def list_stage_outputs(stage: Union[int, str]) -> List[Path]:
 def cleanup_temp_files(pattern: str = "*"):
     """Clean up temporary test files."""
     get_path_manager().cleanup_temp_outputs(pattern)
+
+
+def recreate_test_output_directories():
+    """Completely recreate all test output directories."""
+    get_path_manager().recreate_output_directories()

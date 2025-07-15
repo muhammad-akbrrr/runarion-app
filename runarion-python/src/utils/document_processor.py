@@ -820,7 +820,7 @@ class DocumentProcessor:
                 'cleaned_length': len(cleaned_text),
                 'chunk_count': len(chunks),
                 'total_tokens': sum(c['token_count'] for c in chunks),
-                'processing_model': f"{provider}/{model}"
+                'processing_model': "N/A - Token counting only"
             }
 
             return {

@@ -165,10 +165,14 @@ class TestStage2Cleaning:
         
         # Generate test outputs for debugging and next stage seeding
         if test_output_options['generate_outputs']:
+            # Ensure test_result includes draft_id for database seeds generation
+            enhanced_result = result.copy()
+            enhanced_result['draft_id'] = draft_id
+            
             output_files = generate_stage_output(
                 stage_number=2,
                 test_name='test_stage_2_text_cleaning_success',
-                test_result=result,
+                test_result=enhanced_result,
                 db_fixture=db_fixture,
                 additional_data={
                     'dependency_info': dependency_results,

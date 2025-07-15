@@ -13,6 +13,10 @@ from contextlib import contextmanager
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from .sample_data import generate_ulid
+from .database_operation_tracker import (
+    get_operation_tracker, tracked_database_connection, 
+    start_operation_tracking, stop_operation_tracking
+)
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +37,8 @@ class DatabaseFixture:
         self.test_data = {}
         self._dependency_mode = False
         self._protected_records = set()
+        self._persist_data = False  # Flag for data persistence
+        self._operation_tracker = get_operation_tracker()
         self.created_records = {
             'drafts': [],
             'draft_chunks': [],
@@ -48,6 +54,9 @@ class DatabaseFixture:
     def setup(self):
         """Setup test database with necessary tables and data."""
         try:
+            # Start operation tracking
+            start_operation_tracking()
+            
             # Ensure test tables exist (they should from migrations)
             self._ensure_test_tables()
             
@@ -63,6 +72,14 @@ class DatabaseFixture:
     def cleanup(self):
         """Clean up test data from database with enhanced transaction isolation."""
         try:
+            # Stop operation tracking
+            stop_operation_tracking()
+            
+            # Check if data persistence is enabled
+            if self._persist_data:
+                logger.info("Skipping database cleanup due to --persist-data flag")
+                return
+            
             conn = self.connection_pool.getconn()
             conn.autocommit = False  # Use transaction for cleanup
             
@@ -234,18 +251,16 @@ class DatabaseFixture:
     
     @contextmanager
     def transaction(self):
-        """Context manager for database transactions with rollback support."""
-        conn = self.connection_pool.getconn()
-        try:
-            conn.autocommit = False
-            yield conn
-            conn.commit()
-        except Exception as e:
-            conn.rollback()
-            logger.error(f"Transaction rolled back: {e}")
-            raise
-        finally:
-            self.connection_pool.putconn(conn)
+        """Context manager for database transactions with rollback support and operation tracking."""
+        with tracked_database_connection(self.connection_pool) as conn:
+            try:
+                conn.autocommit = False
+                yield conn
+                conn.commit()
+            except Exception as e:
+                conn.rollback()
+                logger.error(f"Transaction rolled back: {e}")
+                raise
     
     def get_existing_user_id(self) -> int:
         """
@@ -896,3 +911,62 @@ class DatabaseFixture:
             for record_id in record_ids:
                 self._protected_records.add((table_name, record_id))
             logger.debug(f"Protected {len(record_ids)} records in {table_name} from cleanup")
+            
+    def enable_data_persistence(self):
+        """Enable data persistence (skip cleanup)."""
+        self._persist_data = True
+        logger.info("Data persistence enabled - cleanup will be skipped")
+        
+    def disable_data_persistence(self):
+        """Disable data persistence (allow cleanup)."""
+        self._persist_data = False
+        logger.info("Data persistence disabled - cleanup will occur normally")
+        
+    def force_cleanup(self):
+        """Force cleanup even if data persistence is enabled."""
+        persist_state = self._persist_data
+        self._persist_data = False
+        try:
+            self.cleanup()
+        finally:
+            self._persist_data = persist_state
+            
+            
+    def cleanup_test_output_files(self):
+        """Clean up test output files from previous runs."""
+        try:
+            from .path_manager import get_path_manager
+            path_manager = get_path_manager()
+            
+            # Clean up temporary files
+            path_manager.cleanup_temp_outputs()
+            
+            # Clean up stage output directories (but keep the directory structure)
+            for stage in range(1, 8):
+                stage_dir = path_manager.get_stage_expected_outputs_dir(stage)
+                
+                # Clean specific subdirectories
+                for subdir in ['database_seeds', 'logs', 'performance', 'results']:
+                    subdir_path = stage_dir / subdir
+                    if subdir_path.exists():
+                        cleaned_files = 0
+                        for file_path in subdir_path.iterdir():
+                            if file_path.is_file() and file_path.name != '.gitkeep':
+                                file_path.unlink()
+                                cleaned_files += 1
+                        if cleaned_files > 0:
+                            logger.info(f"Cleaned {cleaned_files} files from {subdir_path}")
+            
+            logger.info("Test output files cleanup completed")
+            
+        except Exception as e:
+            logger.warning(f"Failed to clean test output files: {e}")
+            
+            
+    def get_tracked_operations(self) -> List[Dict[str, Any]]:
+        """Get all database operations tracked during this test."""
+        return self._operation_tracker.get_operations()
+        
+    def get_operations_summary(self) -> Dict[str, Any]:
+        """Get a summary of tracked database operations."""
+        return self._operation_tracker.get_operations_summary()

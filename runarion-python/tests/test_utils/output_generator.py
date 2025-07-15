@@ -31,6 +31,16 @@ class TestOutputGenerator:
         self.path_manager = get_path_manager()
         self._ensure_output_directories()
         
+    def _format_timestamp_for_filename(self, timestamp: str) -> str:
+        """Convert ISO timestamp to filename-safe format."""
+        # Convert 2025-07-14T15:54:26.592106+00:00 to 20250714_155426
+        try:
+            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            return dt.strftime('%Y%m%d_%H%M%S')
+        except Exception:
+            # Fallback to current time if timestamp parsing fails
+            return datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')
+        
     def _ensure_output_directories(self):
         """Ensure all necessary output directories exist."""
         for stage in range(1, 8):
@@ -65,6 +75,9 @@ class TestOutputGenerator:
         Returns:
             Dictionary with paths to generated output files
         """
+        # Ensure output directories exist (in case they were deleted by cleanup)
+        self._ensure_output_directories()
+        
         output_files = {}
         timestamp = datetime.now(timezone.utc).isoformat()
         
@@ -113,9 +126,10 @@ class TestOutputGenerator:
         stage_dir = self.path_manager.get_stage_expected_outputs_dir(stage_number)
         results_dir = stage_dir / "results"
         
-        # Clean test name for filename
+        # Clean test name for filename and add timestamp
         clean_test_name = test_name.replace('test_', '').replace('_', '_')
-        result_filename = f"{clean_test_name}_output.json"
+        timestamp_str = self._format_timestamp_for_filename(timestamp)
+        result_filename = f"{clean_test_name}_{timestamp_str}_output.json"
         result_path = results_dir / result_filename
         
         # Build comprehensive output data
@@ -129,9 +143,11 @@ class TestOutputGenerator:
             'test_result': test_result,
             'success': test_result.get('success', False),
             'execution_summary': {
-                'total_processing_time': test_result.get('processing_time', 'N/A'),
+                'total_processing_time': additional_data.get('test_configuration', {}).get('processing_time') if additional_data else test_result.get('processing_time', 'N/A'),
                 'chunks_processed': test_result.get('chunks_created', test_result.get('chunks_processed', 0)),
-                'errors_encountered': 1 if not test_result.get('success', False) else 0
+                'errors_encountered': 1 if not test_result.get('success', False) else 0,
+                'api_calls_made': test_result.get('execution_metadata', {}).get('api_calls_made', False),
+                'stage_type': 'ingestion' if stage_number == 1 else 'cleaning' if stage_number == 2 else f'stage_{stage_number}'
             }
         }
         
@@ -139,18 +155,32 @@ class TestOutputGenerator:
         if additional_data:
             output_data['additional_data'] = additional_data
             
+        # Add execution metadata if available
+        execution_metadata = test_result.get('execution_metadata', {})
+        if execution_metadata:
+            output_data['execution_metadata'] = execution_metadata
+            
         # Add stage-specific information
         if stage_number == 1:
+            metadata = test_result.get('metadata', {})
             output_data['stage_1_specifics'] = {
                 'total_characters': test_result.get('total_characters', 0),
                 'total_words': test_result.get('total_words', 0),
                 'total_tokens': test_result.get('total_tokens', 0),
-                'chunks_created': test_result.get('chunks_created', 0)
+                'chunks_created': test_result.get('chunks_created', 0),
+                'processing_model': metadata.get('processing_model', 'N/A'),
+                'file_path': metadata.get('file_path', 'unknown'),
+                'file_size': metadata.get('file_size', 0)
             }
         elif stage_number == 2:
             output_data['stage_2_specifics'] = {
                 'chunks_cleaned': test_result.get('chunks_cleaned', 0),
-                'cleaning_improvements': test_result.get('cleaning_summary', {})
+                'chunks_processed': test_result.get('chunks_processed', 0),
+                'failed_chunks': test_result.get('failed_chunks', 0),
+                'cleaning_improvements': test_result.get('cleaning_summary', {}),
+                'actual_provider': execution_metadata.get('actual_provider', 'unknown'),
+                'actual_model': execution_metadata.get('actual_model', 'unknown'),
+                'api_calls_made': execution_metadata.get('api_calls_made', False)
             }
             
         # Save to file
@@ -163,18 +193,36 @@ class TestOutputGenerator:
     def _generate_database_seeds(self, stage_number: int, test_name: str, 
                                db_fixture, test_result: Dict[str, Any],
                                timestamp: str) -> Dict[str, str]:
-        """Generate database state snapshots for next stage seeding."""
+        """Generate database state snapshots for next stage seeding with operation details."""
         stage_dir = self.path_manager.get_stage_expected_outputs_dir(stage_number)
         seeds_dir = stage_dir / "database_seeds"
         
         database_files = {}
         
         try:
-            # Get draft_id from test result
+            # Get tracked operations from database fixture
+            operations = db_fixture.get_tracked_operations() if db_fixture else []
+            operations_summary = db_fixture.get_operations_summary() if db_fixture else {}
+            
+            # Get draft_id from test result or additional_data
             draft_id = test_result.get('draft_id')
             if not draft_id:
-                logger.warning("No draft_id in test result, cannot generate database seeds")
+                # Try to get draft_id from additional_data
+                if additional_data and 'draft_id' in additional_data:
+                    draft_id = additional_data['draft_id']
+                    logger.debug("Found draft_id in additional_data")
+                elif db_fixture and hasattr(db_fixture, 'created_records') and db_fixture.created_records.get('drafts'):
+                    # Fallback: try to get the most recent draft_id from database fixture
+                    draft_ids = db_fixture.created_records['drafts']
+                    if draft_ids:
+                        draft_id = draft_ids[-1]  # Use the most recent one
+                        logger.debug(f"Using most recent draft_id from db_fixture: {draft_id}")
+                
+            if not draft_id:
+                logger.error(f"No draft_id found in test_result, additional_data, or database fixture. Cannot generate database seeds for test: {test_name}")
                 return database_files
+            
+            logger.info(f"Generating database seeds for draft_id: {draft_id} (test: {test_name})")
                 
             # Core tables that are always needed
             core_tables = ['drafts', 'draft_chunks']
@@ -196,10 +244,14 @@ class TestOutputGenerator:
                     table_data = self._export_table_data(db_fixture, table_name, draft_id)
                     
                     if table_data:
-                        seed_filename = f"{table_name}.json"
+                        timestamp_str = self._format_timestamp_for_filename(timestamp)
+                        seed_filename = f"{table_name}_{timestamp_str}.json"
                         seed_path = seeds_dir / seed_filename
                         
-                        # Add metadata to the seed data
+                        # Filter operations for this table
+                        table_operations = [op for op in operations if op.get('table') == table_name]
+                        
+                        # Add metadata to the seed data with operation details
                         seed_data = {
                             'metadata': {
                                 'table_name': table_name,
@@ -207,9 +259,15 @@ class TestOutputGenerator:
                                 'test_name': test_name,
                                 'draft_id': draft_id,
                                 'timestamp': timestamp,
-                                'record_count': len(table_data)
+                                'record_count': len(table_data),
+                                'operations_performed': len(table_operations)
                             },
-                            'data': table_data
+                            'operations': table_operations,
+                            'final_state': table_data,
+                            'operations_summary': {
+                                'total_operations': len(table_operations),
+                                'operation_types': list(set(op.get('operation', 'unknown') for op in table_operations))
+                            }
                         }
                         
                         with open(seed_path, 'w', encoding='utf-8') as f:
@@ -220,6 +278,30 @@ class TestOutputGenerator:
                         
                 except Exception as e:
                     logger.warning(f"Failed to export {table_name} for database seeding: {e}")
+            
+            # Generate overall operations summary file
+            if operations:
+                timestamp_str = self._format_timestamp_for_filename(timestamp)
+                operations_filename = f"operations_summary_{timestamp_str}.json"
+                operations_path = seeds_dir / operations_filename
+                
+                operations_data = {
+                    'metadata': {
+                        'stage_number': stage_number,
+                        'test_name': test_name,
+                        'draft_id': draft_id,
+                        'timestamp': timestamp,
+                        'total_operations': len(operations)
+                    },
+                    'all_operations': operations,
+                    'summary': operations_summary
+                }
+                
+                with open(operations_path, 'w', encoding='utf-8') as f:
+                    json.dump(operations_data, f, indent=2, ensure_ascii=False, default=str)
+                    
+                database_files['operations_summary'] = str(operations_path)
+                logger.debug(f"Generated operations summary: {operations_path}")
                     
         except Exception as e:
             logger.error(f"Error generating database seeds: {e}")
@@ -274,7 +356,8 @@ class TestOutputGenerator:
         logs_dir = stage_dir / "logs"
         
         clean_test_name = test_name.replace('test_', '').replace('_', '_')
-        log_filename = f"{clean_test_name}.log"
+        timestamp_str = self._format_timestamp_for_filename(timestamp)
+        log_filename = f"{clean_test_name}_{timestamp_str}.log"
         log_path = logs_dir / log_filename
         
         # Generate log content
@@ -328,7 +411,8 @@ class TestOutputGenerator:
         performance_dir = stage_dir / "performance"
         
         clean_test_name = test_name.replace('test_', '').replace('_', '_')
-        perf_filename = f"{clean_test_name}_performance.json"
+        timestamp_str = self._format_timestamp_for_filename(timestamp)
+        perf_filename = f"{clean_test_name}_{timestamp_str}_performance.json"
         perf_path = performance_dir / perf_filename
         
         # Collect performance data
@@ -370,7 +454,8 @@ class TestOutputGenerator:
         results_dir = stage_dir / "results"
         
         clean_test_name = test_name.replace('test_', '').replace('_', '_')
-        error_filename = f"{clean_test_name}_error.json"
+        timestamp_str = self._format_timestamp_for_filename(timestamp)
+        error_filename = f"{clean_test_name}_{timestamp_str}_error.json"
         error_path = results_dir / error_filename
         
         error_data = {
