@@ -81,10 +81,14 @@ class TestStage1Ingestion:
         
         # Generate test outputs for debugging and next stage seeding
         if test_output_options['generate_outputs']:
+            # Ensure test_result includes draft_id for database seeds generation
+            enhanced_result = result.copy()
+            enhanced_result['draft_id'] = test_draft['draft_id']
+            
             output_files = output_generator.generate_test_output(
                 stage_number=1,
                 test_name='test_stage_1_text_file_ingestion',
-                test_result=result,
+                test_result=enhanced_result,
                 db_fixture=db_fixture,
                 additional_data={
                     'sample_file_path': sample_file_path,

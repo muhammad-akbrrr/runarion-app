@@ -10,11 +10,14 @@ import tempfile
 import shutil
 import uuid
 import urllib.parse
+import logging
 from typing import Dict, Any, Optional, Generator
 import psycopg2
 from psycopg2.pool import ThreadedConnectionPool
 import json
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 # Add src directory to Python path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'src'))
@@ -47,6 +50,33 @@ def build_test_database_url():
 
 
 TEST_DATABASE_URL = os.getenv('TEST_DATABASE_URL', build_test_database_url())
+
+
+@pytest.fixture(scope='session', autouse=True)
+def cleanup_test_outputs_session(pytestconfig):
+    """
+    Session-level cleanup of test output directories if --cleanup-test-data flag is provided.
+    
+    This runs once before all tests start to ensure a completely clean output state
+    and prevent race conditions between tests trying to clean up concurrently.
+    """
+    # Check if cleanup-test-data flag is provided
+    if pytestconfig.getoption("--cleanup-test-data"):
+        from test_utils.path_manager import recreate_test_output_directories
+        
+        logger.info("--cleanup-test-data flag detected: recreating all test output directories")
+        
+        try:
+            # Completely recreate output directory structure
+            recreate_test_output_directories()
+            logger.info("Successfully recreated test output directories for clean testing session")
+        except Exception as e:
+            logger.error(f"Failed to recreate test output directories: {e}")
+            # Don't fail the test session - continue with existing directories
+            logger.warning("Continuing with existing directory structure")
+    
+    # No cleanup needed at the end since this only sets up clean directories
+    yield
 
 
 @pytest.fixture(scope='session', autouse=True)
@@ -95,16 +125,21 @@ def test_database_pool():
 
 
 @pytest.fixture
-def db_fixture(test_database_pool):
+def db_fixture(test_database_pool, request):
     """Provide a database fixture with transaction isolation."""
     fixture = DatabaseFixture(test_database_pool)
+
+    # Check for persist-data flag (affects post-test database cleanup)
+    if request.config.getoption("--persist-data"):
+        fixture.enable_data_persistence()
+        logger.info("Enabled data persistence due to --persist-data flag")
 
     # Setup test data
     fixture.setup()
 
     yield fixture
 
-    # Cleanup test data
+    # Cleanup test data (will be skipped if persist-data is enabled)
     fixture.cleanup()
 
 
@@ -569,6 +604,18 @@ def pytest_addoption(parser):
         action="store_true",
         default=True,
         help="Generate test output files after test execution (default: True)"
+    )
+    parser.addoption(
+        "--persist-data",
+        action="store_true",
+        default=False,
+        help="Skip database cleanup after tests (preserves test data for debugging)"
+    )
+    parser.addoption(
+        "--cleanup-test-data",
+        action="store_true",
+        default=False,
+        help="Clean test output files (database_seeds, logs, performance, results) before starting"
     )
 
 

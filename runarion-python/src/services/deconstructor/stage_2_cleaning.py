@@ -83,7 +83,12 @@ class TextCleaningStage:
                 'chunks_cleaned': len(cleaned_chunks) - len(failed_chunks),
                 'chunks_updated': updated_count,
                 'failed_chunks': len(failed_chunks),
-                'failures': failed_chunks if failed_chunks else None
+                'failures': failed_chunks if failed_chunks else None,
+                'execution_metadata': {
+                    'actual_provider': self.generation_engine.request.provider,
+                    'actual_model': self.generation_engine.request.model,
+                    'api_calls_made': len(chunks) > 0  # True if any chunks were processed
+                }
             }
             
             logger.info(f"Stage 2 completed for draft {draft_id}: {updated_count} chunks cleaned")
@@ -94,7 +99,12 @@ class TextCleaningStage:
             return {
                 'success': False,
                 'error': str(e),
-                'draft_id': draft_id
+                'draft_id': draft_id,
+                'execution_metadata': {
+                    'actual_provider': self.generation_engine.request.provider if self.generation_engine else 'unknown',
+                    'actual_model': self.generation_engine.request.model if self.generation_engine else 'unknown',
+                    'api_calls_made': False  # Failed before API calls
+                }
             }
     
     def _get_draft_chunks(self, draft_id: str) -> List[Tuple[int, int, str]]:
