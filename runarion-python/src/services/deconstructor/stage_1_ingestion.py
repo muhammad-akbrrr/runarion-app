@@ -4,9 +4,9 @@ Handles document extraction and creates initial chunks for processing.
 """
 
 import logging
-from typing import Dict, Any, List, Optional
-from utils.document_processor import Chunk, DocumentProcessor, ProcessedDocumentMetadata
-from utils.database_utils import safe_update_text, clean_text_for_database, utf8_database_connection
+from typing import Dict, Any, List
+from utils.document_processor import DocumentProcessor
+from utils.database_utils import safe_insert_text, safe_update_text, clean_text_for_database, utf8_database_connection
 
 logger = logging.getLogger(__name__)
 
@@ -48,11 +48,11 @@ class PDFIngestionStage:
             # Process document
             processing_result = self.document_processor.process_document(file_path)
             
-            if processing_result['status'] != "success":
+            if not processing_result['success']:
                 raise Exception(f"Document processing failed: {processing_result['error']}")
             
             # Extract components
-            _ = processing_result['raw_text']
+            raw_text = processing_result['raw_text']
             cleaned_text = processing_result['cleaned_text']
             chunks = processing_result['chunks']
             metadata = processing_result['metadata']
@@ -60,14 +60,28 @@ class PDFIngestionStage:
             # Store chunks in database
             chunks_stored = self._store_chunks_in_database(draft_id, chunks)
             
+            # Enhance metadata with word and token statistics
+            enhanced_metadata = metadata.copy()
+            enhanced_metadata.update({
+                'chunking_strategy': 'word_based_with_token_validation',
+                'target_words_per_chunk': 1500,
+                'chunks_word_counts': [chunk.get('word_count', 0) for chunk in chunks],
+                'chunks_token_counts': [chunk.get('token_count', 0) for chunk in chunks],
+                'total_words': sum(chunk.get('word_count', 0) for chunk in chunks),
+                'total_tokens': sum(chunk.get('token_count', 0) for chunk in chunks),
+                'average_words_per_chunk': sum(chunk.get('word_count', 0) for chunk in chunks) / len(chunks) if chunks else 0,
+                'average_tokens_per_chunk': sum(chunk.get('token_count', 0) for chunk in chunks) / len(chunks) if chunks else 0
+            })
+            
             # Update draft metadata
-            self._update_draft_metadata(draft_id, metadata)
+            self._update_draft_metadata(draft_id, enhanced_metadata)
             
             result = {
                 'success': True,
                 'chunks_created': len(chunks),
                 'chunks_stored': chunks_stored,
                 'total_characters': len(cleaned_text),
+                'total_words': sum(chunk.get('word_count', 0) for chunk in chunks),
                 'total_tokens': sum(chunk['token_count'] for chunk in chunks),
                 'metadata': metadata
             }
@@ -83,7 +97,7 @@ class PDFIngestionStage:
                 'draft_id': draft_id
             }
     
-    def _store_chunks_in_database(self, draft_id: str, chunks: List[Chunk]) -> int:
+    def _store_chunks_in_database(self, draft_id: str, chunks: List[Dict[str, Any]]) -> int:
         """
         Store text chunks in the database with UTF-8 encoding safety.
         
@@ -132,7 +146,7 @@ class PDFIngestionStage:
             logger.error(f"Failed to store chunks for draft {draft_id}: {e}")
             raise
     
-    def _update_draft_metadata(self, draft_id: str, metadata: ProcessedDocumentMetadata) -> None:
+    def _update_draft_metadata(self, draft_id: str, metadata: Dict[str, Any]) -> None:
         """
         Update draft metadata with processing information using UTF-8 safe operations.
         
@@ -163,18 +177,19 @@ class PDFIngestionStage:
     
     def get_chunk_statistics(self, draft_id: str) -> Dict[str, Any]:
         """
-        Get statistics about the chunks for a draft.
+        Get comprehensive statistics about the chunks for a draft, including word and token counts.
         
         Args:
             draft_id: UUID of the draft
             
         Returns:
-            Chunk statistics
+            Chunk statistics with both character-based and word/token-based metrics
         """
         try:
             conn = self.db_pool.getconn()
             
             with conn.cursor() as cursor:
+                # Get basic chunk statistics
                 cursor.execute("""
                     SELECT 
                         COUNT(*) as chunk_count,
@@ -188,13 +203,28 @@ class PDFIngestionStage:
                 
                 result = cursor.fetchone()
                 
+                # Get word/token statistics from draft metadata
+                cursor.execute("""
+                    SELECT metadata FROM drafts WHERE id = %s
+                """, (draft_id,))
+                
+                metadata_result = cursor.fetchone()
+                metadata = metadata_result[0] if metadata_result and metadata_result[0] else {}
+                
                 if result:
                     stats = {
                         'chunk_count': result[0],
                         'avg_chunk_length': int(result[1]) if result[1] else 0,
                         'min_chunk_length': result[2] or 0,
                         'max_chunk_length': result[3] or 0,
-                        'total_characters': result[4] or 0
+                        'total_characters': result[4] or 0,
+                        # Add word/token statistics from metadata
+                        'total_words': metadata.get('total_words', 0),
+                        'total_tokens': metadata.get('total_tokens', 0),
+                        'avg_words_per_chunk': metadata.get('average_words_per_chunk', 0),
+                        'avg_tokens_per_chunk': metadata.get('average_tokens_per_chunk', 0),
+                        'chunking_strategy': metadata.get('chunking_strategy', 'legacy'),
+                        'target_words_per_chunk': metadata.get('target_words_per_chunk', 'N/A')
                     }
                 else:
                     stats = {
@@ -202,7 +232,13 @@ class PDFIngestionStage:
                         'avg_chunk_length': 0,
                         'min_chunk_length': 0,
                         'max_chunk_length': 0,
-                        'total_characters': 0
+                        'total_characters': 0,
+                        'total_words': 0,
+                        'total_tokens': 0,
+                        'avg_words_per_chunk': 0,
+                        'avg_tokens_per_chunk': 0,
+                        'chunking_strategy': 'unknown',
+                        'target_words_per_chunk': 'N/A'
                     }
             
             self.db_pool.putconn(conn)
@@ -215,14 +251,14 @@ class PDFIngestionStage:
             return {'error': str(e)}
     
     def reprocess_chunks(self, draft_id: str, file_path: str, 
-                        new_chunk_size: Optional[int] = None) -> Dict[str, Any]:
+                        new_word_limit: int = None) -> Dict[str, Any]:
         """
-        Reprocess chunks with different parameters.
+        Reprocess chunks with different word-based parameters.
         
         Args:
             draft_id: UUID of the draft
             file_path: Path to the original document
-            new_chunk_size: New chunk size to use
+            new_word_limit: New word limit to use (defaults to 1500)
             
         Returns:
             Reprocessing results
@@ -241,16 +277,16 @@ class PDFIngestionStage:
             logger.info(f"Deleted {deleted_count} existing chunks for draft {draft_id}")
             
             # Reprocess with new parameters
-            if new_chunk_size:
-                # Override chunk size in document processor
-                original_chunk_size = self.document_processor.max_chunk_size
-                self.document_processor.max_chunk_size = new_chunk_size
+            if new_word_limit:
+                # Override word limit in document processor
+                original_word_limit = self.document_processor.DEFAULT_WORD_LIMIT
+                self.document_processor.DEFAULT_WORD_LIMIT = new_word_limit
             
             result = self.run(draft_id, file_path)
             
-            # Restore original chunk size
-            if new_chunk_size:
-                self.document_processor.max_chunk_size = original_chunk_size
+            # Restore original word limit
+            if new_word_limit:
+                self.document_processor.DEFAULT_WORD_LIMIT = original_word_limit
             
             result['reprocessed'] = True
             result['deleted_chunks'] = deleted_count

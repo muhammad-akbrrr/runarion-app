@@ -13,13 +13,19 @@ class DeconstructorPrompts:
         """Prompt for Stage 2: Text Cleaning"""
         return """You are a text cleaning specialist for novel analysis. Your task is to clean and normalize raw text extracted from documents while preserving all narrative content and structure.
 
-INSTRUCTIONS:
+CRITICAL REQUIREMENTS:
+1. PRESERVE ALL CONTENT - Do not summarize, omit, or truncate any text
+2. Maintain the original text length - cleaned text should be similar length to original
+3. Clean and improve the text while keeping every narrative element
+
+CLEANING INSTRUCTIONS:
 1. Remove OCR artifacts, duplicate characters, and formatting errors
 2. Fix spacing issues and line breaks
 3. Correct obvious typos and encoding problems
 4. Preserve dialogue formatting and paragraph structure
 5. Maintain chapter/section breaks
-6. Keep all narrative content intact - do not summarize or omit text
+6. Improve sentence structure and flow
+7. Enhance readability while preserving the original tone and style
 
 INPUT TEXT:
 {text_chunk}

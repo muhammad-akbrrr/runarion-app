@@ -51,6 +51,9 @@ class TextCleaningStage:
                 return {
                     'success': True,
                     'chunks_processed': 0,
+                    'chunks_cleaned': 0,
+                    'chunks_updated': 0,
+                    'failed_chunks': 0,
                     'message': 'No chunks to process'
                 }
             
@@ -80,7 +83,12 @@ class TextCleaningStage:
                 'chunks_cleaned': len(cleaned_chunks) - len(failed_chunks),
                 'chunks_updated': updated_count,
                 'failed_chunks': len(failed_chunks),
-                'failures': failed_chunks if failed_chunks else None
+                'failures': failed_chunks if failed_chunks else None,
+                'execution_metadata': {
+                    'actual_provider': self.generation_engine.request.provider,
+                    'actual_model': self.generation_engine.request.model,
+                    'api_calls_made': len(chunks) > 0  # True if any chunks were processed
+                }
             }
             
             logger.info(f"Stage 2 completed for draft {draft_id}: {updated_count} chunks cleaned")
@@ -91,7 +99,12 @@ class TextCleaningStage:
             return {
                 'success': False,
                 'error': str(e),
-                'draft_id': draft_id
+                'draft_id': draft_id,
+                'execution_metadata': {
+                    'actual_provider': self.generation_engine.request.provider if self.generation_engine else 'unknown',
+                    'actual_model': self.generation_engine.request.model if self.generation_engine else 'unknown',
+                    'api_calls_made': False  # Failed before API calls
+                }
             }
     
     def _get_draft_chunks(self, draft_id: str) -> List[Tuple[int, int, str]]:
@@ -124,12 +137,13 @@ class TextCleaningStage:
             logger.error(f"Failed to retrieve chunks for draft {draft_id}: {e}")
             raise
     
-    def _clean_text_chunk(self, raw_text: str) -> str:
+    def _clean_text_chunk(self, raw_text: str, max_retries: int = 2) -> str:
         """
-        Clean a single text chunk using AI processing.
+        Clean a single text chunk using AI processing with retry logic.
         
         Args:
             raw_text: Raw text to clean
+            max_retries: Maximum number of retry attempts
             
         Returns:
             Cleaned text
@@ -137,35 +151,59 @@ class TextCleaningStage:
         if not raw_text.strip():
             return raw_text
         
-        try:
-            # Prepare the cleaning prompt
-            prompt = self.prompt_template.get_text_cleaning_prompt().format(
-                text_chunk=raw_text
-            )
-            
-            # Update the generation request
-            self.generation_engine.request.prompt = prompt
-            self.generation_engine.request.instruction = "Clean and normalize the provided text while preserving all narrative content."
-            
-            # Generate cleaned text
-            response = self.generation_engine.generate(skip_quota=True)
-            
-            if response.success:
-                cleaned_text = response.text.strip()
+        for attempt in range(max_retries + 1):
+            try:
+                # Prepare the cleaning prompt
+                prompt = self.prompt_template.get_text_cleaning_prompt().format(
+                    text_chunk=raw_text
+                )
                 
-                # Validate that we got reasonable output
-                if len(cleaned_text) < len(raw_text) * 0.5:
-                    logger.warning("Cleaned text is significantly shorter than original, using original")
+                # Update the generation request
+                self.generation_engine.request.prompt = prompt
+                self.generation_engine.request.instruction = "Clean and normalize the provided text while preserving all narrative content."
+                
+                # Generate cleaned text
+                response = self.generation_engine.generate(skip_quota=True)
+                
+                if response.success:
+                    cleaned_text = response.text.strip()
+                    
+                    # Validate that we got reasonable output - use 95% threshold for cleaning (not summarizing)
+                    if len(cleaned_text) < len(raw_text) * 0.95:
+                        if attempt < max_retries:
+                            logger.warning(f"Cleaned text too short ({len(cleaned_text)}/{len(raw_text)} chars, {len(cleaned_text)/len(raw_text)*100:.1f}%) - attempt {attempt + 1}/{max_retries + 1}, retrying...")
+                            continue
+                        else:
+                            logger.warning(f"Cleaned text significantly shorter than original ({len(cleaned_text)/len(raw_text)*100:.1f}%), may be summarizing instead of cleaning - using original")
+                            return raw_text
+                    
+                    # Additional check for truncated responses
+                    if len(cleaned_text) < len(raw_text) * 0.98 and not cleaned_text.rstrip().endswith(('.', '!', '?', '"', "'")):
+                        if attempt < max_retries:
+                            logger.warning(f"Cleaned text may be truncated (doesn't end properly) - attempt {attempt + 1}/{max_retries + 1}, retrying...")
+                            continue
+                        else:
+                            logger.warning("Cleaned text may be truncated (improper ending), using original")
+                            return raw_text
+                    
+                    return cleaned_text
+                else:
+                    if attempt < max_retries:
+                        logger.warning(f"AI generation failed (attempt {attempt + 1}/{max_retries + 1}): {response.error_message}, retrying...")
+                        continue
+                    else:
+                        logger.error(f"AI generation failed after {max_retries + 1} attempts: {response.error_message}")
+                        return raw_text
+                        
+            except Exception as e:
+                if attempt < max_retries:
+                    logger.warning(f"Error cleaning text chunk (attempt {attempt + 1}/{max_retries + 1}): {e}, retrying...")
+                    continue
+                else:
+                    logger.error(f"Error cleaning text chunk after {max_retries + 1} attempts: {e}")
                     return raw_text
-                
-                return cleaned_text
-            else:
-                logger.error(f"AI generation failed: {response.error_message}")
-                return raw_text
-                
-        except Exception as e:
-            logger.error(f"Error cleaning text chunk: {e}")
-            return raw_text
+        
+        return raw_text
     
     def _update_cleaned_chunks(self, cleaned_chunks: List[Tuple[int, str]]) -> int:
         """
