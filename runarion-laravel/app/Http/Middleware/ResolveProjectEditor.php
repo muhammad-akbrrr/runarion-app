@@ -7,7 +7,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\StructuredAuthorStyle;
+use App\Models\AuthorStyle;
 
 class ResolveProjectEditor
 {
@@ -128,7 +128,7 @@ class ResolveProjectEditor
             session(['force_project_editor_loader' => true]);
         }
 
-        $authorStyles = StructuredAuthorStyle::where('workspace_id', $workspaceId)
+        $authorStyles = AuthorStyle::where('workspace_id', $workspaceId)
             ->get(['id', 'author_name']);
 
         Inertia::share([

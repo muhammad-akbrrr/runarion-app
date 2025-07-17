@@ -4,7 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Jobs\AuthorStyleJob;
 use App\Models\Projects;
-use App\Models\StructuredAuthorStyle;
+use App\Models\AuthorStyle;
 use App\Models\Workspace;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -69,7 +69,7 @@ class FileManagerController extends Controller
         }
         
         // Check if author style name already exists for this workspace
-        $existingStyle = StructuredAuthorStyle::where('workspace_id', $workspace_id)
+        $existingStyle = AuthorStyle::where('workspace_id', $workspace_id)
             ->where('author_name', $request->author_name)
             ->first();
             
@@ -242,7 +242,7 @@ class FileManagerController extends Controller
      */
     private function getAuthorStyles($workspace_id)
     {
-        $authorStyles = StructuredAuthorStyle::where('workspace_id', $workspace_id)
+        $authorStyles = AuthorStyle::where('workspace_id', $workspace_id)
             ->select('id', 'author_name')
             ->get();
         
@@ -252,8 +252,8 @@ class FileManagerController extends Controller
         foreach ($authorStyles as $index => $style) {
             // Count how many projects use this author style
             $projectCount = DB::table('projects')
-                ->join('structured_author_styles', 'projects.id', '=', 'structured_author_styles.project_id')
-                ->where('structured_author_styles.id', $style->id)
+                ->join('author_styles', 'projects.id', '=', 'author_styles.project_id')
+                ->where('author_styles.id', $style->id)
                 ->count();
             
             // Get the first letter of the author name for the avatar

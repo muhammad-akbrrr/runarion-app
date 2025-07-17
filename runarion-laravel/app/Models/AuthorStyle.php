@@ -6,7 +6,7 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Validation\Rule;
 
-class StructuredAuthorStyle extends Model
+class AuthorStyle extends Model
 {
     use HasUlids;
 
@@ -38,7 +38,7 @@ class StructuredAuthorStyle extends Model
             'workspace_id' => ['required', 'ulid'],
             'project_id' => ['required', 'ulid'],
             'user_id' => ['required', 'integer'],
-            'author_name' => ['required', 'string', Rule::unique('structured_author_styles')->where(function ($query) {
+            'author_name' => ['required', 'string', Rule::unique('author_styles')->where(function ($query) {
                 return $query->where('workspace_id', request()->input('workspace_id'));
             })],
             'techniques_json' => ['nullable', 'array'],

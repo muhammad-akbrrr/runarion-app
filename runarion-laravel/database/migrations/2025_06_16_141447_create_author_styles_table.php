@@ -10,7 +10,7 @@ return new class extends Migration {
      */
     public function up(): void
     {
-        Schema::create('structured_author_styles', function (Blueprint $table) {
+        Schema::create('author_styles', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->ulid('workspace_id');
             $table->ulid('project_id');
@@ -49,7 +49,7 @@ return new class extends Migration {
             $table->timestamp('created_at')->useCurrent();
             $table->softDeletes();
 
-            $table->foreign('author_style_id')->references('id')->on('structured_author_styles')->cascade();
+            $table->foreign('author_style_id')->references('id')->on('author_styles')->cascade();
             $table->foreign('author_sample_id')->references('id')->on('author_samples')->cascade();
             
             $table->unique(['author_style_id', 'author_sample_id'], 'unique_author_styles_sample');
@@ -71,7 +71,7 @@ return new class extends Migration {
             $table->timestamp('created_at')->useCurrent();
             $table->softDeletes();
 
-            $table->foreign('author_style_id')->references('id')->on('structured_author_styles')->cascade();
+            $table->foreign('author_style_id')->references('id')->on('author_styles')->cascade();
             $table->foreign('author_sample_id')->references('id')->on('author_samples')->cascade();
         });
     }
@@ -81,7 +81,7 @@ return new class extends Migration {
      */
     public function down(): void
     {
-        Schema::dropIfExists('structured_author_styles');
+        Schema::dropIfExists('author_styles');
         Schema::dropIfExists('author_samples');
         Schema::dropIfExists('author_style_chunks');
     }

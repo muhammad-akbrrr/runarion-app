@@ -94,7 +94,7 @@ class StyleAnalyzerOrchestrator:
                 cursor.execute(
                     """
                     SELECT id, techniques_json, examples_json
-                    FROM structured_author_styles
+                    FROM author_styles
                     WHERE workspace_id = %s AND author_name = %s
                     """,
                     (workspace_id, author_name),
@@ -150,7 +150,7 @@ class StyleAnalyzerOrchestrator:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO structured_author_styles 
+                    INSERT INTO author_styles 
                     (id, workspace_id, project_id, user_id, author_name, status, started_at)
                     VALUES (%s, %s, %s, %s, %s, 'init_completed', NOW())
                     ON CONFLICT ON CONSTRAINT unique_workspace_author_name
@@ -207,7 +207,7 @@ class StyleAnalyzerOrchestrator:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    UPDATE structured_author_styles
+                    UPDATE author_styles
                     SET techniques_json = %s, examples_json = %s,
                         status = %s, error_message = %s,
                         total_time_ms = %s, updated_at = NOW()
