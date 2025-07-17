@@ -22,7 +22,8 @@ return new class extends Migration {
             $table->text('error_message')->nullable()->comment('Error message if failed');
             $table->timestamp('started_at');
             $table->integer('total_time_ms')->nullable();
-            $table->timestamps();
+            $table->timestamp('created_at')->useCurrent();
+            $table->timestamp('updated_at')->nullable();
 
             $table->foreign('workspace_id')->references('id')->on('workspaces')->cascade();
             $table->foreign('project_id')->references('id')->on('projects')->cascade();
@@ -41,7 +42,7 @@ return new class extends Migration {
             $table->unique(['document_hash'], 'unique_document_hash');
         });
 
-        Schema::table('author_styles_to_samples', function (Blueprint $table) {
+        Schema::create('author_styles_to_samples', function (Blueprint $table) {
             $table->ulid('id')->primary();
             $table->ulid('author_style_id');
             $table->ulid('author_sample_id');
@@ -50,6 +51,8 @@ return new class extends Migration {
 
             $table->foreign('author_style_id')->references('id')->on('structured_author_styles')->cascade();
             $table->foreign('author_sample_id')->references('id')->on('author_samples')->cascade();
+            
+            $table->unique(['author_style_id', 'author_sample_id'], 'unique_author_styles_sample');
         });
 
         Schema::create('author_style_chunks', function (Blueprint $table) {

@@ -58,7 +58,7 @@ class SamplingStage:
                 md5_hash.update(chunk)
         return md5_hash.hexdigest()
 
-    def _check_file_processed(self, md5_hash: str) -> str | None:
+    def _check_file_processed(self, md5_hash: str) -> tuple[str | None, bool]:
         """
         Check if the file has already been processed by looking for its MD5 hash in the database.
 
@@ -67,16 +67,21 @@ class SamplingStage:
 
         Returns:
             str | None: The sample id if found, None otherwise.
+            bool: True if the text is not null.
         """
         try:
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()
                 cursor.execute(
-                    "SELECT id FROM author_samples WHERE document_hash = %s AND text_content IS NOT NULL",
+                    "SELECT id, text_content IS NOT NULL FROM author_samples WHERE document_hash = %s",
                     (md5_hash,),
                 )
                 result = cursor.fetchone()
-                return result[0] if result else None
+                if result:
+                    id, okay = result
+                    return id, okay
+                else:
+                    return None, False
 
         except Exception as e:
             logger.error(f"Failed to check file processed: {e}")
@@ -151,6 +156,8 @@ class SamplingStage:
                     """
                     INSERT INTO author_styles_to_samples (id, author_style_id, author_sample_id)
                     VALUES (%s, %s, %s)
+                    ON CONFLICT ON CONSTRAINT unique_author_styles_sample
+                    DO UPDATE SET deleted_at = NULL
                     """,
                     data,
                 )
@@ -163,22 +170,22 @@ class SamplingStage:
             if cursor:
                 cursor.close()
 
-    def process_file(self, file_path: str) -> str:
+    def process_file(self, file_path: str, md5_hash: str) -> tuple[str, bool]:
         """
         Process a single document file to extract and store its text content.
 
         Args:
             file_path (str): The path to the document file.
+            md5_hash (str): The hash of the document file.
 
         Returns:
             str: The sample id of the processed document.
+            bool: If the process works properly.
         """
-        md5_hash = self.calc_md5_hash(file_path)
-
         # Check if the file has already been processed
-        existing_sample_id = self._check_file_processed(md5_hash)
+        existing_sample_id, okay = self._check_file_processed(md5_hash)
         if existing_sample_id:
-            return existing_sample_id
+            return existing_sample_id, okay
 
         # Extract and clean the document content
         text_content = self.document_reader.extract(file_path)
@@ -187,7 +194,7 @@ class SamplingStage:
         # Store the processed file in the database
         sample_id = self._store_author_sample(file_path, md5_hash, cleaned_text, None)
 
-        return sample_id
+        return sample_id, True
 
     def run(self, author_style_id: str, file_paths: list[str]) -> list[SamplingResult]:
         """
@@ -202,15 +209,16 @@ class SamplingStage:
         """
         sample_ids, results = [], []
         for file_path in file_paths:
+            md5_hash = self.calc_md5_hash(file_path)
             try:
-                sample_id = self.process_file(file_path)
-                sucess = True
+                sample_id, success = self.process_file(file_path, md5_hash)
             except Exception as e:
                 logger.warning(f"Error processing file {file_path}: {e}")
-                sample_id = self._store_author_sample(file_path, None, None, str(e))
-                sucess = False
-            sample_ids.append(sample_id)
-            results.append({"file_path": file_path, "success": sucess})
+                sample_id = self._store_author_sample(file_path, md5_hash, None, str(e))
+                success = False
+            if success:
+                sample_ids.append(sample_id)
+            results.append({"file_path": file_path, "success": success})
 
         success_count = sum(1 for result in results if result["success"])
         if isinstance(self.min_success_samples, int):

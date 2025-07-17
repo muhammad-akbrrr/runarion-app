@@ -130,7 +130,7 @@ def analyze_author_style():
 
         # Return existing author style if on_exist is 'get'
         if data.on_exist == "get" and author_style:
-            return jsonify({"author_style": author_style}), 200
+            return jsonify({"author_style": author_style.model_dump()}), 200
 
         # Run the author style analysis
         result = orchestrator.run_pipeline(
@@ -141,7 +141,7 @@ def analyze_author_style():
         )
 
         if result["status"] == "profiling_completed":
-            return jsonify({"author_style": result["author_style"]}), 200
+            return jsonify({"author_style": result["author_style"].model_dump()}), 200
         else:
             return jsonify(
                 {

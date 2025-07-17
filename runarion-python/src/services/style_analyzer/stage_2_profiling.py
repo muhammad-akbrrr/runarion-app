@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 from math import ceil
@@ -60,7 +61,7 @@ class ProfilingStage:
         db_pool: SimpleConnectionPool,
         provider: Optional[str] = "gemini",
         model: Optional[str] = "gemini-2.0-flash",
-        max_output_tokens: Optional[int] = 1000,
+        max_output_tokens: Optional[int] = 2000,
         generation_config: Optional[dict] = None,
         min_success_partial_style: Optional[int | float] = 0.5,
     ):
@@ -99,7 +100,7 @@ class ProfilingStage:
         else:
             merged_config = default_generation_config
         merged_config["max_output_tokens"] = (
-            max_output_tokens if max_output_tokens is not None else 1000
+            max_output_tokens if max_output_tokens is not None else 2000
         )
         self.generation_config = GenerationConfig(**merged_config)
 
@@ -180,10 +181,10 @@ class ProfilingStage:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    SELECT as.id, as.document_path, as.text_content
-                    FROM author_samples as
-                    INNER JOIN author_styles_to_samples asts ON as.id = asts.author_sample_id
-                    WHERE asts.author_style_id = %s AND as.text_content IS NOT NULL
+                    SELECT asa.id, asa.document_path, asa.text_content
+                    FROM author_samples asa
+                    INNER JOIN author_styles_to_samples asts ON asa.id = asts.author_sample_id
+                    WHERE asts.author_style_id = %s AND asa.text_content IS NOT NULL
                     """,
                     (author_style_id,),
                 )
@@ -230,7 +231,7 @@ class ProfilingStage:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    INSERT INTO author_styles (
+                    INSERT INTO author_style_chunks (
                         id, author_style_id, author_sample_id,
                         chunk_number, chunk_start_index, chunk_char_count, chunk_token_count,
                         author_style_chunk_ids, style_text, style_text_token_count, 
@@ -246,7 +247,7 @@ class ProfilingStage:
                         style["chunk"]["start"] if style["chunk"] else None,
                         style["chunk"]["character_count"] if style["chunk"] else None,
                         style["chunk"]["token_count"] if style["chunk"] else None,
-                        style["ref_style_ids"],
+                        json.dumps(style["ref_style_ids"]),
                         text,
                         style["token"],
                         error_message,

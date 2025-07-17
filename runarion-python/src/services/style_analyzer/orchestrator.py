@@ -4,7 +4,11 @@ import traceback
 from typing import Literal, Optional, TypedDict
 
 from models.request import CallerInfo
-from models.style_analyzer.author_style import AuthorStyle
+from models.style_analyzer.author_style import (
+    AuthorStyle,
+    AuthorStyleExamples,
+    AuthorStyleTechniques,
+)
 from psycopg2.extras import Json
 from psycopg2.pool import SimpleConnectionPool
 from ulid import ULID
@@ -71,7 +75,7 @@ class StyleAnalyzerOrchestrator:
 
     def _get_author_style(
         self, workspace_id: str, author_name: str
-    ) -> tuple[Optional[str], Optional[AuthorStyle]]:
+    ) -> tuple[Optional[str], Optional[dict], Optional[dict]]:
         """
         Retrieve the author style from the database by its ID.
 
@@ -80,7 +84,9 @@ class StyleAnalyzerOrchestrator:
             author_name (str): Author name that is unique within the workspace.
 
         Returns:
-            Optional[AuthorStyle]: The author style if found, otherwise None.
+            Optional[str]: Author style ID if found, otherwise None.
+            Optional[dict]: AuthorStyle techniques JSON if found, otherwise None.
+            Optional[dict]: AuthorStyle examples JSON if found, otherwise None.
         """
         try:
             with utf8_database_connection(self.db_pool) as conn:
@@ -96,11 +102,8 @@ class StyleAnalyzerOrchestrator:
                 row = cursor.fetchone()
                 if row:
                     id, techniques_json, examples_json = row
-                    return id, AuthorStyle(
-                        techniques=techniques_json,
-                        examples=examples_json,
-                    )
-                return None, None
+                    return id, techniques_json, examples_json
+                return None, None, None
         except Exception as e:
             logger.error(f"Failed to retrieve author style: {e}")
             raise
@@ -150,6 +153,13 @@ class StyleAnalyzerOrchestrator:
                     INSERT INTO structured_author_styles 
                     (id, workspace_id, project_id, user_id, author_name, status, started_at)
                     VALUES (%s, %s, %s, %s, %s, 'init_completed', NOW())
+                    ON CONFLICT ON CONSTRAINT unique_workspace_author_name
+                    DO UPDATE SET
+                        project_id = EXCLUDED.project_id,
+                        user_id = EXCLUDED.user_id,
+                        status = 'init_completed',
+                        started_at = NOW(),
+                        updated_at = NOW()
                     """,
                     (
                         author_style_id,
@@ -197,7 +207,7 @@ class StyleAnalyzerOrchestrator:
                 cursor = conn.cursor()
                 cursor.execute(
                     """
-                    UPDATE author_styles
+                    UPDATE structured_author_styles
                     SET techniques_json = %s, examples_json = %s,
                         status = %s, error_message = %s,
                         total_time_ms = %s, updated_at = NOW()
@@ -251,16 +261,20 @@ class StyleAnalyzerOrchestrator:
         Returns:
             tuple[Optional[str], Optional[AuthorStyle]]: Author style ID and existing author style if found.
         """
-        author_style_id, existing_style = self._get_author_style(
+        author_style_id, techniques_json, examples_json = self._get_author_style(
             caller.workspace_id, author_name
         )
 
-        if author_style_id is not None and existing_style is not None:
+        if author_style_id is not None:
             if on_exist == "update":
                 self._soft_delete_author_style_relations(author_style_id)
                 return author_style_id, None
             elif on_exist == "get":
-                return author_style_id, existing_style
+                if techniques_json is not None and examples_json is not None:
+                    return author_style_id, AuthorStyle(
+                        techniques=AuthorStyleTechniques(**techniques_json),
+                        examples=AuthorStyleExamples(**examples_json),
+                    )
             elif on_exist == "error":
                 raise ValueError("Author style already exists")
 
