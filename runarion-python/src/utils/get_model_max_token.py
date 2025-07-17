@@ -93,8 +93,10 @@ def get_safe_model_max_tokens(
     """
     max_tokens = get_model_max_tokens(provider, model)
     if isinstance(safety_margin, int):
+        if safety_margin < 0:
+            raise ValueError("Integer safety margin must be a non-negative integer.")
         return max_tokens - safety_margin
     else:
         if safety_margin < 0 or safety_margin >= 1:
-            raise ValueError("Safety margin must be a float between 0 and 1.")
+            raise ValueError("Float safety margin must be between 0 and 1.")
         return int(max_tokens * (1 - safety_margin))

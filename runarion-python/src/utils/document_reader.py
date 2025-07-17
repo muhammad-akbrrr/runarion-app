@@ -59,26 +59,39 @@ class DocumentReader:
         endings = [".", "!", "?"]
         endings = endings + [e + "'" for e in endings] + [e + '"' for e in endings]
 
-        paragraphs = []
+        paragraphs: list[str] = []
         temp_paragraph = ""
         with fitz.open(str(file_path)) as doc:
             for page in doc:
+                # get text blocks from the page and skip image blocks
                 blocks = page.get_text("blocks")  # type: ignore
-                for i, block in enumerate(blocks):
-                    # skip if image block
-                    if block[6] != 0:
-                        continue
-                    # extract the text from the block
-                    text: str = block[4].strip()
-                    # skip if empty
-                    if not text:
-                        continue
+                texts: list[str] = [
+                    block[4].strip() for block in blocks if block[6] == 0
+                ]
+
+                # remove empty strings
+                texts = [text for text in texts if text]
+                if not texts:
+                    continue
+
+                # remove first and last block if it's a page number
+                if texts[0].isdigit():
+                    texts.pop(0)
+                if texts[-1].isdigit():
+                    texts.pop()
+
+                for i, text in enumerate(texts):
                     # handle paragraph break at end of page
-                    if i == len(blocks) - 1 and not text.endswith(tuple(endings)):
+                    if i == len(texts) - 1 and not text.endswith(tuple(endings)):
                         temp_paragraph = text
                         continue
-                    paragraphs.append(temp_paragraph + text)
+                    paragraphs.append(temp_paragraph + " " + text)
                     temp_paragraph = ""
+
+        # clean line breaks inside paragraphs
+        paragraphs = [
+            p.replace("\n", " ").replace("\r", " ").strip() for p in paragraphs
+        ]
 
         # Join paragraphs with double line breaks to maintain structure
         return "\n\n".join(paragraphs)
@@ -114,14 +127,14 @@ class DocumentReader:
         Returns:
             Cleaned text
         """
-        # Remove excessive whitespace
-        text = re.sub(r"\s+", " ", text)
-
-        # Remove page numbers and common PDF artifacts
-        text = re.sub(r"\b\d+\b(?=\s*$)", "", text, flags=re.MULTILINE)
+        # Remove excessive horizontal whitespaces
+        text = re.sub(r"[ \t]+", " ", text)
 
         # Remove excessive line breaks
         text = re.sub(r"\n\s*\n\s*\n+", "\n\n", text)
+
+        # Remove spaces before and after line breaks
+        text = re.sub(r"\s*\n\n\s*", "\n\n", text)
 
         # Remove zero-width characters
         text = re.sub(r"[\u200b\u200c\u200d\ufeff]", "", text)

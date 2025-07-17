@@ -96,7 +96,7 @@ class DocumentProcessor:
             self.conservative_limit = None
         self._chunk_token_limit = self.get_chunk_token_limit(chunk_token_limit)
 
-        self.chunk_word_limit = chunk_word_limit if chunk_word_limit else 9999999999
+        self.chunk_word_limit = chunk_word_limit if chunk_word_limit else 100000
         self.sentence_overlap = sentence_overlap
 
     def get_chunk_token_limit(self, chunk_token_limit: Optional[int]) -> int:
@@ -198,7 +198,7 @@ class DocumentProcessor:
 
             # Check if adding this paragraph would exceed limits
             elif (
-                ((current_tokens + paragraph_tokens) > self.chunk_token_limit)
+                ((current_tokens + paragraph_tokens + 1) > self.chunk_token_limit)
                 or ((current_words + paragraph_words) > self.chunk_word_limit)
             ) and current_contents:
                 # Save current chunk
@@ -214,7 +214,7 @@ class DocumentProcessor:
             # Otherwise, add paragraph to current chunk
             else:
                 current_contents.append(paragraph)
-                current_tokens += paragraph_tokens
+                current_tokens += paragraph_tokens + 1  # +1 for newline
                 current_words += paragraph_words
 
         # Add final chunk if it has content
@@ -338,11 +338,14 @@ class DocumentProcessor:
             sentence_tokens = self.token_counter.safe_count(sentence)
             sentence_words = self.count_words(sentence)
 
-            if (total_tokens + sentence_tokens) <= self.chunk_token_limit and (
-                total_words + sentence_words
-            ) <= self.chunk_word_limit:
+            if (
+                total_tokens + sentence_tokens + 1 <= self.chunk_token_limit
+                and total_words + sentence_words <= self.chunk_word_limit
+            ):
                 overlap_text = sentence + " " + overlap_text
-                total_tokens += sentence_tokens
+                total_tokens += (
+                    sentence_tokens + 1
+                )  # +1 for space, although many tokenizers don't count it
                 total_words += sentence_words
             else:
                 break
@@ -374,15 +377,10 @@ class DocumentProcessor:
             sentence_tokens = self.token_counter.safe_count(sentence)
             sentence_words = self.count_words(sentence)
             if (
-                (current_tokens + sentence_tokens) > self.chunk_word_limit
-                or (current_words + sentence_words) > self.chunk_token_limit
+                (current_tokens + sentence_tokens + 1) > self.chunk_token_limit
+                or (current_words + sentence_words) > self.chunk_word_limit
             ) and current_chunk:
-                chunks.append(
-                    self._create_chunk_dict(
-                        chunk_number,
-                        current_chunk,
-                    )
-                )
+                chunks.append(self._create_chunk_dict(chunk_number, current_chunk))
                 current_chunk = sentence
                 current_tokens = sentence_tokens
                 current_words = sentence_words
@@ -391,16 +389,13 @@ class DocumentProcessor:
                 current_chunk = (
                     current_chunk + " " + sentence if current_chunk else sentence
                 )
-                current_tokens += sentence_tokens
+                current_tokens += (
+                    sentence_tokens + 1
+                )  # +1 for space, although many tokenizers don't count it
                 current_words += sentence_words
 
         if current_chunk.strip():
-            chunks.append(
-                self._create_chunk_dict(
-                    chunk_number,
-                    current_chunk,
-                )
-            )
+            chunks.append(self._create_chunk_dict(chunk_number, current_chunk))
 
         total_tokens = sum(c.get("token_count", 0) for c in chunks)
         total_words = sum(c.get("word_count", 0) for c in chunks)
