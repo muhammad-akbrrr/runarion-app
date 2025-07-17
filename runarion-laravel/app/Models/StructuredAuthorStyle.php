@@ -15,15 +15,19 @@ class StructuredAuthorStyle extends Model
         'project_id',
         'user_id',
         'author_name',
-        'style',
-        'sources',
+        'techniques_json',
+        'examples_json',
+        'status',
+        'error_message',
         'started_at',
         'total_time_ms',
     ];
 
     protected $casts = [
         'user_id' => 'integer',
-        'style' => 'array',
+        'techniques_json' => 'array',
+        'examples_json' => 'array',
+        'status' => 'string',
         'started_at' => 'datetime',
         'total_time_ms' => 'integer',
     ];
@@ -37,10 +41,20 @@ class StructuredAuthorStyle extends Model
             'author_name' => ['required', 'string', Rule::unique('structured_author_styles')->where(function ($query) {
                 return $query->where('workspace_id', request()->input('workspace_id'));
             })],
-            'style' => ['required', 'array'],
-            'sources' => ['required', 'string'],
+            'techniques_json' => ['nullable', 'array'],
+            'examples_json' => ['nullable', 'array'],
+            'status' => ['required', 'string', Rule::in([
+                'pending', 
+                'sampling', 
+                'sampling_completed', 
+                'sampling_failed', 
+                'profiling', 
+                'profiling_completed', 
+                'profiling_failed'
+            ])],
+            'error_message' => ['nullable', 'string'],
             'started_at' => ['required', 'datetime'],
-            'total_time_ms' => ['required', 'integer'],
+            'total_time_ms' => ['nullable', 'integer'],
         ];
     }
 }
