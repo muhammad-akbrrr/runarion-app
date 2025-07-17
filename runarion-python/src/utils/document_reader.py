@@ -16,18 +16,6 @@ class DocumentReader:
 
     SUPPORTED_EXTENSIONS = {".pdf", ".txt", ".docx", ".doc"}
 
-    def __init__(
-        self,
-        pdf_paragraph_priority: bool = True,
-    ):
-        """
-        Initialize the document processor with configuration options.
-
-        Args:
-            pdf_paragraph_priority: Whether to prioritize paragraph boundaries in reading PDFs
-        """
-        self.pdf_paragraph_priority = pdf_paragraph_priority
-
     def extract(self, file_path: str) -> str:
         """
         Extract text content from various file formats.
@@ -67,30 +55,7 @@ class DocumentReader:
             raise
 
     def _extract_from_pdf(self, file_path: Path) -> str:
-        """Extract text from PDF file using PyMuPDF."""
-        if self.pdf_paragraph_priority:
-            return self._extract_paragraphs_from_pdf(file_path)
-        else:
-            # Original extraction method for backward compatibility
-            texts = []
-            with fitz.open(str(file_path)) as doc:
-                for page in doc:
-                    text = page.get_text()  # type: ignore
-                    if text.strip():
-                        texts.append(text)
-
-            return "\n".join(texts)
-
-    def _extract_paragraphs_from_pdf(self, file_path: Path) -> str:
-        """
-        Extract text from PDF with enhanced paragraph detection using PyMuPDF structural analysis.
-
-        Args:
-            file_path: Path to PDF file
-
-        Returns:
-            Text with properly preserved paragraph boundaries
-        """
+        """Extract text from PDF file using PyMuPDF and handle paragraph breaks."""
         endings = [".", "!", "?"]
         endings = endings + [e + "'" for e in endings] + [e + '"' for e in endings]
 
