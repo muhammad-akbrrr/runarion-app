@@ -18,7 +18,7 @@ return new class extends Migration {
             $table->text('author_name');
             $table->jsonb('techniques_json')->nullable()->comment('Structured techniques of the author style');
             $table->jsonb('examples_json')->nullable()->comment('Structured examples of the author style');
-            $table->enum('status', ['pending', 'sampling', 'sampling_completed', 'sampling_failed', 'profiling', 'profiling_completed', 'profiling_failed']);
+            $table->enum('status', ['init_completed', 'sampling_completed', 'sampling_failed', 'profiling_completed', 'profiling_failed']);
             $table->text('error_message')->nullable()->comment('Error message if failed');
             $table->timestamp('started_at');
             $table->integer('total_time_ms')->nullable();

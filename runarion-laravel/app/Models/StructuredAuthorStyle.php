@@ -44,13 +44,10 @@ class StructuredAuthorStyle extends Model
             'techniques_json' => ['nullable', 'array'],
             'examples_json' => ['nullable', 'array'],
             'status' => ['required', 'string', Rule::in([
-                'pending', 
-                'sampling', 
+                'init_completed', 
                 'sampling_completed', 
                 'sampling_failed', 
-                'profiling', 
                 'profiling_completed', 
-                'profiling_failed'
             ])],
             'error_message' => ['nullable', 'string'],
             'started_at' => ['required', 'datetime'],
