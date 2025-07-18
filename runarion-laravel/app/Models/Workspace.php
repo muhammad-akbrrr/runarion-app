@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Validation\Rule;
-use App\Models\StructuredAuthorStyle;
+use App\Models\AuthorStyle;
 
 /**
  * Model Workspace
@@ -126,7 +126,7 @@ class Workspace extends Model
      */
     public function authorStyles()
     {
-        return $this->hasMany(StructuredAuthorStyle::class, 'workspace_id');
+        return $this->hasMany(AuthorStyle::class, 'workspace_id');
     }
 
     /**

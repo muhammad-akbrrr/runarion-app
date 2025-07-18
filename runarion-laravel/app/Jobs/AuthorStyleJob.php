@@ -9,7 +9,6 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Str;
 
 class AuthorStyleJob implements ShouldQueue
 {
@@ -39,7 +38,7 @@ class AuthorStyleJob implements ShouldQueue
     public function handle(): void
     {
         $startTime = microtime(true);
-        $apiUrl = "http://python-app:5000/api/analyze-author-style";
+        $apiUrl = "http://python-app:5000/api/analyze-style";
 
         // Prepare request data
         $requestData = [
@@ -48,19 +47,24 @@ class AuthorStyleJob implements ShouldQueue
                 "user_id" => (string)$this->userId,
                 "workspace_id" => $this->workspaceId,
                 "project_id" => $this->projectId
-            ],
-            "page_ranges" => [
-                ["start_page" => 1] // Default to start from page 1
             ]
         ];
 
         try {
             // Prepare multipart request
             $multipartFiles = [];
+            $fileHandles = []; // Track handles for cleanup
+            
             foreach ($this->authorFilePaths as $index => $path) {
+                $handle = fopen($path, 'r');
+                if (!$handle) {
+                    throw new \Exception("Cannot open file: $path");
+                }
+                
+                $fileHandles[] = $handle;
                 $multipartFiles[] = [
                     'name' => 'files',
-                    'contents' => fopen($path, 'r'),
+                    'contents' => $handle,
                     'filename' => basename($path)
                 ];
             }
@@ -90,6 +94,15 @@ class AuthorStyleJob implements ShouldQueue
                 'duration_ms' => (int)((microtime(true) - $startTime) * 1000),
             ]);
         } finally {
+            // Close file handles if they exist
+            if (isset($fileHandles)) {
+                foreach ($fileHandles as $handle) {
+                    if (is_resource($handle)) {
+                        fclose($handle);
+                    }
+                }
+            }
+            
             // Clean up uploaded files
             foreach ($this->authorFilePaths as $path) {
                 @unlink($path);

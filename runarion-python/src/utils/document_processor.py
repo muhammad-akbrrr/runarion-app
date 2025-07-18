@@ -1,270 +1,238 @@
-"""
-Document processor utility for handling file uploads and content extraction.
-Supports PDF, TXT, and DOCX files with intelligent chunking for large documents.
-"""
-
-import re
 import logging
-from typing import List, Dict, Optional, Tuple
+import re
 from pathlib import Path
-import fitz  # PyMuPDF
-from docx import Document
-from .get_model_max_token import count_tokens, chunk_text_by_tokens, get_safe_max_tokens
+from typing import List, Literal, Optional, Tuple, TypedDict
+
+from .document_reader import DocumentReader
+from .get_model_max_token import (
+    get_safe_model_max_tokens,
+)
+from .token_counter import (
+    TokenCounter,
+)
 
 logger = logging.getLogger(__name__)
 
 
+class Chunk(TypedDict):
+    chunk_number: int
+    raw_text: str
+    token_count: int
+    character_count: int
+    word_count: int
+
+
+class ChunkWithStart(Chunk):
+    start: int
+
+
+class ProcessedDocumentMetadata(TypedDict):
+    file_path: str
+    file_size: int
+    original_length: int
+    cleaned_length: int
+    chunk_count: int
+    total_tokens: int
+    processing_model: str
+
+
+class ProcessedDocument(TypedDict):
+    status: Literal["success"]
+    raw_text: str
+    cleaned_text: str
+    chunks: List[Chunk]
+    metadata: ProcessedDocumentMetadata
+
+
+class FailedProcessedDocument(TypedDict):
+    status: Literal["failed"]
+    error: str
+    file_path: str
+
+
 class DocumentProcessor:
     """
-    Handles document ingestion, extraction, and chunking for the novel pipeline.
+    Handles document extraction and chunking for the novel pipeline.
     """
 
-    SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.docx', '.doc'}
-    DEFAULT_WORD_LIMIT = 1500  # Primary word-based chunking limit
-    DEFAULT_CHUNK_SIZE = 4000  # Token-based safety limit for validation
-    OVERLAP_SIZE = 200  # Token overlap between chunks to maintain context
-    WORD_OVERLAP_SIZE = 50  # Word overlap between chunks
-
-    # Enhanced chunking configuration
-    PARAGRAPH_PRIORITY = True  # Prefer paragraph boundaries
-    MAX_PARAGRAPH_WORDS = 2000  # Maximum words per paragraph before splitting
-    SEMANTIC_OVERLAP = True  # Create overlaps at sentence boundaries
-
-    def __init__(self, upload_path: str = "/app/uploads"):
-        self.upload_path = Path(upload_path)
-        self.upload_path.mkdir(exist_ok=True)
-
-    def extract_text_from_file(self, file_path: str) -> str:
+    def __init__(
+        self,
+        provider: str,
+        model: str,
+        model_token_safety_margin: float | int = 0.5,
+        chunk_token_limit: Optional[int] = None,
+        chunk_word_limit: Optional[int] = None,
+        sentence_overlap: int = 0,
+    ):
         """
-        Extract text content from various file formats.
+        Initialize the document processor with configuration options.
 
         Args:
-            file_path: Path to the document file
-
-        Returns:
-            Extracted text content
-
-        Raises:
-            FileNotFoundError: If file doesn't exist
-            ValueError: If file format is not supported
-            Exception: If extraction fails
+            provider: LLM provider for token counting and limits
+            model: LLM model for token counting and limits
+            model_token_safety_margin: Portion of tokens to reserve from model max tokens, int means number of tokens, float means ratio of model max tokens
+            chunk_token_limit: Maximum token size for each chunk, if None or too big uses conservative limit based on model max tokens and safety margin
+            chunk_word_limit: Maximum word count for each chunk, works together with chunk_token_limit, if None then no limit
+            sentence_overlap: Number of sentences to overlap between chunks
         """
-        file_path = Path(file_path)
+        self.document_reader = DocumentReader()
 
-        if not file_path.exists():
-            raise FileNotFoundError(f"File not found: {file_path}")
+        self._provider = provider
+        self._model = model
 
-        extension = file_path.suffix.lower()
-
-        if extension not in self.SUPPORTED_EXTENSIONS:
-            raise ValueError(f"Unsupported file format: {extension}")
+        self.token_counter = TokenCounter(
+            provider=provider,
+            model=model,
+        )
 
         try:
-            if extension == '.pdf':
-                return self._extract_from_pdf(file_path)
-            elif extension == '.txt':
-                return self._extract_from_txt(file_path)
-            elif extension in ['.docx', '.doc']:
-                return self._extract_from_docx(file_path)
+            self.conservative_limit = get_safe_model_max_tokens(
+                provider, model, safety_margin=model_token_safety_margin
+            )
         except Exception as e:
-            logger.error(f"Failed to extract text from {file_path}: {str(e)}")
-            raise
+            logger.warning(
+                f"Failed to get conservative max token limit for {provider}/{model}: {e}."
+            )
+            self.conservative_limit = None
+        self._chunk_token_limit = self.get_chunk_token_limit(chunk_token_limit)
 
-    def _extract_from_pdf(self, file_path: Path) -> str:
-        """Extract text from PDF file using PyMuPDF with paragraph preservation."""
-        if self.PARAGRAPH_PRIORITY:
-            return self._extract_paragraphs_from_pdf(file_path)
-        else:
-            # Original extraction method for backward compatibility
-            text_content = []
+        self.chunk_word_limit = chunk_word_limit if chunk_word_limit else 100000
+        self.sentence_overlap = sentence_overlap
 
-            with fitz.open(str(file_path)) as doc:
-                for page_num in range(len(doc)):
-                    page = doc[page_num]
-                    text = page.get_text()
-
-                    if text.strip():
-                        text_content.append(text)
-
-            return "\n".join(text_content)
-
-    def _extract_from_txt(self, file_path: Path) -> str:
-        """Extract text from TXT file with encoding detection."""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as file:
-                return file.read()
-        except UnicodeDecodeError:
-            # Try with different encoding
-            with open(file_path, 'r', encoding='latin-1') as file:
-                return file.read()
-
-    def _extract_from_docx(self, file_path: Path) -> str:
-        """Extract text from DOCX file."""
-        doc = Document(str(file_path))
-        text_content = []
-
-        for paragraph in doc.paragraphs:
-            if paragraph.text.strip():
-                text_content.append(paragraph.text)
-
-        return "\n".join(text_content)
-
-    def clean_text(self, text: str) -> str:
+    def get_chunk_token_limit(self, chunk_token_limit: Optional[int]) -> int:
         """
-        Clean and normalize extracted text.
+        Get the effective chunk token limit based on user-defined and conservative limits.
 
         Args:
-            text: Raw extracted text
+            chunk_token_limit: User-defined chunk token limit
 
         Returns:
-            Cleaned text
+            Effective chunk token limit to use for processing
         """
-        # Remove excessive whitespace
-        text = re.sub(r'\s+', ' ', text)
+        if chunk_token_limit is None:
+            if self.conservative_limit is None:
+                return 4000
+            else:
+                return self.conservative_limit
+        else:
+            if self.conservative_limit is None:
+                return chunk_token_limit
+            else:
+                return min(chunk_token_limit, self.conservative_limit)
 
-        # Remove page numbers and common PDF artifacts
-        text = re.sub(r'\b\d+\b(?=\s*$)', '', text, flags=re.MULTILINE)
+    @property
+    def chunk_token_limit(self) -> int:
+        return self._chunk_token_limit
 
-        # Remove excessive line breaks
-        text = re.sub(r'\n\s*\n\s*\n+', '\n\n', text)
+    @chunk_token_limit.setter
+    def chunk_token_limit(self, value: Optional[int]):
+        if value is not None and value <= 0:
+            raise ValueError("Chunk token limit cannot be zero or negative.")
+        self._chunk_token_limit = self.get_chunk_token_limit(value)
 
-        # Remove zero-width characters
-        text = re.sub(r'[\u200b\u200c\u200d\ufeff]', '', text)
-
-        # Strip leading/trailing whitespace
-        text = text.strip()
-
-        return text
-
-    def chunk_text(self, text: str, provider: str = "openai", model: str = "gpt-4o",
-                   word_limit: Optional[int] = None) -> List[Dict[str, any]]:
+    def chunk_text(
+        self,
+        text: str,
+    ) -> List[Chunk]:
         """
-        Split text into chunks using unified semantic boundary approach with word-based sizing and token validation.
+        Split text into chunks suitable for AI processing using proper tokenizers.
 
         Args:
             text: Text to chunk
-            provider: AI provider for token validation
-            model: AI model for token limit validation
-            word_limit: Target words per chunk (defaults to DEFAULT_WORD_LIMIT)
 
         Returns:
-            List of chunk dictionaries with both word and token metadata
+            List of chunk dictionaries with metadata
         """
         if not text.strip():
             return []
 
-        # Get token safety limit for validation
         try:
-            safe_max_tokens = get_safe_max_tokens(provider, model, safety_margin=0.2)
-            token_safety_limit = min(self.DEFAULT_CHUNK_SIZE, safe_max_tokens // 4)
+            return self._paragraph_based_chunking(text)
         except Exception as e:
-            logger.warning(f"Could not get token limit for {provider}/{model}: {e}")
-            token_safety_limit = self.DEFAULT_CHUNK_SIZE
+            logger.warning(
+                f"Paragraph-vased chunking failed, falling back to sentence-based: {e}"
+            )
+            return self._sentence_based_chunking(text)
 
-        target_word_limit = word_limit or self.DEFAULT_WORD_LIMIT
-
-        # Unified semantic boundary chunking with word/token validation
-        try:
-            return self._chunk_by_semantic_boundaries_unified(
-                text, target_word_limit, token_safety_limit, provider, model)
-        except Exception as e:
-            logger.warning(f"Unified chunking failed, falling back to sentence-based: {e}")
-            # Final fallback to sentence-based chunking
-            return self._sentence_based_chunking(text, token_safety_limit, provider, model)
-
-    def _chunk_text_fallback(self, text: str, token_limit: int, provider: str, model: str) -> List[Dict[str, any]]:
+    def _paragraph_based_chunking(self, text: str) -> List[Chunk]:
         """
-        Fallback chunking method using sentence boundaries with improved token estimation.
+        Chunk text based on paragraphs, ensuring each chunk is within word and token limits.
 
         Args:
             text: Text to chunk
-            token_limit: Maximum tokens per chunk
-            provider: AI provider
-            model: AI model
 
         Returns:
             List of chunk dictionaries
         """
-        return self._sentence_based_chunking(text, token_limit, provider, model)
+        paragraphs = self._detect_paragraphs_from_text(text)
+        chunks: List[Chunk] = []
+        current_contents = []
+        current_tokens = 0
+        current_words = 0
+        chunk_number = 1
 
-    def _extract_paragraphs_from_pdf(self, file_path: Path) -> str:
-        """
-        Extract text from PDF with enhanced paragraph detection using PyMuPDF structural analysis.
+        for paragraph in paragraphs:
+            paragraph_words = self.count_words(paragraph)
+            paragraph_tokens = self.token_counter.safe_count(paragraph)
 
-        Args:
-            file_path: Path to PDF file
+            # Check if this paragraph alone exceeds limits
+            if (
+                paragraph_tokens > self.chunk_token_limit
+                or paragraph_words > self.chunk_word_limit
+            ):
+                # Save current chunk if it has content
+                if current_contents:
+                    text_chunk = self._join_chunk_content(current_contents)
+                    chunks.append(self._create_chunk_dict(chunk_number, text_chunk))
+                    chunk_number += 1
+                    current_contents = []
+                    current_tokens = 0
+                    current_words = 0
 
-        Returns:
-            Text with properly preserved paragraph boundaries
-        """
-        paragraphs = []
+                # Split oversized paragraph into smaller chunks
+                paragraph_chunks = self._sentence_based_chunking(
+                    paragraph, initial_chunk_number=chunk_number
+                )
+                chunks.extend(paragraph_chunks)
+                chunk_number += len(paragraph_chunks)
 
-        with fitz.open(str(file_path)) as doc:
-            for page_num in range(len(doc)):
-                page = doc[page_num]
+            # Check if adding this paragraph would exceed limits
+            elif (
+                ((current_tokens + paragraph_tokens + 1) > self.chunk_token_limit)
+                or ((current_words + paragraph_words) > self.chunk_word_limit)
+            ) and current_contents:
+                # Save current chunk
+                text_chunk = self._join_chunk_content(current_contents)
+                chunks.append(self._create_chunk_dict(chunk_number, text_chunk))
+                chunk_number += 1
 
-                # Get structured text data with blocks and lines
-                text_dict = page.get_text("dict")
+                # Start new chunk with current paragraph
+                current_contents = [paragraph]
+                current_tokens = paragraph_tokens
+                current_words = paragraph_words
 
-                page_paragraphs = self._extract_paragraphs_from_page_dict(
-                    text_dict)
-                paragraphs.extend(page_paragraphs)
+            # Otherwise, add paragraph to current chunk
+            else:
+                current_contents.append(paragraph)
+                current_tokens += paragraph_tokens + 1  # +1 for newline
+                current_words += paragraph_words
 
-        # Join paragraphs with double line breaks to maintain structure
-        return "\n\n".join(paragraph.strip() for paragraph in paragraphs if paragraph.strip())
+        # Add final chunk if it has content
+        if current_contents:
+            text_chunk = self._join_chunk_content(current_contents)
+            chunks.append(self._create_chunk_dict(chunk_number, text_chunk))
 
-    def _extract_paragraphs_from_page_dict(self, page_dict: dict) -> List[str]:
-        """
-        Extract paragraphs from PyMuPDF page dictionary structure.
+        # Add semantic overlaps if configured
+        if self.sentence_overlap > 0 and len(chunks) > 1:
+            chunks = self._add_semantic_overlaps(chunks)
 
-        Args:
-            page_dict: PyMuPDF page dictionary from get_text("dict")
+        total_tokens = sum(c["token_count"] for c in chunks)
+        total_words = sum(c["word_count"] for c in chunks)
+        logger.info(
+            f"Split text into {len(chunks)} chunks using paragraph-based chunking, total tokens: {total_tokens}, total words: {total_words}"
+        )
 
-        Returns:
-            List of paragraph strings
-        """
-        paragraphs = []
-        current_paragraph = []
-        last_y = None
-
-        for block in page_dict.get("blocks", []):
-            if "lines" not in block:  # Skip image blocks
-                continue
-
-            for line in block["lines"]:
-                line_text = ""
-
-                for span in line.get("spans", []):
-                    text = span.get("text", "")
-                    if text.strip():
-                        line_text += text
-
-                if line_text.strip():
-                    # Check for significant vertical gap (new paragraph indicator)
-                    current_y = line["bbox"][1]  # Top Y coordinate
-
-                    if last_y is not None:
-                        y_gap = abs(current_y - last_y)
-                        avg_line_height = 12  # Approximate line height
-
-                        # If gap is larger than 1.5x normal line spacing, it's likely a new paragraph
-                        if y_gap > avg_line_height * 1.5 and current_paragraph:
-                            paragraphs.append(" ".join(current_paragraph))
-                            current_paragraph = []
-
-                    current_paragraph.append(line_text.strip())
-                    last_y = current_y
-
-            # End of block typically indicates paragraph boundary
-            if current_paragraph:
-                paragraphs.append(" ".join(current_paragraph))
-                current_paragraph = []
-
-        # Add any remaining content
-        if current_paragraph:
-            paragraphs.append(" ".join(current_paragraph))
-
-        return paragraphs
+        return chunks
 
     def _detect_paragraphs_from_text(self, text: str) -> List[str]:
         """
@@ -277,175 +245,19 @@ class DocumentProcessor:
             List of paragraph strings
         """
         # Split on double line breaks (most common paragraph separator)
-        paragraphs = re.split(r'\n\s*\n', text)
+        paragraphs = re.split(r"\n\s*\n", text)
 
         # Clean and filter paragraphs
         cleaned_paragraphs = []
         for para in paragraphs:
             # Clean whitespace and normalize line breaks within paragraph
-            para = re.sub(r'\s+', ' ', para.strip())
+            para = re.sub(r"\s+", " ", para.strip())
 
             # Filter out very short "paragraphs" that are likely artifacts
             if len(para) > 20:  # Minimum paragraph length
                 cleaned_paragraphs.append(para)
 
         return cleaned_paragraphs
-
-    def _chunk_by_semantic_boundaries(self, text: str, token_limit: int, provider: str, model: str) -> List[Dict[str, any]]:
-        """
-        Chunk text using hierarchical semantic boundaries: paragraphs > sentences > words.
-
-        Args:
-            text: Text to chunk
-            token_limit: Maximum tokens per chunk
-            provider: AI provider
-            model: AI model
-
-        Returns:
-            List of chunk dictionaries
-        """
-        # First, detect paragraphs
-        paragraphs = self._detect_paragraphs_from_text(text)
-
-        chunks = []
-        current_chunk_content = []
-        current_chunk_tokens = 0
-        chunk_number = 1
-
-        for paragraph in paragraphs:
-            # Count tokens for this paragraph
-            paragraph_tokens = self._safe_count_tokens(
-                paragraph, provider, model)
-
-            # Check if paragraph alone exceeds max chunk size (convert word limit to approximate token limit)
-            if paragraph_tokens > (self.MAX_PARAGRAPH_WORDS * 1.3):
-                # Save current chunk if it has content
-                if current_chunk_content:
-                    chunk_text = self._join_chunk_content(
-                        current_chunk_content)
-                    word_count = self._count_words(chunk_text)
-                    chunks.append(self._create_chunk_unified(
-                        chunk_number, chunk_text, word_count, current_chunk_tokens))
-                    chunk_number += 1
-                    current_chunk_content = []
-                    current_chunk_tokens = 0
-
-                # Split oversized paragraph and add as separate chunks
-                paragraph_chunks = self._split_oversized_paragraph(
-                    paragraph, token_limit, provider, model)
-                for para_chunk in paragraph_chunks:
-                    para_chunk_tokens = self._safe_count_tokens(
-                        para_chunk, provider, model)
-                    word_count = self._count_words(para_chunk)
-                    chunks.append(self._create_chunk_unified(
-                        chunk_number, para_chunk, word_count, para_chunk_tokens))
-                    chunk_number += 1
-
-            # Check if adding this paragraph would exceed chunk size
-            elif current_chunk_tokens + paragraph_tokens > token_limit and current_chunk_content:
-                # Save current chunk
-                chunk_text = self._join_chunk_content(current_chunk_content)
-                word_count = self._count_words(chunk_text)
-                chunks.append(self._create_chunk_unified(
-                    chunk_number, chunk_text, word_count, current_chunk_tokens))
-                chunk_number += 1
-
-                # Start new chunk with current paragraph
-                current_chunk_content = [paragraph]
-                current_chunk_tokens = paragraph_tokens
-            else:
-                # Add paragraph to current chunk
-                current_chunk_content.append(paragraph)
-                current_chunk_tokens += paragraph_tokens
-
-        # Add final chunk if it has content
-        if current_chunk_content:
-            chunk_text = self._join_chunk_content(current_chunk_content)
-            final_tokens = self._safe_count_tokens(
-                chunk_text, provider, model) if chunk_text else 0
-            word_count = self._count_words(chunk_text)
-            chunks.append(self._create_chunk_unified(
-                chunk_number, chunk_text, word_count, final_tokens))
-
-        # Add semantic overlaps between chunks
-        if self.SEMANTIC_OVERLAP and len(chunks) > 1:
-            chunks = self._add_overlaps_unified(chunks, provider, model)
-
-        logger.info(
-            f"Split text into {len(chunks)} chunks using semantic boundaries, total tokens: {sum(c['token_count'] for c in chunks)}")
-        return chunks
-
-    def _split_oversized_paragraph(self, paragraph: str, token_limit: int, provider: str, model: str) -> List[str]:
-        """
-        Split a paragraph that exceeds token limits at sentence boundaries.
-
-        Args:
-            paragraph: Paragraph text to split
-            token_limit: Maximum tokens per chunk
-            provider: AI provider
-            model: AI model
-
-        Returns:
-            List of paragraph chunks
-        """
-        # Use the unified sentence-based chunking helper
-        return [chunk['raw_text'] for chunk in self._sentence_based_chunking(paragraph, token_limit, provider, model, raw_only=True)]
-
-    def _sentence_based_chunking(self, text: str, token_limit: int, provider: str, model: str, raw_only: bool = False) -> List[Dict[str, any]]:
-        """
-        Helper for sentence-based chunking, used by fallback and paragraph splitting.
-        If raw_only is True, returns only the raw text chunks (for paragraph splitting).
-        """
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        chunks = []
-        current_chunk = ""
-        current_chunk_tokens = 0
-        chunk_number = 1
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-            test_chunk = current_chunk + " " + sentence if current_chunk else sentence
-            test_tokens = self._safe_count_tokens(test_chunk, provider, model)
-            if test_tokens > token_limit and current_chunk:
-                # Use cached token count from previous iteration
-                if raw_only:
-                    chunks.append({'raw_text': current_chunk.strip()})
-                else:
-                    word_count = self._count_words(current_chunk)
-                    chunks.append({
-                        'chunk_number': chunk_number,
-                        'raw_text': current_chunk.strip(),
-                        'word_count': word_count,
-                        'token_count': current_chunk_tokens,
-                        'character_count': len(current_chunk),
-                        'safety_validated': True
-                    })
-                current_chunk = sentence
-                current_chunk_tokens = self._safe_count_tokens(sentence, provider, model)
-                chunk_number += 1
-            else:
-                current_chunk = test_chunk
-                current_chunk_tokens = test_tokens
-        if current_chunk.strip():
-            # Use cached token count
-            if raw_only:
-                chunks.append({'raw_text': current_chunk.strip()})
-            else:
-                word_count = self._count_words(current_chunk)
-                chunks.append({
-                    'chunk_number': chunk_number,
-                    'raw_text': current_chunk.strip(),
-                    'word_count': word_count,
-                    'token_count': current_chunk_tokens,
-                    'character_count': len(current_chunk),
-                    'safety_validated': True
-                })
-        if raw_only:
-            return chunks
-        logger.info(
-            f"Split text into {len(chunks)} chunks using sentence-based chunking, total tokens: {sum(c.get('token_count', 0) for c in chunks)}")
-        return chunks
 
     def _join_chunk_content(self, content_list: List[str]) -> str:
         """
@@ -457,26 +269,192 @@ class DocumentProcessor:
         Returns:
             Joined text with proper spacing
         """
-        return "\n\n".join(content.strip() for content in content_list if content.strip())
+        return "\n\n".join(
+            content.strip() for content in content_list if content.strip()
+        )
 
-
-
-    def _safe_count_tokens(self, text: str, provider: str, model: str) -> int:
+    def _add_semantic_overlaps(self, chunks: List[Chunk]) -> List[Chunk]:
         """
-        Safely count tokens, falling back to character-based estimation if needed.
-        """
-        try:
-            return count_tokens(text, provider, model)
-        except Exception:
-            return len(text) // 4
+        Add semantic-aware overlaps between chunks.
 
-    def _count_words(self, text: str) -> int:
+        Args:
+            chunks: List of chunk dictionaries
+
+        Returns:
+            Chunks with semantic overlaps added
+        """
+        if len(chunks) <= 1:
+            return chunks
+
+        enhanced_chunks = [chunks[0]]  # First chunk unchanged
+
+        for i in range(1, len(chunks)):
+            current_chunk = chunks[i]
+            previous_chunk = chunks[i - 1]
+
+            # Create semantic overlap from previous chunk
+            overlap_text = self._create_semantic_overlap(
+                previous_chunk["raw_text"],
+                current_chunk["token_count"],
+                current_chunk["word_count"],
+            )
+
+            if overlap_text:
+                enhanced_chunks.append(
+                    self._create_chunk_dict(
+                        current_chunk["chunk_number"],
+                        overlap_text + "\n\n" + current_chunk["raw_text"],
+                    )
+                )
+            else:
+                enhanced_chunks.append(current_chunk)
+
+        return enhanced_chunks
+
+    def _create_semantic_overlap(
+        self, previous_text: str, chunk_token_count: int, chunk_word_count: int
+    ) -> str:
+        """
+        Create overlap text that ends at sentence boundaries.
+
+        Args:
+            previous_text: Text from the previous chunk
+            chunk_token_count: Token count of the current chunk
+            chunk_word_count: Word count of the current chunk
+
+        Returns:
+            Overlap text at the end of the previous chunk
+        """
+        sentences = self.split_into_sentences(previous_text)
+
+        overlap_count = min(self.sentence_overlap, len(sentences))
+        overlap_text = ""
+        total_tokens = chunk_token_count
+        total_words = chunk_word_count
+        for sentence in reversed(sentences[-overlap_count:]):
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            sentence_tokens = self.token_counter.safe_count(sentence)
+            sentence_words = self.count_words(sentence)
+
+            if (
+                total_tokens + sentence_tokens + 1 <= self.chunk_token_limit
+                and total_words + sentence_words <= self.chunk_word_limit
+            ):
+                overlap_text = sentence + " " + overlap_text
+                total_tokens += (
+                    sentence_tokens + 1
+                )  # +1 for space, although many tokenizers don't count it
+                total_words += sentence_words
+            else:
+                break
+
+        overlap_text = overlap_text.strip()
+        if len(overlap_text) < 50:
+            return ""
+        return overlap_text
+
+    def _sentence_based_chunking(
+        self,
+        text: str,
+        initial_chunk_number: int = 1,
+    ) -> List[Chunk]:
+        """
+        Split text into chunks based on sentences, ensuring each chunk is within word and token limits.
+        """
+        sentences = self.split_into_sentences(text)
+        chunks: List[Chunk] = []
+        current_chunk = ""
+        current_tokens = 0
+        current_words = 0
+        chunk_number = initial_chunk_number
+
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            sentence_tokens = self.token_counter.safe_count(sentence)
+            sentence_words = self.count_words(sentence)
+            if (
+                (current_tokens + sentence_tokens + 1) > self.chunk_token_limit
+                or (current_words + sentence_words) > self.chunk_word_limit
+            ) and current_chunk:
+                chunks.append(self._create_chunk_dict(chunk_number, current_chunk))
+                current_chunk = sentence
+                current_tokens = sentence_tokens
+                current_words = sentence_words
+                chunk_number += 1
+            else:
+                current_chunk = (
+                    current_chunk + " " + sentence if current_chunk else sentence
+                )
+                current_tokens += (
+                    sentence_tokens + 1
+                )  # +1 for space, although many tokenizers don't count it
+                current_words += sentence_words
+
+        if current_chunk.strip():
+            chunks.append(self._create_chunk_dict(chunk_number, current_chunk))
+
+        total_tokens = sum(c.get("token_count", 0) for c in chunks)
+        total_words = sum(c.get("word_count", 0) for c in chunks)
+        logger.info(
+            f"Split text into {len(chunks)} chunks using sentence-based chunking, total tokens: {total_tokens}, total words: {total_words}"
+        )
+
+        return chunks
+
+    def _create_chunk_dict(
+        self,
+        chunk_number: int,
+        text: str,
+        token_count: Optional[int] = None,
+        word_count: Optional[int] = None,
+    ) -> Chunk:
+        """
+        Create a standardized chunk dictionary.
+
+        Args:
+            chunk_number: Sequential chunk number
+            text: Chunk text content
+            token_count: Token count of the text
+            word_count: Word count of the text
+
+        Returns:
+            Chunk dictionary matching expected format
+        """
+        return {
+            "chunk_number": chunk_number,
+            "raw_text": text.strip(),
+            "token_count": token_count or self.token_counter.safe_count(text),
+            "word_count": word_count or self.count_words(text),
+            "character_count": len(text),
+        }
+
+    @staticmethod
+    def split_into_sentences(text: str) -> List[str]:
+        """
+        Split text into sentences using improved regex pattern.
+
+        Args:
+            text: Text to split
+
+        Returns:
+            List of sentences
+        """
+        # Use regex for better sentence splitting
+        sentences = re.split(r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)""", text)
+        return [s.strip() for s in sentences if s.strip()]
+
+    @staticmethod
+    def count_words(text: str) -> int:
         """
         Count words in text using simple whitespace splitting.
-        
+
         Args:
             text: Text to count words in
-            
+
         Returns:
             Number of words in the text
         """
@@ -484,382 +462,74 @@ class DocumentProcessor:
             return 0
         return len(text.strip().split())
 
-    def _chunk_by_semantic_boundaries_unified(self, text: str, word_limit: int, 
-                                            token_safety_limit: int, provider: str, model: str) -> List[Dict[str, any]]:
+    def add_start_to_chunks(
+        self, text: str, chunks: List[Chunk]
+    ) -> List[ChunkWithStart]:
         """
-        Unified semantic boundary chunking with word targeting and token validation.
-        
+        Add start index to each chunk based on its position in the original text.
+
         Args:
-            text: Text to chunk
-            word_limit: Target words per chunk
-            token_safety_limit: Maximum tokens per chunk for safety
-            provider: AI provider for token counting
-            model: AI model for token counting
-            
+            text: Original text content
+            chunks: List of chunk dictionaries without start index
+
         Returns:
-            List of chunk dictionaries with both word and token counts
+            List of chunks with start index added
         """
-        # Detect paragraphs for semantic boundaries
-        paragraphs = self._detect_paragraphs_from_text(text)
-        
-        chunks = []
-        current_chunk_content = []
-        current_chunk_words = 0
-        chunk_number = 1
-        
-        for paragraph in paragraphs:
-            paragraph_words = self._count_words(paragraph)
-            
-            # Check if paragraph exceeds reasonable limits
-            if paragraph_words > self.MAX_PARAGRAPH_WORDS:
-                # Save current chunk if it has content
-                if current_chunk_content:
-                    chunk_text = self._join_chunk_content(current_chunk_content)
-                    validated_chunks = self._create_and_validate_chunk(
-                        chunk_text, chunk_number, word_limit, token_safety_limit, provider, model)
-                    chunks.extend(validated_chunks)
-                    chunk_number += len(validated_chunks)
-                    current_chunk_content = []
-                    current_chunk_words = 0
-                
-                # Split oversized paragraph
-                paragraph_chunks = self._split_oversized_content(
-                    paragraph, word_limit, token_safety_limit, provider, model)
-                for para_chunk in paragraph_chunks:
-                    validated_chunks = self._create_and_validate_chunk(
-                        para_chunk, chunk_number, word_limit, token_safety_limit, provider, model)
-                    chunks.extend(validated_chunks)
-                    chunk_number += len(validated_chunks)
-                    
-            # Check if adding paragraph would exceed word limit
-            elif current_chunk_words + paragraph_words > word_limit and current_chunk_content:
-                # Finalize current chunk
-                chunk_text = self._join_chunk_content(current_chunk_content)
-                validated_chunks = self._create_and_validate_chunk(
-                    chunk_text, chunk_number, word_limit, token_safety_limit, provider, model)
-                chunks.extend(validated_chunks)
-                chunk_number += len(validated_chunks)
-                
-                # Start new chunk with current paragraph
-                current_chunk_content = [paragraph]
-                current_chunk_words = paragraph_words
-            else:
-                # Add paragraph to current chunk
-                current_chunk_content.append(paragraph)
-                current_chunk_words += paragraph_words
-        
-        # Handle final chunk
-        if current_chunk_content:
-            chunk_text = self._join_chunk_content(current_chunk_content)
-            validated_chunks = self._create_and_validate_chunk(
-                chunk_text, chunk_number, word_limit, token_safety_limit, provider, model)
-            chunks.extend(validated_chunks)
-        
-        # Add semantic overlaps between chunks
-        if self.SEMANTIC_OVERLAP and len(chunks) > 1:
-            chunks = self._add_overlaps_unified(chunks, provider, model)
-        
-        logger.info(
-            f"Split text into {len(chunks)} chunks using unified chunking (target: {word_limit} words), "
-            f"total words: {sum(c.get('word_count', 0) for c in chunks)}, "
-            f"total tokens: {sum(c.get('token_count', 0) for c in chunks)}")
-        return chunks
+        chunks_with_start: List[ChunkWithStart] = []
+        for chunk in chunks:
+            chunks_with_start.append(
+                {
+                    **chunk,
+                    "start": text.find(chunk["raw_text"]),
+                }
+            )
 
-    def _create_and_validate_chunk(self, chunk_text: str, chunk_number: int, 
-                                  word_limit: int, token_safety_limit: int, provider: str, model: str) -> List[Dict[str, any]]:
-        """
-        Create chunk with both word and token validation, splitting if necessary.
-        
-        Args:
-            chunk_text: Text to create chunk from
-            chunk_number: Starting chunk number
-            word_limit: Target words per chunk
-            token_safety_limit: Maximum tokens allowed
-            provider: AI provider for token counting
-            model: AI model for token counting
-            
-        Returns:
-            List of validated chunk dictionaries
-        """
-        word_count = self._count_words(chunk_text)
-        token_count = self._safe_count_tokens(chunk_text, provider, model)
-        
-        # If within both limits, return single chunk
-        if token_count <= token_safety_limit:
-            return [self._create_chunk_unified(chunk_number, chunk_text, word_count, token_count)]
-        
-        # If exceeds token limit, split by sentences
-        logger.warning(f"Chunk {chunk_number} ({word_count} words, {token_count} tokens) exceeds token limit, splitting")
-        return self._split_by_sentences_unified(chunk_text, chunk_number, token_safety_limit, provider, model)
+        return chunks_with_start
 
-    def _split_oversized_content(self, content: str, word_limit: int, 
-                               token_safety_limit: int, provider: str, model: str) -> List[str]:
-        """
-        Split oversized content at sentence boundaries respecting both word and token limits.
-        
-        Args:
-            content: Content to split
-            word_limit: Target words per chunk
-            token_safety_limit: Maximum tokens per chunk
-            provider: AI provider for token counting
-            model: AI model for token counting
-            
-        Returns:
-            List of content chunks
-        """
-        sentences = re.split(r'(?<=[.!?])\s+', content)
-        chunks = []
-        current_chunk = ""
-        current_words = 0
-        current_tokens = 0
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-                
-            test_chunk = current_chunk + " " + sentence if current_chunk else sentence
-            test_words = self._count_words(test_chunk)
-            test_tokens = self._safe_count_tokens(test_chunk, provider, model)
-            
-            if (test_words > word_limit or test_tokens > token_safety_limit) and current_chunk:
-                chunks.append(current_chunk.strip())
-                current_chunk = sentence
-                current_words = self._count_words(sentence)
-                current_tokens = self._safe_count_tokens(sentence, provider, model)
-            else:
-                current_chunk = test_chunk
-                current_words = test_words
-                current_tokens = test_tokens
-        
-        if current_chunk.strip():
-            chunks.append(current_chunk.strip())
-        
-        return chunks
-
-    def _split_by_sentences_unified(self, chunk_text: str, starting_chunk_number: int, 
-                                  token_safety_limit: int, provider: str, model: str) -> List[Dict[str, any]]:
-        """
-        Split chunk by sentences to respect token limits.
-        
-        Args:
-            chunk_text: Text to split
-            starting_chunk_number: Starting chunk number
-            token_safety_limit: Maximum tokens per chunk
-            provider: AI provider for token counting
-            model: AI model for token counting
-            
-        Returns:
-            List of chunk dictionaries
-        """
-        sentences = re.split(r'(?<=[.!?])\s+', chunk_text)
-        chunks = []
-        current_chunk = ""
-        current_chunk_tokens = 0
-        chunk_number = starting_chunk_number
-        
-        for sentence in sentences:
-            sentence = sentence.strip()
-            if not sentence:
-                continue
-                
-            test_chunk = current_chunk + " " + sentence if current_chunk else sentence
-            test_tokens = self._safe_count_tokens(test_chunk, provider, model)
-            
-            if test_tokens > token_safety_limit and current_chunk:
-                # Finalize current chunk using cached token count
-                word_count = self._count_words(current_chunk)
-                chunks.append(self._create_chunk_unified(chunk_number, current_chunk.strip(), word_count, current_chunk_tokens))
-                current_chunk = sentence
-                current_chunk_tokens = self._safe_count_tokens(sentence, provider, model)
-                chunk_number += 1
-            else:
-                current_chunk = test_chunk
-                current_chunk_tokens = test_tokens
-        
-        # Handle final chunk using cached token count
-        if current_chunk.strip():
-            word_count = self._count_words(current_chunk)
-            chunks.append(self._create_chunk_unified(chunk_number, current_chunk.strip(), word_count, current_chunk_tokens))
-        
-        return chunks
-
-    def _create_chunk_unified(self, chunk_number: int, text: str, word_count: int, token_count: int) -> Dict[str, any]:
-        """
-        Create unified chunk dictionary with both word and token metadata.
-        
-        Args:
-            chunk_number: Sequential chunk number
-            text: Chunk text content
-            word_count: Actual word count
-            token_count: Actual token count
-            
-        Returns:
-            Standardized chunk dictionary
-        """
-        return {
-            'chunk_number': chunk_number,
-            'raw_text': text.strip(),
-            'word_count': word_count,
-            'token_count': token_count,
-            'character_count': len(text),
-            'safety_validated': True
-        }
-
-    def _add_overlaps_unified(self, chunks: List[Dict[str, any]], provider: str, model: str) -> List[Dict[str, any]]:
-        """
-        Add unified word-based semantic overlaps between chunks.
-        
-        Args:
-            chunks: List of chunk dictionaries
-            provider: AI provider for token counting
-            model: AI model for token counting
-            
-        Returns:
-            Chunks with overlaps added
-        """
-        if len(chunks) <= 1:
-            return chunks
-        
-        enhanced_chunks = [chunks[0]]  # First chunk unchanged
-        
-        for i in range(1, len(chunks)):
-            current_chunk = chunks[i]
-            previous_chunk = chunks[i-1]
-            
-            # Create overlap from previous chunk
-            overlap_text = self._create_overlap_unified(previous_chunk['raw_text'])
-            
-            if overlap_text:
-                # Prepend overlap to current chunk
-                enhanced_text = overlap_text + "\n\n" + current_chunk['raw_text']
-                
-                # Recalculate counts
-                new_word_count = self._count_words(enhanced_text)
-                new_token_count = self._safe_count_tokens(enhanced_text, provider, model)
-                
-                enhanced_chunk = self._create_chunk_unified(
-                    current_chunk['chunk_number'], enhanced_text, new_word_count, new_token_count)
-                enhanced_chunks.append(enhanced_chunk)
-            else:
-                enhanced_chunks.append(current_chunk)
-        
-        return enhanced_chunks
-
-    def _create_overlap_unified(self, text: str, max_words: int = None) -> str:
-        """
-        Create semantic overlap text based on word count at sentence boundaries.
-        
-        Args:
-            text: Source text
-            max_words: Maximum words in overlap (defaults to WORD_OVERLAP_SIZE)
-            
-        Returns:
-            Overlap text ending at sentence boundary
-        """
-        max_words = max_words or self.WORD_OVERLAP_SIZE
-        
-        # Split into sentences
-        sentences = re.split(r'(?<=[.!?])\s+', text)
-        
-        if len(sentences) <= 1:
-            return ""  # Not enough content for overlap
-        
-        # Build overlap from last sentences within word limit
-        overlap_sentences = []
-        overlap_words = 0
-        
-        for sentence in reversed(sentences[-3:]):  # Check last 3 sentences
-            sentence_words = self._count_words(sentence)
-            if overlap_words + sentence_words <= max_words:
-                overlap_sentences.insert(0, sentence)
-                overlap_words += sentence_words
-            else:
-                break
-        
-        if not overlap_sentences or overlap_words < 10:  # Minimum meaningful overlap
-            return ""
-        
-        overlap_text = " ".join(overlap_sentences).strip()
-        
-        # Ensure reasonable overlap length
-        if len(overlap_text) < 30 or len(overlap_text) > 300:
-            return ""
-        
-        return overlap_text
-
-
-    def process_document(self, file_path: str, provider: str = "openai",
-                         model: str = "gpt-4o") -> Dict[str, any]:
+    def process_document(
+        self, file_path: str
+    ) -> ProcessedDocument | FailedProcessedDocument:
         """
         Complete document processing pipeline.
 
         Args:
             file_path: Path to document file
-            provider: AI provider for processing
-            model: AI model for processing
 
         Returns:
             Processing results with metadata
         """
         try:
             # Extract text
-            raw_text = self.extract_text_from_file(file_path)
+            raw_text = self.document_reader.extract(file_path)
 
             # Clean text
-            cleaned_text = self.clean_text(raw_text)
+            cleaned_text = self.document_reader.clean(raw_text)
 
             # Create chunks
-            chunks = self.chunk_text(cleaned_text, provider, model)
+            chunks = self.chunk_text(cleaned_text)
 
             # Calculate metadata
-            metadata = {
-                'file_path': file_path,
-                'file_size': Path(file_path).stat().st_size,
-                'original_length': len(raw_text),
-                'cleaned_length': len(cleaned_text),
-                'chunk_count': len(chunks),
-                'total_tokens': sum(c['token_count'] for c in chunks),
-                'processing_model': "N/A - Token counting only"
+            metadata: ProcessedDocumentMetadata = {
+                "file_path": file_path,
+                "file_size": Path(file_path).stat().st_size,
+                "original_length": len(raw_text),
+                "cleaned_length": len(cleaned_text),
+                "chunk_count": len(chunks),
+                "total_tokens": sum(c["token_count"] for c in chunks),
+                "processing_model": f"{self._provider}/{self._model}",
             }
 
             return {
-                'success': True,
-                'raw_text': raw_text,
-                'cleaned_text': cleaned_text,
-                'chunks': chunks,
-                'metadata': metadata
+                "status": "success",
+                "raw_text": raw_text,
+                "cleaned_text": cleaned_text,
+                "chunks": chunks,
+                "metadata": metadata,
             }
 
         except Exception as e:
-            logger.error(
-                f"Document processing failed for {file_path}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'file_path': file_path
-            }
+            logger.error(f"Document processing failed for {file_path}: {str(e)}")
+            return {"status": "failed", "error": str(e), "file_path": file_path}
 
     def validate_file(self, file_path: str) -> Tuple[bool, str]:
-        """
-        Validate file before processing.
-
-        Args:
-            file_path: Path to file
-
-        Returns:
-            Tuple of (is_valid, error_message)
-        """
-        file_path = Path(file_path)
-
-        if not file_path.exists():
-            return False, f"File not found: {file_path}"
-
-        if file_path.suffix.lower() not in self.SUPPORTED_EXTENSIONS:
-            return False, f"Unsupported file format: {file_path.suffix}"
-
-        # Check file size (100MB limit)
-        if file_path.stat().st_size > 100 * 1024 * 1024:
-            return False, "File too large (max 100MB)"
-
-        return True, ""
+        return self.document_reader.validate_file(file_path)
