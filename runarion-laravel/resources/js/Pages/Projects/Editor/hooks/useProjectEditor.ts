@@ -164,6 +164,14 @@ export function useProjectEditor({
             console.log('Initializing content for chapter:', selectedChapter.chapter_name);
             setContent(chapterContent);
             originalContent.current = chapterContent;
+            
+            // Initialize generation history if it doesn't exist and create initial step
+            if (!selectedChapter.generation_history || 
+                !selectedChapter.generation_history.steps || 
+                selectedChapter.generation_history.steps.length === 0) {
+                console.log('Creating initial generation step for chapter:', selectedChapter.chapter_name);
+                initializeChapterHistory(selectedChapter.order, chapterContent);
+            }
         } else {
             setContent("");
             originalContent.current = "";
@@ -298,6 +306,39 @@ export function useProjectEditor({
             [key]: value
         }));
     }, []);
+
+    // Initialize generation history for a chapter
+    const initializeChapterHistory = useCallback(async (chapterOrder: number, content: string) => {
+        try {
+            console.log('Initializing chapter history:', { chapterOrder, contentLength: content.length });
+            const response = await new Promise<any>((resolve, reject) => {
+                router.post(
+                    route("editor.project.initialize-history", {
+                        workspace_id: workspaceId,
+                        project_id: projectId,
+                    }),
+                    {
+                        order: chapterOrder,
+                        content: content,
+                    },
+                    {
+                        preserveState: true,
+                        preserveScroll: true,
+                        onSuccess: (page) => {
+                            console.log('Chapter history initialized successfully');
+                            resolve(page);
+                        },
+                        onError: (errors) => {
+                            console.error('Failed to initialize chapter history:', errors);
+                            reject(errors);
+                        },
+                    }
+                );
+            });
+        } catch (error) {
+            console.error('Error initializing chapter history:', error);
+        }
+    }, [workspaceId, projectId]);
 
     // Text generation
     const handleGenerateText = useCallback(() => {
@@ -441,6 +482,9 @@ export function useProjectEditor({
                 currentLength: normalizedContent.length,
                 trigger
             });
+            
+            // Update the original content reference immediately to prevent duplicate saves
+            originalContent.current = normalizedContent;
             
             if (trigger === 'auto') {
                 debouncedSaveContent(order, normalizedContent, trigger);

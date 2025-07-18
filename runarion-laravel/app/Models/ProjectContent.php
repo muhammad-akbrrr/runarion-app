@@ -234,10 +234,43 @@ class ProjectContent extends Model
     $history = $this->generation_history ?? [];
     
     if (!isset($history[$chapterOrder])) {
+      // Get current chapter content
+      $chapterContent = '';
+      $chapters = $this->content ?? [];
+      foreach ($chapters as $chapter) {
+        if (isset($chapter['order']) && $chapter['order'] === $chapterOrder) {
+          $chapterContent = $chapter['content'] ?? '';
+          break;
+        }
+      }
+      
+      // Create initial step with current content
+      $stepId = Str::uuid()->toString();
+      $timestamp = now()->timestamp;
+      
       $history[$chapterOrder] = [
-        'steps' => [],
-        'currentStepId' => null,
-        'lastSelectedVersions' => [],
+        'steps' => [
+          [
+            'id' => $stepId,
+            'parentId' => null,
+            'parentVersionIndex' => null,
+            'content' => $chapterContent,
+            'timestamp' => $timestamp,
+            'settings' => [],
+            'isUserGenerated' => true,
+            'versions' => [
+              [
+                'index' => 0,
+                'content' => $chapterContent,
+                'timestamp' => $timestamp,
+              ]
+            ],
+          ]
+        ],
+        'currentStepId' => $stepId,
+        'lastSelectedVersions' => [
+          $stepId => 0
+        ],
       ];
       
       $this->update(['generation_history' => $history]);
@@ -249,7 +282,7 @@ class ProjectContent extends Model
   /**
    * Add a new generation step
    */
-  public function addGenerationStep($chapterOrder, $content, $settings, $isUserGenerated = true, $parentStepId = null)
+  public function addGenerationStep($chapterOrder, $content, $settings, $isUserGenerated = true, $parentStepId = null, $parentVersionIndex = null)
   {
     $history = $this->generation_history ?? [];
     
@@ -261,9 +294,8 @@ class ProjectContent extends Model
     $stepId = Str::uuid()->toString();
     $timestamp = now()->timestamp;
     
-    // Get parent version index if parent step exists
-    $parentVersionIndex = null;
-    if ($parentStepId) {
+    // Get parent version index if parent step exists and not explicitly provided
+    if ($parentStepId && $parentVersionIndex === null) {
       $parentVersionIndex = $history[$chapterOrder]['lastSelectedVersions'][$parentStepId] ?? 0;
     }
     
@@ -593,9 +625,14 @@ class ProjectContent extends Model
         // Check if this child step was created from the current parent version
         $childParentVersionIndex = $step['parentVersionIndex'] ?? null;
         
-        // If parentVersionIndex is not set (legacy data), allow all child steps
+        // If parentVersionIndex is not set (legacy data), allow all child steps for version 0
         // If it is set, only allow child steps created from current parent version
-        if ($childParentVersionIndex === null || $childParentVersionIndex === $currentVersionIndex) {
+        if ($childParentVersionIndex === null) {
+          // Legacy data - only allow for version 0
+          if ($currentVersionIndex === 0) {
+            $validChildSteps[] = $step;
+          }
+        } else if ($childParentVersionIndex === $currentVersionIndex) {
           $validChildSteps[] = $step;
         }
       }
@@ -624,6 +661,41 @@ class ProjectContent extends Model
     }
     
     $this->update(['content' => $chapters]);
+  }
+
+  /**
+   * Update the current step version content
+   */
+  public function updateCurrentStepVersion($chapterOrder, $content)
+  {
+    $history = $this->generation_history ?? [];
+    
+    if (!isset($history[$chapterOrder])) {
+      return false;
+    }
+    
+    $currentStepId = $history[$chapterOrder]['currentStepId'];
+    if (!$currentStepId) {
+      return false;
+    }
+    
+    $stepIndex = $this->findStepIndex($chapterOrder, $currentStepId);
+    if ($stepIndex === -1) {
+      return false;
+    }
+    
+    $currentVersionIndex = $history[$chapterOrder]['lastSelectedVersions'][$currentStepId] ?? 0;
+    
+    // Update the current version content
+    if (isset($history[$chapterOrder]['steps'][$stepIndex]['versions'][$currentVersionIndex])) {
+      $history[$chapterOrder]['steps'][$stepIndex]['versions'][$currentVersionIndex]['content'] = $content;
+      $history[$chapterOrder]['steps'][$stepIndex]['versions'][$currentVersionIndex]['timestamp'] = now()->timestamp;
+      
+      $this->update(['generation_history' => $history]);
+      return true;
+    }
+    
+    return false;
   }
 
   /**

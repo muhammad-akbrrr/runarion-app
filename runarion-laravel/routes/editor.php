@@ -14,6 +14,7 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::patch('/{workspace_id}/projects/{project_id}/editor/data', [MainEditorController::class, 'updateProjectData'])->name('editor.project.updateData');
     Route::patch('/{workspace_id}/projects/{project_id}/editor/settings', [MainEditorController::class, 'updateProjectSettings'])->name('editor.project.updateSettings');
     Route::patch('/{workspace_id}/projects/{project_id}/editor/unified', [MainEditorController::class, 'updateProjectUnified'])->name('editor.project.updateUnified');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/initialize-history', [MainEditorController::class, 'initializeChapterHistory'])->name('editor.project.initialize-history');
     Route::post('/{workspace_id}/projects/{project_id}/editor/generate', [MainEditorController::class, 'generateText'])->name('editor.project.generate');
     Route::post('/{workspace_id}/projects/{project_id}/editor/regenerate', [MainEditorController::class, 'regenerateText'])->name('editor.project.regenerate');
     Route::post('/{workspace_id}/projects/{project_id}/editor/cancel-generation', [MainEditorController::class, 'cancelGeneration'])->name('editor.project.cancel-generation');

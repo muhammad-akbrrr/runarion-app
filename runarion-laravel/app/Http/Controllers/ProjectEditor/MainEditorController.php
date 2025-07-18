@@ -359,9 +359,10 @@ class MainEditorController extends Controller
             // Initialize generation history if needed
             $projectContent->initializeGenerationHistory($validated['order']);
 
-            // Get current step info to determine parent step
+            // Get current step info to determine parent step and version
             $currentStepInfo = $projectContent->getCurrentStepInfo($validated['order']);
             $parentStepId = $currentStepInfo ? $currentStepInfo['stepId'] : null;
+            $parentVersionIndex = $currentStepInfo ? $currentStepInfo['versionIndex'] : null;
 
             // Log the generation request
             Log::info('Text generation request', [
@@ -373,6 +374,7 @@ class MainEditorController extends Controller
                 'user_id' => $user->id,
                 'model' => $settings['aiModel'] ?? 'default',
                 'parent_step_id' => $parentStepId,
+                'parent_version_index' => $parentVersionIndex,
             ]);
 
             // Dispatch streaming job
@@ -385,7 +387,8 @@ class MainEditorController extends Controller
                 $user->id,
                 $sessionId,
                 false, // isRegenerate flag
-                $parentStepId // parentStepId for new step creation
+                $parentStepId, // parentStepId for new step creation
+                $parentVersionIndex // parentVersionIndex for tracking which version was used as parent
             );
 
             return redirect()->route('workspace.projects.editor', [
@@ -459,6 +462,7 @@ class MainEditorController extends Controller
                 $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
                 $chapters = $projectContent->content ?? [];
 
+                // Update chapter content
                 foreach ($chapters as &$chapter) {
                     if (isset($chapter['order']) && $chapter['order'] === $contentData['order']) {
                         $chapter['content'] = $contentData['content'];
@@ -468,6 +472,10 @@ class MainEditorController extends Controller
 
                 $projectContent->content = $chapters;
                 $projectContent->updateLastEdited();
+                
+                // Also update the current step version in generation history
+                $projectContent->updateCurrentStepVersion($contentData['order'], $contentData['content']);
+                
                 $projectContent->save();
 
                 $updatedChapters = $chapters;
@@ -611,6 +619,7 @@ class MainEditorController extends Controller
 
             // Get the base content for regeneration (parent step content)
             $baseContent = '';
+            $parentVersionIndex = null;
             if ($currentStepInfo['step']['parentId']) {
                 $parentStepIndex = $projectContent->findStepIndex($validated['order'], $currentStepInfo['step']['parentId']);
                 if ($parentStepIndex !== -1) {
@@ -640,7 +649,8 @@ class MainEditorController extends Controller
                 $user->id,
                 $sessionId,
                 true, // isRegenerate flag
-                $currentStepInfo['stepId'] // currentStepId for regeneration
+                $currentStepInfo['stepId'], // currentStepId for regeneration
+                $parentVersionIndex // parentVersionIndex for tracking which version was used as parent
             );
 
             return redirect()->route('workspace.projects.editor', [
@@ -805,6 +815,50 @@ class MainEditorController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to redo step: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Function to initialize generation history for a chapter.
+     */
+    public function initializeChapterHistory(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'order' => 'required|integer',
+                'content' => 'nullable|string',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+
+            // Initialize generation history for the chapter
+            $projectContent->initializeGenerationHistory($validated['order']);
+
+            Log::info('Chapter history initialized', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'chapter_order' => $validated['order'],
+            ]);
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error initializing chapter history', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to initialize chapter history: ' . $e->getMessage(),
             ], 500);
         }
     }

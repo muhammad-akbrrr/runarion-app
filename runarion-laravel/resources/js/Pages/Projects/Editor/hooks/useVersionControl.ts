@@ -75,7 +75,11 @@ export function useVersionControl({
         
         const validChildSteps = childSteps.filter(step => {
             const childParentVersionIndex = step.parentVersionIndex;
-            const isValid = childParentVersionIndex === null || childParentVersionIndex === undefined || childParentVersionIndex === currentVersionIndex;
+            // If parentVersionIndex is null/undefined, it's a legacy step - consider it valid for version 0
+            // Otherwise, it must match the current version index
+            const isValid = childParentVersionIndex === null || 
+                           childParentVersionIndex === undefined || 
+                           childParentVersionIndex === currentVersionIndex;
             
             console.log('Child step validation:', {
                 stepId: step.id,
@@ -142,8 +146,11 @@ export function useVersionControl({
 
         const currentVersionIndex = lastSelectedVersions[currentStepId] ?? 0;
         const availableVersions = currentStep.versions || [];
+        
+        // Can undo if there's a parent step
         const canUndo = currentStep.parentId !== null;
         
+        // Can redo if there are valid child steps for current version
         const canRedo = hasValidChildStepsForCurrentVersion(steps, currentStepId, currentVersionIndex);
 
         setState({
@@ -161,6 +168,7 @@ export function useVersionControl({
             totalVersions: availableVersions.length,
             canUndo,
             canRedo,
+            canRegenerate: currentStep?.parentId !== null,
             currentStepParentId: currentStep?.parentId,
             currentStepParentVersionIndex: currentStep?.parentVersionIndex,
             hasValidChildSteps: hasValidChildStepsForCurrentVersion(steps, currentStepId, currentVersionIndex),
@@ -366,18 +374,22 @@ export function useVersionControl({
         }
     }, [workspaceId, projectId, chapterOrder, state.currentStep, isLoading]);
 
-    // Check if we can regenerate (has generation history)
+    // Check if we can regenerate (has generation history and current step is generated, not initial)
     const canRegenerate = useCallback(() => {
-        return state.currentStep !== null && !isLoading;
+        if (!state.currentStep || isLoading) {
+            return false;
+        }
+        
+        // Can regenerate if current step has a parent (it's a generated step)
+        // Cannot regenerate initial steps (parentId is null)
+        return state.currentStep.parentId !== null;
     }, [state.currentStep, isLoading]);
 
     // Get display text for version button
     const getVersionDisplayText = useCallback(() => {
-        if (state.totalVersions <= 1) {
-            return "0";
-        }
+        // Always show the current version index, even if there's only one version
         return state.currentVersionIndex.toString();
-    }, [state.currentVersionIndex, state.totalVersions]);
+    }, [state.currentVersionIndex]);
 
     // Check if this is the latest generation
     const isLatestGeneration = useCallback(() => {

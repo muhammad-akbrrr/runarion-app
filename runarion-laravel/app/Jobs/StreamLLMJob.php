@@ -30,6 +30,7 @@ class StreamLLMJob implements ShouldQueue
     public int $userId;
     public bool $isRegenerate;
     public ?string $parentStepId;
+    public ?int $parentVersionIndex;
     public int $timeout = 180; // 3 minutes timeout
     public int $tries = 1; // No retries for streaming jobs
 
@@ -45,7 +46,8 @@ class StreamLLMJob implements ShouldQueue
         int $userId,
         ?string $sessionId = null,
         bool $isRegenerate = false,
-        ?string $parentStepId = null
+        ?string $parentStepId = null,
+        ?int $parentVersionIndex = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
@@ -56,6 +58,7 @@ class StreamLLMJob implements ShouldQueue
         $this->userId = $userId;
         $this->isRegenerate = $isRegenerate;
         $this->parentStepId = $parentStepId;
+        $this->parentVersionIndex = $parentVersionIndex;
     }
 
     /**
@@ -71,6 +74,7 @@ class StreamLLMJob implements ShouldQueue
                 'chapter_order' => $this->chapterOrder,
                 'is_regenerate' => $this->isRegenerate,
                 'parent_step_id' => $this->parentStepId,
+                'parent_version_index' => $this->parentVersionIndex,
             ]);
 
             // Broadcast stream started event
@@ -389,7 +393,8 @@ class StreamLLMJob implements ShouldQueue
                 $finalContent,
                 $this->settings,
                 true, // isUserGenerated
-                $this->parentStepId
+                $this->parentStepId,
+                $this->parentVersionIndex
             );
             
             Log::info('Created new generation step', [
