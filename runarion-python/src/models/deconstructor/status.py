@@ -14,7 +14,7 @@ class DraftStatus(Enum):
     PROCESSING = "processing"
     STAGE_1_COMPLETE = "stage_1_complete"
     STAGE_2_COMPLETE = "stage_2_complete"
-    # STAGE_3_COMPLETE = "stage_3_complete"
+    STAGE_3_COMPLETE = "stage_3_complete"
     # STAGE_4_COMPLETE = "stage_4_complete"
     # STAGE_5_COMPLETE = "stage_5_complete"
     # STAGE_6_COMPLETE = "stage_6_complete"
@@ -56,7 +56,7 @@ class DraftStatus(Enum):
             cls.PROCESSING.value,
             cls.STAGE_1_COMPLETE.value,
             cls.STAGE_2_COMPLETE.value,
-            # cls.STAGE_3_COMPLETE.value,
+            cls.STAGE_3_COMPLETE.value,
             # cls.STAGE_4_COMPLETE.value,
             # cls.STAGE_5_COMPLETE.value,
             # cls.STAGE_6_COMPLETE.value,

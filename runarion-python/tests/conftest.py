@@ -364,6 +364,35 @@ def stage_2_instance(test_database_pool, generation_engine_factory):
 
 
 @pytest.fixture
+def stage_3_instance(test_database_pool, generation_engine_factory):
+    """Provide a Stage 3 (scene extraction) instance for testing with real AI calls."""
+    from services.deconstructor.stage_3_sceneExtract import SceneDetectionStage
+    from flask import Flask
+
+    # Create minimal Flask app for testing context
+    app = Flask(__name__)
+    app.config['TESTING'] = True
+    
+    with app.app_context():
+        # Check if API keys are available
+        factory = generation_engine_factory
+        available_providers = factory.get_available_providers()
+
+        if not available_providers:
+            pytest.skip("No API keys available for generation engine testing")
+
+        # Use the first available provider (prefer Gemini)
+        provider = "gemini" if "gemini" in available_providers else available_providers[0]
+
+        # Create a generation engine for scene detection
+        generation_engine = factory.create_scene_detection_stage_engine(provider=provider)
+
+        stage = SceneDetectionStage(test_database_pool, generation_engine)
+
+        yield stage
+
+
+@pytest.fixture
 def register_stage_1_only(stage_1_instance):
     """Register only Stage 1 instance for Stage 1 tests."""
     # Register stage instance with the dependency manager
@@ -381,6 +410,20 @@ def register_stages_1_and_2(stage_1_instance, stage_2_instance):
     # Register stage instances with the dependency manager
     register_stage_instance(1, stage_1_instance)
     register_stage_instance(2, stage_2_instance)
+    
+    yield
+    
+    # Clean up stage dependencies after test
+    reset_stage_dependencies()
+
+
+@pytest.fixture  
+def register_stages_1_2_and_3(stage_1_instance, stage_2_instance, stage_3_instance):
+    """Register Stage 1, 2, and 3 instances for Stage 3+ tests."""
+    # Register stage instances with the dependency manager
+    register_stage_instance(1, stage_1_instance)
+    register_stage_instance(2, stage_2_instance)
+    register_stage_instance(3, stage_3_instance)
     
     yield
     

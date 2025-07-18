@@ -546,7 +546,7 @@ class DatabaseFixture:
     
     def get_draft_status(self, draft_id: str) -> Optional[str]:
         """
-        Get the current status of a draft.
+        Get the current status of a draft using standardized transaction pattern.
         
         Args:
             draft_id: Draft ID
@@ -554,18 +554,17 @@ class DatabaseFixture:
         Returns:
             Current draft status or None if not found
         """
-        conn = self.connection_pool.getconn()
-        try:
+        from utils.database_utils import utf8_database_connection
+        
+        with utf8_database_connection(self.connection_pool) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("SELECT status FROM drafts WHERE id = %s", (draft_id,))
                 result = cursor.fetchone()
                 return result[0] if result else None
-        finally:
-            self.connection_pool.putconn(conn)
     
     def count_records(self, table_name: str, draft_id: str = None) -> int:
         """
-        Count records in a table, optionally filtered by draft_id.
+        Count records in a table, optionally filtered by draft_id using standardized transaction pattern.
         
         Args:
             table_name: Name of the table
@@ -574,8 +573,9 @@ class DatabaseFixture:
         Returns:
             Number of records
         """
-        conn = self.connection_pool.getconn()
-        try:
+        from utils.database_utils import utf8_database_connection
+        
+        with utf8_database_connection(self.connection_pool) as conn:
             with conn.cursor() as cursor:
                 if draft_id:
                     cursor.execute(f"SELECT COUNT(*) FROM {table_name} WHERE draft_id = %s", (draft_id,))
@@ -584,12 +584,10 @@ class DatabaseFixture:
                 
                 result = cursor.fetchone()
                 return result[0] if result else 0
-        finally:
-            self.connection_pool.putconn(conn)
     
     def execute_query(self, query: str, params: Tuple = None) -> List[Tuple]:
         """
-        Execute a custom query and return results.
+        Execute a custom query and return results using standardized transaction pattern.
         
         Args:
             query: SQL query to execute
@@ -598,13 +596,23 @@ class DatabaseFixture:
         Returns:
             Query results
         """
-        conn = self.connection_pool.getconn()
-        try:
+        from utils.database_utils import utf8_database_connection
+        
+        # Use same transaction pattern as business logic
+        with utf8_database_connection(self.connection_pool) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(query, params)
-                return cursor.fetchall()
-        finally:
-            self.connection_pool.putconn(conn)
+                
+                # Commit for data-modifying operations to ensure changes are persisted
+                if query.strip().upper().startswith(('INSERT', 'UPDATE', 'DELETE')):
+                    conn.commit()
+                
+                # Check if the query returns results
+                if cursor.description:
+                    return cursor.fetchall()
+                else:
+                    # For INSERT, UPDATE, DELETE operations that don't return results
+                    return []
     
     def simulate_processing_states(self, draft_id: str, target_stage: str) -> None:
         """

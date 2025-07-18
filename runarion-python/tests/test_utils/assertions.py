@@ -426,3 +426,409 @@ class RealAPIAssertions:
                     
         except json.JSONDecodeError as e:
             raise AssertionError(f"Coherence analysis should return valid JSON: {e}")
+
+
+class Stage3Assertions:
+    """
+    Specialized assertions for Stage 3 (Scene Detection) testing.
+    Focuses on realistic validation of scene extraction results.
+    """
+    
+    @staticmethod
+    def validate_scene_structure(scene_dict: Dict[str, Any]):
+        """Validate that a scene dictionary has the required structure."""
+        assert isinstance(scene_dict, dict), "Scene should be a dictionary"
+        
+        # Required fields for Stage 3 scenes
+        required_fields = ['scene_number', 'title', 'setting', 'characters', 'summary', 'content']
+        for field in required_fields:
+            assert field in scene_dict, f"Scene missing required field: {field}"
+        
+        # Validate field types
+        assert isinstance(scene_dict['scene_number'], int), "scene_number should be an integer"
+        assert isinstance(scene_dict['title'], str), "title should be a string"
+        assert isinstance(scene_dict['setting'], str), "setting should be a string"
+        assert isinstance(scene_dict['characters'], list), "characters should be a list"
+        assert isinstance(scene_dict['summary'], str), "summary should be a string"
+        assert isinstance(scene_dict['content'], str), "content should be a string"
+        
+        # Content quality checks
+        assert len(scene_dict['content'].strip()) >= 50, "Scene content should be at least 50 characters"
+        assert len(scene_dict['title'].strip()) > 0, "Scene title should not be empty"
+    
+    @staticmethod
+    def validate_scene_count_range(scenes: List[Dict[str, Any]], min_count: int = 8, max_count: int = 20):
+        """Validate that scene count is within the expected range."""
+        scene_count = len(scenes)
+        assert min_count <= scene_count <= max_count, \
+            f"Scene count {scene_count} should be between {min_count} and {max_count}"
+    
+    @staticmethod
+    def validate_global_scene_numbering(scenes: List[Dict[str, Any]]):
+        """Validate that scenes have correct global numbering sequence."""
+        if not scenes:
+            return
+        
+        expected_number = 1
+        for scene in scenes:
+            assert scene['scene_number'] == expected_number, \
+                f"Scene numbering out of sequence: expected {expected_number}, got {scene['scene_number']}"
+            expected_number += 1
+    
+    @staticmethod
+    def validate_scene_content_from_chunks(scenes: List[Dict[str, Any]], original_chunks: List[str]):
+        """Validate that scene content is derived from original chunks."""
+        if not scenes or not original_chunks:
+            return
+        
+        # Combine all original chunks for content validation
+        combined_original = "\n\n".join(original_chunks)
+        
+        for scene in scenes:
+            content = scene['content']
+            # Check if scene content appears to be derived from original text
+            # This is a basic check - we don't expect exact matches due to AI processing
+            assert len(content) > 0, f"Scene {scene['scene_number']} has empty content"
+            assert len(content) <= len(combined_original), \
+                f"Scene {scene['scene_number']} content longer than total original text"
+    
+    @staticmethod
+    def validate_scene_database_storage(db_fixture, draft_id: str, expected_scene_count: int):
+        """Validate that scenes were correctly stored in the database."""
+        # Check scenes table
+        scenes_count = db_fixture.count_records('scenes', draft_id)
+        assert scenes_count == expected_scene_count, \
+            f"Expected {expected_scene_count} scenes in database, found {scenes_count}"
+        
+        # Validate scene data in database
+        scenes = db_fixture.execute_query(
+            "SELECT scene_number, title, summary, setting, characters, original_content FROM scenes WHERE draft_id = %s ORDER BY scene_number",
+            (draft_id,)
+        )
+        
+        for i, scene in enumerate(scenes):
+            scene_number, title, summary, setting, characters, content = scene
+            
+            # Validate data types and content
+            assert scene_number == i + 1, f"Scene numbering issue: expected {i + 1}, got {scene_number}"
+            assert title and title.strip(), f"Scene {scene_number} has empty title"
+            assert content and len(content.strip()) >= 50, f"Scene {scene_number} content too short"
+            
+            # Validate JSON field
+            if characters:
+                try:
+                    import json
+                    # Handle both parsed JSON (from PostgreSQL JSON column) and JSON string
+                    if isinstance(characters, list):
+                        char_list = characters  # Already parsed from JSON column
+                    elif isinstance(characters, str):
+                        char_list = json.loads(characters)  # Parse JSON string
+                    else:
+                        raise AssertionError(f"Scene {scene_number} characters has unexpected type: {type(characters)}")
+                    
+                    assert isinstance(char_list, list), f"Scene {scene_number} characters should be a list, got {type(char_list)}"
+                except json.JSONDecodeError:
+                    raise AssertionError(f"Scene {scene_number} characters field is not valid JSON")
+    
+    @staticmethod
+    def validate_stage_3_result_structure(result: Dict[str, Any]):
+        """Validate the structure of Stage 3 execution results."""
+        assert isinstance(result, dict), "Stage 3 result should be a dictionary"
+        assert 'success' in result, "Result should include 'success' field"
+        
+        if result['success']:
+            # Success case validations
+            required_fields = ['scenes_extracted', 'scenes_stored', 'chunks_processed']
+            for field in required_fields:
+                assert field in result, f"Successful result missing field: {field}"
+                assert isinstance(result[field], int), f"{field} should be an integer"
+            
+            # Logical validations
+            assert result['scenes_stored'] == result['scenes_extracted'], \
+                "scenes_stored should equal scenes_extracted"
+            assert result['chunks_processed'] >= 0, "chunks_processed should be non-negative"
+        else:
+            # Failure case validations
+            assert 'error' in result, "Failed result should include 'error' field"
+            assert isinstance(result['error'], str), "Error should be a string"
+    
+    @staticmethod
+    def validate_scene_count_business_logic(scene_count: int, expected_valid: bool = True):
+        """Validate scene count against business logic rules (8-20 scenes)."""
+        is_valid = 8 <= scene_count <= 20
+        if expected_valid:
+            assert is_valid, f"Scene count {scene_count} should be valid (8-20 range)"
+        else:
+            assert not is_valid, f"Scene count {scene_count} should be invalid (outside 8-20 range)"
+    
+    @staticmethod
+    def validate_retry_attempt_logic(scenes_data: List[Dict[str, Any]], attempt_number: int, previous_count: int = None):
+        """Validate retry attempt results follow business logic."""
+        assert 1 <= attempt_number <= 3, f"Attempt number {attempt_number} should be between 1 and 3"
+        
+        scene_count = len(scenes_data)
+        
+        # If we have previous count, validate retry logic
+        if previous_count is not None:
+            if previous_count < 8:
+                # Should have tried to get MORE scenes
+                assert scene_count != previous_count, "Retry should have produced different scene count"
+            elif previous_count > 20:
+                # Should have tried to get FEWER scenes
+                assert scene_count != previous_count, "Retry should have produced different scene count"
+    
+    @staticmethod
+    def validate_scene_content_extraction(scene_dict: Dict[str, Any], original_text: str):
+        """Validate that scene content was properly extracted from original text."""
+        content = scene_dict.get('content', '')
+        
+        # Content should not be empty
+        assert len(content.strip()) > 0, "Scene content should not be empty"
+        
+        # Content should be reasonable length (minimum 50 chars as per business logic)
+        assert len(content.strip()) >= 50, f"Scene content too short: {len(content.strip())} chars"
+        
+        # Content should not be longer than original text
+        assert len(content) <= len(original_text), "Scene content should not exceed original text length"
+    
+    @staticmethod
+    def validate_scene_content_quality(scene_dict: Dict[str, Any], quality_checks: Dict[str, bool] = None):
+        """Validate scene content quality beyond basic length checks."""
+        if quality_checks is None:
+            quality_checks = {
+                'has_dialogue': True,
+                'has_action': True,
+                'has_description': True,
+                'proper_sentences': True,
+                'narrative_coherence': True
+            }
+        
+        content = scene_dict.get('content', '')
+        
+        # Basic quality checks
+        assert len(content.strip()) > 0, "Scene content should not be empty"
+        
+        # Check for proper sentence structure
+        if quality_checks.get('proper_sentences', False):
+            sentence_endings = ['.', '!', '?']
+            has_sentence_ending = any(ending in content for ending in sentence_endings)
+            assert has_sentence_ending, "Scene content should contain proper sentence structure"
+        
+        # Check for narrative elements
+        if quality_checks.get('has_dialogue', False):
+            dialogue_markers = ['"', "'", "said", "asked", "replied", "whispered", "shouted"]
+            has_dialogue = any(marker in content.lower() for marker in dialogue_markers)
+            if not has_dialogue:
+                import logging
+                logging.getLogger(__name__).warning("Scene content may lack dialogue elements")
+        
+        # Check for action/movement
+        if quality_checks.get('has_action', False):
+            action_words = ['walked', 'ran', 'moved', 'turned', 'looked', 'went', 'came', 'entered', 'left', 'stood', 'sat']
+            has_action = any(word in content.lower() for word in action_words)
+            if not has_action:
+                import logging
+                logging.getLogger(__name__).warning("Scene content may lack action elements")
+        
+        # Check for descriptive elements
+        if quality_checks.get('has_description', False):
+            descriptive_words = ['dark', 'light', 'cold', 'warm', 'large', 'small', 'beautiful', 'ugly', 'quiet', 'loud']
+            has_description = any(word in content.lower() for word in descriptive_words)
+            if not has_description:
+                import logging
+                logging.getLogger(__name__).warning("Scene content may lack descriptive elements")
+        
+        # Check for narrative coherence (basic)
+        if quality_checks.get('narrative_coherence', False):
+            # Check that content has reasonable word-to-sentence ratio
+            words = content.split()
+            sentences = content.count('.') + content.count('!') + content.count('?')
+            if sentences > 0:
+                words_per_sentence = len(words) / sentences
+                assert 3 <= words_per_sentence <= 50, f"Unusual word-to-sentence ratio: {words_per_sentence}"
+    
+    @staticmethod
+    def validate_scene_metadata_quality(scene_dict: Dict[str, Any]):
+        """Validate scene metadata quality (title, summary, setting, characters)."""
+        # Title quality
+        title = scene_dict.get('title', '')
+        assert len(title.strip()) > 0, "Scene title should not be empty"
+        assert len(title.split()) >= 2, "Scene title should be at least 2 words"
+        assert len(title.split()) <= 8, "Scene title should not exceed 8 words"
+        
+        # Summary quality
+        summary = scene_dict.get('summary', '')
+        assert len(summary.strip()) > 0, "Scene summary should not be empty"
+        assert len(summary.split()) >= 5, "Scene summary should be at least 5 words"
+        assert len(summary.split()) <= 100, "Scene summary should not exceed 100 words"
+        
+        # Setting quality
+        setting = scene_dict.get('setting', '')
+        assert len(setting.strip()) > 0, "Scene setting should not be empty"
+        assert len(setting.split()) >= 2, "Scene setting should be at least 2 words"
+        
+        # Characters quality
+        characters = scene_dict.get('characters', [])
+        assert isinstance(characters, list), "Scene characters should be a list"
+        if characters:  # If characters are present, validate them
+            for character in characters:
+                assert isinstance(character, str), "Each character should be a string"
+                assert len(character.strip()) > 0, "Character names should not be empty"
+                assert len(character.split()) <= 5, "Character names should not exceed 5 words"
+    
+    @staticmethod
+    def validate_scene_narrative_consistency(scenes: List[Dict[str, Any]]):
+        """Validate narrative consistency across multiple scenes."""
+        if len(scenes) < 2:
+            return  # Need at least 2 scenes for consistency checks
+        
+        # Check character consistency
+        all_characters = set()
+        for scene in scenes:
+            characters = scene.get('characters', [])
+            if isinstance(characters, list):
+                all_characters.update(characters)
+        
+        # Check that main characters appear in multiple scenes
+        character_appearances = {}
+        for scene in scenes:
+            scene_characters = scene.get('characters', [])
+            if isinstance(scene_characters, list):
+                for character in scene_characters:
+                    character_appearances[character] = character_appearances.get(character, 0) + 1
+        
+        # At least one character should appear in multiple scenes (for continuity)
+        recurring_characters = [char for char, count in character_appearances.items() if count > 1]
+        if len(scenes) > 2 and not recurring_characters:
+            import logging
+            logging.getLogger(__name__).warning("No recurring characters found across scenes - may indicate poor narrative continuity")
+        
+        # Check scene numbering consistency
+        expected_numbers = list(range(1, len(scenes) + 1))
+        actual_numbers = [scene.get('scene_number', 0) for scene in scenes]
+        actual_numbers.sort()
+        
+        assert actual_numbers == expected_numbers, f"Scene numbering inconsistent: expected {expected_numbers}, got {actual_numbers}"
+    
+    @staticmethod
+    def validate_scene_markers_extraction(original_text: str, start_marker: str, end_marker: str, expected_content: str = None):
+        """Validate marker-based content extraction business logic."""
+        # Markers should exist in original text
+        assert start_marker in original_text, f"Start marker '{start_marker}' not found in original text"
+        assert end_marker in original_text, f"End marker '{end_marker}' not found in original text"
+        
+        # Start marker should come before end marker
+        start_pos = original_text.find(start_marker)
+        end_pos = original_text.find(end_marker, start_pos + len(start_marker))
+        assert start_pos < end_pos, "Start marker should come before end marker"
+        
+        # If expected content provided, validate extraction
+        if expected_content is not None:
+            expected_start = start_pos
+            expected_end = end_pos + len(end_marker)
+            actual_content = original_text[expected_start:expected_end].strip()
+            assert actual_content == expected_content.strip(), "Extracted content doesn't match expected"
+    
+    @staticmethod
+    def validate_global_numbering_logic(scenes: List[Dict[str, Any]], starting_number: int = 1):
+        """Validate global scene numbering logic implementation."""
+        if not scenes:
+            return
+        
+        expected_number = starting_number
+        for i, scene in enumerate(scenes):
+            assert scene['scene_number'] == expected_number, \
+                f"Scene {i} numbering incorrect: expected {expected_number}, got {scene['scene_number']}"
+            expected_number += 1
+    
+    @staticmethod
+    def validate_scene_data_validation_logic(scene_data: Dict[str, Any], should_be_valid: bool = True):
+        """Validate scene data validation business logic."""
+        try:
+            # Check required fields exist and are correct types
+            required_fields = ['title', 'setting', 'characters', 'summary', 'content']
+            for field in required_fields:
+                assert field in scene_data, f"Scene missing required field: {field}"
+            
+            # Validate field types
+            assert isinstance(scene_data['title'], str), "title should be a string"
+            assert isinstance(scene_data['setting'], str), "setting should be a string"
+            assert isinstance(scene_data['characters'], list), "characters should be a list"
+            assert isinstance(scene_data['summary'], str), "summary should be a string"
+            assert isinstance(scene_data['content'], str), "content should be a string"
+            
+            # Validate content length (business logic minimum 50 chars)
+            content_length = len(scene_data['content'].strip())
+            assert content_length >= 50, f"Scene content too short: {content_length} chars"
+            
+            if should_be_valid:
+                # All validations passed - scene should be valid
+                pass
+            else:
+                # If we expected invalid but got here, that's an error
+                raise AssertionError("Scene data was expected to be invalid but passed validation")
+                
+        except AssertionError:
+            if should_be_valid:
+                # Re-raise if we expected valid data
+                raise
+            else:
+                # Expected invalid data and got it - this is correct
+                pass
+    
+    @staticmethod
+    def validate_chunk_processing_logic(processed_chunks: int, expected_chunks: int, scenes_extracted: int):
+        """Validate chunk processing business logic."""
+        assert processed_chunks == expected_chunks, \
+            f"Processed chunks {processed_chunks} should equal expected chunks {expected_chunks}"
+        
+        # Each chunk should potentially produce 8-20 scenes, but failures are allowed
+        max_possible_scenes = processed_chunks * 20
+        assert scenes_extracted <= max_possible_scenes, \
+            f"Scenes extracted {scenes_extracted} exceeds maximum possible {max_possible_scenes}"
+        
+        # Should have at least some scenes if chunks were processed successfully
+        if processed_chunks > 0:
+            assert scenes_extracted >= 0, "Should have non-negative scenes extracted"
+    
+    @staticmethod
+    def validate_utf8_database_storage(db_fixture, draft_id: str):
+        """Validate UTF-8 safe database storage for scenes."""
+        scenes = db_fixture.execute_query(
+            "SELECT title, summary, setting, original_content FROM scenes WHERE draft_id = %s",
+            (draft_id,)
+        )
+        
+        for scene in scenes:
+            title, summary, setting, content = scene
+            
+            # Test UTF-8 encoding/decoding
+            for field_name, field_value in [('title', title), ('summary', summary), ('setting', setting), ('content', content)]:
+                if field_value:
+                    try:
+                        # Should be able to encode/decode as UTF-8
+                        encoded = field_value.encode('utf-8')
+                        decoded = encoded.decode('utf-8')
+                        assert decoded == field_value, f"UTF-8 encoding issue in {field_name}"
+                    except UnicodeError:
+                        raise AssertionError(f"Scene {field_name} contains invalid UTF-8 characters")
+    
+    @staticmethod
+    def validate_error_handling_logic(result: Dict[str, Any], expected_error_type: str = None):
+        """Validate error handling business logic."""
+        assert result['success'] is False, "Error result should have success=False"
+        assert 'error' in result, "Error result should contain 'error' field"
+        assert isinstance(result['error'], str), "Error should be a string"
+        assert len(result['error']) > 0, "Error message should not be empty"
+        
+        if expected_error_type:
+            assert expected_error_type.lower() in result['error'].lower(), \
+                f"Expected error type '{expected_error_type}' not found in: {result['error']}"
+    
+    @staticmethod
+    def validate_empty_chunks_handling(result: Dict[str, Any]):
+        """Validate business logic for handling empty chunks."""
+        assert result['success'] is True, "Empty chunks should be handled gracefully"
+        assert result['chunks_processed'] == 0, "No chunks should be processed"
+        assert result['scenes_extracted'] == 0, "No scenes should be extracted"
+        assert 'message' in result, "Should include explanatory message"

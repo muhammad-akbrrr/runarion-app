@@ -257,6 +257,35 @@ Return the analysis in JSON format with a "scenes" array."""
             generation_config={'temperature': 0.5}
         )
     
+    def create_scene_detection_stage_engine(
+        self,
+        provider: str = "gemini",
+        chunk_text: Optional[str] = None
+    ) -> GenerationEngine:
+        """
+        Create a GenerationEngine configured specifically for Stage 3 scene detection.
+        
+        Args:
+            provider: AI provider to use
+            chunk_text: Text chunk to analyze for scenes
+            
+        Returns:
+            GenerationEngine configured for Stage 3 scene detection
+        """
+        prompt = chunk_text or "Sample manuscript chunk with multiple scenes to be detected."
+        instruction = """You are an expert literary analyst. Analyze the text and identify 8-20 distinct scenes. Return JSON format with scene details including titles, settings, characters, and content."""
+        
+        return self.create_generation_engine(
+            provider=provider,
+            prompt=prompt,
+            instruction=instruction,
+            generation_config={
+                'temperature': 0.7,  # Higher temperature for creative scene detection
+                'max_output_tokens': 8000,  # Large output for detailed scene descriptions
+                'min_output_tokens': 500
+            }
+        )
+    
     def validate_environment(self) -> Dict[str, Any]:
         """
         Validate the test environment for real API usage.

@@ -16,7 +16,7 @@ from models.deconstructor.status import DraftStatus
 
 from .stage_1_ingestion import PDFIngestionStage
 from .stage_2_cleaning import TextCleaningStage
-# from .stage_3_sceneExtract import SceneDetectionStage
+from .stage_3_sceneExtract import SceneDetectionStage
 # from .stage_4_analysis.analyzer_4a import SceneBySceneAnalysisStage
 # from .stage_4_analysis.analyzer_4b import ProgressiveGraphAnalysisStage
 # from .stage_4_analysis.analyzer_4c_reports import ComprehensiveReportingStage
@@ -47,7 +47,7 @@ class DeconstructorOrchestrator:
         self.stages = {
             1: PDFIngestionStage(db_pool),
             2: TextCleaningStage(db_pool, generation_engine),
-            # 3: SceneDetectionStage(db_pool, generation_engine),
+            3: SceneDetectionStage(db_pool, generation_engine),
             # 4: {
             #     'a': SceneBySceneAnalysisStage(db_pool, generation_engine),
             #     'b': ProgressiveGraphAnalysisStage(db_pool, generation_engine),
@@ -132,18 +132,18 @@ class DeconstructorOrchestrator:
             })
             logger.info(f"Stage 2 completed for draft {draft_id}")
             
-            # # Stage 3: Scene Detection
-            # logger.info(f"Starting Stage 3: Scene Detection for draft {draft_id}")
-            # stage_3_result = execute_stage(self.stages[3], "3", draft_id)
-            # self._update_draft_status(draft_id, DraftStatus.STAGE_3_COMPLETE.value)
-            # pipeline_results['stages_completed'].append({
-            #     'stage': 3,
-            #     'name': 'scene_detection',
-            #     'completed_at': datetime.now().isoformat(),
-            #     'result': stage_3_result
-            # })
-            # logger.info(f"Stage 3 completed for draft {draft_id}")
-            # 
+            # Stage 3: Scene Detection
+            logger.info(f"Starting Stage 3: Scene Detection for draft {draft_id}")
+            stage_3_result = execute_stage(self.stages[3], "3", draft_id)
+            self._update_draft_status(draft_id, DraftStatus.STAGE_3_COMPLETE.value)
+            pipeline_results['stages_completed'].append({
+                'stage': 3,
+                'name': 'scene_detection',
+                'completed_at': datetime.now().isoformat(),
+                'result': stage_3_result
+            })
+            logger.info(f"Stage 3 completed for draft {draft_id}")
+             
             # # Stage 4: Deep Analysis (3 sub-stages)
             # logger.info(f"Starting Stage 4: Deep Analysis for draft {draft_id}")
             # 
