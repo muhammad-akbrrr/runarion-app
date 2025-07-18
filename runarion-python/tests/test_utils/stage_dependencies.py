@@ -223,8 +223,37 @@ class StageDependencyManager:
                         return None
                         
                 result = stage_instance.run(draft_id=test_draft['draft_id'])
+            elif stage_number == 3:
+                # Stage 3 needs chunks from Stage 2
+                # Ensure Stage 2 has run and chunks exist
+                chunks_count = db_fixture.count_records('draft_chunks', test_draft['draft_id'])
+                if chunks_count == 0:
+                    # Need to run Stages 1 and 2 first
+                    stage_1_instance = self.get_stage_instance(1)
+                    stage_2_instance = self.get_stage_instance(2)
+                    
+                    if stage_1_instance and stage_2_instance:
+                        # Run Stage 1
+                        stage_1_result = stage_1_instance.run(
+                            draft_id=test_draft['draft_id'],
+                            file_path=sample_file_path
+                        )
+                        if not stage_1_result.get('success', False):
+                            logger.error("Stage 1 prerequisite failed for Stage 3")
+                            return None
+                        
+                        # Run Stage 2
+                        stage_2_result = stage_2_instance.run(draft_id=test_draft['draft_id'])
+                        if not stage_2_result.get('success', False):
+                            logger.error("Stage 2 prerequisite failed for Stage 3")
+                            return None
+                    else:
+                        logger.error("Stage 1 or Stage 2 instance not available for Stage 3 prerequisites")
+                        return None
+                        
+                result = stage_instance.run(draft_id=test_draft['draft_id'])
             else:
-                # For stages 3+, implement as needed
+                # For stages 4+, implement as needed
                 logger.warning(f"Stage {stage_number} execution not yet implemented")
                 return None
                 

@@ -265,7 +265,7 @@ def _get_pipeline_progress(cursor, draft_id, status):
         'processing': {'stage': 'in_progress', 'percentage': 10},
         'stage_1_complete': {'stage': 'ingestion', 'percentage': 15},
         'stage_2_complete': {'stage': 'cleaning', 'percentage': 30},
-        # 'stage_3_complete': {'stage': 'scene_extraction', 'percentage': 45},
+        'stage_3_complete': {'stage': 'scene_extraction', 'percentage': 45},
         # 'stage_4_complete': {'stage': 'analysis', 'percentage': 65},
         # 'stage_5_complete': {'stage': 'coherence_check', 'percentage': 80},
         # 'stage_6_complete': {'stage': 'enhancement', 'percentage': 90},

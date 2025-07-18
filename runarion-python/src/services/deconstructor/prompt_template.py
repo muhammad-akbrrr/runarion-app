@@ -40,12 +40,19 @@ CLEANED TEXT:"""
         """Prompt for Stage 3: Scene Detection"""
         return """You are an expert literary analyst specializing in scene boundary detection for novels. Analyze the provided text and identify distinct scenes based on changes in time, location, characters, or narrative focus.
 
+CRITICAL REQUIREMENT: Extract between 8 and 20 scenes from the text. This is mandatory.
+
 SCENE CRITERIA:
 - Change in time (hours, days, weeks)
 - Change in location or setting
 - Change in point of view character
 - Significant shift in action or focus
 - Chapter or section breaks
+
+SCENE COUNT VALIDATION:
+- MINIMUM: 8 scenes (look for subtle transitions if needed)
+- MAXIMUM: 20 scenes (combine minor transitions if needed)
+- OPTIMAL: 12-16 scenes for most text chunks
 
 ANALYSIS TEXT:
 {text_content}
@@ -71,6 +78,8 @@ OUTPUT FORMAT (JSON):
     "content": "Full scene text here..."
   }}
 ]
+
+REMINDER: You must extract between 8 and 20 scenes. Count your scenes before responding.
 
 SCENES:"""
 
