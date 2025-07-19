@@ -76,14 +76,14 @@ runarion-python/
 │   │   │   ├── prompt_template.py      # Prompt templates
 │   │   │   ├── stage_1_ingestion.py    # Document ingestion
 │   │   │   ├── stage_2_cleaning.py     # Text cleaning
-│   │   │   ├── stage_3_sceneExtract.py # Scene extraction
-│   │   │   ├── stage_4_analysis/       # Analysis stages
-│   │   │   │   ├── analyzer_4a.py      # Character analysis
-│   │   │   │   ├── analyzer_4b.py      # Setting analysis
-│   │   │   │   └── analyzer_4c_reports.py # Report generation
-│   │   │   ├── stage_5_coherence.py    # Coherence validation
-│   │   │   ├── stage_6_enhancement.py  # Content enhancement
-│   │   │   └── stage_7_chaptering.py   # Chapter organization
+│   │   │   # ├── stage_3_sceneExtract.py # Scene extraction (FUTURE)
+│   │   │   # ├── stage_4_analysis/       # Analysis stages (FUTURE)
+│   │   │   # │   ├── analyzer_4a.py      # Character analysis (FUTURE)
+│   │   │   # │   ├── analyzer_4b.py      # Setting analysis (FUTURE)
+│   │   │   # │   └── analyzer_4c_reports.py # Report generation (FUTURE)
+│   │   │   # ├── stage_5_coherence.py    # Coherence validation (FUTURE)
+│   │   │   # ├── stage_6_enhancement.py  # Content enhancement (FUTURE)
+│   │   │   # └── stage_7_chaptering.py   # Chapter organization (FUTURE)
 │   │   ├── style_analyzer/             # Author style analysis
 │   │   │   ├── orchestrator.py         # Style analysis orchestrator
 │   │   │   ├── prompt_template.py      # Style analysis prompts
@@ -249,11 +249,15 @@ SELECT ag_catalog.age_version();
 
 ### Story Generation
 
-- list API endpoints as well as their method, and descriptrion here
+**POST** `/api/generate` - Generate content using AI providers
+**POST** `/api/stream` - Stream AI-generated content in real-time  
+**GET** `/health` - Service health check endpoint
 
 ### Pipeline Control
 
-- list API endpoints as well as their method, and descriptrion here
+**POST** `/api/deconstruct` - Start novel deconstruction pipeline (Stages 1-2 currently active)
+**GET** `/api/deconstruct/status/<draft_id>` - Get pipeline processing status
+**GET** `/api/deconstruct/results/<draft_id>` - Get completed pipeline results
 
 ## AI Pipeline Phases
 
@@ -296,7 +300,13 @@ SELECT ag_catalog.age_version();
 
 ### Running Tests
 
+**Note**: Tests require pytest and other dependencies to be installed:
+
 ```bash
+# Install test dependencies first
+pip install pytest psycopg2-binary PyMuPDF
+
+# Run tests
 pytest tests/
 ```
 

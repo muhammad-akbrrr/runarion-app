@@ -13,13 +13,19 @@ class DeconstructorPrompts:
         """Prompt for Stage 2: Text Cleaning"""
         return """You are a text cleaning specialist for novel analysis. Your task is to clean and normalize raw text extracted from documents while preserving all narrative content and structure.
 
-INSTRUCTIONS:
+CRITICAL REQUIREMENTS:
+1. PRESERVE ALL CONTENT - Do not summarize, omit, or truncate any text
+2. Maintain the original text length - cleaned text should be similar length to original
+3. Clean and improve the text while keeping every narrative element
+
+CLEANING INSTRUCTIONS:
 1. Remove OCR artifacts, duplicate characters, and formatting errors
 2. Fix spacing issues and line breaks
 3. Correct obvious typos and encoding problems
 4. Preserve dialogue formatting and paragraph structure
 5. Maintain chapter/section breaks
-6. Keep all narrative content intact - do not summarize or omit text
+6. Improve sentence structure and flow
+7. Enhance readability while preserving the original tone and style
 
 INPUT TEXT:
 {text_chunk}
@@ -34,12 +40,19 @@ CLEANED TEXT:"""
         """Prompt for Stage 3: Scene Detection"""
         return """You are an expert literary analyst specializing in scene boundary detection for novels. Analyze the provided text and identify distinct scenes based on changes in time, location, characters, or narrative focus.
 
+CRITICAL REQUIREMENT: Extract between 8 and 20 scenes from the text. This is mandatory.
+
 SCENE CRITERIA:
 - Change in time (hours, days, weeks)
 - Change in location or setting
 - Change in point of view character
 - Significant shift in action or focus
 - Chapter or section breaks
+
+SCENE COUNT VALIDATION:
+- MINIMUM: 8 scenes (look for subtle transitions if needed)
+- MAXIMUM: 20 scenes (combine minor transitions if needed)
+- OPTIMAL: 12-16 scenes for most text chunks
 
 ANALYSIS TEXT:
 {text_content}
@@ -65,6 +78,8 @@ OUTPUT FORMAT (JSON):
     "content": "Full scene text here..."
   }}
 ]
+
+REMINDER: You must extract between 8 and 20 scenes. Count your scenes before responding.
 
 SCENES:"""
 

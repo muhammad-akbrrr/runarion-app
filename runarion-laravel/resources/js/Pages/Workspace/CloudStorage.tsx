@@ -6,7 +6,9 @@ import {
     CardTitle,
 } from "@/Components/ui/card";
 import { Separator } from "@/Components/ui/separator";
-import AuthenticatedLayout, { BreadcrumbItem } from "@/Layouts/AuthenticatedLayout";
+import AuthenticatedLayout, {
+    BreadcrumbItem,
+} from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
 import { Head, router } from "@inertiajs/react";
 import { useState } from "react";
@@ -52,19 +54,22 @@ export default function CloudStorage({
             key: "google_drive",
             logo_url: "/images/google_drive.png",
             name: "Google Drive",
-            description: "Attach, preview, share and create Google Drive items inside of Runarion.",
+            description:
+                "Attach, preview, share and create Google Drive items inside of Runarion.",
         },
         {
             key: "dropbox",
             logo_url: "/images/dropbox.png",
             name: "Dropbox",
-            description: "Attach, preview, share and create Dropbox items inside of Runarion.",
+            description:
+                "Attach, preview, share and create Dropbox items inside of Runarion.",
         },
         {
             key: "onedrive",
             logo_url: "/images/onedrive.png",
             name: "OneDrive",
-            description: "Attach, preview, share and create OneDrive items inside of Runarion.",
+            description:
+                "Attach, preview, share and create OneDrive items inside of Runarion.",
         },
     ];
 
@@ -93,7 +98,7 @@ export default function CloudStorage({
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
             <Head title="Cloud Storage" />
 
-            <Card className="w-full">
+            <Card className="w-full h-full">
                 <CardHeader>
                     <CardTitle className="text-2xl">Cloud Storage</CardTitle>
                     <CardDescription className="text-sm">

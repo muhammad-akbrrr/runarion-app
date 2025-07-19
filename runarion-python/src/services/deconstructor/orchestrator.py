@@ -17,12 +17,12 @@ from models.deconstructor.status import DraftStatus
 from .stage_1_ingestion import PDFIngestionStage
 from .stage_2_cleaning import TextCleaningStage
 from .stage_3_sceneExtract import SceneDetectionStage
-from .stage_4_analysis.analyzer_4a import SceneBySceneAnalysisStage
-from .stage_4_analysis.analyzer_4b import ProgressiveGraphAnalysisStage
-from .stage_4_analysis.analyzer_4c_reports import ComprehensiveReportingStage
-from .stage_5_coherence import CoherenceCheckStage
-from .stage_6_enhancement import EnhancementStage
-from .stage_7_chaptering import ChapteringStage
+# from .stage_4_analysis.analyzer_4a import SceneBySceneAnalysisStage
+# from .stage_4_analysis.analyzer_4b import ProgressiveGraphAnalysisStage
+# from .stage_4_analysis.analyzer_4c_reports import ComprehensiveReportingStage
+# from .stage_5_coherence import CoherenceCheckStage
+# from .stage_6_enhancement import EnhancementStage
+# from .stage_7_chaptering import ChapteringStage
 
 logger = get_pipeline_logger(__name__)
 
@@ -48,14 +48,14 @@ class DeconstructorOrchestrator:
             1: PDFIngestionStage(db_pool),
             2: TextCleaningStage(db_pool, generation_engine),
             3: SceneDetectionStage(db_pool, generation_engine),
-            4: {
-                'a': SceneBySceneAnalysisStage(db_pool, generation_engine),
-                'b': ProgressiveGraphAnalysisStage(db_pool, generation_engine),
-                'c': ComprehensiveReportingStage(db_pool, generation_engine)
-            },
-            5: CoherenceCheckStage(db_pool, generation_engine),
-            6: EnhancementStage(db_pool, generation_engine),
-            7: ChapteringStage(db_pool, generation_engine)
+            # 4: {
+            #     'a': SceneBySceneAnalysisStage(db_pool, generation_engine),
+            #     'b': ProgressiveGraphAnalysisStage(db_pool, generation_engine),
+            #     'c': ComprehensiveReportingStage(db_pool, generation_engine)
+            # },
+            # 5: CoherenceCheckStage(db_pool, generation_engine),
+            # 6: EnhancementStage(db_pool, generation_engine),
+            # 7: ChapteringStage(db_pool, generation_engine)
         }
         
     def run_pipeline(self, draft_id: str, file_name: str, 
@@ -143,73 +143,73 @@ class DeconstructorOrchestrator:
                 'result': stage_3_result
             })
             logger.info(f"Stage 3 completed for draft {draft_id}")
-            
-            # Stage 4: Deep Analysis (3 sub-stages)
-            logger.info(f"Starting Stage 4: Deep Analysis for draft {draft_id}")
-            
-            # Stage 4A: Scene-by-scene analysis
-            stage_4a_result = execute_stage(self.stages[4]['a'], "4A", draft_id, chaptering_mode, target_chapter_length)
-            pipeline_results['stages_completed'].append({
-                'stage': '4a',
-                'name': 'scene_analysis',
-                'completed_at': datetime.now().isoformat(),
-                'result': stage_4a_result
-            })
-            
-            # Stage 4B: Graph analysis
-            stage_4b_result = execute_stage(self.stages[4]['b'], "4B", draft_id, chaptering_mode, target_chapter_length)
-            pipeline_results['stages_completed'].append({
-                'stage': '4b',
-                'name': 'graph_analysis',
-                'completed_at': datetime.now().isoformat(),
-                'result': stage_4b_result
-            })
-            
-            # Stage 4C: Comprehensive reporting
-            stage_4c_result = execute_stage(self.stages[4]['c'], "4C", draft_id, chaptering_mode, target_chapter_length)
-            self._update_draft_status(draft_id, DraftStatus.STAGE_4_COMPLETE.value)
-            pipeline_results['stages_completed'].append({
-                'stage': '4c',
-                'name': 'comprehensive_reporting',
-                'completed_at': datetime.now().isoformat(),
-                'result': stage_4c_result
-            })
-            logger.info(f"Stage 4 completed for draft {draft_id}")
-            
-            # Stage 5: Coherence Check
-            logger.info(f"Starting Stage 5: Coherence Check for draft {draft_id}")
-            stage_5_result = execute_stage(self.stages[5], "5", draft_id, chaptering_mode, target_chapter_length)
-            self._update_draft_status(draft_id, DraftStatus.STAGE_5_COMPLETE.value)
-            pipeline_results['stages_completed'].append({
-                'stage': 5,
-                'name': 'coherence_check',
-                'completed_at': datetime.now().isoformat(),
-                'result': stage_5_result
-            })
-            logger.info(f"Stage 5 completed for draft {draft_id}")
-            
-            # Stage 6: Enhancement
-            logger.info(f"Starting Stage 6: Enhancement for draft {draft_id}")
-            stage_6_result = execute_stage(self.stages[6], "6", draft_id, chaptering_mode, target_chapter_length)
-            self._update_draft_status(draft_id, DraftStatus.STAGE_6_COMPLETE.value)
-            pipeline_results['stages_completed'].append({
-                'stage': 6,
-                'name': 'enhancement',
-                'completed_at': datetime.now().isoformat(),
-                'result': stage_6_result
-            })
-            logger.info(f"Stage 6 completed for draft {draft_id}")
-            
-            # Stage 7: Chaptering
-            logger.info(f"Starting Stage 7: Chaptering for draft {draft_id}")
-            stage_7_result = execute_stage(self.stages[7], "7", draft_id, chaptering_mode, target_chapter_length)
-            pipeline_results['stages_completed'].append({
-                'stage': 7,
-                'name': 'chaptering',
-                'completed_at': datetime.now().isoformat(),
-                'result': stage_7_result
-            })
-            logger.info(f"Stage 7 completed for draft {draft_id}")
+             
+            # # Stage 4: Deep Analysis (3 sub-stages)
+            # logger.info(f"Starting Stage 4: Deep Analysis for draft {draft_id}")
+            # 
+            # # Stage 4A: Scene-by-scene analysis
+            # stage_4a_result = execute_stage(self.stages[4]['a'], "4A", draft_id, chaptering_mode, target_chapter_length)
+            # pipeline_results['stages_completed'].append({
+            #     'stage': '4a',
+            #     'name': 'scene_analysis',
+            #     'completed_at': datetime.now().isoformat(),
+            #     'result': stage_4a_result
+            # })
+            # 
+            # # Stage 4B: Graph analysis
+            # stage_4b_result = execute_stage(self.stages[4]['b'], "4B", draft_id, chaptering_mode, target_chapter_length)
+            # pipeline_results['stages_completed'].append({
+            #     'stage': '4b',
+            #     'name': 'graph_analysis',
+            #     'completed_at': datetime.now().isoformat(),
+            #     'result': stage_4b_result
+            # })
+            # 
+            # # Stage 4C: Comprehensive reporting
+            # stage_4c_result = execute_stage(self.stages[4]['c'], "4C", draft_id, chaptering_mode, target_chapter_length)
+            # self._update_draft_status(draft_id, DraftStatus.STAGE_4_COMPLETE.value)
+            # pipeline_results['stages_completed'].append({
+            #     'stage': '4c',
+            #     'name': 'comprehensive_reporting',
+            #     'completed_at': datetime.now().isoformat(),
+            #     'result': stage_4c_result
+            # })
+            # logger.info(f"Stage 4 completed for draft {draft_id}")
+            # 
+            # # Stage 5: Coherence Check
+            # logger.info(f"Starting Stage 5: Coherence Check for draft {draft_id}")
+            # stage_5_result = execute_stage(self.stages[5], "5", draft_id, chaptering_mode, target_chapter_length)
+            # self._update_draft_status(draft_id, DraftStatus.STAGE_5_COMPLETE.value)
+            # pipeline_results['stages_completed'].append({
+            #     'stage': 5,
+            #     'name': 'coherence_check',
+            #     'completed_at': datetime.now().isoformat(),
+            #     'result': stage_5_result
+            # })
+            # logger.info(f"Stage 5 completed for draft {draft_id}")
+            # 
+            # # Stage 6: Enhancement
+            # logger.info(f"Starting Stage 6: Enhancement for draft {draft_id}")
+            # stage_6_result = execute_stage(self.stages[6], "6", draft_id, chaptering_mode, target_chapter_length)
+            # self._update_draft_status(draft_id, DraftStatus.STAGE_6_COMPLETE.value)
+            # pipeline_results['stages_completed'].append({
+            #     'stage': 6,
+            #     'name': 'enhancement',
+            #     'completed_at': datetime.now().isoformat(),
+            #     'result': stage_6_result
+            # })
+            # logger.info(f"Stage 6 completed for draft {draft_id}")
+            # 
+            # # Stage 7: Chaptering
+            # logger.info(f"Starting Stage 7: Chaptering for draft {draft_id}")
+            # stage_7_result = execute_stage(self.stages[7], "7", draft_id, chaptering_mode, target_chapter_length)
+            # pipeline_results['stages_completed'].append({
+            #     'stage': 7,
+            #     'name': 'chaptering',
+            #     'completed_at': datetime.now().isoformat(),
+            #     'result': stage_7_result
+            # })
+            # logger.info(f"Stage 7 completed for draft {draft_id}")
             
             # Mark as completed
             end_time = datetime.now()
@@ -514,13 +514,13 @@ class DeconstructorOrchestrator:
             cursor.execute("SELECT COUNT(*) FROM plot_issues WHERE draft_id = %s", (draft_id,))
             details['plot_issues_found'] = cursor.fetchone()[0]
             
-            # Count analysis reports
-            cursor.execute("SELECT COUNT(*) FROM analysis_reports WHERE draft_id = %s", (draft_id,))
-            details['analysis_reports_generated'] = cursor.fetchone()[0]
-            
-            # Count chapters
-            cursor.execute("SELECT COUNT(*) FROM chapters WHERE draft_id = %s", (draft_id,))
-            details['chapters_created'] = cursor.fetchone()[0]
+            # # Count analysis reports
+            # cursor.execute("SELECT COUNT(*) FROM analysis_reports WHERE draft_id = %s", (draft_id,))
+            # details['analysis_reports_generated'] = cursor.fetchone()[0]
+            # 
+            # # Count chapters
+            # cursor.execute("SELECT COUNT(*) FROM chapters WHERE draft_id = %s", (draft_id,))
+            # details['chapters_created'] = cursor.fetchone()[0]
             
         except Exception as e:
             logger.warning(f"Could not get all progress details: {e}")
@@ -557,9 +557,9 @@ class DeconstructorOrchestrator:
                 if cleanup_level in ['partial', 'full', 'reset']:
                     # Always clean generated content
                     tables_to_clean.extend([
-                        ('chapters', 'draft_id'),
-                        ('final_manuscripts', 'draft_id'),
-                        ('analysis_reports', 'draft_id'),
+                        # ('chapters', 'draft_id'),
+                        # ('final_manuscripts', 'draft_id'),
+                        # ('analysis_reports', 'draft_id'),
                         ('plot_issues', 'draft_id')
                     ])
                 
@@ -715,26 +715,26 @@ class DeconstructorOrchestrator:
                 """)
                 cleanup_stats['orphaned_issues'] = cursor.rowcount
                 
-                # Clean orphaned analysis_reports
-                cursor.execute("""
-                    DELETE FROM analysis_reports 
-                    WHERE draft_id NOT IN (SELECT id FROM drafts)
-                """)
-                cleanup_stats['orphaned_reports'] = cursor.rowcount
-                
-                # Clean orphaned chapters
-                cursor.execute("""
-                    DELETE FROM chapters 
-                    WHERE draft_id NOT IN (SELECT id FROM drafts)
-                """)
-                cleanup_stats['orphaned_chapters'] = cursor.rowcount
-                
-                # Clean orphaned final_manuscripts
-                cursor.execute("""
-                    DELETE FROM final_manuscripts 
-                    WHERE draft_id NOT IN (SELECT id FROM drafts)
-                """)
-                cleanup_stats['orphaned_manuscripts'] = cursor.rowcount
+                # # Clean orphaned analysis_reports
+                # cursor.execute("""
+                #     DELETE FROM analysis_reports 
+                #     WHERE draft_id NOT IN (SELECT id FROM drafts)
+                # """)
+                # cleanup_stats['orphaned_reports'] = cursor.rowcount
+                # 
+                # # Clean orphaned chapters
+                # cursor.execute("""
+                #     DELETE FROM chapters 
+                #     WHERE draft_id NOT IN (SELECT id FROM drafts)
+                # """)
+                # cleanup_stats['orphaned_chapters'] = cursor.rowcount
+                # 
+                # # Clean orphaned final_manuscripts
+                # cursor.execute("""
+                #     DELETE FROM final_manuscripts 
+                #     WHERE draft_id NOT IN (SELECT id FROM drafts)
+                # """)
+                # cleanup_stats['orphaned_manuscripts'] = cursor.rowcount
                 
                 # Clean orphaned graph data if available
                 try:

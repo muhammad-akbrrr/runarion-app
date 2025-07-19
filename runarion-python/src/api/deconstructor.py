@@ -150,7 +150,7 @@ def start_deconstruction():
                 connection_pool.putconn(conn)
         
         # Create caller object for generation engine
-        caller = CallerInfo(
+        caller = QuotaCaller.from_request_data(
             user_id=user_id,
             workspace_id=workspace_id,
             project_id=project_id,
@@ -265,9 +265,9 @@ def _get_pipeline_progress(cursor, draft_id, status):
         'stage_1_complete': {'stage': 'ingestion', 'percentage': 15},
         'stage_2_complete': {'stage': 'cleaning', 'percentage': 30},
         'stage_3_complete': {'stage': 'scene_extraction', 'percentage': 45},
-        'stage_4_complete': {'stage': 'analysis', 'percentage': 65},
-        'stage_5_complete': {'stage': 'coherence_check', 'percentage': 80},
-        'stage_6_complete': {'stage': 'enhancement', 'percentage': 90},
+        # 'stage_4_complete': {'stage': 'analysis', 'percentage': 65},
+        # 'stage_5_complete': {'stage': 'coherence_check', 'percentage': 80},
+        # 'stage_6_complete': {'stage': 'enhancement', 'percentage': 90},
         'completed': {'stage': 'completed', 'percentage': 100},
         'failed': {'stage': 'failed', 'percentage': 0}
     }
@@ -286,14 +286,18 @@ def _get_pipeline_progress(cursor, draft_id, status):
         cursor.execute("SELECT COUNT(*) FROM plot_issues WHERE draft_id = %s", (draft_id,))
         issue_count = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) FROM analysis_reports WHERE draft_id = %s", (draft_id,))
-        report_count = cursor.fetchone()[0]
+        # cursor.execute("SELECT COUNT(*) FROM analysis_reports WHERE draft_id = %s", (draft_id,))
+        # report_count = cursor.fetchone()[0]
+        # 
+        # cursor.execute("SELECT COUNT(*) FROM final_manuscripts WHERE draft_id = %s", (draft_id,))
+        # manuscript_count = cursor.fetchone()[0]
+        # 
+        # cursor.execute("SELECT COUNT(*) FROM chapters WHERE draft_id = %s", (draft_id,))
+        # chapter_count = cursor.fetchone()[0]
         
-        cursor.execute("SELECT COUNT(*) FROM final_manuscripts WHERE draft_id = %s", (draft_id,))
-        manuscript_count = cursor.fetchone()[0]
-        
-        cursor.execute("SELECT COUNT(*) FROM chapters WHERE draft_id = %s", (draft_id,))
-        chapter_count = cursor.fetchone()[0]
+        report_count = 0
+        manuscript_count = 0
+        chapter_count = 0
         
         progress['details'] = {
             'chunks_created': chunk_count,
@@ -387,22 +391,26 @@ def _get_pipeline_results_summary(cursor, draft_id):
         issue_results = cursor.fetchall()
         results['plot_issues'] = {issue_type: count for issue_type, count in issue_results}
         
-        # Get analysis reports summary
-        cursor.execute("""
-            SELECT report_type, COUNT(*) 
-            FROM analysis_reports 
-            WHERE draft_id = %s 
-            GROUP BY report_type
-        """, (draft_id,))
-        report_results = cursor.fetchall()
-        results['analysis_reports'] = {report_type: count for report_type, count in report_results}
+        # # Get analysis reports summary
+        # cursor.execute("""
+        #     SELECT report_type, COUNT(*) 
+        #     FROM analysis_reports 
+        #     WHERE draft_id = %s 
+        #     GROUP BY report_type
+        # """, (draft_id,))
+        # report_results = cursor.fetchall()
+        # results['analysis_reports'] = {report_type: count for report_type, count in report_results}
+        # 
+        # # Get chapter count if available
+        # cursor.execute("""
+        #     SELECT COUNT(*) FROM chapters WHERE draft_id = %s
+        # """, (draft_id,))
+        # chapter_result = cursor.fetchone()
+        # results['chapter_count'] = chapter_result[0] if chapter_result else 0
         
-        # Get chapter count if available
-        cursor.execute("""
-            SELECT COUNT(*) FROM chapters WHERE draft_id = %s
-        """, (draft_id,))
-        chapter_result = cursor.fetchone()
-        results['chapter_count'] = chapter_result[0] if chapter_result else 0
+        # Set default values for disabled stages
+        results['analysis_reports'] = {}
+        results['chapter_count'] = 0
         
     except Exception as e:
         logger.warning(f"Error getting results summary: {e}")

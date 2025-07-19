@@ -31,6 +31,12 @@ load_env() {
 # Load environment variables
 load_env
 
+# Set TEST_DATABASE_URL if not set, using URL-encoded password
+if [ -z "$TEST_DATABASE_URL" ]; then
+  ENCODED_DB_PASSWORD=$(python -c "import urllib.parse, os; print(urllib.parse.quote_plus(os.getenv('DB_PASSWORD', '')))")
+  export TEST_DATABASE_URL="postgresql://${DB_USER:-postgres}:${ENCODED_DB_PASSWORD}@${DB_HOST:-postgres-db}:${DB_PORT:-5432}/${DB_DATABASE:-runarion}"
+fi
+
 # Function to check if Docker is running
 check_docker() {
     if ! docker info > /dev/null 2>&1; then
@@ -124,6 +130,9 @@ check_env_vars() {
         "PYTHON_PYTHONDONTWRITEBYTECODE"
         "PYTHON_PYTHONUNBUFFERED"
         "PYTHON_UPLOAD_PATH"
+        
+        # Python Testing
+        "TEST_DATABASE_URL"
         
         # Stable Diffusion Settings
         "NVIDIA_VISIBLE_DEVICES"
@@ -227,6 +236,7 @@ make_scripts_executable() {
     chmod +x runarion-python/docker-entrypoint.sh
     # chmod +x runarion-stable-diffusion/docker-entrypoint.sh
 }
+
 
 # Function to wait for database to be ready
 wait_for_db() {
