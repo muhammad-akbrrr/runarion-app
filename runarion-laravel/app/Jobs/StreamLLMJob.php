@@ -82,7 +82,8 @@ class StreamLLMJob implements ShouldQueue
                 $this->workspaceId,
                 $this->projectId,
                 $this->chapterOrder,
-                $this->sessionId
+                $this->sessionId,
+                $this->isRegenerate
             ));
 
             // Get current chapter content for context
@@ -384,7 +385,9 @@ class StreamLLMJob implements ShouldQueue
                 'chapter_order' => $this->chapterOrder,
                 'step_id' => $this->parentStepId,
                 'version_index' => $versionIndex,
+                'base_content_length' => strlen($baseContent),
                 'generated_length' => strlen($generatedText),
+                'final_content_length' => strlen($finalContent),
             ]);
         } else {
             // This is a new generation - create new step
@@ -402,7 +405,9 @@ class StreamLLMJob implements ShouldQueue
                 'chapter_order' => $this->chapterOrder,
                 'step_id' => $stepId,
                 'parent_step_id' => $this->parentStepId,
+                'base_content_length' => strlen($baseContent),
                 'generated_length' => strlen($generatedText),
+                'final_content_length' => strlen($finalContent),
             ]);
         }
 

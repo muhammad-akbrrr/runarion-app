@@ -88,18 +88,47 @@ export function useProjectEditor({
         isStreaming,
         streamingText,
         error: streamError,
+        isRegenerating,
         cancelStream,
     } = useStreamingLLM({
         workspaceId,
         projectId,
         chapterOrder: selectedChapter?.order ?? 0,
-        onStreamComplete: (updatedContent) => {
-            console.log('Stream completed');
+        onStreamComplete: (generatedText) => {
+            console.log('Stream completed', {
+                isRegenerating,
+                generatedTextLength: generatedText.length
+            });
             setIsGenerating(false);
+            
+            // Update the content state with the final content (base + generated)
+            const baseContent = originalContent.current;
+            let separator = '';
+            
+            if (baseContent && !baseContent.endsWith('\n') && !baseContent.endsWith(' ') && 
+                !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
+                separator = ' ';
+            }
+            
+            const finalContent = baseContent + separator + generatedText;
+            setContent(finalContent);
+            originalContent.current = finalContent;
+            
+            console.log('Updated content state after streaming completion:', {
+                baseContentLength: baseContent.length,
+                generatedTextLength: generatedText.length,
+                finalContentLength: finalContent.length
+            });
         },
         onStreamError: (error) => {
             console.error('Stream error:', error);
             setIsGenerating(false);
+            
+            // On error during regeneration, restore the original chapter content
+            if (isRegenerating && selectedChapter) {
+                setContent(selectedChapter.content || '');
+                originalContent.current = selectedChapter.content || '';
+            }
         },
     });
 
@@ -207,20 +236,18 @@ export function useProjectEditor({
         }
     }, [settings, debouncedSaveSettings, isGenerating, isStreaming]);
 
-    // Handle streaming text updates
+    // Handle streaming text updates - removed duplicate logic
+    // The StreamingPlugin will handle the visual streaming updates
+    // We only need to track the streaming state here
     useEffect(() => {
         if (isStreaming && streamingText) {
-            const baseContent = originalContent.current;
-            let separator = '';
-            
-            if (baseContent && !baseContent.endsWith('\n') && !baseContent.endsWith(' ') && 
-                !streamingText.startsWith('\n') && !streamingText.startsWith(' ')) {
-                separator = ' ';
-            }
-            
-            setContent(baseContent + separator + streamingText);
+            console.log('Streaming in progress:', {
+                baseContentLength: originalContent.current.length,
+                streamingTextLength: streamingText.length,
+                isRegenerating,
+            });
         }
-    }, [isStreaming, streamingText]);
+    }, [isStreaming, streamingText, isRegenerating]);
 
     // Auto-select first chapter
     useEffect(() => {
@@ -418,6 +445,29 @@ export function useProjectEditor({
 
         console.log("Starting text regeneration");
 
+        // Get the parent content for regeneration
+        const currentStepInfo = versionControl.currentStep;
+        let parentContent = '';
+        
+        if (currentStepInfo && currentStepInfo.parentId && generationHistory[selectedChapter.order]) {
+            const history = generationHistory[selectedChapter.order];
+            const parentStep = history.steps.find(step => step.id === currentStepInfo.parentId);
+            if (parentStep) {
+                const parentVersionIndex = history.lastSelectedVersions[currentStepInfo.parentId] ?? 0;
+                parentContent = parentStep.versions[parentVersionIndex]?.content ?? '';
+            }
+        }
+
+        console.log("Loading parent content for regeneration:", {
+            parentContent: parentContent.substring(0, 100) + '...',
+            parentContentLength: parentContent.length,
+            currentContentLength: content.length
+        });
+
+        // Load the parent content into the editor immediately
+        setContent(parentContent);
+        originalContent.current = parentContent;
+
         const regenerationSettings = {
             order: selectedChapter.order,
             settings: {
@@ -457,10 +507,15 @@ export function useProjectEditor({
                     console.error("Failed to start text regeneration:", errors);
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
+                    // Restore original content on error
+                    if (selectedChapter) {
+                        setContent(selectedChapter.content || '');
+                        originalContent.current = selectedChapter.content || '';
+                    }
                 },
             }
         );
-    }, [workspaceId, projectId, selectedChapter, isGenerating, isStreaming, settings, versionControl.canRegenerate]);
+    }, [workspaceId, projectId, selectedChapter, isGenerating, isStreaming, settings, versionControl.canRegenerate, versionControl.currentStep, generationHistory, content]);
 
     const handleCancelGeneration = useCallback(() => {
         if (isStreaming) {
@@ -468,8 +523,16 @@ export function useProjectEditor({
         }
         setIsGenerating(false);
         setPreservedChapterOrder(null);
+        
+        // If we were regenerating, restore the original chapter content
+        if (isRegenerating && selectedChapter) {
+            console.log('Restoring content after regeneration cancellation');
+            setContent(selectedChapter.content || '');
+            originalContent.current = selectedChapter.content || '';
+        }
+        
         console.log("Text generation cancelled");
-    }, [isStreaming, cancelStream]);
+    }, [isStreaming, isRegenerating, selectedChapter, cancelStream]);
 
     // Smart save function that only saves if content actually changed
     const smartSave = useCallback((order: number, content: string | null, trigger: string) => {
@@ -517,6 +580,7 @@ export function useProjectEditor({
         isStreaming,
         streamingText,
         streamError,
+        isRegenerating,
         
         // Version control state
         versionControl,

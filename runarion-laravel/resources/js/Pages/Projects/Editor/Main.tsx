@@ -47,6 +47,7 @@ export default function ProjectEditorPage({
         isStreaming,
         streamingText,
         streamError,
+        isRegenerating,
         versionControl,
         handleChapterSelect,
         handleAddChapter,
@@ -246,6 +247,7 @@ export default function ProjectEditorPage({
                         selectedChapter={selectedChapter}
                         isInteracting={isInteracting}
                         setIsInteracting={setIsInteracting}
+                        isRegenerating={isRegenerating}
                         onBlur={handleEditorBlur}
                     />
 

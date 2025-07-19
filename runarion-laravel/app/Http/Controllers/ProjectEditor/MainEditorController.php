@@ -617,8 +617,8 @@ class MainEditorController extends Controller
             $settings = $validated['settings'] ?? [];
             $sessionId = Str::uuid()->toString();
 
-            // Get the base content for regeneration (parent step content)
-            $baseContent = '';
+            // Get the parent content for regeneration (this is what should be displayed and used as base)
+            $parentContent = '';
             $parentVersionIndex = null;
             if ($currentStepInfo['step']['parentId']) {
                 $parentStepIndex = $projectContent->findStepIndex($validated['order'], $currentStepInfo['step']['parentId']);
@@ -626,7 +626,7 @@ class MainEditorController extends Controller
                     $history = $projectContent->generation_history;
                     $parentStep = $history[$validated['order']]['steps'][$parentStepIndex];
                     $parentVersionIndex = $history[$validated['order']]['lastSelectedVersions'][$currentStepInfo['step']['parentId']] ?? 0;
-                    $baseContent = $parentStep['versions'][$parentVersionIndex]['content'] ?? '';
+                    $parentContent = $parentStep['versions'][$parentVersionIndex]['content'] ?? '';
                 }
             }
 
@@ -635,16 +635,17 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'chapter_order' => $validated['order'],
                 'current_step_id' => $currentStepInfo['stepId'],
+                'parent_content_length' => strlen($parentContent),
                 'session_id' => $sessionId,
                 'user_id' => $user->id,
             ]);
 
-            // Dispatch streaming job for regeneration
+            // Dispatch streaming job for regeneration with parent content as prompt
             StreamLLMJob::dispatch(
                 $workspace_id,
                 $project_id,
                 $validated['order'],
-                $baseContent,
+                $parentContent, // Use parent content as the base prompt
                 $settings,
                 $user->id,
                 $sessionId,

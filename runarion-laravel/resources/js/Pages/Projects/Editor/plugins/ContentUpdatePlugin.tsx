@@ -53,6 +53,11 @@ export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePlugi
             return;
         }
 
+        console.log('ContentUpdatePlugin: Checking if content update needed', {
+            contentLength: content?.length || 0,
+            contentPreview: content?.substring(0, 50) + '...'
+        });
+
         editor.update(() => {
             const root = $getRoot();
             
@@ -63,6 +68,11 @@ export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePlugi
                 console.log('ContentUpdatePlugin: Content unchanged, skipping update');
                 return; // No need to update
             }
+            
+            console.log('ContentUpdatePlugin: Updating editor content', {
+                currentLength: currentMarkdown.length,
+                newLength: content?.length || 0
+            });
             
             // Clear the editor
             root.clear();
@@ -96,7 +106,7 @@ export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePlugi
                         }
                     }
                 });
-            }, 0);
+            }, 10);
         });
     }, [content, editor, isStreaming]);
 

@@ -125,6 +125,7 @@ interface LexicalEditorProps {
     selectedChapter: any;
     isInteracting: boolean;
     setIsInteracting: (interacting: boolean) => void;
+    isRegenerating?: boolean;
     onBlur: () => void;
 }
 
@@ -136,10 +137,24 @@ export function LexicalEditor({
     selectedChapter,
     isInteracting,
     setIsInteracting,
+    isRegenerating = false,
     onBlur,
 }: LexicalEditorProps) {
     // Store editor instance for context menu
     const editorRef = useRef<any>(null);
+
+    // Handle streaming updates from the plugin
+    const handleStreamingUpdate = useCallback((fullContent: string) => {
+        // Update the content state to match what's being displayed
+        // This keeps the state in sync with the visual content during streaming
+        console.log('LexicalEditor: Received streaming update', {
+            fullContentLength: fullContent.length,
+            isStreaming,
+            isRegenerating
+        });
+        // Don't update content state during streaming to avoid conflicts
+        // The final content will be set when streaming completes
+    }, [isStreaming, isRegenerating]);
 
     // Format functions for context menu
     const formatHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
@@ -216,11 +231,24 @@ export function LexicalEditor({
                             <MarkdownShortcutPlugin transformers={SUPPORTED_TRANSFORMERS} />
                             <OnChangePlugin
                                 onChange={(editorState, editor) => {
-                                    // Only update content state, let the hook handle saving
-                                    if (!isStreaming && !isInteracting) {
+                                    // Only update content state when not streaming and not interacting
+                                    // Don't update during regeneration to prevent conflicts
+                                    if (!isStreaming && !isInteracting && !isRegenerating) {
                                         editorState.read(() => {
                                             const newContent = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
+                                            console.log('OnChangePlugin: Content changed', {
+                                                newContentLength: newContent.length,
+                                                isStreaming,
+                                                isInteracting,
+                                                isRegenerating
+                                            });
                                             setContent(newContent);
+                                        });
+                                    } else {
+                                        console.log('OnChangePlugin: Skipping content update', {
+                                            isStreaming,
+                                            isInteracting,
+                                            isRegenerating
                                         });
                                     }
                                 }}
@@ -229,7 +257,9 @@ export function LexicalEditor({
                             <StreamingPlugin 
                                 isStreaming={isStreaming}
                                 streamingText={streamingText}
-                                baseContent={selectedChapter?.content || ''}
+                                baseContent={content} // Use current content as base for streaming
+                                isRegenerating={isRegenerating}
+                                onStreamingUpdate={handleStreamingUpdate}
                             />
                             <EditorRefPlugin editorRef={editorRef} />
                         </LexicalComposer>

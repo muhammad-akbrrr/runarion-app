@@ -7,6 +7,7 @@ interface StreamingLLMState {
     streamingText: string;
     error: string | null;
     sessionId: string | null;
+    isRegenerating: boolean;
 }
 
 interface UseStreamingLLMProps {
@@ -29,6 +30,7 @@ export function useStreamingLLM({
         streamingText: '',
         error: null,
         sessionId: null,
+        isRegenerating: false,
     });
 
     const channelRef = useRef<any>(null);
@@ -68,6 +70,7 @@ export function useStreamingLLM({
                         streamingText: '',
                         error: null,
                         sessionId: data.session_id,
+                        isRegenerating: data.is_regenerate || false,
                     }));
                 }
             });
@@ -99,6 +102,7 @@ export function useStreamingLLM({
                         ...prev,
                         isStreaming: false,
                         sessionId: null,
+                        isRegenerating: false,
                         error: data.success ? null : (data.error || 'Stream failed'),
                     }));
 
@@ -173,6 +177,7 @@ export function useStreamingLLM({
             setState(prev => ({
                 ...prev,
                 isStreaming: false,
+                isRegenerating: false,
                 error: 'Generation cancelled by user',
             }));
             
@@ -185,6 +190,7 @@ export function useStreamingLLM({
         streamingText: state.streamingText,
         error: state.error,
         sessionId: state.sessionId,
+        isRegenerating: state.isRegenerating,
         cancelStream,
     };
 }
