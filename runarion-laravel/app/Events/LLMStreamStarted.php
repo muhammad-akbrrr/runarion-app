@@ -18,6 +18,7 @@ class LLMStreamStarted implements ShouldBroadcast
     public string $projectId;
     public int $chapterOrder;
     public string $sessionId;
+    public bool $isRegenerate;
 
     /**
      * Create a new event instance.
@@ -26,12 +27,14 @@ class LLMStreamStarted implements ShouldBroadcast
         string $workspaceId,
         string $projectId,
         int $chapterOrder,
-        string $sessionId
+        string $sessionId,
+        bool $isRegenerate = false
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
         $this->chapterOrder = $chapterOrder;
         $this->sessionId = $sessionId;
+        $this->isRegenerate = $isRegenerate;
     }
 
     /**
@@ -64,6 +67,7 @@ class LLMStreamStarted implements ShouldBroadcast
             'project_id' => $this->projectId,
             'chapter_order' => $this->chapterOrder,
             'session_id' => $this->sessionId,
+            'is_regenerate' => $this->isRegenerate,
             'timestamp' => now()->toISOString(),
         ];
     }

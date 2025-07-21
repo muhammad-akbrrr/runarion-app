@@ -25,12 +25,35 @@ export interface ProjectAccess {
     role: ProjectRole;
 }
 
+export interface GenerationVersion {
+    index: number;
+    content: string;
+    timestamp: number;
+}
+
+export interface GenerationStep {
+    id: string;
+    parentId: string | null;
+    content: string;
+    timestamp: number;
+    settings: any;
+    isUserGenerated: boolean;
+    versions: GenerationVersion[];
+}
+
+export interface GenerationHistory {
+    steps: GenerationStep[];
+    currentStepId: string | null;
+    lastSelectedVersions: Record<string, number>;
+}
+
 export interface ProjectChapter {
     order: number;
     chapter_name: string;
     content: string;
     summary: string;
     plot_points: Array<string>;
+    generation_history?: GenerationHistory;
 }
 
 export interface ProjectContent {
@@ -38,6 +61,9 @@ export interface ProjectContent {
     project_id: string;
     content: ProjectChapter[];
     metadata: Record<string, any> | null;
+    generation_history: Record<number, GenerationHistory> | null;
+    current_step_id: string | null;
+    last_selected_versions: Record<string, number> | null;
     last_edited_at: string | null;
     last_edited_by: number | null;
     created_at: string;

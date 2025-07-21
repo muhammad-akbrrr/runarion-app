@@ -13,8 +13,15 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::post('/{workspace_id}/projects/{project_id}/editor/chapter', [MainEditorController::class, 'storeProjectChapter'])->name('editor.project.chapter');
     Route::patch('/{workspace_id}/projects/{project_id}/editor/data', [MainEditorController::class, 'updateProjectData'])->name('editor.project.updateData');
     Route::patch('/{workspace_id}/projects/{project_id}/editor/settings', [MainEditorController::class, 'updateProjectSettings'])->name('editor.project.updateSettings');
+    Route::patch('/{workspace_id}/projects/{project_id}/editor/unified', [MainEditorController::class, 'updateProjectUnified'])->name('editor.project.updateUnified');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/initialize-history', [MainEditorController::class, 'initializeChapterHistory'])->name('editor.project.initialize-history');
     Route::post('/{workspace_id}/projects/{project_id}/editor/generate', [MainEditorController::class, 'generateText'])->name('editor.project.generate');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/regenerate', [MainEditorController::class, 'regenerateText'])->name('editor.project.regenerate');
     Route::post('/{workspace_id}/projects/{project_id}/editor/cancel-generation', [MainEditorController::class, 'cancelGeneration'])->name('editor.project.cancel-generation');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/switch-version', [MainEditorController::class, 'switchVersion'])->name('editor.project.switch-version');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/undo-step', [MainEditorController::class, 'undoStep'])->name('editor.project.undo-step');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/redo-step', [MainEditorController::class, 'redoStep'])->name('editor.project.redo-step');
+    Route::get('/{workspace_id}/projects/{project_id}/editor/version-info', [MainEditorController::class, 'getVersionControlInfo'])->name('editor.project.version-info');
 
     Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
 });

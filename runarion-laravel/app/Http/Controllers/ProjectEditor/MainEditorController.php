@@ -9,6 +9,7 @@ use App\Http\Controllers\Controller;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use App\Jobs\ManuscriptDeconstructionJob;
 use App\Jobs\StreamLLMJob;
 use App\Events\ProjectContentUpdated;
@@ -34,10 +35,18 @@ class MainEditorController extends Controller
         // Query project content
         $projectContent = ProjectContent::where('project_id', $project_id)->first();
 
-        // Extract chapters from JSON content field
+        // Extract chapters from JSON content field and include generation history
         $chapters = [];
         if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
             $chapters = $projectContent->content;
+            
+            // Add generation history to each chapter
+            $generationHistory = $projectContent->generation_history ?? [];
+            foreach ($chapters as &$chapter) {
+                if (isset($generationHistory[$chapter['order']])) {
+                    $chapter['generation_history'] = $generationHistory[$chapter['order']];
+                }
+            }
         }
 
         return Inertia::render('Projects/Editor/Main', [
@@ -200,7 +209,7 @@ class MainEditorController extends Controller
     {
         $validated = $request->validate([
             'order' => 'required|integer',
-            'content' => 'nullable|string|max:1000000', // content for HTML/markdown
+            'content' => 'nullable|string|max:1000000', // content for markdown
             'trigger' => 'nullable|string|in:manual,auto,llm_generation',
         ]);
 
@@ -213,11 +222,9 @@ class MainEditorController extends Controller
 
         foreach ($chapters as &$chapter) {
             if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
-                // Sanitize HTML content to prevent XSS while preserving formatting
+                // Store content as markdown
                 $content = $validated['content'] ?? '';
-                // Allow basic HTML tags for formatting
-                $allowedTags = '<p><h1><h2><h3><h4><h5><h6><strong><em><u><strike><ul><ol><li><br>';
-                $chapter['content'] = strip_tags($content, $allowedTags);
+                $chapter['content'] = $content;
                 break;
             }
         }
@@ -294,10 +301,12 @@ class MainEditorController extends Controller
     {
         try {
             $validated = $request->validate([
-                'prompt' => 'required|string',
+                'prompt' => 'nullable|string',
                 'order' => 'required|integer',
                 'settings' => 'nullable|array',
+                'settings.currentPreset' => 'nullable|string',
                 'settings.aiModel' => 'nullable|string',
+                'settings.memory' => 'nullable|string',
                 'settings.storyGenre' => 'nullable|string',
                 'settings.storyTone' => 'nullable|string',
                 'settings.storyPov' => 'nullable|string',
@@ -347,14 +356,25 @@ class MainEditorController extends Controller
                 return response()->json(['error' => 'Chapter not found'], 404);
             }
 
+            // Initialize generation history if needed
+            $projectContent->initializeGenerationHistory($validated['order']);
+
+            // Get current step info to determine parent step and version
+            $currentStepInfo = $projectContent->getCurrentStepInfo($validated['order']);
+            $parentStepId = $currentStepInfo ? $currentStepInfo['stepId'] : null;
+            $parentVersionIndex = $currentStepInfo ? $currentStepInfo['versionIndex'] : null;
+
             // Log the generation request
             Log::info('Text generation request', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
                 'chapter_order' => $validated['order'],
+                'settings' => $settings,
                 'session_id' => $sessionId,
                 'user_id' => $user->id,
                 'model' => $settings['aiModel'] ?? 'default',
+                'parent_step_id' => $parentStepId,
+                'parent_version_index' => $parentVersionIndex,
             ]);
 
             // Dispatch streaming job
@@ -362,10 +382,13 @@ class MainEditorController extends Controller
                 $workspace_id,
                 $project_id,
                 $validated['order'],
-                $validated['prompt'],
+                $validated['prompt'] ?? '',
                 $settings,
                 $user->id,
-                $sessionId
+                $sessionId,
+                false, // isRegenerate flag
+                $parentStepId, // parentStepId for new step creation
+                $parentVersionIndex // parentVersionIndex for tracking which version was used as parent
             );
 
             return redirect()->route('workspace.projects.editor', [
@@ -384,6 +407,107 @@ class MainEditorController extends Controller
                 'message' => 'Failed to start text generation: ' . $e->getMessage(),
             ], 500);
         }
+    }
+
+    /**
+     * Function to handle unified project data and settings updates.
+     */
+    public function updateProjectUnified(Request $request, string $workspace_id, string $project_id)
+    {
+        Log::info('Incoming request payload', $request->all());
+        $validated = $request->validate([
+            // Content validation
+            'content' => 'nullable|array',
+            'content.order' => 'required_with:content|integer',
+            'content.content' => 'sometimes|nullable|string|max:1000000',
+            'content.trigger' => 'nullable|string|in:manual,auto,llm_generation',
+            
+            // Settings validation
+            'settings' => 'nullable|array',
+            'settings.currentPreset' => 'nullable|string',
+            'settings.authorProfile' => 'nullable|string',
+            'settings.aiModel' => 'nullable|string',
+            'settings.memory' => 'nullable|string',
+            'settings.storyGenre' => 'nullable|string',
+            'settings.storyTone' => 'nullable|string',
+            'settings.storyPov' => 'nullable|string',
+            'settings.temperature' => 'nullable|numeric|min:0|max:2',
+            'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
+            'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+            'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
+            'settings.topP' => 'nullable|numeric|min:0|max:1',
+            'settings.tailFree' => 'nullable|numeric|min:0|max:1',
+            'settings.topA' => 'nullable|numeric|min:0|max:1',
+            'settings.topK' => 'nullable|numeric|min:0|max:1',
+            'settings.phraseBias' => 'nullable|array',
+            'settings.phraseBias.*' => 'nullable|array',
+            'settings.bannedPhrases' => 'nullable|array',
+            'settings.bannedPhrases.*' => 'nullable|string',
+            'settings.stopSequences' => 'nullable|array',
+            'settings.stopSequences.*' => 'nullable|string',
+        ]);
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $updatedChapters = null;
+
+        // Use database transaction for consistency
+        \DB::transaction(function () use ($validated, $project, $project_id, $workspace_id, &$updatedChapters) {
+            // Update content if provided
+            if (isset($validated['content'])) {
+                $contentData = $validated['content'];
+                
+                $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+                $chapters = $projectContent->content ?? [];
+
+                // Update chapter content
+                foreach ($chapters as &$chapter) {
+                    if (isset($chapter['order']) && $chapter['order'] === $contentData['order']) {
+                        $chapter['content'] = $contentData['content'];
+                        break;
+                    }
+                }
+
+                $projectContent->content = $chapters;
+                $projectContent->updateLastEdited();
+                
+                // Also update the current step version in generation history
+                $projectContent->updateCurrentStepVersion($contentData['order'], $contentData['content']);
+                
+                $projectContent->save();
+
+                $updatedChapters = $chapters;
+
+                // Broadcast content update event
+                broadcast(new ProjectContentUpdated(
+                    $workspace_id,
+                    $project_id,
+                    $contentData['order'],
+                    $contentData['content'] ?? '',
+                    $contentData['trigger'] ?? 'manual'
+                ));
+            }
+
+            // Update settings if provided
+            if (isset($validated['settings'])) {
+                $project->settings = $validated['settings'];
+                $project->save();
+            }
+        });
+
+        Log::info('Unified project update completed', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
+            'content_updated' => isset($validated['content']),
+            'settings_updated' => isset($validated['settings']),
+        ]);
+
+        return redirect()->route('workspace.projects.editor', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
+        ]);
     }
 
     /**
@@ -438,6 +562,340 @@ class MainEditorController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to cancel text generation: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Function to handle text regeneration (create new version of current step).
+     */
+    public function regenerateText(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'order' => 'required|integer',
+                'settings' => 'nullable|array',
+                'settings.currentPreset' => 'nullable|string',
+                'settings.aiModel' => 'nullable|string',
+                'settings.memory' => 'nullable|string',
+                'settings.storyGenre' => 'nullable|string',
+                'settings.storyTone' => 'nullable|string',
+                'settings.storyPov' => 'nullable|string',
+                'settings.temperature' => 'nullable|numeric|min:0|max:2',
+                'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
+                'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+                'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
+                'settings.topP' => 'nullable|numeric|min:0|max:1',
+                'settings.tailFree' => 'nullable|numeric|min:0|max:1',
+                'settings.topA' => 'nullable|numeric|min:0|max:1',
+                'settings.topK' => 'nullable|numeric|min:0|max:1',
+                'settings.phraseBias' => 'nullable|array',
+                'settings.bannedPhrases' => 'nullable|array',
+                'settings.stopSequences' => 'nullable|array',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            $projectContent = ProjectContent::where('project_id', $project_id)->first();
+            if (!$projectContent) {
+                return response()->json(['error' => 'Project content not found'], 404);
+            }
+
+            // Get current step info
+            $currentStepInfo = $projectContent->getCurrentStepInfo($validated['order']);
+            if (!$currentStepInfo) {
+                return response()->json(['error' => 'No generation history found for regeneration'], 400);
+            }
+
+            $settings = $validated['settings'] ?? [];
+            $sessionId = Str::uuid()->toString();
+
+            // Get the parent content for regeneration (this is what should be displayed and used as base)
+            $parentContent = '';
+            $parentVersionIndex = null;
+            if ($currentStepInfo['step']['parentId']) {
+                $parentStepIndex = $projectContent->findStepIndex($validated['order'], $currentStepInfo['step']['parentId']);
+                if ($parentStepIndex !== -1) {
+                    $history = $projectContent->generation_history;
+                    $parentStep = $history[$validated['order']]['steps'][$parentStepIndex];
+                    $parentVersionIndex = $history[$validated['order']]['lastSelectedVersions'][$currentStepInfo['step']['parentId']] ?? 0;
+                    $parentContent = $parentStep['versions'][$parentVersionIndex]['content'] ?? '';
+                }
+            }
+
+            Log::info('Text regeneration request', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'chapter_order' => $validated['order'],
+                'current_step_id' => $currentStepInfo['stepId'],
+                'parent_content_length' => strlen($parentContent),
+                'session_id' => $sessionId,
+                'user_id' => $user->id,
+            ]);
+
+            // Dispatch streaming job for regeneration with parent content as prompt
+            StreamLLMJob::dispatch(
+                $workspace_id,
+                $project_id,
+                $validated['order'],
+                $parentContent, // Use parent content as the base prompt
+                $settings,
+                $user->id,
+                $sessionId,
+                true, // isRegenerate flag
+                $currentStepInfo['stepId'], // currentStepId for regeneration
+                $parentVersionIndex // parentVersionIndex for tracking which version was used as parent
+            );
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error starting text regeneration', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to start text regeneration: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Function to handle version switching within current step.
+     */
+    public function switchVersion(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'order' => 'required|integer',
+                'version_index' => 'required|integer|min:0',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+
+            $result = $projectContent->switchVersion($validated['order'], $validated['version_index']);
+
+            if (!$result) {
+                return response()->json(['error' => 'Failed to switch version'], 400);
+            }
+
+            // Broadcast content update event
+            broadcast(new ProjectContentUpdated(
+                $workspace_id,
+                $project_id,
+                $validated['order'],
+                $result['content'],
+                'version_switch'
+            ));
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error switching version', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to switch version: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Function to handle undo operation (go to parent step).
+     */
+    public function undoStep(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'order' => 'required|integer',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+
+            $result = $projectContent->undoToParent($validated['order']);
+
+            if (!$result) {
+                return response()->json(['error' => 'Cannot undo - no parent step available'], 400);
+            }
+
+            // Broadcast content update event
+            broadcast(new ProjectContentUpdated(
+                $workspace_id,
+                $project_id,
+                $validated['order'],
+                $result['content'],
+                'undo_step'
+            ));
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error undoing step', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to undo step: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Function to handle redo operation (go to last selected child step).
+     */
+    public function redoStep(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'order' => 'required|integer',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+
+            $result = $projectContent->redoToChild($validated['order']);
+
+            if (!$result) {
+                return response()->json(['error' => 'Cannot redo - no child steps available'], 400);
+            }
+
+            // Broadcast content update event
+            broadcast(new ProjectContentUpdated(
+                $workspace_id,
+                $project_id,
+                $validated['order'],
+                $result['content'],
+                'redo_step'
+            ));
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error redoing step', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to redo step: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Function to initialize generation history for a chapter.
+     */
+    public function initializeChapterHistory(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'order' => 'required|integer',
+                'content' => 'nullable|string',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+
+            // Initialize generation history for the chapter
+            $projectContent->initializeGenerationHistory($validated['order']);
+
+            Log::info('Chapter history initialized', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'chapter_order' => $validated['order'],
+            ]);
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error initializing chapter history', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to initialize chapter history: ' . $e->getMessage(),
+            ], 500);
+        }
+    }
+
+    /**
+     * Function to get version control info for a chapter.
+     */
+    public function getVersionControlInfo(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'order' => 'required|integer',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+
+            $navigationInfo = $projectContent->getNavigationInfo($validated['order']);
+
+            return response()->json([
+                'success' => true,
+                'data' => $navigationInfo,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Error getting version control info', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get version control info: ' . $e->getMessage(),
             ], 500);
         }
     }
