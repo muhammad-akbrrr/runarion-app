@@ -15,6 +15,9 @@ class InstructionBuilder:
         # Enforce no additional text
         parts.append("DO NOT WRITE ANYTHING ELSE. DO NOT WRITE A TITLE. DO NOT WRITE A SUMMARY. DO NOT WRITE A SYNOPSIS. DO NOT WRITE A TAGLINE. DO NOT START WITH DOTS. JUST CONTINUE THE STORY.")
 
+        # Enforce markdown formatting
+        parts.append("Format your response using Markdown for richer presentation where appropriate.")
+
         if self.config.context:
             parts.append(
                 f"The context of the writing is:\n{self.config.context.strip()}")
@@ -44,6 +47,9 @@ class InstructionBuilder:
         parts = ["You are an accomplished creative writer specializing in fiction. Create an engaging story opening based on the provided specifications."]
         # Enforce no additional text
         parts.append("DO NOT WRITE ANYTHING ELSE. DO NOT WRITE A TITLE. DO NOT WRITE A SUMMARY. DO NOT WRITE A SYNOPSIS. DO NOT WRITE A TAGLINE. DO NOT START WITH DOTS. JUST START THE STORY BEGINNING.")
+
+        # Enforce markdown formatting
+        parts.append("Format your response using Markdown for richer presentation where appropriate.")
 
         if self.config.context:
             parts.append(

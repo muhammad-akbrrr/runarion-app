@@ -7,6 +7,7 @@ interface StreamingLLMState {
     streamingText: string;
     error: string | null;
     sessionId: string | null;
+    isRegenerating: boolean;
 }
 
 interface UseStreamingLLMProps {
@@ -29,6 +30,7 @@ export function useStreamingLLM({
         streamingText: '',
         error: null,
         sessionId: null,
+        isRegenerating: false,
     });
 
     const channelRef = useRef<any>(null);
@@ -68,6 +70,7 @@ export function useStreamingLLM({
                         streamingText: '',
                         error: null,
                         sessionId: data.session_id,
+                        isRegenerating: data.is_regenerate || false,
                     }));
                 }
             });
@@ -99,6 +102,7 @@ export function useStreamingLLM({
                         ...prev,
                         isStreaming: false,
                         sessionId: null,
+                        isRegenerating: false,
                         error: data.success ? null : (data.error || 'Stream failed'),
                     }));
 
@@ -118,12 +122,12 @@ export function useStreamingLLM({
             channelRef.current.listen('.project.content.updated', (data: any) => {
                 console.log('Content updated:', data);
                 
-                // Handle content updates from other sources if needed
+                // Handle content updates from LLM generation
                 if (data.chapter_order === chapterOrder && 
                     data.trigger === 'llm_generation' &&
                     !state.isStreaming) {
                     // This is a completed generation update
-                    // We might want to refresh the content
+                    // The parent component will handle updating the content
                 }
             });
             
@@ -173,6 +177,7 @@ export function useStreamingLLM({
             setState(prev => ({
                 ...prev,
                 isStreaming: false,
+                isRegenerating: false,
                 error: 'Generation cancelled by user',
             }));
             
@@ -185,6 +190,7 @@ export function useStreamingLLM({
         streamingText: state.streamingText,
         error: state.error,
         sessionId: state.sessionId,
+        isRegenerating: state.isRegenerating,
         cancelStream,
     };
 }

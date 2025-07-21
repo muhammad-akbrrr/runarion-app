@@ -5,6 +5,7 @@ from typing import Optional
 
 
 class PromptConfig(BaseModel):
+    current_preset: Optional[str] = ""
     author_profile: Optional[str] = None
     context: Optional[str] = ""
     genre: Optional[str] = ""
