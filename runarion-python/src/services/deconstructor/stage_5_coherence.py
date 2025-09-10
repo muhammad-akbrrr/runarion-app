@@ -5,14 +5,14 @@ Analyzes story for plot holes, inconsistencies, and narrative coherence issues.
 
 import json
 import logging
-from typing import Dict, Any, List, Tuple, Optional
-from collections import defaultdict, Counter
+from typing import Dict, Any, List
+from collections import defaultdict
 from .prompt_template import DeconstructorPrompts
-from utils.database_utils import utf8_database_connection, clean_text_for_database, ensure_utf8_json
+from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
 
-class CoherenceCheckStage:
+class CoherenceCheckStage(BasePipelineStage):
     """
     Stage 5 of the deconstruction pipeline.
     Performs comprehensive coherence analysis to identify plot issues and inconsistencies.
@@ -26,35 +26,37 @@ class CoherenceCheckStage:
             db_pool: Database connection pool
             generation_engine: AI generation engine
         """
-        self.db_pool = db_pool
-        self.generation_engine = generation_engine
+        super().__init__(db_pool, "CoherenceCheckStage", generation_engine)
         self.prompt_template = DeconstructorPrompts()
     
-    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
         Execute Stage 5: Coherence check analysis.
         
         Args:
-            draft_id: UUID of the draft
-            chaptering_mode: Chaptering approach ('flexible' or 'constrained')
-            target_chapter_length: Target word count per chapter
+            context: Stage execution context containing draft_id
             
         Returns:
-            Stage execution results
+            PipelineStageResult with stage execution results
         """
-        logger.info(f"Starting Stage 5 coherence check for draft {draft_id} (chaptering_mode: {chaptering_mode}, target_length: {target_chapter_length})")
+        draft_id = context.draft_id
+        
+        # Get chaptering parameters from draft metadata
+        draft_metadata = self.get_draft_metadata(draft_id)
+        chaptering_mode = draft_metadata.get('chaptering_mode', 'flexible')
+        target_chapter_length = draft_metadata.get('target_chapter_length', 2500)
         
         try:
             # Get all analysis data needed for coherence check
-            analysis_data = self._get_analysis_data(draft_id)
+            analysis_data = self._get_analysis_data(context)
             
             if not analysis_data['scenes']:
-                logger.warning(f"No scenes found for coherence check in draft {draft_id}")
-                return {
-                    'success': True,
-                    'issues_found': 0,
-                    'message': 'No scenes to analyze for coherence'
-                }
+                return PipelineStageResult.success_result(
+                    self.stage_name,
+                    issues_found=0,
+                    scenes_analyzed=0,
+                    message='No scenes to analyze for coherence'
+                )
             
             # Perform different types of coherence analysis
             all_issues = []
@@ -76,44 +78,57 @@ class CoherenceCheckStage:
             all_issues.extend(causality_issues)
             
             # Store all identified issues in database
-            issues_stored = self._store_plot_issues(draft_id, all_issues)
+            issues_stored = self._store_plot_issues(context, all_issues)
             
-            result = {
-                'success': True,
-                'scenes_analyzed': len(analysis_data['scenes']),
-                'issues_found': len(all_issues),
-                'issues_stored': issues_stored,
-                'issue_breakdown': {
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                scenes_analyzed=len(analysis_data['scenes']),
+                issues_found=len(all_issues),
+                issues_stored=issues_stored,
+                issue_breakdown={
                     'timeline': len(timeline_issues),
                     'character': len(character_issues),
                     'plot': len(plot_issues),
                     'causality': len(causality_issues)
-                }
-            }
-            
-            logger.info(f"Stage 5 completed for draft {draft_id}: {issues_stored} issues identified")
-            return result
+                },
+                chaptering_mode=chaptering_mode,
+                target_chapter_length=target_chapter_length
+            )
             
         except Exception as e:
-            logger.error(f"Stage 5 failed for draft {draft_id}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'draft_id': draft_id
-            }
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error=str(e),
+                draft_id=draft_id
+            )
     
-    def _get_analysis_data(self, draft_id: str) -> Dict[str, Any]:
+    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+        """
+        Execute Stage 5 with legacy interface (backward compatibility).
+        
+        Args:
+            draft_id: UUID of the draft
+            chaptering_mode: Chaptering approach (backward compatibility)
+            target_chapter_length: Target word count (backward compatibility)
+            
+        Returns:
+            Stage execution results
+        """
+        return super().run(draft_id)
+    
+    def _get_analysis_data(self, context: PipelineStageContext) -> Dict[str, Any]:
         """
         Retrieve all necessary analysis data for coherence checking.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             
         Returns:
             Comprehensive analysis data
         """
+        draft_id = context.draft_id
+        
         try:
-            conn = self.db_pool.getconn()
             analysis_data = {
                 'scenes': [],
                 'characters': [],
@@ -121,7 +136,9 @@ class CoherenceCheckStage:
                 'graph_relationships': []
             }
             
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 # Get scenes with analysis data
                 cursor.execute("""
                     SELECT id, scene_number, title, setting, characters, 
@@ -172,32 +189,9 @@ class CoherenceCheckStage:
                     except (json.JSONDecodeError, TypeError):
                         continue
                 
-                # Try to get graph relationships if available
-                try:
-                    cursor.execute("""
-                        SELECT source_name, target_name, relationship_type, properties
-                        FROM novel_graph_edges
-                        WHERE draft_id = %s
-                    """, (draft_id,))
-                    
-                    relationships = cursor.fetchall()
-                    for source, target, rel_type, props in relationships:
-                        try:
-                            props_data = json.loads(props) if props else {}
-                            analysis_data['graph_relationships'].append({
-                                'source': source,
-                                'target': target,
-                                'relationship': rel_type,
-                                'properties': props_data
-                            })
-                        except (json.JSONDecodeError, TypeError):
-                            continue
-                            
-                except Exception as e:
-                    logger.warning(f"Could not retrieve graph relationships: {e}")
-                    # Continue without graph data
-            
-            self.db_pool.putconn(conn)
+                # Note: Graph relationships are now handled by Apache AGE integration
+                # Legacy relational table 'novel_graph_edges' has been removed
+                self.logger.debug("Graph relationship data handled by AGE integration in other pipeline stages")
             
             # Extract unique characters for consistency tracking
             all_characters = set()
@@ -208,13 +202,11 @@ class CoherenceCheckStage:
             
             analysis_data['characters'] = list(all_characters)
             
-            logger.debug(f"Retrieved analysis data: {len(analysis_data['scenes'])} scenes, {len(analysis_data['characters'])} characters")
+            self.logger.debug(f"Retrieved analysis data: {len(analysis_data['scenes'])} scenes, {len(analysis_data['characters'])} characters")
             return analysis_data
             
         except Exception as e:
-            logger.error(f"Failed to retrieve analysis data for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to retrieve analysis data for draft {draft_id}: {e}")
             raise
     
     def _check_timeline_consistency(self, analysis_data: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -284,7 +276,7 @@ class CoherenceCheckStage:
                         })
             
         except Exception as e:
-            logger.warning(f"Error checking timeline consistency: {e}")
+            self.logger.warning(f"Error checking timeline consistency: {e}")
         
         return issues
     
@@ -381,7 +373,7 @@ class CoherenceCheckStage:
                             })
             
         except Exception as e:
-            logger.warning(f"Error checking character consistency: {e}")
+            self.logger.warning(f"Error checking character consistency: {e}")
         
         return issues
     
@@ -483,7 +475,7 @@ class CoherenceCheckStage:
                 issues.extend(ai_issues)
             
         except Exception as e:
-            logger.warning(f"Error checking plot logic: {e}")
+            self.logger.warning(f"Error checking plot logic: {e}")
         
         return issues
     
@@ -542,7 +534,7 @@ class CoherenceCheckStage:
                         })
             
         except Exception as e:
-            logger.warning(f"Error checking causality: {e}")
+            self.logger.warning(f"Error checking causality: {e}")
         
         return issues
     
@@ -606,6 +598,9 @@ class CoherenceCheckStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = "Analyze the story for plot holes, inconsistencies, and coherence issues."
             
+            # Set appropriate token limit for coherence analysis (issue identification, not full content)
+            self.generation_engine.request.generation_config.max_output_tokens = 1500
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if response.success:
@@ -625,32 +620,35 @@ class CoherenceCheckStage:
                             })
                     
                 except json.JSONDecodeError:
-                    logger.warning("Could not parse AI coherence analysis response")
+                    self.logger.warning("Could not parse AI coherence analysis response")
                     
         except Exception as e:
-            logger.warning(f"Error in AI plot analysis: {e}")
+            self.logger.warning(f"Error in AI plot analysis: {e}")
         
         return issues
     
-    def _store_plot_issues(self, draft_id: str, issues: List[Dict[str, Any]]) -> int:
+    def _store_plot_issues(self, context: PipelineStageContext, issues: List[Dict[str, Any]]) -> int:
         """
         Store identified plot issues in the database.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             issues: List of identified issues
             
         Returns:
             Number of issues stored
         """
+        draft_id = context.draft_id
+        
         if not issues:
             return 0
         
         try:
-            conn = self.db_pool.getconn()
             issues_stored = 0
             
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 # Clear existing issues for this draft
                 cursor.execute("DELETE FROM plot_issues WHERE draft_id = %s", (draft_id,))
                 
@@ -699,16 +697,11 @@ class CoherenceCheckStage:
                     issues_stored = cursor.rowcount
                     conn.commit()
             
-            self.db_pool.putconn(conn)
-            
-            logger.info(f"Stored {issues_stored} plot issues for draft {draft_id}")
+            self.logger.info(f"Stored {issues_stored} plot issues for draft {draft_id}")
             return issues_stored
             
         except Exception as e:
-            logger.error(f"Failed to store plot issues for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                conn.rollback()
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to store plot issues for draft {draft_id}: {e}")
             raise
     
     def get_coherence_statistics(self, draft_id: str) -> Dict[str, Any]:
@@ -768,7 +761,5 @@ class CoherenceCheckStage:
             return stats
             
         except Exception as e:
-            logger.error(f"Failed to get coherence statistics for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to get coherence statistics for draft {draft_id}: {e}")
             return {'error': str(e)}

@@ -6,14 +6,15 @@ Enhances scenes based on identified plot issues and generates final manuscript.
 import json
 import logging
 import re
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime
+from ulid import ULID
 from .prompt_template import DeconstructorPrompts
-from utils.database_utils import utf8_database_connection, clean_text_for_database, ensure_utf8_json
+from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
 
-class EnhancementStage:
+class EnhancementStage(BasePipelineStage):
     """
     Stage 6 of the deconstruction pipeline.
     Enhances scenes by addressing plot issues and generates final manuscript.
@@ -27,38 +28,39 @@ class EnhancementStage:
             db_pool: Database connection pool
             generation_engine: AI generation engine
         """
-        self.db_pool = db_pool
-        self.generation_engine = generation_engine
+        super().__init__(db_pool, "EnhancementStage", generation_engine)
         self.prompt_template = DeconstructorPrompts()
     
-    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
         Execute Stage 6: Scene enhancement and manuscript generation.
         
         Args:
-            draft_id: UUID of the draft
-            chaptering_mode: Chaptering approach ('flexible' or 'constrained')
-            target_chapter_length: Target word count per chapter
+            context: Stage execution context containing draft_id
             
         Returns:
-            Stage execution results
+            PipelineStageResult with stage execution results
         """
-        logger.info(f"Starting Stage 6 enhancement for draft {draft_id} (chaptering_mode: {chaptering_mode}, target_length: {target_chapter_length})")
+        draft_id = context.draft_id
+        
+        # Get chaptering parameters from draft metadata
+        draft_metadata = self.get_draft_metadata(draft_id)
+        chaptering_mode = draft_metadata.get('chaptering_mode', 'flexible')
+        target_chapter_length = draft_metadata.get('target_chapter_length', 2500)
         
         try:
             # Get scenes and their associated issues
-            scenes_data = self._get_scenes_and_issues(draft_id)
+            scenes_data = self._get_scenes_and_issues(context)
             
             if not scenes_data['scenes']:
-                logger.warning(f"No scenes found for enhancement in draft {draft_id}")
-                return {
-                    'success': True,
-                    'scenes_enhanced': 0,
-                    'message': 'No scenes to enhance'
-                }
+                return PipelineStageResult.success_result(
+                    self.stage_name,
+                    scenes_enhanced=0,
+                    message='No scenes to enhance'
+                )
             
             # Get supporting context data with chaptering information
-            context_data = self._get_enhancement_context(draft_id)
+            context_data = self._get_enhancement_context(context)
             context_data['chaptering_mode'] = chaptering_mode
             context_data['target_chapter_length'] = target_chapter_length
             
@@ -78,64 +80,78 @@ class EnhancementStage:
                         enhanced_content = self._enhance_scene(scene, scene_issues, context_data)
                         
                         if enhanced_content:
-                            self._update_scene_enhancement(scene['id'], enhanced_content)
+                            self._update_scene_enhancement(context, scene['id'], enhanced_content)
                             enhanced_scenes += 1
-                            logger.debug(f"Enhanced scene {scene['scene_number']} for draft {draft_id}")
+                            self.logger.debug(f"Enhanced scene {scene['scene_number']} for draft {draft_id}")
                         else:
                             failed_enhancements.append(scene['scene_number'])
                     
                 except Exception as e:
-                    logger.error(f"Failed to enhance scene {scene['scene_number']}: {e}")
+                    self.logger.error(f"Failed to enhance scene {scene['scene_number']}: {e}")
                     failed_enhancements.append(scene['scene_number'])
             
             # Generate final manuscript from enhanced scenes
-            final_manuscript = self._generate_final_manuscript(draft_id, scenes_data['scenes'])
+            final_manuscript = self._generate_final_manuscript(scenes_data['scenes'])
             manuscript_stored = False
             
             if final_manuscript:
-                manuscript_stored = self._store_final_manuscript(draft_id, final_manuscript)
+                manuscript_stored = self._store_final_manuscript(context, final_manuscript)
             
-            result = {
-                'success': True,
-                'total_scenes': len(scenes_data['scenes']),
-                'scenes_enhanced': enhanced_scenes,
-                'failed_enhancements': len(failed_enhancements),
-                'failed_scene_numbers': failed_enhancements if failed_enhancements else None,
-                'issues_addressed': len(scenes_data['issues']),
-                'final_manuscript_generated': manuscript_stored,
-                'final_word_count': len(final_manuscript.split()) if final_manuscript else 0
-            }
-            
-            logger.info(f"Stage 6 completed for draft {draft_id}: {enhanced_scenes} scenes enhanced, manuscript generated: {manuscript_stored}")
-            return result
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                total_scenes=len(scenes_data['scenes']),
+                scenes_enhanced=enhanced_scenes,
+                failed_enhancements=len(failed_enhancements),
+                failed_scene_numbers=failed_enhancements if failed_enhancements else None,
+                issues_addressed=len(scenes_data['issues']),
+                final_manuscript_generated=manuscript_stored,
+                final_word_count=len(final_manuscript.split()) if final_manuscript else 0,
+                chaptering_mode=chaptering_mode,
+                target_chapter_length=target_chapter_length
+            )
             
         except Exception as e:
-            logger.error(f"Stage 6 failed for draft {draft_id}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'draft_id': draft_id
-            }
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error=str(e),
+                draft_id=draft_id
+            )
     
-    def _get_scenes_and_issues(self, draft_id: str) -> Dict[str, Any]:
+    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+        """
+        Execute Stage 6 with legacy interface (backward compatibility).
+        
+        Args:
+            draft_id: UUID of the draft
+            chaptering_mode: Chaptering approach (backward compatibility)
+            target_chapter_length: Target word count (backward compatibility)
+            
+        Returns:
+            Stage execution results
+        """
+        return super().run(draft_id)
+    
+    def _get_scenes_and_issues(self, context: PipelineStageContext) -> Dict[str, Any]:
         """
         Retrieve scenes and their associated plot issues.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             
         Returns:
             Dictionary containing scenes and issues data
         """
+        draft_id = context.draft_id
+        
         try:
-            conn = self.db_pool.getconn()
-            
             scenes_data = {
                 'scenes': [],
                 'issues': []
             }
             
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 # Get all scenes with their content and analysis
                 cursor.execute("""
                     SELECT id, scene_number, title, setting, characters, 
@@ -194,36 +210,35 @@ class EnhancementStage:
                         'suggested_fix': suggested_fix
                     })
             
-            self.db_pool.putconn(conn)
-            
-            logger.debug(f"Retrieved {len(scenes_data['scenes'])} scenes and {len(scenes_data['issues'])} issues for enhancement")
+            self.logger.debug(f"Retrieved {len(scenes_data['scenes'])} scenes and {len(scenes_data['issues'])} issues for enhancement")
             return scenes_data
             
         except Exception as e:
-            logger.error(f"Failed to retrieve scenes and issues for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to retrieve scenes and issues for draft {draft_id}: {e}")
             raise
     
-    def _get_enhancement_context(self, draft_id: str) -> Dict[str, Any]:
+    def _get_enhancement_context(self, context: PipelineStageContext) -> Dict[str, Any]:
         """
         Get additional context data needed for enhancement.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             
         Returns:
             Context data for enhancement
         """
+        draft_id = context.draft_id
+        
         try:
-            conn = self.db_pool.getconn()
-            context = {
+            enhancement_context = {
                 'character_reports': {},
                 'narrative_overview': {},
                 'style_guidance': ''
             }
             
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 # Get analysis reports for context
                 cursor.execute("""
                     SELECT report_type, report_subject, content_json
@@ -238,29 +253,26 @@ class EnhancementStage:
                         content_data = json.loads(content) if content else {}
                         
                         if report_type == 'CHARACTER_ARC':
-                            context['character_reports'][subject] = content_data
+                            enhancement_context['character_reports'][subject] = content_data
                         elif report_type == 'NARRATIVE_OVERVIEW':
-                            context['narrative_overview'] = content_data
+                            enhancement_context['narrative_overview'] = content_data
                         
                     except (json.JSONDecodeError, TypeError):
                         continue
                 
                 # Extract style guidance from character reports
-                if context['character_reports']:
+                if enhancement_context['character_reports']:
                     style_elements = []
-                    for char_data in context['character_reports'].values():
+                    for char_data in enhancement_context['character_reports'].values():
                         if 'narrative_voice' in char_data:
                             style_elements.append(char_data['narrative_voice'])
                     
-                    context['style_guidance'] = '; '.join(style_elements[:3])  # Limit to top 3
+                    enhancement_context['style_guidance'] = '; '.join(style_elements[:3])  # Limit to top 3
             
-            self.db_pool.putconn(conn)
-            return context
+            return enhancement_context
             
         except Exception as e:
-            logger.error(f"Failed to get enhancement context for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to get enhancement context for draft {draft_id}: {e}")
             return {'character_reports': {}, 'narrative_overview': {}, 'style_guidance': ''}
     
     def _needs_enhancement(self, scene: Dict[str, Any]) -> bool:
@@ -370,6 +382,9 @@ class EnhancementStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = f"Enhance scene {scene['scene_number']} while maintaining the author's voice and addressing identified issues."
             
+            # Set appropriate token limit for scene enhancement (rewriting scenes, similar to input size)
+            self.generation_engine.request.generation_config.max_output_tokens = 3000
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if response.success:
@@ -379,14 +394,14 @@ class EnhancementStage:
                 if self._validate_enhancement(scene['original_content'], enhanced_text):
                     return enhanced_text
                 else:
-                    logger.warning(f"Enhancement validation failed for scene {scene['scene_number']}")
+                    self.logger.warning(f"Enhancement validation failed for scene {scene['scene_number']}")
                     return scene['original_content']  # Fallback to original
             else:
-                logger.error(f"AI generation failed for scene {scene['scene_number']}: {response.error_message}")
+                self.logger.error(f"AI generation failed for scene {scene['scene_number']}: {response.error_message}")
                 return None
                 
         except Exception as e:
-            logger.error(f"Error enhancing scene {scene['scene_number']}: {e}")
+            self.logger.error(f"Error enhancing scene {scene['scene_number']}: {e}")
             return None
     
     def _get_chaptering_guidance(self, scene: Dict[str, Any], context: Dict[str, Any]) -> str:
@@ -461,18 +476,19 @@ class EnhancementStage:
         
         return True
     
-    def _update_scene_enhancement(self, scene_id: int, enhanced_content: str) -> None:
+    def _update_scene_enhancement(self, context: PipelineStageContext, scene_id: int, enhanced_content: str) -> None:
         """
         Update the scene with enhanced content.
         
         Args:
+            context: Stage execution context
             scene_id: Scene database ID
             enhanced_content: Enhanced scene content
         """
         try:
-            conn = self.db_pool.getconn()
-            
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 cursor.execute("""
                     UPDATE scenes 
                     SET enhanced_content = %s
@@ -481,21 +497,15 @@ class EnhancementStage:
                 
                 conn.commit()
             
-            self.db_pool.putconn(conn)
-            
         except Exception as e:
-            logger.error(f"Failed to update scene enhancement for scene {scene_id}: {e}")
-            if 'conn' in locals():
-                conn.rollback()
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to update scene enhancement for scene {scene_id}: {e}")
             raise
     
-    def _generate_final_manuscript(self, draft_id: str, scenes: List[Dict[str, Any]]) -> Optional[str]:
+    def _generate_final_manuscript(self, scenes: List[Dict[str, Any]]) -> Optional[str]:
         """
         Generate the final manuscript by combining enhanced scenes.
         
         Args:
-            draft_id: UUID of the draft
             scenes: List of scene data
             
         Returns:
@@ -514,7 +524,7 @@ class EnhancementStage:
                     manuscript_parts.append(scene_header + scene_content)
             
             if not manuscript_parts:
-                logger.warning(f"No content found to generate manuscript for draft {draft_id}")
+                self.logger.warning(f"No content found to generate manuscript")
                 return None
             
             # Combine all scenes
@@ -523,11 +533,11 @@ class EnhancementStage:
             # Clean up formatting
             full_manuscript = self._clean_manuscript_formatting(full_manuscript)
             
-            logger.info(f"Generated final manuscript for draft {draft_id}: {len(full_manuscript.split())} words")
+            self.logger.info(f"Generated final manuscript: {len(full_manuscript.split())} words")
             return full_manuscript
             
         except Exception as e:
-            logger.error(f"Error generating final manuscript for draft {draft_id}: {e}")
+            self.logger.error(f"Error generating final manuscript: {e}")
             return None
     
     def _clean_manuscript_formatting(self, manuscript: str) -> str:
@@ -561,54 +571,57 @@ class EnhancementStage:
             return manuscript
             
         except Exception as e:
-            logger.warning(f"Error cleaning manuscript formatting: {e}")
+            self.logger.warning(f"Error cleaning manuscript formatting: {e}")
             return manuscript  # Return original if cleaning fails
     
-    def _store_final_manuscript(self, draft_id: str, manuscript_content: str) -> bool:
+    def _store_final_manuscript(self, context: PipelineStageContext, manuscript_content: str) -> bool:
         """
-        Store the final manuscript in the database.
+        Store the final manuscript in the database with dynamic values.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             manuscript_content: Final manuscript content
             
         Returns:
             Success status
         """
+        draft_id = context.draft_id
+        
         try:
-            conn = self.db_pool.getconn()
-            
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 # Calculate word count
                 word_count = len(manuscript_content.split())
                 
-                # Generate processing summary
-                processing_summary = f"Enhanced manuscript generated from {word_count} words of content on {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                # Get dynamic values from context
+                user_id = context.get_user_id(self.db_pool)
+                
+                # Generate processing summary with dynamic timestamp
+                processing_summary = f"Enhanced manuscript generated from {word_count} words of content on {context.execution_timestamp.strftime('%Y-%m-%d %H:%M:%S')}"
                 
                 # Clear any existing final manuscript for this draft
                 cursor.execute("DELETE FROM final_manuscripts WHERE draft_id = %s", (draft_id,))
                 
-                # Insert new final manuscript
+                # Generate ULID for new final manuscript
+                manuscript_id = str(ULID())
+                
+                # Insert new final manuscript with dynamic values
                 cursor.execute("""
                     INSERT INTO final_manuscripts (
-                        draft_id, final_content, word_count, 
+                        id, draft_id, final_content, word_count, 
                         generated_at, generated_by, processing_summary
                     )
-                    VALUES (%s, %s, %s, NOW(), 1, %s)
-                """, (draft_id, manuscript_content, word_count, processing_summary))
+                    VALUES (%s, %s, %s, %s, NOW(), %s, %s)
+                """, (manuscript_id, draft_id, manuscript_content, word_count, user_id, processing_summary))
                 
                 conn.commit()
             
-            self.db_pool.putconn(conn)
-            
-            logger.info(f"Stored final manuscript for draft {draft_id}: {word_count} words")
+            self.logger.info(f"Stored final manuscript for draft {draft_id}: {word_count} words (user_id: {user_id})")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to store final manuscript for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                conn.rollback()
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to store final manuscript for draft {draft_id}: {e}")
             return False
     
     def get_enhancement_statistics(self, draft_id: str) -> Dict[str, Any]:
@@ -683,9 +696,7 @@ class EnhancementStage:
             return stats
             
         except Exception as e:
-            logger.error(f"Failed to get enhancement statistics for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to get enhancement statistics for draft {draft_id}: {e}")
             return {'error': str(e)}
     
     def reprocess_scene_enhancements(self, draft_id: str, scene_numbers: List[int] = None) -> Dict[str, Any]:
@@ -723,7 +734,7 @@ class EnhancementStage:
             
             self.db_pool.putconn(conn)
             
-            logger.info(f"Cleared {cleared_count} scene enhancements for reprocessing")
+            self.logger.info(f"Cleared {cleared_count} scene enhancements for reprocessing")
             
             # Re-run enhancement
             result = self.run(draft_id)
@@ -733,7 +744,7 @@ class EnhancementStage:
             return result
             
         except Exception as e:
-            logger.error(f"Failed to reprocess enhancements for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to reprocess enhancements for draft {draft_id}: {e}")
             return {
                 'success': False,
                 'error': str(e),

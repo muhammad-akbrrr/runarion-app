@@ -9,11 +9,12 @@ import re
 from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
 from .prompt_template import DeconstructorPrompts
-from utils.database_utils import utf8_database_connection, clean_text_for_database, ensure_utf8_json
+from utils.database_utils import clean_text_for_database, ensure_utf8_json
+from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
 
-class ChapteringStage:
+class ChapteringStage(BasePipelineStage):
     """
     Stage 7 of the deconstruction pipeline.
     Organizes final manuscript into logical chapters with compelling titles.
@@ -27,39 +28,39 @@ class ChapteringStage:
             db_pool: Database connection pool
             generation_engine: AI generation engine
         """
-        self.db_pool = db_pool
-        self.generation_engine = generation_engine
+        super().__init__(db_pool, "ChapteringStage", generation_engine)
         self.prompt_template = DeconstructorPrompts()
     
-    def run(self, draft_id: str, chaptering_mode: str = 'flexible', 
-           target_chapter_length: int = 2500) -> Dict[str, Any]:
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
         Execute Stage 7: Chapter organization.
         
         Args:
-            draft_id: UUID of the draft
-            chaptering_mode: 'flexible' or 'constrained' chaptering approach
-            target_chapter_length: Target word count per chapter
+            context: Stage execution context containing draft_id
             
         Returns:
-            Stage execution results
+            PipelineStageResult with stage execution results
         """
-        logger.info(f"Starting Stage 7 chaptering for draft {draft_id} (mode: {chaptering_mode}, target: {target_chapter_length} words)")
+        draft_id = context.draft_id
+        
+        # Get chaptering parameters from draft metadata
+        draft_metadata = self.get_draft_metadata(draft_id)
+        chaptering_mode = draft_metadata.get('chaptering_mode', 'flexible')
+        target_chapter_length = draft_metadata.get('target_chapter_length', 2500)
         
         try:
             # Get final manuscript
-            manuscript_data = self._get_final_manuscript(draft_id)
+            manuscript_data = self._get_final_manuscript(context)
             
             if not manuscript_data:
-                logger.warning(f"No final manuscript found for chaptering in draft {draft_id}")
-                return {
-                    'success': True,
-                    'chapters_created': 0,
-                    'message': 'No final manuscript to chapter'
-                }
+                return PipelineStageResult.success_result(
+                    self.stage_name,
+                    chapters_created=0,
+                    message='No final manuscript to chapter'
+                )
             
             # Get scene information for chapter break guidance
-            scene_info = self._get_scene_information(draft_id)
+            scene_info = self._get_scene_information(context)
             
             # Perform chaptering based on mode
             if chaptering_mode == 'constrained':
@@ -79,47 +80,60 @@ class ChapteringStage:
             chapters_with_titles = self._generate_chapter_titles(chapters, scene_info)
             
             # Store chapters in database
-            chapters_stored = self._store_chapters(draft_id, chapters_with_titles)
+            chapters_stored = self._store_chapters(context, chapters_with_titles)
             
             # Calculate statistics
             total_word_count = sum(chapter.get('word_count', 0) for chapter in chapters_with_titles)
             
-            result = {
-                'success': True,
-                'chapters_created': len(chapters_with_titles),
-                'chapters_stored': chapters_stored,
-                'total_word_count': total_word_count,
-                'chaptering_mode': chaptering_mode,
-                'target_chapter_length': target_chapter_length,
-                'avg_chapter_length': total_word_count // len(chapters_with_titles) if chapters_with_titles else 0,
-                'manuscript_word_count': manuscript_data['word_count']
-            }
-            
-            logger.info(f"Stage 7 completed for draft {draft_id}: {chapters_stored} chapters created")
-            return result
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                chapters_created=len(chapters_with_titles),
+                chapters_stored=chapters_stored,
+                total_word_count=total_word_count,
+                chaptering_mode=chaptering_mode,
+                target_chapter_length=target_chapter_length,
+                avg_chapter_length=total_word_count // len(chapters_with_titles) if chapters_with_titles else 0,
+                manuscript_word_count=manuscript_data['word_count']
+            )
             
         except Exception as e:
-            logger.error(f"Stage 7 failed for draft {draft_id}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'draft_id': draft_id
-            }
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error=str(e),
+                draft_id=draft_id
+            )
     
-    def _get_final_manuscript(self, draft_id: str) -> Optional[Dict[str, Any]]:
+    def run(self, draft_id: str, chaptering_mode: str = 'flexible', 
+           target_chapter_length: int = 2500) -> Dict[str, Any]:
+        """
+        Execute Stage 7 with legacy interface (backward compatibility).
+        
+        Args:
+            draft_id: UUID of the draft
+            chaptering_mode: Chaptering approach (backward compatibility)
+            target_chapter_length: Target word count (backward compatibility)
+            
+        Returns:
+            Stage execution results
+        """
+        return super().run(draft_id)
+    
+    def _get_final_manuscript(self, context: PipelineStageContext) -> Optional[Dict[str, Any]]:
         """
         Retrieve the final manuscript for chaptering.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             
         Returns:
             Manuscript data or None if not found
         """
+        draft_id = context.draft_id
+        
         try:
-            conn = self.db_pool.getconn()
-            
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 cursor.execute("""
                     SELECT final_content, word_count, generated_at
                     FROM final_manuscripts
@@ -141,32 +155,31 @@ class ChapteringStage:
                     'generated_at': generated_at
                 }
             
-            self.db_pool.putconn(conn)
-            
-            logger.debug(f"Retrieved final manuscript for draft {draft_id}: {word_count} words")
+            self.logger.debug(f"Retrieved final manuscript for draft {draft_id}: {word_count} words")
             return manuscript_data
             
         except Exception as e:
-            logger.error(f"Failed to retrieve final manuscript for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to retrieve final manuscript for draft {draft_id}: {e}")
             return None
     
-    def _get_scene_information(self, draft_id: str) -> List[Dict[str, Any]]:
+    def _get_scene_information(self, context: PipelineStageContext) -> List[Dict[str, Any]]:
         """
         Get scene information to guide chapter breaks.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             
         Returns:
             List of scene information
         """
+        draft_id = context.draft_id
+        
         try:
-            conn = self.db_pool.getconn()
             scene_info = []
             
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 cursor.execute("""
                     SELECT scene_number, title, setting, characters, analysis_json
                     FROM scenes
@@ -196,15 +209,11 @@ class ChapteringStage:
                         'conflicts': analysis.get('conflicts', [])
                     })
             
-            self.db_pool.putconn(conn)
-            
-            logger.debug(f"Retrieved scene information for {len(scene_info)} scenes")
+            self.logger.debug(f"Retrieved scene information for {len(scene_info)} scenes")
             return scene_info
             
         except Exception as e:
-            logger.error(f"Failed to retrieve scene information for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to retrieve scene information for draft {draft_id}: {e}")
             return []
     
     def _flexible_chaptering(self, manuscript: str, scene_info: List[Dict[str, Any]], 
@@ -240,6 +249,9 @@ class ChapteringStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = f"Organize this manuscript into {len(scene_info) // 3} to {len(scene_info) // 2} chapters with natural breaks."
             
+            # Set appropriate token limit for chapter organization (structure planning, not content)
+            self.generation_engine.request.generation_config.max_output_tokens = 1500
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if response.success:
@@ -247,14 +259,14 @@ class ChapteringStage:
                     ai_chaptering = json.loads(response.text.strip())
                     return self._process_ai_chaptering(ai_chaptering, manuscript)
                 except json.JSONDecodeError:
-                    logger.warning("Could not parse AI chaptering response, falling back to constrained approach")
+                    self.logger.warning("Could not parse AI chaptering response, falling back to constrained approach")
                     return self._constrained_chaptering(manuscript, scene_info, target_length)
             else:
-                logger.warning("AI chaptering failed, using constrained approach")
+                self.logger.warning("AI chaptering failed, using constrained approach")
                 return self._constrained_chaptering(manuscript, scene_info, target_length)
                 
         except Exception as e:
-            logger.error(f"Error in flexible chaptering: {e}")
+            self.logger.error(f"Error in flexible chaptering: {e}")
             return self._constrained_chaptering(manuscript, scene_info, target_length)
     
     def _constrained_chaptering(self, manuscript: str, scene_info: List[Dict[str, Any]], 
@@ -324,11 +336,11 @@ class ChapteringStage:
                 if chapter_num > estimated_chapters + 5:
                     break
             
-            logger.info(f"Created {len(chapters)} chapters using constrained approach")
+            self.logger.info(f"Created {len(chapters)} chapters using constrained approach")
             return chapters
             
         except Exception as e:
-            logger.error(f"Error in constrained chaptering: {e}")
+            self.logger.error(f"Error in constrained chaptering: {e}")
             # Fallback: create single chapter with all content
             return [{
                 'chapter_number': 1,
@@ -388,11 +400,11 @@ class ChapteringStage:
             # Sort and remove duplicates
             scene_breaks = sorted(list(set(scene_breaks)))
             
-            logger.debug(f"Found {len(scene_breaks)} potential scene breaks")
+            self.logger.debug(f"Found {len(scene_breaks)} potential scene breaks")
             return scene_breaks
             
         except Exception as e:
-            logger.warning(f"Error finding scene breaks: {e}")
+            self.logger.warning(f"Error finding scene breaks: {e}")
             return []
     
     def _find_best_chapter_break(self, scene_breaks: List[int], start_pos: int, 
@@ -434,7 +446,7 @@ class ChapteringStage:
             return best_break
             
         except Exception as e:
-            logger.warning(f"Error finding best chapter break: {e}")
+            self.logger.warning(f"Error finding best chapter break: {e}")
             return target_pos
     
     def _find_paragraph_break(self, start_pos: int, target_pos: int, words: List[str]) -> int:
@@ -467,7 +479,7 @@ class ChapteringStage:
             return min(target_pos, len(words))
             
         except Exception as e:
-            logger.warning(f"Error finding paragraph break: {e}")
+            self.logger.warning(f"Error finding paragraph break: {e}")
             return target_pos
     
     def _process_ai_chaptering(self, ai_result: Dict[str, Any], manuscript: str) -> List[Dict[str, Any]]:
@@ -519,7 +531,7 @@ class ChapteringStage:
             return chapters
             
         except Exception as e:
-            logger.error(f"Error processing AI chaptering: {e}")
+            self.logger.error(f"Error processing AI chaptering: {e}")
             # Return single chapter as fallback
             return [{
                 'chapter_number': 1,
@@ -568,7 +580,7 @@ class ChapteringStage:
             return chapters
             
         except Exception as e:
-            logger.warning(f"Error generating chapter titles: {e}")
+            self.logger.warning(f"Error generating chapter titles: {e}")
             # Ensure all chapters have titles
             for i, chapter in enumerate(chapters):
                 if not chapter.get('title'):
@@ -602,6 +614,9 @@ Respond with only the title, no quotes or explanation."""
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = f"Generate a chapter title for Chapter {chapter_number}."
             
+            # Set appropriate token limit for title generation
+            self.generation_engine.request.generation_config.max_output_tokens = 100
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if response.success:
@@ -614,7 +629,7 @@ Respond with only the title, no quotes or explanation."""
             return None
             
         except Exception as e:
-            logger.warning(f"Error generating AI title for chapter {chapter_number}: {e}")
+            self.logger.warning(f"Error generating AI title for chapter {chapter_number}: {e}")
             return None
     
     def _create_fallback_title(self, content: str, chapter_number: int) -> str:
@@ -652,28 +667,31 @@ Respond with only the title, no quotes or explanation."""
             return f"Chapter {chapter_number}"
             
         except Exception as e:
-            logger.warning(f"Error creating fallback title: {e}")
+            self.logger.warning(f"Error creating fallback title: {e}")
             return f"Chapter {chapter_number}"
     
-    def _store_chapters(self, draft_id: str, chapters: List[Dict[str, Any]]) -> int:
+    def _store_chapters(self, context: PipelineStageContext, chapters: List[Dict[str, Any]]) -> int:
         """
         Store chapters in the database.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             chapters: List of chapter data
             
         Returns:
             Number of chapters stored
         """
+        draft_id = context.draft_id
+        
         if not chapters:
             return 0
         
         try:
-            conn = self.db_pool.getconn()
             chapters_stored = 0
             
-            with conn.cursor() as cursor:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
                 # Clear existing chapters for this draft
                 cursor.execute("DELETE FROM chapters WHERE draft_id = %s", (draft_id,))
                 
@@ -697,16 +715,11 @@ Respond with only the title, no quotes or explanation."""
                     chapters_stored = cursor.rowcount
                     conn.commit()
             
-            self.db_pool.putconn(conn)
-            
-            logger.info(f"Stored {chapters_stored} chapters for draft {draft_id}")
+            self.logger.info(f"Stored {chapters_stored} chapters for draft {draft_id}")
             return chapters_stored
             
         except Exception as e:
-            logger.error(f"Failed to store chapters for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                conn.rollback()
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to store chapters for draft {draft_id}: {e}")
             raise
     
     def get_chaptering_statistics(self, draft_id: str) -> Dict[str, Any]:
@@ -777,9 +790,7 @@ Respond with only the title, no quotes or explanation."""
             return stats
             
         except Exception as e:
-            logger.error(f"Failed to get chaptering statistics for draft {draft_id}: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to get chaptering statistics for draft {draft_id}: {e}")
             return {'error': str(e)}
     
     def rechapter_manuscript(self, draft_id: str, new_mode: str = 'flexible', 
@@ -806,7 +817,7 @@ Respond with only the title, no quotes or explanation."""
             
             self.db_pool.putconn(conn)
             
-            logger.info(f"Deleted {deleted_count} existing chapters for re-chaptering")
+            self.logger.info(f"Deleted {deleted_count} existing chapters for re-chaptering")
             
             # Re-run chaptering
             result = self.run(draft_id, new_mode, new_target_length)
@@ -816,7 +827,7 @@ Respond with only the title, no quotes or explanation."""
             return result
             
         except Exception as e:
-            logger.error(f"Failed to rechapter manuscript for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to rechapter manuscript for draft {draft_id}: {e}")
             return {
                 'success': False,
                 'error': str(e),

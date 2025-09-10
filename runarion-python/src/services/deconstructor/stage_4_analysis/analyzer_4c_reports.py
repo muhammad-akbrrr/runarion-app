@@ -6,54 +6,75 @@ Generates detailed analysis reports for major story elements.
 import json
 import logging
 import os
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 from collections import Counter
+from ulid import ULID
 from ..prompt_template import DeconstructorPrompts
-from utils.database_utils import utf8_database_connection, clean_text_for_database, ensure_utf8_json
+from utils.database_utils import clean_text_for_database, ensure_utf8_json
+from ..base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
+from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
 logger = logging.getLogger(__name__)
 
-class ComprehensiveReportingStage:
+class ComprehensiveReportingStage(BasePipelineStage):
     """
     Stage 4C: Generates comprehensive analysis reports.
     """
     
     def __init__(self, db_pool, generation_engine):
-        self.db_pool = db_pool
-        self.generation_engine = generation_engine
+        """
+        Initialize the comprehensive reporting stage.
+        
+        Args:
+            db_pool: Database connection pool
+            generation_engine: AI generation engine
+        """
+        super().__init__(db_pool, "ComprehensiveReportingStage", generation_engine)
         self.prompt_template = DeconstructorPrompts()
         self.age_enabled = os.getenv('AGE_ENABLED', 'true').lower() == 'true'
-        self.graph_name = os.getenv('AGE_GRAPH_NAME', 'novel_pipeline_graph')
+        
+        # Initialize graph service if AGE is enabled
+        if self.age_enabled:
+            try:
+                self.graph_service = GraphDatabaseService(db_pool)
+            except GraphDatabaseNotAvailableError as e:
+                logger.warning(f"AGE not available, disabling graph features: {e}")
+                self.graph_service = None
+                self.age_enabled = False
+        else:
+            self.graph_service = None
     
-    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
         Execute Stage 4C: Comprehensive reporting.
         
         Args:
-            draft_id: UUID of the draft
-            chaptering_mode: Chaptering approach ('flexible' or 'constrained')
-            target_chapter_length: Target word count per chapter
+            context: Stage execution context containing draft_id
             
         Returns:
-            Stage execution results
+            PipelineStageResult with stage execution results
         """
-        logger.info(f"Starting Stage 4C comprehensive reporting for draft {draft_id} (chaptering_mode: {chaptering_mode}, target_length: {target_chapter_length})")
+        draft_id = context.draft_id
         
-        # Update draft metadata with chaptering parameters for downstream stages  
-        self._update_chaptering_metadata(draft_id, chaptering_mode, target_chapter_length)
+        # Get chaptering parameters from draft metadata
+        draft_metadata = self.get_draft_metadata(draft_id)
+        chaptering_mode = draft_metadata.get('chaptering_mode', 'flexible')
+        target_chapter_length = draft_metadata.get('target_chapter_length', 2500)
+        
+        self.logger.info(f"Starting Stage 4C comprehensive reporting for draft {draft_id} (chaptering_mode: {chaptering_mode}, target_length: {target_chapter_length})")
         
         try:
-            scenes_data = self._get_scenes_with_analysis(draft_id)
+            scenes_data = self._get_scenes_with_analysis(context)
             
             if not scenes_data:
-                return {
-                    'success': True,
-                    'reports_generated': 0,
-                    'message': 'No analyzed scenes to report on'
-                }
+                return PipelineStageResult.success_result(
+                    self.stage_name,
+                    reports_generated=0,
+                    message='No analyzed scenes to report on'
+                )
             
             # Get graph data if available
-            graph_data = self._get_graph_data(draft_id)
+            graph_data = self._get_graph_data(context)
             
             # Identify major elements using both scene and graph data
             major_characters = self._identify_major_characters(scenes_data, graph_data)
@@ -70,11 +91,11 @@ class ComprehensiveReportingStage:
                     report = self._generate_character_report(character_name, character_data)
                     
                     if report:
-                        self._store_analysis_report(draft_id, 'CHARACTER_ARC', character_name, report)
+                        self._store_analysis_report(context, 'CHARACTER_ARC', character_name, report)
                         reports_generated += 1
                         
                 except Exception as e:
-                    logger.error(f"Failed to generate character report for {character_name}: {e}")
+                    self.logger.error(f"Failed to generate character report for {character_name}: {e}")
             
             # Generate theme reports
             for theme in major_themes[:5]:  # Limit to top 5 themes
@@ -83,11 +104,11 @@ class ComprehensiveReportingStage:
                     report = self._generate_theme_report(theme, theme_data)
                     
                     if report:
-                        self._store_analysis_report(draft_id, 'THEME_ANALYSIS', theme, report)
+                        self._store_analysis_report(context, 'THEME_ANALYSIS', theme, report)
                         reports_generated += 1
                         
                 except Exception as e:
-                    logger.error(f"Failed to generate theme report for {theme}: {e}")
+                    self.logger.error(f"Failed to generate theme report for {theme}: {e}")
             
             # Generate setting reports
             for setting in major_settings[:5]:  # Limit to top 5 settings
@@ -96,11 +117,11 @@ class ComprehensiveReportingStage:
                     report = self._generate_setting_report(setting, setting_data)
                     
                     if report:
-                        self._store_analysis_report(draft_id, 'SETTING_ANALYSIS', setting, report)
+                        self._store_analysis_report(context, 'SETTING_ANALYSIS', setting, report)
                         reports_generated += 1
                         
                 except Exception as e:
-                    logger.error(f"Failed to generate setting report for {setting}: {e}")
+                    self.logger.error(f"Failed to generate setting report for {setting}: {e}")
             
             # Generate plot thread reports
             for i, plot_thread in enumerate(plot_threads[:3]):  # Limit to top 3 plot threads
@@ -109,22 +130,22 @@ class ComprehensiveReportingStage:
                     
                     if report:
                         thread_name = f"plot_thread_{i+1}"
-                        self._store_analysis_report(draft_id, 'PLOT_THREAD', thread_name, report)
+                        self._store_analysis_report(context, 'PLOT_THREAD', thread_name, report)
                         reports_generated += 1
                         
                 except Exception as e:
-                    logger.error(f"Failed to generate plot thread report {i+1}: {e}")
+                    self.logger.error(f"Failed to generate plot thread report {i+1}: {e}")
             
             # Generate relationship analysis using graph data
             if graph_data and graph_data.get('relationships'):
                 try:
                     relationship_report = self._generate_relationship_report(graph_data, scenes_data)
                     if relationship_report:
-                        self._store_analysis_report(draft_id, 'RELATIONSHIP_ANALYSIS', 'character_relationships', relationship_report)
+                        self._store_analysis_report(context, 'RELATIONSHIP_ANALYSIS', 'character_relationships', relationship_report)
                         reports_generated += 1
                         
                 except Exception as e:
-                    logger.error(f"Failed to generate relationship report: {e}")
+                    self.logger.error(f"Failed to generate relationship report: {e}")
             
             # Generate comprehensive narrative overview
             try:
@@ -133,31 +154,47 @@ class ComprehensiveReportingStage:
                     major_settings, plot_threads, graph_data
                 )
                 if narrative_report:
-                    self._store_analysis_report(draft_id, 'NARRATIVE_OVERVIEW', 'story_overview', narrative_report)
+                    self._store_analysis_report(context, 'NARRATIVE_OVERVIEW', 'story_overview', narrative_report)
                     reports_generated += 1
                     
             except Exception as e:
-                logger.error(f"Failed to generate narrative report: {e}")
+                self.logger.error(f"Failed to generate narrative report: {e}")
             
-            result = {
-                'success': True,
-                'scenes_analyzed': len(scenes_data),
-                'major_characters': len(major_characters),
-                'major_themes': len(major_themes),
-                'major_settings': len(major_settings),
-                'plot_threads': len(plot_threads),
-                'graph_data_available': bool(graph_data),
-                'reports_generated': reports_generated,
-                'chaptering_mode': chaptering_mode,
-                'target_chapter_length': target_chapter_length
-            }
+            self.logger.info(f"Stage 4C completed for draft {draft_id}: {reports_generated} reports generated")
             
-            logger.info(f"Stage 4C completed for draft {draft_id}: {reports_generated} reports generated")
-            return result
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                scenes_analyzed=len(scenes_data),
+                major_characters=len(major_characters),
+                major_themes=len(major_themes),
+                major_settings=len(major_settings),
+                plot_threads=len(plot_threads),
+                graph_data_available=bool(graph_data),
+                reports_generated=reports_generated,
+                chaptering_mode=chaptering_mode,
+                target_chapter_length=target_chapter_length
+            )
             
         except Exception as e:
-            logger.error(f"Stage 4C failed for draft {draft_id}: {str(e)}")
-            return {'success': False, 'error': str(e), 'draft_id': draft_id}
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error=str(e),
+                draft_id=draft_id
+            )
+    
+    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+        """
+        Execute Stage 4C with legacy interface (backward compatibility).
+        
+        Args:
+            draft_id: UUID of the draft
+            chaptering_mode: Chaptering approach (backward compatibility)
+            target_chapter_length: Target word count (backward compatibility)
+            
+        Returns:
+            Stage execution results
+        """
+        return super().run(draft_id)
     
     def _update_chaptering_metadata(self, draft_id: str, chaptering_mode: str, target_chapter_length: int) -> None:
         """
@@ -169,45 +206,26 @@ class ComprehensiveReportingStage:
             target_chapter_length: Target word count per chapter
         """
         try:
-            with utf8_database_connection(self.db_pool) as conn:
-                cursor = conn.cursor()
-                
-                # Get current metadata
-                cursor.execute("SELECT metadata FROM drafts WHERE id = %s", (draft_id,))
-                result = cursor.fetchone()
-                
-                current_metadata = {}
-                if result and result[0]:
-                    try:
-                        current_metadata = json.loads(result[0])
-                    except json.JSONDecodeError:
-                        current_metadata = {}
-                
-                # Update with chaptering parameters
-                current_metadata.update({
-                    'chaptering_mode': chaptering_mode,
-                    'target_chapter_length': target_chapter_length,
-                    'stage_4c_completed': True
-                })
-                
-                # Store updated metadata
-                metadata_json = ensure_utf8_json(current_metadata)
-                cursor.execute(
-                    "UPDATE drafts SET metadata = %s WHERE id = %s",
-                    (metadata_json, draft_id)
-                )
-                
-                conn.commit()
-                logger.debug(f"Updated chaptering metadata for draft {draft_id}")
+            # Use base class method for standardized metadata update
+            metadata_updates = {
+                'chaptering_mode': chaptering_mode,
+                'target_chapter_length': target_chapter_length,
+                'stage_4c_completed': True
+            }
+            self.update_draft_metadata(draft_id, metadata_updates)
+            self.logger.debug(f"Updated chaptering metadata for draft {draft_id}")
                 
         except Exception as e:
-            logger.error(f"Failed to update chaptering metadata for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to update chaptering metadata for draft {draft_id}: {e}")
             raise
 
-    def _get_scenes_with_analysis(self, draft_id: str) -> List[Dict[str, Any]]:
+    def _get_scenes_with_analysis(self, context: PipelineStageContext) -> List[Dict[str, Any]]:
         """Retrieve scenes with their analysis data using UTF-8 safety."""
+        draft_id = context.draft_id
+        
         try:
-            with utf8_database_connection(self.db_pool) as conn:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
@@ -217,6 +235,8 @@ class ComprehensiveReportingStage:
                     WHERE draft_id = %s AND analysis_json IS NOT NULL
                     ORDER BY scene_number
                 """, (draft_id,))
+                
+                scenes = cursor.fetchall()
             
             scenes_data = []
             for scene in scenes:
@@ -239,91 +259,45 @@ class ComprehensiveReportingStage:
                     'analysis': analysis
                 })
             
-            logger.debug(f"Retrieved {len(scenes_data)} scenes with analysis for draft {draft_id} (UTF-8 safe)")
+            self.logger.debug(f"Retrieved {len(scenes_data)} scenes with analysis for draft {draft_id} (UTF-8 safe)")
             return scenes_data
             
         except Exception as e:
-            logger.error(f"Failed to retrieve scenes with analysis: {e}")
+            self.logger.error(f"Failed to retrieve scenes with analysis: {e}")
             return []
     
-    def _get_graph_data(self, draft_id: str) -> Optional[Dict[str, Any]]:
-        """Retrieve graph data from AGE database if available."""
-        if not self.age_enabled:
+    def _get_graph_data(self, context: PipelineStageContext) -> Optional[Dict[str, Any]]:
+        """Retrieve graph data from AGE database using GraphDatabaseService."""
+        draft_id = context.draft_id
+        
+        if not self.age_enabled or not self.graph_service:
             return None
             
         try:
-            conn = self.db_pool.getconn()
+            # Use GraphDatabaseService methods for all graph operations
+            characters = self.graph_service.get_character_vertices(draft_id)
+            locations = self.graph_service.get_location_vertices(draft_id)
+            relationships = self.graph_service.get_draft_relationships(draft_id)
+            statistics = self.graph_service.get_graph_statistics(draft_id)
+            
             graph_data = {
-                'characters': [],
-                'locations': [],
-                'relationships': [],
-                'entities_count': 0,
-                'relationships_count': 0
+                'characters': characters,
+                'locations': locations,
+                'relationships': relationships,
+                'entities_count': statistics.get('total_entities', 0),
+                'relationships_count': statistics.get('total_relationships', 0),
+                'entity_breakdown': statistics.get('entity_breakdown', {}),
+                'relationship_types': statistics.get('relationship_types', [])
             }
             
-            with conn.cursor() as cursor:
-                # Set search path for AGE
-                cursor.execute("SET search_path = ag_catalog, public")
-                
-                # Get characters from graph
-                try:
-                    cursor.execute("""
-                        SELECT ag_catalog.cypher('novel_pipeline_graph', 
-                            'MATCH (c:Character {draft_id: $draft_id}) RETURN c.name, c',
-                            jsonb_build_object('draft_id', %s)
-                        )
-                    """, (draft_id,))
-                    
-                    char_results = cursor.fetchall()
-                    for result in char_results:
-                        if result and result[0]:
-                            char_data = json.loads(str(result[0]))
-                            if char_data and len(char_data) > 0:
-                                char_name = char_data[0][0] if len(char_data[0]) > 0 else None
-                                char_props = char_data[0][1] if len(char_data[0]) > 1 else {}
-                                if char_name:
-                                    graph_data['characters'].append({
-                                        'name': char_name,
-                                        'properties': char_props
-                                    })
-                except Exception as e:
-                    logger.warning(f"Failed to get characters from graph: {e}")
-                
-                # Get relationships from graph
-                try:
-                    cursor.execute("""
-                        SELECT ag_catalog.cypher('novel_pipeline_graph', 
-                            'MATCH (a)-[r]->(b) WHERE a.draft_id = $draft_id RETURN a.name, type(r), b.name, r',
-                            jsonb_build_object('draft_id', %s)
-                        )
-                    """, (draft_id,))
-                    
-                    rel_results = cursor.fetchall()
-                    for result in rel_results:
-                        if result and result[0]:
-                            rel_data = json.loads(str(result[0]))
-                            if rel_data and len(rel_data) > 0:
-                                rel_info = rel_data[0]
-                                if len(rel_info) >= 3:
-                                    graph_data['relationships'].append({
-                                        'source': rel_info[0],
-                                        'relationship': rel_info[1],
-                                        'target': rel_info[2],
-                                        'properties': rel_info[3] if len(rel_info) > 3 else {}
-                                    })
-                except Exception as e:
-                    logger.warning(f"Failed to get relationships from graph: {e}")
-                
-                graph_data['entities_count'] = len(graph_data['characters'])
-                graph_data['relationships_count'] = len(graph_data['relationships'])
-            
-            self.db_pool.putconn(conn)
+            self.logger.debug(f"Retrieved graph data for draft {draft_id}: {graph_data['entities_count']} entities, {graph_data['relationships_count']} relationships")
             return graph_data
-            
+                
+        except GraphDatabaseNotAvailableError as e:
+            self.logger.warning(f"AGE not available for graph data retrieval: {e}")
+            return None
         except Exception as e:
-            logger.error(f"Failed to retrieve graph data: {e}")
-            if 'conn' in locals():
-                self.db_pool.putconn(conn)
+            self.logger.error(f"Failed to retrieve graph data: {e}")
             return None
     
     def _identify_major_characters(self, scenes_data: List[Dict[str, Any]], 
@@ -485,6 +459,9 @@ class ComprehensiveReportingStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = f"Generate a comprehensive character analysis report for {character_name}."
             
+            # Set appropriate token limit for focused reports (specific aspects, not full content)
+            self.generation_engine.request.generation_config.max_output_tokens = 2000
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if not response.success:
@@ -496,7 +473,7 @@ class ComprehensiveReportingStage:
                 return self._create_fallback_character_report(character_name, character_data)
                 
         except Exception as e:
-            logger.error(f"Error generating character report for {character_name}: {e}")
+            self.logger.error(f"Error generating character report for {character_name}: {e}")
             return None
     
     def _create_fallback_theme_report(self, theme: str, theme_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -610,6 +587,9 @@ class ComprehensiveReportingStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = f"Generate a comprehensive theme analysis report for {theme}."
             
+            # Set appropriate token limit for focused reports (specific aspects, not full content)
+            self.generation_engine.request.generation_config.max_output_tokens = 2000
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if not response.success:
@@ -621,7 +601,7 @@ class ComprehensiveReportingStage:
                 return self._create_fallback_theme_report(theme, theme_data)
                 
         except Exception as e:
-            logger.error(f"Error generating theme report for {theme}: {e}")
+            self.logger.error(f"Error generating theme report for {theme}: {e}")
             return None
     
     def _generate_setting_report(self, setting: str, setting_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -641,6 +621,9 @@ class ComprehensiveReportingStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = f"Generate a comprehensive setting analysis report for {setting}."
             
+            # Set appropriate token limit for focused reports (specific aspects, not full content)
+            self.generation_engine.request.generation_config.max_output_tokens = 2000
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if not response.success:
@@ -652,7 +635,7 @@ class ComprehensiveReportingStage:
                 return self._create_fallback_setting_report(setting, setting_data)
                 
         except Exception as e:
-            logger.error(f"Error generating setting report for {setting}: {e}")
+            self.logger.error(f"Error generating setting report for {setting}: {e}")
             return None
     
     def _generate_plot_thread_report(self, plot_thread: Dict[str, Any], scenes_data: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -674,6 +657,9 @@ class ComprehensiveReportingStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = "Generate a comprehensive plot thread analysis report."
             
+            # Set appropriate token limit for focused reports (specific aspects, not full content)
+            self.generation_engine.request.generation_config.max_output_tokens = 2000
+            
             response = self.generation_engine.generate(skip_quota=True)
             
             if not response.success:
@@ -687,7 +673,7 @@ class ComprehensiveReportingStage:
                 return self._create_fallback_plot_thread_report(plot_thread)
                 
         except Exception as e:
-            logger.error(f"Error generating plot thread report: {e}")
+            self.logger.error(f"Error generating plot thread report: {e}")
             return None
     
     def _generate_relationship_report(self, graph_data: Dict[str, Any], scenes_data: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
@@ -733,7 +719,7 @@ class ComprehensiveReportingStage:
             }
             
         except Exception as e:
-            logger.error(f"Error generating relationship report: {e}")
+            self.logger.error(f"Error generating relationship report: {e}")
             return None
     
     def _generate_narrative_report(self, scenes_data: List[Dict[str, Any]], 
@@ -800,27 +786,36 @@ class ComprehensiveReportingStage:
         else:
             return 'highly_complex'
     
-    def _store_analysis_report(self, draft_id: str, report_type: str, report_subject: str, 
+    def _store_analysis_report(self, context: PipelineStageContext, report_type: str, report_subject: str, 
                              report_content: Dict[str, Any]) -> None:
-        """Store an analysis report in the database with UTF-8 safety."""
+        """Store an analysis report in the database with UTF-8 safety and dynamic values."""
+        draft_id = context.draft_id
+        
         try:
-            with utf8_database_connection(self.db_pool) as conn:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
                 cursor = conn.cursor()
                 
                 # Ensure UTF-8 safe JSON encoding and text cleaning
                 safe_subject = clean_text_for_database(report_subject)
                 content_json = ensure_utf8_json(report_content)
                 
+                # Get dynamic values from context
+                user_id = context.get_user_id(self.db_pool)
+                report_id = str(ULID())
+                
                 cursor.execute("""
-                    INSERT INTO analysis_reports (draft_id, report_type, report_subject, content_json)
-                    VALUES (%s, %s, %s, %s)
+                    INSERT INTO analysis_reports (id, draft_id, report_type, report_subject, content_json, generated_at, generated_by)
+                    VALUES (%s, %s, %s, %s, %s, NOW(), %s)
                     ON CONFLICT (draft_id, report_type, report_subject) DO UPDATE SET
-                    content_json = EXCLUDED.content_json
-                """, (draft_id, report_type, safe_subject, content_json))
+                    content_json = EXCLUDED.content_json,
+                    generated_at = NOW(),
+                    generated_by = EXCLUDED.generated_by
+                """, (report_id, draft_id, report_type, safe_subject, content_json, user_id))
                 
                 conn.commit()
-                logger.debug(f"Stored analysis report {report_type}:{safe_subject} for draft {draft_id} (UTF-8 safe)")
+                self.logger.debug(f"Stored analysis report {report_type}:{safe_subject} for draft {draft_id} (user_id: {user_id}, UTF-8 safe)")
             
         except Exception as e:
-            logger.error(f"Failed to store analysis report: {e}")
+            self.logger.error(f"Failed to store analysis report: {e}")
             raise

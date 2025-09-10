@@ -116,6 +116,21 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | Apache AGE Graph Database Configuration
+    |--------------------------------------------------------------------------
+    |
+    | Configuration for Apache AGE graph database functionality
+    | This is used by the GraphDatabaseService to isolate AGE operations
+    |
+    */
+
+    'age' => [
+        'graph_name' => env('AGE_GRAPH_NAME', 'novel_pipeline_graph'),
+        'enabled' => env('AGE_ENABLED', true),
+    ],
+
+    /*
+    |--------------------------------------------------------------------------
     | Migration Repository Table
     |--------------------------------------------------------------------------
     |

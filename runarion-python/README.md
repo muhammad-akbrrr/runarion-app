@@ -242,7 +242,7 @@ def analyze_plot_dependencies(scenes):
 python -c "import psycopg2; conn = psycopg2.connect('DATABASE_URL'); print('AGE Connected')"
 
 # Verify graph operations
-SELECT ag_catalog.age_version();
+SELECT extversion FROM pg_extension WHERE extname = 'age';
 ```
 
 ## API Endpoints

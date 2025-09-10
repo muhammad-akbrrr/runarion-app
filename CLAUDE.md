@@ -70,7 +70,7 @@ python -m pytest tests/
 docker compose -f docker-compose.dev.yml exec postgres-db psql -U postgres -d runarion -c "SELECT * FROM pg_extension WHERE extname = 'age';"
 
 # Test graph operations
-docker compose -f docker-compose.dev.yml exec postgres-db psql -U postgres -d runarion -c "SELECT ag_catalog.age_version();"
+docker compose -f docker-compose.dev.yml exec postgres-db psql -U postgres -d runarion -c "SELECT extversion FROM pg_extension WHERE extname = 'age';"
 
 # Access graph database
 docker compose -f docker-compose.dev.yml exec postgres-db psql -U postgres -d runarion -c "SET search_path = ag_catalog, public; SELECT * FROM ag_graph;"
@@ -120,7 +120,7 @@ docker compose -f docker-compose.dev.yml build --no-cache postgres-db
 
 ## Database
 
-- **Primary Database**: PostgreSQL 17 with Apache AGE extension (shared between Laravel and Python)
+- **Primary Database**: PostgreSQL 16 with Apache AGE extension (shared between Laravel and Python)
 - **Graph Database**: Apache AGE for novel pipeline relationship mapping
 - **Migrations**: Located in `runarion-laravel/database/migrations/`
 - **Connection**: Both services connect to the same PostgreSQL instance

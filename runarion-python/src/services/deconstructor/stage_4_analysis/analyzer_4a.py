@@ -6,13 +6,14 @@ Performs detailed analysis of individual scenes for plot, character, and themati
 import json
 import logging
 from typing import Dict, Any, List, Tuple
-from models.request import BaseGenerationRequest
 from ..prompt_template import DeconstructorPrompts
-from utils.database_utils import utf8_database_connection, clean_text_for_database, ensure_utf8_json
+from utils.database_utils import ensure_utf8_json
+from utils.json_response_parser import parse_scene_analysis_response
+from ..base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
 
-class SceneBySceneAnalysisStage:
+class SceneBySceneAnalysisStage(BasePipelineStage):
     """
     Stage 4A of the deconstruction pipeline.
     Analyzes each scene individually for literary elements and plot significance.
@@ -26,90 +27,112 @@ class SceneBySceneAnalysisStage:
             db_pool: Database connection pool
             generation_engine: AI generation engine
         """
-        self.db_pool = db_pool
-        self.generation_engine = generation_engine
+        super().__init__(db_pool, "SceneBySceneAnalysisStage", generation_engine)
         self.prompt_template = DeconstructorPrompts()
     
-    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
         Execute Stage 4A: Scene-by-scene analysis.
         
         Args:
+            context: Stage execution context containing draft_id
+            
+        Returns:
+            PipelineStageResult with stage execution results
+        """
+        draft_id = context.draft_id
+        
+        # Get chaptering parameters from draft metadata
+        draft_metadata = self.get_draft_metadata(draft_id)
+        chaptering_mode = draft_metadata.get('chaptering_mode', 'flexible')
+        target_length = draft_metadata.get('target_chapter_length', 2500)
+        
+        try:
+            # Get all scenes for this draft
+            scenes = self._get_draft_scenes(context)
+            
+            if not scenes:
+                return PipelineStageResult.success_result(
+                    self.stage_name,
+                    total_scenes=0,
+                    scenes_analyzed=0,
+                    failed_analyses=0,
+                    message='No scenes to analyze'
+                )
+            
+            analyzed_scenes = 0
+            failed_analyses = []
+            
+            for scene in scenes:
+                scene_id, scene_number, title, setting, characters, content = scene
+                
+                try:
+                    # Analyze this scene
+                    analysis_result = self._analyze_single_scene(scene_id, scene_number, title, setting, characters, content)
+                    
+                    if analysis_result:
+                        # Update scene with analysis
+                        self._update_scene_analysis(context, scene_id, analysis_result)
+                        analyzed_scenes += 1
+                        self.logger.debug(f"Analyzed scene {scene_number} successfully")
+                    else:
+                        self.logger.warning(f"Scene {scene_number} analysis returned empty result")
+                        failed_analyses.append(scene_number)
+                        
+                except Exception as e:
+                    self.logger.error(f"Failed to analyze scene {scene_number}: {e}")
+                    failed_analyses.append(scene_number)
+            
+            # Update draft graph metadata after successful analysis
+            if analyzed_scenes > 0:
+                self._update_draft_graph_metadata(context)
+            
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                total_scenes=len(scenes),
+                scenes_analyzed=analyzed_scenes,
+                failed_analyses=len(failed_analyses),
+                failed_scene_numbers=failed_analyses if failed_analyses else None,
+                chaptering_mode=chaptering_mode,
+                target_chapter_length=target_length
+            )
+            
+        except Exception as e:
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error=str(e),
+                draft_id=draft_id
+            )
+    
+    def run(self, draft_id: str, chaptering_mode: str = 'flexible', target_chapter_length: int = 2500) -> Dict[str, Any]:
+        """
+        Execute Stage 4A with legacy interface (backward compatibility).
+        
+        Args:
             draft_id: UUID of the draft
-            chaptering_mode: Chaptering approach ('flexible' or 'constrained')
-            target_chapter_length: Target word count per chapter
+            chaptering_mode: Chaptering approach (backward compatibility)
+            target_chapter_length: Target word count (backward compatibility)
             
         Returns:
             Stage execution results
         """
-        logger.info(f"Starting Stage 4A scene analysis for draft {draft_id} (chaptering_mode: {chaptering_mode}, target_length: {target_chapter_length})")
-        
-        try:
-            # Get all scenes for this draft
-            scenes = self._get_draft_scenes(draft_id)
-            
-            if not scenes:
-                logger.warning(f"No scenes found for draft {draft_id}")
-                return {
-                    'success': True,
-                    'scenes_analyzed': 0,
-                    'message': 'No scenes to analyze'
-                }
-            
-            # Analyze each scene
-            analyzed_scenes = 0
-            failed_analyses = []
-            
-            for scene_id, scene_number, title, setting, characters, content in scenes:
-                try:
-                    analysis_data = self._analyze_scene(
-                        scene_number, title, setting, characters, content
-                    )
-                    
-                    if analysis_data:
-                        self._update_scene_analysis(scene_id, analysis_data)
-                        analyzed_scenes += 1
-                        logger.debug(f"Analyzed scene {scene_number} for draft {draft_id}")
-                    else:
-                        failed_analyses.append(scene_number)
-                        
-                except Exception as e:
-                    logger.error(f"Failed to analyze scene {scene_number}: {e}")
-                    failed_analyses.append(scene_number)
-            
-            result = {
-                'success': True,
-                'total_scenes': len(scenes),
-                'scenes_analyzed': analyzed_scenes,
-                'failed_analyses': len(failed_analyses),
-                'failed_scene_numbers': failed_analyses if failed_analyses else None,
-                'chaptering_mode': chaptering_mode,
-                'target_chapter_length': target_chapter_length
-            }
-            
-            logger.info(f"Stage 4A completed for draft {draft_id}: {analyzed_scenes}/{len(scenes)} scenes analyzed")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Stage 4A failed for draft {draft_id}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'draft_id': draft_id
-            }
+        return super().run(draft_id)
     
-    def _get_draft_scenes(self, draft_id: str) -> List[Tuple]:
+    def _get_draft_scenes(self, context: PipelineStageContext) -> List[Tuple]:
         """
         Retrieve all scenes for a draft from the database with UTF-8 safety.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             
         Returns:
             List of scene tuples
         """
+        draft_id = context.draft_id
+        
         try:
-            with utf8_database_connection(self.db_pool) as conn:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
@@ -121,19 +144,20 @@ class SceneBySceneAnalysisStage:
                 
                 scenes = cursor.fetchall()
             
-            logger.debug(f"Retrieved {len(scenes)} scenes for analysis in draft {draft_id} (UTF-8 safe)")
+            self.logger.debug(f"Retrieved {len(scenes)} scenes for analysis in draft {draft_id} (UTF-8 safe)")
             return scenes
             
         except Exception as e:
-            logger.error(f"Failed to retrieve scenes for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to retrieve scenes for draft {draft_id}: {e}")
             raise
     
-    def _analyze_scene(self, scene_number: int, title: str, setting: str, 
-                      characters: str, content: str) -> Dict[str, Any]:
+    def _analyze_single_scene(self, scene_id: int, scene_number: int, title: str, setting: str, 
+                             characters: str, content: str) -> Dict[str, Any]:
         """
         Analyze a single scene using AI.
         
         Args:
+            scene_id: Scene ID
             scene_number: Scene number
             title: Scene title
             setting: Scene setting
@@ -162,65 +186,33 @@ class SceneBySceneAnalysisStage:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = "Provide a comprehensive literary analysis of this scene."
             
+            # Set appropriate token limit for scene analysis (focused analysis, not full content)
+            self.generation_engine.request.generation_config.max_output_tokens = 2000
+            
             # Generate analysis
             response = self.generation_engine.generate(skip_quota=True)
             
             if not response.success:
-                logger.error(f"AI generation failed for scene {scene_number}: {response.error_message}")
+                self.logger.error(f"AI generation failed for scene {scene_number}: {response.error_message}")
                 return {}
             
-            # Parse the JSON response
+            # Parse the JSON response using unified parser
             try:
-                analysis_data = json.loads(response.text.strip())
-                
-                # Validate analysis structure
-                validated_analysis = self._validate_analysis_data(analysis_data)
-                
+                validated_analysis = parse_scene_analysis_response(response)
                 return validated_analysis
                 
-            except json.JSONDecodeError as e:
-                logger.error(f"Failed to parse scene analysis JSON for scene {scene_number}: {e}")
-                logger.error(f"Raw response: {response.text[:500]}...")
+            except Exception as e:
+                self.logger.error(f"Failed to parse scene analysis JSON for scene {scene_number}: {e}")
+                if hasattr(response, 'text'):
+                    self.logger.error(f"Raw response: {str(response.text)[:500]}...")
                 
                 # Return basic analysis structure
                 return self._create_fallback_analysis(content)
                 
         except Exception as e:
-            logger.error(f"Error analyzing scene {scene_number}: {e}")
+            self.logger.error(f"Error analyzing scene {scene_number}: {e}")
             return {}
     
-    def _validate_analysis_data(self, analysis_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Validate and structure the analysis data.
-        
-        Args:
-            analysis_data: Raw analysis from AI
-            
-        Returns:
-            Validated analysis dictionary
-        """
-        validated = {
-            'plot_function': analysis_data.get('plot_function', ''),
-            'character_development': analysis_data.get('character_development', {}),
-            'conflicts': analysis_data.get('conflicts', []),
-            'themes': analysis_data.get('themes', []),
-            'foreshadowing': analysis_data.get('foreshadowing', []),
-            'world_building': analysis_data.get('world_building', ''),
-            'dialogue_analysis': analysis_data.get('dialogue_analysis', ''),
-            'pacing_notes': analysis_data.get('pacing_notes', ''),
-            'overall_significance': analysis_data.get('overall_significance', '')
-        }
-        
-        # Ensure lists are actually lists
-        for key in ['conflicts', 'themes', 'foreshadowing']:
-            if not isinstance(validated[key], list):
-                validated[key] = []
-        
-        # Ensure character_development is a dict
-        if not isinstance(validated['character_development'], dict):
-            validated['character_development'] = {}
-        
-        return validated
     
     def _create_fallback_analysis(self, content: str) -> Dict[str, Any]:
         """
@@ -244,16 +236,18 @@ class SceneBySceneAnalysisStage:
             'overall_significance': 'Unable to determine automatically'
         }
     
-    def _update_scene_analysis(self, scene_id: int, analysis_data: Dict[str, Any]) -> None:
+    def _update_scene_analysis(self, context: PipelineStageContext, scene_id: int, analysis_data: Dict[str, Any]) -> None:
         """
-        Update the scene with analysis data using UTF-8 safety.
+        Update the scene with analysis data and graph flags using UTF-8 safety.
         
         Args:
+            context: Stage execution context
             scene_id: Scene database ID
             analysis_data: Analysis results
         """
         try:
-            with utf8_database_connection(self.db_pool) as conn:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
                 cursor = conn.cursor()
                 
                 # Ensure UTF-8 safe JSON encoding
@@ -261,15 +255,47 @@ class SceneBySceneAnalysisStage:
                 
                 cursor.execute("""
                     UPDATE scenes 
-                    SET analysis_json = %s
+                    SET analysis_json = %s,
+                        graph_analyzed = true,
+                        graph_last_updated = CURRENT_TIMESTAMP
                     WHERE id = %s
                 """, (analysis_json, scene_id))
                 
                 conn.commit()
             
         except Exception as e:
-            logger.error(f"Failed to update scene analysis for scene {scene_id}: {e}")
+            self.logger.error(f"Failed to update scene analysis for scene {scene_id}: {e}")
             raise
+    
+    def _update_draft_graph_metadata(self, context: PipelineStageContext) -> None:
+        """
+        Update draft-level graph metadata flags.
+        
+        Args:
+            context: Stage execution context
+        """
+        try:
+            draft_id = context.draft_id
+            metadata_updates = {
+                'graph_initialized': True,
+                'stage_4a_completed': True
+            }
+            self.update_draft_metadata(draft_id, metadata_updates)
+            
+            # Also update the graph timestamp in the drafts table
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
+                cursor = conn.cursor()
+                cursor.execute("""
+                    UPDATE drafts 
+                    SET graph_last_updated = CURRENT_TIMESTAMP
+                    WHERE id = %s
+                """, (draft_id,))
+                conn.commit()
+                
+        except Exception as e:
+            self.logger.error(f"Failed to update draft graph metadata: {e}")
+            # Don't raise here as it's not critical to stage success
     
     def get_analysis_statistics(self, draft_id: str) -> Dict[str, Any]:
         """
@@ -357,7 +383,7 @@ class SceneBySceneAnalysisStage:
             return stats
             
         except Exception as e:
-            logger.error(f"Failed to get analysis statistics for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to get analysis statistics for draft {draft_id}: {e}")
             if 'conn' in locals():
                 self.db_pool.putconn(conn)
             return {'error': str(e)}
@@ -407,7 +433,7 @@ class SceneBySceneAnalysisStage:
             return result
             
         except Exception as e:
-            logger.error(f"Failed to reanalyze scenes for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to reanalyze scenes for draft {draft_id}: {e}")
             return {
                 'success': False,
                 'error': str(e),

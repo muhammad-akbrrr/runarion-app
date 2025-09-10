@@ -4,7 +4,7 @@
 -- This script initializes the Apache AGE extension for graph database functionality
 -- Required for novel pipeline graph operations in Runarion
 
--- Create AGE extension
+-- Create AGE extension with enhanced error handling
 DO $$ 
 BEGIN
     -- Check if AGE extension is available
@@ -15,18 +15,61 @@ BEGIN
         -- Load AGE library (required per official documentation)
         LOAD 'age';
         
-        -- Load AGE into the search path (use current database)
-        EXECUTE 'ALTER DATABASE ' || current_database() || ' SET search_path TO ag_catalog, "$user", public';
-        
-        -- Set search path for current session
+        -- Apply search path to current session only (no database-level persistence)
         SET search_path = ag_catalog, "$user", public;
         
-        -- Create graph for novel pipeline operations
-        PERFORM create_graph('novel_pipeline_graph');
+        -- Create graph for novel pipeline operations (with error handling)
+        BEGIN
+            PERFORM ag_catalog.create_graph('novel_pipeline_graph');
+            RAISE NOTICE 'Created graph: novel_pipeline_graph';
+        EXCEPTION
+            WHEN duplicate_object THEN
+                RAISE NOTICE 'Graph novel_pipeline_graph already exists, skipping creation';
+            WHEN OTHERS THEN
+                RAISE WARNING 'Failed to create graph: %', SQLERRM;
+                -- Continue anyway, graph might be created by migration
+        END;
+        
+        -- Create AGE session initialization function for runtime use
+        CREATE OR REPLACE FUNCTION initialize_age_session()
+        RETURNS boolean AS $init$
+        DECLARE
+            original_search_path text;
+        BEGIN
+            -- Store original search path for restoration
+            SELECT current_setting('search_path') INTO original_search_path;
+            
+            -- Set search path to include ag_catalog for this session only
+            PERFORM set_config('search_path', 'ag_catalog, ' || original_search_path, false);
+            
+            -- Test AGE functionality using correct method
+            PERFORM (SELECT extversion FROM pg_extension WHERE extname = 'age');
+            
+            -- Verify graph exists
+            IF NOT EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'novel_pipeline_graph') THEN
+                PERFORM ag_catalog.create_graph('novel_pipeline_graph');
+            END IF;
+            
+            RETURN true;
+        EXCEPTION
+            WHEN OTHERS THEN
+                -- Restore original search path on error
+                BEGIN
+                    PERFORM set_config('search_path', original_search_path, false);
+                EXCEPTION
+                    WHEN OTHERS THEN
+                        -- If restoration fails, log but continue
+                        RAISE WARNING 'Failed to restore search path after AGE error';
+                END;
+                
+                RAISE WARNING 'AGE session initialization failed: %', SQLERRM;
+                RETURN false;
+        END;
+        $init$ LANGUAGE plpgsql;
         
         RAISE NOTICE 'Apache AGE extension initialized successfully';
-        RAISE NOTICE 'Created graph: novel_pipeline_graph';
-        RAISE NOTICE 'Search path updated to include ag_catalog';
+        RAISE NOTICE 'AGE session initialization function created';
+        RAISE NOTICE 'Note: AGE requires session-level search path configuration';
         
     ELSE
         RAISE WARNING 'Apache AGE extension is not available - graph functionality will be disabled';
@@ -39,16 +82,49 @@ EXCEPTION
 END
 $$;
 
--- Verify AGE installation
+-- Verify AGE installation with comprehensive testing
 DO $$
+DECLARE
+    age_version_info text;
+    graph_exists boolean := false;
 BEGIN
     -- Check if AGE extension is properly loaded
     IF EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age') THEN
-        RAISE NOTICE 'AGE extension verification: SUCCESS';
+        RAISE NOTICE 'AGE extension verification: SUCCESS - extension loaded';
         
-        -- AGE extension is working if we got this far without errors
-        
-        RAISE NOTICE 'AGE graph operations verification: SUCCESS';
+        -- Test AGE functions are available
+        BEGIN
+            SELECT extversion INTO age_version_info FROM pg_extension WHERE extname = 'age';
+            RAISE NOTICE 'AGE version: %', age_version_info;
+            
+            -- Test graph operations
+            SELECT EXISTS (
+                SELECT 1 FROM ag_catalog.ag_graph WHERE name = 'novel_pipeline_graph'
+            ) INTO graph_exists;
+            
+            IF graph_exists THEN
+                RAISE NOTICE 'AGE graph verification: SUCCESS - novel_pipeline_graph exists';
+                
+                -- Test basic cypher operations
+                PERFORM ag_catalog.cypher('novel_pipeline_graph', $cypher$
+                    CREATE (test:TestNode {name: 'age_init_test', created_at: timestamp()})
+                    RETURN test
+                $cypher$);
+                
+                PERFORM ag_catalog.cypher('novel_pipeline_graph', $cypher$
+                    MATCH (test:TestNode {name: 'age_init_test'})
+                    DELETE test
+                $cypher$);
+                
+                RAISE NOTICE 'AGE cypher operations verification: SUCCESS';
+            ELSE
+                RAISE WARNING 'AGE graph verification: FAILED - novel_pipeline_graph not found';
+            END IF;
+            
+        EXCEPTION 
+            WHEN OTHERS THEN
+                RAISE WARNING 'AGE function verification failed: %', SQLERRM;
+        END;
         
     ELSE
         RAISE WARNING 'AGE extension verification: FAILED - extension not found';

@@ -16,7 +16,8 @@ RUN apt-get update && apt-get install -y \
   libwebp-dev \
   libzip-dev \
   libicu-dev \
-  libgmp-dev
+  libgmp-dev \
+  libhiredis-dev
 
 # Install Node.js and npm using nvm (more reliable across platforms)
 ENV NVM_DIR /usr/local/nvm
@@ -46,6 +47,10 @@ RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
   zip \
   intl \
   gmp
+
+# Install Redis extension
+RUN pecl install redis \
+  && docker-php-ext-enable redis
 
 # Install Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer

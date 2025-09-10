@@ -65,10 +65,8 @@ coverage.xml
 cover/
 
 # Ignore all files and subdirectories in outputs/{directory}, but keep the directories itself
-tests/outputs/temp/*
-tests/outputs/deconstructor/*
-!tests/outputs/temp/
-!tests/outputs/deconstructor/
+tests/sample/output/
+!tests/sample/output/.gitkeep
 
 # Jupyter Notebook
 .ipynb_checkpoints

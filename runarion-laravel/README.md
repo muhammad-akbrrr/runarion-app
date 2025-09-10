@@ -307,7 +307,7 @@ The PostgreSQL database includes Apache AGE extension for graph operations:
 docker compose exec postgres-db psql -U postgres -d runarion -c "SELECT * FROM pg_extension WHERE extname = 'age';"
 
 # Test graph operations
-docker compose exec postgres-db psql -U postgres -d runarion -c "SELECT ag_catalog.age_version();"
+docker compose exec postgres-db psql -U postgres -d runarion -c "SELECT extversion FROM pg_extension WHERE extname = 'age';"
 ```
 
 ## Testing
