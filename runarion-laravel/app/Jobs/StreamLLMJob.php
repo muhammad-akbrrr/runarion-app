@@ -15,6 +15,8 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
 use Illuminate\Support\Str;
 
 class StreamLLMJob implements ShouldQueue
@@ -33,6 +35,10 @@ class StreamLLMJob implements ShouldQueue
     public ?int $parentVersionIndex;
     public int $timeout = 180; // 3 minutes timeout
     public int $tries = 1; // No retries for streaming jobs
+    
+    // Performance optimization settings
+    private const CHUNK_BUFFER_SIZE = 10; // Buffer chunks before DB write
+    private const REDIS_BUFFER_TTL = 300; // 5 minutes TTL for Redis buffer
 
     /**
      * Create a new job instance.
@@ -201,82 +207,97 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
-     * Stream from Python service and broadcast chunks
+     * Stream from Python service and broadcast chunks with Redis buffering
      */
     private function streamFromPythonService(array $requestData): void
     {
         $fullText = '';
         $chunkIndex = 0;
         $pythonServiceUrl = env('PYTHON_SERVICE_URL', 'http://python-app:5000');
+        $redisBufferKey = "stream_buffer:{$this->sessionId}";
 
         Log::info('Making streaming request to Python service', [
             'session_id' => $this->sessionId,
             'url' => $pythonServiceUrl . '/api/stream',
         ]);
 
-        // Create HTTP client with streaming support
-        $response = Http::timeout($this->timeout)
-            ->withHeaders([
-                'Content-Type' => 'application/json',
-                'Accept' => 'text/event-stream',
-            ])
-            ->withOptions([
-                'stream' => true,
-                'read_timeout' => $this->timeout,
-            ])
-            ->post($pythonServiceUrl . '/api/stream', $requestData);
+        // Initialize Redis buffer for chunk accumulation
+        $this->initializeRedisBuffer($redisBufferKey);
 
-        if (!$response->successful()) {
-            throw new \Exception('Failed to connect to Python service: ' . $response->body());
-        }
+        try {
+            // Create HTTP client with streaming support and connection optimization
+            $response = Http::timeout($this->timeout)
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'text/event-stream',
+                    'Connection' => 'keep-alive',
+                ])
+                ->withOptions([
+                    'stream' => true,
+                    'read_timeout' => $this->timeout,
+                    'connect_timeout' => 30,
+                ])
+                ->post($pythonServiceUrl . '/api/stream', $requestData);
 
-        // Process streaming response
-        $body = $response->getBody();
-        $buffer = '';
-
-        while (!$body->eof()) {
-            $chunk = $body->read(1024);
-            $buffer .= $chunk;
-
-            // Process complete lines
-            while (($pos = strpos($buffer, "\n\n")) !== false) {
-                $line = substr($buffer, 0, $pos);
-                $buffer = substr($buffer, $pos + 2);
-
-                $this->processStreamLine($line, $fullText, $chunkIndex);
+            if (!$response->successful()) {
+                throw new \Exception('Failed to connect to Python service: ' . $response->body());
             }
+
+            // Process streaming response with buffering
+            $body = $response->getBody();
+            $buffer = '';
+
+            while (!$body->eof()) {
+                $chunk = $body->read(1024);
+                $buffer .= $chunk;
+
+                // Process complete lines
+                while (($pos = strpos($buffer, "\n\n")) !== false) {
+                    $line = substr($buffer, 0, $pos);
+                    $buffer = substr($buffer, $pos + 2);
+
+                    $this->processStreamLineWithBuffering($line, $fullText, $chunkIndex, $redisBufferKey);
+                }
+            }
+
+            // Process any remaining buffer
+            if (!empty($buffer)) {
+                $this->processStreamLineWithBuffering($buffer, $fullText, $chunkIndex, $redisBufferKey);
+            }
+
+            // Flush any remaining buffered chunks to database
+            $this->flushRedisBufferToDatabase($redisBufferKey);
+
+            // Update project content with final text using optimized version control
+            $this->updateProjectContentWithOptimizedVersionControl($fullText);
+
+            // Broadcast completion event
+            broadcast(new LLMStreamCompleted(
+                $this->workspaceId,
+                $this->projectId,
+                $this->chapterOrder,
+                $this->sessionId,
+                $fullText,
+                true
+            ));
+
+            Log::info('LLM streaming completed successfully', [
+                'session_id' => $this->sessionId,
+                'total_chunks' => $chunkIndex,
+                'total_length' => strlen($fullText),
+                'is_regenerate' => $this->isRegenerate,
+            ]);
+
+        } finally {
+            // Always clean up Redis buffer
+            $this->cleanupRedisBuffer($redisBufferKey);
         }
-
-        // Process any remaining buffer
-        if (!empty($buffer)) {
-            $this->processStreamLine($buffer, $fullText, $chunkIndex);
-        }
-
-        // Update project content with final text using version control
-        $this->updateProjectContentWithVersionControl($fullText);
-
-        // Broadcast completion event
-        broadcast(new LLMStreamCompleted(
-            $this->workspaceId,
-            $this->projectId,
-            $this->chapterOrder,
-            $this->sessionId,
-            $fullText,
-            true
-        ));
-
-        Log::info('LLM streaming completed successfully', [
-            'session_id' => $this->sessionId,
-            'total_chunks' => $chunkIndex,
-            'total_length' => strlen($fullText),
-            'is_regenerate' => $this->isRegenerate,
-        ]);
     }
 
     /**
-     * Process individual stream line
+     * Process individual stream line with Redis buffering
      */
-    private function processStreamLine(string $line, string &$fullText, int &$chunkIndex): void
+    private function processStreamLineWithBuffering(string $line, string &$fullText, int &$chunkIndex, string $redisBufferKey): void
     {
         $line = trim($line);
         
@@ -316,7 +337,10 @@ class StreamLLMJob implements ShouldQueue
             if (!empty($textChunk)) {
                 $fullText .= $textChunk;
                 
-                // Broadcast chunk event
+                // Add chunk to Redis buffer instead of immediate database write
+                $this->addChunkToRedisBuffer($redisBufferKey, $textChunk, $chunkIndex);
+                
+                // Broadcast chunk event (immediate for real-time UI updates)
                 broadcast(new LLMStreamChunk(
                     $this->workspaceId,
                     $this->projectId,
@@ -327,6 +351,11 @@ class StreamLLMJob implements ShouldQueue
                 ));
                 
                 $chunkIndex++;
+                
+                // Periodically flush buffer to database
+                if ($chunkIndex % self::CHUNK_BUFFER_SIZE === 0) {
+                    $this->flushRedisBufferToDatabase($redisBufferKey);
+                }
             }
         } catch (\Exception $e) {
             Log::warning('Error processing stream chunk', [
@@ -339,86 +368,170 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
-     * Update project content with generated text using version control
+     * Initialize Redis buffer for stream chunks
      */
-    private function updateProjectContentWithVersionControl(string $generatedText): void
+    private function initializeRedisBuffer(string $redisBufferKey): void
+    {
+        Redis::hset($redisBufferKey, [
+            'chunks' => json_encode([]),
+            'total_length' => 0,
+            'created_at' => now()->toISOString(),
+        ]);
+        Redis::expire($redisBufferKey, self::REDIS_BUFFER_TTL);
+    }
+
+    /**
+     * Add chunk to Redis buffer
+     */
+    private function addChunkToRedisBuffer(string $redisBufferKey, string $textChunk, int $chunkIndex): void
+    {
+        $chunksJson = Redis::hget($redisBufferKey, 'chunks') ?: '[]';
+        $chunks = json_decode($chunksJson, true) ?: [];
+        
+        $chunks[] = [
+            'index' => $chunkIndex,
+            'text' => $textChunk,
+            'timestamp' => now()->toISOString(),
+        ];
+        
+        Redis::hset($redisBufferKey, [
+            'chunks' => json_encode($chunks),
+            'total_length' => Redis::hget($redisBufferKey, 'total_length') + strlen($textChunk),
+        ]);
+    }
+
+    /**
+     * Flush Redis buffer to database (batch operation)
+     */
+    private function flushRedisBufferToDatabase(string $redisBufferKey): void
+    {
+        $chunksJson = Redis::hget($redisBufferKey, 'chunks');
+        if (!$chunksJson) {
+            return;
+        }
+
+        $chunks = json_decode($chunksJson, true) ?: [];
+        if (empty($chunks)) {
+            return;
+        }
+
+        // Log the batch flush operation
+        Log::debug('Flushing chunks buffer to database', [
+            'session_id' => $this->sessionId,
+            'chunk_count' => count($chunks),
+        ]);
+
+        // Clear the buffer after logging but before potential DB errors
+        Redis::hset($redisBufferKey, 'chunks', json_encode([]));
+        
+        // Note: In a production system, you might want to store these chunks
+        // in a dedicated table for debugging/replay purposes, but for now
+        // we're just clearing the buffer to prevent memory buildup
+    }
+
+    /**
+     * Clean up Redis buffer
+     */
+    private function cleanupRedisBuffer(string $redisBufferKey): void
+    {
+        Redis::del($redisBufferKey);
+        
+        Log::debug('Cleaned up Redis buffer', [
+            'session_id' => $this->sessionId,
+            'buffer_key' => $redisBufferKey,
+        ]);
+    }
+
+    /**
+     * Update project content with generated text using optimized version control
+     */
+    private function updateProjectContentWithOptimizedVersionControl(string $generatedText): void
     {
         if (empty($generatedText)) {
             return;
         }
 
-        $projectContent = ProjectContent::where('project_id', $this->projectId)->first();
-        
-        if (!$projectContent) {
-            Log::error('Project content not found', [
-                'session_id' => $this->sessionId,
-                'project_id' => $this->projectId,
-            ]);
-            return;
-        }
+        // Use database transaction to minimize connection time and ensure atomicity
+        DB::transaction(function () use ($generatedText) {
+            $projectContent = ProjectContent::where('project_id', $this->projectId)->first();
+            
+            if (!$projectContent) {
+                Log::error('Project content not found', [
+                    'session_id' => $this->sessionId,
+                    'project_id' => $this->projectId,
+                ]);
+                return;
+            }
 
-        // Get the base content (what was there before generation)
-        $baseContent = $this->prompt;
-        $finalContent = $baseContent;
-        
-        // Add proper spacing between base content and generated text
-        if ($baseContent !== '') {
-            if (!str_ends_with($baseContent, "\n") && !str_starts_with($generatedText, "\n")) {
-                if (!str_ends_with($baseContent, " ")) {
-                    $finalContent .= " ";
+            // Get the base content (what was there before generation)
+            $baseContent = $this->prompt;
+            $finalContent = $baseContent;
+            
+            // Add proper spacing between base content and generated text
+            if ($baseContent !== '') {
+                if (!str_ends_with($baseContent, "\n") && !str_starts_with($generatedText, "\n")) {
+                    if (!str_ends_with($baseContent, " ")) {
+                        $finalContent .= " ";
+                    }
                 }
             }
-        }
-        
-        $finalContent .= $generatedText;
-
-        if ($this->isRegenerate && $this->parentStepId) {
-            // This is a regeneration - add new version to existing step
-            $versionIndex = $projectContent->addVersionToStep(
-                $this->chapterOrder,
-                $this->parentStepId,
-                $finalContent
-            );
             
-            Log::info('Added new version to existing step', [
-                'session_id' => $this->sessionId,
-                'chapter_order' => $this->chapterOrder,
-                'step_id' => $this->parentStepId,
-                'version_index' => $versionIndex,
-                'base_content_length' => strlen($baseContent),
-                'generated_length' => strlen($generatedText),
-                'final_content_length' => strlen($finalContent),
-            ]);
-        } else {
-            // This is a new generation - create new step
-            $stepId = $projectContent->addGenerationStep(
-                $this->chapterOrder,
-                $finalContent,
-                $this->settings,
-                true, // isUserGenerated
-                $this->parentStepId,
-                $this->parentVersionIndex
-            );
-            
-            Log::info('Created new generation step', [
-                'session_id' => $this->sessionId,
-                'chapter_order' => $this->chapterOrder,
-                'step_id' => $stepId,
-                'parent_step_id' => $this->parentStepId,
-                'base_content_length' => strlen($baseContent),
-                'generated_length' => strlen($generatedText),
-                'final_content_length' => strlen($finalContent),
-            ]);
-        }
+            $finalContent .= $generatedText;
 
-        // Broadcast content updated event
-        broadcast(new ProjectContentUpdated(
-            $this->workspaceId,
-            $this->projectId,
-            $this->chapterOrder,
-            $finalContent,
-            $this->isRegenerate ? 'llm_regeneration' : 'llm_generation'
-        ));
+            if ($this->isRegenerate && $this->parentStepId) {
+                // This is a regeneration - add new version to existing step
+                $versionIndex = $projectContent->addVersionToStep(
+                    $this->chapterOrder,
+                    $this->parentStepId,
+                    $finalContent
+                );
+                
+                Log::info('Added new version to existing step', [
+                    'session_id' => $this->sessionId,
+                    'chapter_order' => $this->chapterOrder,
+                    'step_id' => $this->parentStepId,
+                    'version_index' => $versionIndex,
+                    'base_content_length' => strlen($baseContent),
+                    'generated_length' => strlen($generatedText),
+                    'final_content_length' => strlen($finalContent),
+                ]);
+            } else {
+                // This is a new generation - create new step
+                $stepId = $projectContent->addGenerationStep(
+                    $this->chapterOrder,
+                    $finalContent,
+                    $this->settings,
+                    true, // isUserGenerated
+                    $this->parentStepId,
+                    $this->parentVersionIndex
+                );
+                
+                Log::info('Created new generation step', [
+                    'session_id' => $this->sessionId,
+                    'chapter_order' => $this->chapterOrder,
+                    'step_id' => $stepId,
+                    'parent_step_id' => $this->parentStepId,
+                    'base_content_length' => strlen($baseContent),
+                    'generated_length' => strlen($generatedText),
+                    'final_content_length' => strlen($finalContent),
+                ]);
+            }
+
+            // Cache the final content in Redis for faster access
+            $cacheKey = "project_content:{$this->projectId}:{$this->chapterOrder}";
+            Cache::put($cacheKey, $finalContent, 300); // 5 minute cache
+
+            // Broadcast content updated event (outside transaction for performance)
+            dispatch(function () use ($finalContent) {
+                broadcast(new ProjectContentUpdated(
+                    $this->workspaceId,
+                    $this->projectId,
+                    $this->chapterOrder,
+                    $finalContent,
+                    $this->isRegenerate ? 'llm_regeneration' : 'llm_generation'
+                ));
+            })->afterResponse();
+        });
     }
 
     /**

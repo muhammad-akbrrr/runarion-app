@@ -14,6 +14,7 @@ return new class extends Migration {
             $table->string('original_filename');
             $table->string('file_path');
             $table->bigInteger('file_size');
+            $table->integer('word_count')->nullable(); // Track word count for processing
             $table->enum('status', [
                 'pending',
                 'processing', 

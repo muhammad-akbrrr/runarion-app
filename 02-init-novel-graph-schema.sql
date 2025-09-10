@@ -122,7 +122,7 @@ DECLARE
     query_string text;
 BEGIN
     query_string := format('MATCH (v:%I) WHERE v.draft_id = $draft_id_param AND v.name = $name_param RETURN v', label_param);
-    RETURN ag_catalog.cypher('novel_pipeline_graph', query_string, jsonb_build_object('draft_id_param', draft_id_param, 'name_param', name_param))::ag_catalog.agtype;
+    RETURN ag_catalog.cypher('novel_pipeline_graph', query_string, jsonb_build_object('draft_id_param', draft_id_param, 'name_param', name_param)::agtype)::ag_catalog.agtype;
 END;
 $$ LANGUAGE plpgsql;
 
@@ -144,7 +144,7 @@ BEGIN
                 ON CREATE SET v += $props 
                 ON MATCH SET v += $props 
                 RETURN v', label_param),
-        jsonb_build_object('draft_id', draft_id_param, 'name', name_param, 'props', full_props)
+        jsonb_build_object('draft_id', draft_id_param, 'name', name_param, 'props', full_props)::agtype
     )::ag_catalog.agtype;
 END;
 $$ LANGUAGE plpgsql;
@@ -167,7 +167,7 @@ BEGIN
                 ON CREATE SET r += $props
                 ON MATCH SET r += $props
                 RETURN r', source_label, target_label, relationship_label),
-        jsonb_build_object('draft_id', draft_id_param, 'source_name', source_name, 'target_name', target_name, 'props', properties_param)
+        jsonb_build_object('draft_id', draft_id_param, 'source_name', source_name, 'target_name', target_name, 'props', properties_param)::agtype
     )::ag_catalog.agtype;
 END;
 $$ LANGUAGE plpgsql;

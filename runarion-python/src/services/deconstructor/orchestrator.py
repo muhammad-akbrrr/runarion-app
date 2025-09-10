@@ -4,7 +4,6 @@ Coordinates all 7 stages of processing and manages database operations.
 """
 
 import os
-import logging
 import traceback
 import time
 from typing import Dict, Any, Optional
@@ -12,17 +11,19 @@ from datetime import datetime
 from contextlib import contextmanager
 
 from utils.logging_config import get_pipeline_logger
+from utils.database_utils import ensure_utf8_json
 from models.deconstructor.status import DraftStatus
+from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
 from .stage_1_ingestion import PDFIngestionStage
 from .stage_2_cleaning import TextCleaningStage
 from .stage_3_sceneExtract import SceneDetectionStage
-# from .stage_4_analysis.analyzer_4a import SceneBySceneAnalysisStage
-# from .stage_4_analysis.analyzer_4b import ProgressiveGraphAnalysisStage
-# from .stage_4_analysis.analyzer_4c_reports import ComprehensiveReportingStage
-# from .stage_5_coherence import CoherenceCheckStage
-# from .stage_6_enhancement import EnhancementStage
-# from .stage_7_chaptering import ChapteringStage
+from .stage_4_analysis.analyzer_4a import SceneBySceneAnalysisStage
+from .stage_4_analysis.analyzer_4b import ProgressiveGraphAnalysisStage
+from .stage_4_analysis.analyzer_4c_reports import ComprehensiveReportingStage
+from .stage_5_coherence import CoherenceCheckStage
+from .stage_6_enhancement import EnhancementStage
+from .stage_7_chaptering import ChapteringStage
 
 logger = get_pipeline_logger(__name__)
 
@@ -43,24 +44,33 @@ class DeconstructorOrchestrator:
         self.generation_engine = generation_engine
         self.db_pool = db_pool
         
+        # Initialize graph service for cleanup operations
+        try:
+            self.graph_service = GraphDatabaseService(db_pool)
+        except GraphDatabaseNotAvailableError:
+            logger.warning("AGE not available, graph cleanup will be skipped")
+            self.graph_service = None
+        
         # Initialize all stages
         self.stages = {
             1: PDFIngestionStage(db_pool),
             2: TextCleaningStage(db_pool, generation_engine),
             3: SceneDetectionStage(db_pool, generation_engine),
-            # 4: {
-            #     'a': SceneBySceneAnalysisStage(db_pool, generation_engine),
-            #     'b': ProgressiveGraphAnalysisStage(db_pool, generation_engine),
-            #     'c': ComprehensiveReportingStage(db_pool, generation_engine)
-            # },
-            # 5: CoherenceCheckStage(db_pool, generation_engine),
-            # 6: EnhancementStage(db_pool, generation_engine),
-            # 7: ChapteringStage(db_pool, generation_engine)
+            4: {
+                'a': SceneBySceneAnalysisStage(db_pool, generation_engine),
+                'b': ProgressiveGraphAnalysisStage(db_pool, generation_engine),
+                'c': ComprehensiveReportingStage(db_pool, generation_engine)
+            },
+            5: CoherenceCheckStage(db_pool, generation_engine),
+            6: EnhancementStage(db_pool, generation_engine),
+            7: ChapteringStage(db_pool, generation_engine)
         }
         
     def run_pipeline(self, draft_id: str, file_name: str, 
                     chaptering_mode: str = 'flexible', target_chapter_length: int = 2500,
-                    use_transactions: bool = True) -> Dict[str, Any]:
+                    use_transactions: bool = True, user_id: int = None, 
+                    workspace_id: str = None, test_mode: bool = False,
+                    config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
         Run the complete deconstruction pipeline.
         
@@ -70,6 +80,10 @@ class DeconstructorOrchestrator:
             chaptering_mode: Chaptering approach ('flexible' or 'constrained')
             target_chapter_length: Target word count per chapter
             use_transactions: Whether to use database transactions for stages
+            user_id: User ID executing the pipeline (derived from draft if not provided)
+            workspace_id: Workspace ID (derived from draft if not provided)
+            test_mode: Whether running in test mode
+            config: Configuration parameters for validation and processing
             
         Returns:
             Pipeline execution results
@@ -100,19 +114,30 @@ class DeconstructorOrchestrator:
             upload_path = os.getenv('UPLOAD_PATH', '/app/uploads')
             file_path = os.path.join(upload_path, file_name)
             
+            # Store chaptering parameters in draft metadata at the start
+            self._store_chaptering_metadata_at_start(draft_id, chaptering_mode, target_chapter_length)
+            
             # Update draft status to processing
             self._update_draft_status(draft_id, DraftStatus.PROCESSING.value)
             
             # Choose execution method based on use_transactions flag
-            execute_stage = self._execute_stage_with_transaction if use_transactions else self._execute_stage_with_retry
+            base_execute_stage = self._execute_stage_with_transaction if use_transactions else self._execute_stage_with_retry
+            
+            # Wrapper to pass dynamic context parameters
+            def execute_stage(stage, stage_number: str, draft_id: str, *args):
+                return base_execute_stage(
+                    stage, stage_number, draft_id, *args,
+                    user_id=user_id, workspace_id=workspace_id, 
+                    test_mode=test_mode, config=config or {}
+                )
             
             # Stage 1: Ingestion
             stage_start_time = datetime.now()
-            logger.stage_start("1", draft_id, stage_name="ingestion")
+            logger.stage_start("ingestion", draft_id)
             stage_1_result = execute_stage(self.stages[1], "1", draft_id, file_path)
             self._update_draft_status(draft_id, DraftStatus.STAGE_1_COMPLETE.value)
             stage_duration = (datetime.now() - stage_start_time).total_seconds()
-            logger.stage_complete("1", draft_id, duration_seconds=stage_duration, stage_name="ingestion")
+            logger.stage_complete("ingestion", draft_id, duration_seconds=stage_duration)
             pipeline_results['stages_completed'].append({
                 'stage': 1,
                 'name': 'ingestion',
@@ -144,72 +169,73 @@ class DeconstructorOrchestrator:
             })
             logger.info(f"Stage 3 completed for draft {draft_id}")
              
-            # # Stage 4: Deep Analysis (3 sub-stages)
-            # logger.info(f"Starting Stage 4: Deep Analysis for draft {draft_id}")
+            # Stage 4: Deep Analysis (3 sub-stages)
+            logger.info(f"Starting Stage 4: Deep Analysis for draft {draft_id}")
             # 
-            # # Stage 4A: Scene-by-scene analysis
-            # stage_4a_result = execute_stage(self.stages[4]['a'], "4A", draft_id, chaptering_mode, target_chapter_length)
-            # pipeline_results['stages_completed'].append({
-            #     'stage': '4a',
-            #     'name': 'scene_analysis',
-            #     'completed_at': datetime.now().isoformat(),
-            #     'result': stage_4a_result
-            # })
+            # Stage 4A: Scene-by-scene analysis (chaptering params from metadata)
+            stage_4a_result = execute_stage(self.stages[4]['a'], "4A", draft_id)
+            pipeline_results['stages_completed'].append({
+                'stage': '4a',
+                'name': 'scene_analysis',
+                'completed_at': datetime.now().isoformat(),
+                'result': stage_4a_result
+            })
+            
+            # Stage 4B: Graph analysis (chaptering params from metadata)
+            stage_4b_result = execute_stage(self.stages[4]['b'], "4B", draft_id)
+            pipeline_results['stages_completed'].append({
+                'stage': '4b',
+                'name': 'graph_analysis',
+                'completed_at': datetime.now().isoformat(),
+                'result': stage_4b_result
+            })
             # 
-            # # Stage 4B: Graph analysis
-            # stage_4b_result = execute_stage(self.stages[4]['b'], "4B", draft_id, chaptering_mode, target_chapter_length)
-            # pipeline_results['stages_completed'].append({
-            #     'stage': '4b',
-            #     'name': 'graph_analysis',
-            #     'completed_at': datetime.now().isoformat(),
-            #     'result': stage_4b_result
-            # })
-            # 
-            # # Stage 4C: Comprehensive reporting
-            # stage_4c_result = execute_stage(self.stages[4]['c'], "4C", draft_id, chaptering_mode, target_chapter_length)
-            # self._update_draft_status(draft_id, DraftStatus.STAGE_4_COMPLETE.value)
-            # pipeline_results['stages_completed'].append({
-            #     'stage': '4c',
-            #     'name': 'comprehensive_reporting',
-            #     'completed_at': datetime.now().isoformat(),
-            #     'result': stage_4c_result
-            # })
-            # logger.info(f"Stage 4 completed for draft {draft_id}")
-            # 
-            # # Stage 5: Coherence Check
-            # logger.info(f"Starting Stage 5: Coherence Check for draft {draft_id}")
-            # stage_5_result = execute_stage(self.stages[5], "5", draft_id, chaptering_mode, target_chapter_length)
-            # self._update_draft_status(draft_id, DraftStatus.STAGE_5_COMPLETE.value)
-            # pipeline_results['stages_completed'].append({
-            #     'stage': 5,
-            #     'name': 'coherence_check',
-            #     'completed_at': datetime.now().isoformat(),
-            #     'result': stage_5_result
-            # })
-            # logger.info(f"Stage 5 completed for draft {draft_id}")
-            # 
-            # # Stage 6: Enhancement
-            # logger.info(f"Starting Stage 6: Enhancement for draft {draft_id}")
-            # stage_6_result = execute_stage(self.stages[6], "6", draft_id, chaptering_mode, target_chapter_length)
-            # self._update_draft_status(draft_id, DraftStatus.STAGE_6_COMPLETE.value)
-            # pipeline_results['stages_completed'].append({
-            #     'stage': 6,
-            #     'name': 'enhancement',
-            #     'completed_at': datetime.now().isoformat(),
-            #     'result': stage_6_result
-            # })
-            # logger.info(f"Stage 6 completed for draft {draft_id}")
-            # 
-            # # Stage 7: Chaptering
-            # logger.info(f"Starting Stage 7: Chaptering for draft {draft_id}")
-            # stage_7_result = execute_stage(self.stages[7], "7", draft_id, chaptering_mode, target_chapter_length)
-            # pipeline_results['stages_completed'].append({
-            #     'stage': 7,
-            #     'name': 'chaptering',
-            #     'completed_at': datetime.now().isoformat(),
-            #     'result': stage_7_result
-            # })
-            # logger.info(f"Stage 7 completed for draft {draft_id}")
+            
+            # Stage 4C: Comprehensive reporting
+            stage_4c_result = execute_stage(self.stages[4]['c'], "4C", draft_id)
+            self._update_draft_status(draft_id, DraftStatus.STAGE_4_COMPLETE.value)
+            pipeline_results['stages_completed'].append({
+                'stage': '4c',
+                'name': 'comprehensive_reporting',
+                'completed_at': datetime.now().isoformat(),
+                'result': stage_4c_result
+            })
+            logger.info(f"Stage 4 Deep Analysis completed for draft {draft_id}")
+            
+            # Stage 5: Coherence Check
+            logger.info(f"Starting Stage 5: Coherence Check for draft {draft_id}")
+            stage_5_result = execute_stage(self.stages[5], "5", draft_id)
+            self._update_draft_status(draft_id, DraftStatus.STAGE_5_COMPLETE.value)
+            pipeline_results['stages_completed'].append({
+                'stage': 5,
+                'name': 'coherence_check',
+                'completed_at': datetime.now().isoformat(),
+                'result': stage_5_result
+            })
+            logger.info(f"Stage 5 completed for draft {draft_id}")
+            
+            # Stage 6: Enhancement
+            logger.info(f"Starting Stage 6: Enhancement for draft {draft_id}")
+            stage_6_result = execute_stage(self.stages[6], "6", draft_id)
+            self._update_draft_status(draft_id, DraftStatus.STAGE_6_COMPLETE.value)
+            pipeline_results['stages_completed'].append({
+                'stage': 6,
+                'name': 'enhancement',
+                'completed_at': datetime.now().isoformat(),
+                'result': stage_6_result
+            })
+            logger.info(f"Stage 6 completed for draft {draft_id}")
+            
+            # Stage 7: Chaptering
+            logger.info(f"Starting Stage 7: Chaptering for draft {draft_id}")
+            stage_7_result = execute_stage(self.stages[7], "7", draft_id)
+            pipeline_results['stages_completed'].append({
+                'stage': 7,
+                'name': 'chaptering',
+                'completed_at': datetime.now().isoformat(),
+                'result': stage_7_result
+            })
+            logger.info(f"Stage 7 completed for draft {draft_id}")
             
             # Mark as completed
             end_time = datetime.now()
@@ -250,7 +276,10 @@ class DeconstructorOrchestrator:
         
         return pipeline_results
     
-    def _execute_stage_with_retry(self, stage, stage_number: str, draft_id: str, *args, max_retries: int = 10) -> Dict[str, Any]:
+    def _execute_stage_with_retry(self, stage, stage_number: str, draft_id: str, *args,
+                                 user_id: int = None, workspace_id: str = None, 
+                                 test_mode: bool = False, config: Dict[str, Any] = None,
+                                 max_retries: int = 10) -> Dict[str, Any]:
         """
         Execute a stage with retry mechanism.
         
@@ -258,6 +287,10 @@ class DeconstructorOrchestrator:
             stage: Stage instance to execute
             stage_number: Stage identifier (for logging)
             draft_id: UUID of the draft
+            user_id: User ID executing the pipeline
+            workspace_id: Workspace ID
+            test_mode: Whether running in test mode
+            config: Configuration parameters for validation and processing
             *args: Arguments to pass to the stage
             max_retries: Maximum number of retry attempts
             
@@ -274,8 +307,11 @@ class DeconstructorOrchestrator:
                 if attempt > 0:
                     logger.stage_retry(stage_number, draft_id, attempt + 1, max_retries + 1)
                 
-                # Execute the stage
-                result = stage.run(draft_id, *args)
+                # Execute the stage with dynamic context parameters
+                result = stage.run(
+                    draft_id, user_id=user_id, workspace_id=workspace_id,
+                    test_mode=test_mode, config=config, *args
+                )
                 
                 return result
                 
@@ -316,7 +352,10 @@ class DeconstructorOrchestrator:
             if conn:
                 self.db_pool.putconn(conn)
     
-    def _execute_stage_with_transaction(self, stage, stage_number: str, draft_id: str, *args, max_retries: int = 10) -> Dict[str, Any]:
+    def _execute_stage_with_transaction(self, stage, stage_number: str, draft_id: str, *args,
+                                       user_id: int = None, workspace_id: str = None, 
+                                       test_mode: bool = False, config: Dict[str, Any] = None,
+                                       max_retries: int = 10) -> Dict[str, Any]:
         """
         Execute a stage within a database transaction with retry mechanism.
         
@@ -324,6 +363,10 @@ class DeconstructorOrchestrator:
             stage: Stage instance to execute
             stage_number: Stage identifier (for logging)
             draft_id: UUID of the draft
+            user_id: User ID executing the pipeline
+            workspace_id: Workspace ID
+            test_mode: Whether running in test mode
+            config: Configuration parameters for validation and processing
             *args: Arguments to pass to the stage
             max_retries: Maximum number of retry attempts
             
@@ -341,11 +384,11 @@ class DeconstructorOrchestrator:
                 
                 # Execute the stage within a transaction
                 with self._database_transaction() as conn:
-                    # Pass connection to stage if it supports it
-                    if hasattr(stage, 'run_with_connection'):
-                        result = stage.run_with_connection(conn, draft_id, *args)
-                    else:
-                        result = stage.run(draft_id, *args)
+                    # All stages inherit from BasePipelineStage and support transactional interface
+                    result = stage.run_with_connection(
+                        conn, draft_id, user_id=user_id, workspace_id=workspace_id,
+                        test_mode=test_mode, config=config, *args
+                    )
                 
                 logger.info(f"Stage {stage_number} completed successfully for draft {draft_id}")
                 return result
@@ -365,6 +408,62 @@ class DeconstructorOrchestrator:
         
         # All retries failed, raise the last exception
         raise last_exception
+    
+    def _store_chaptering_metadata_at_start(self, draft_id: str, chaptering_mode: str, target_chapter_length: int) -> None:
+        """
+        Store chaptering parameters in draft metadata at pipeline start.
+        
+        Args:
+            draft_id: UUID of the draft
+            chaptering_mode: Chaptering approach
+            target_chapter_length: Target word count per chapter
+        """
+        try:
+            conn = self.db_pool.getconn()
+            
+            with conn.cursor() as cursor:
+                # Get current metadata
+                cursor.execute("SELECT metadata FROM drafts WHERE id = %s", (draft_id,))
+                result = cursor.fetchone()
+                
+                current_metadata = {}
+                if result and result[0]:
+                    # Handle both cases: JSON string or already-parsed dict
+                    if isinstance(result[0], dict):
+                        current_metadata = result[0]
+                    elif isinstance(result[0], str):
+                        import json
+                        try:
+                            current_metadata = json.loads(result[0])
+                        except json.JSONDecodeError:
+                            current_metadata = {}
+                    else:
+                        current_metadata = {}
+                
+                # Update with chaptering parameters
+                current_metadata.update({
+                    'chaptering_mode': chaptering_mode,
+                    'target_chapter_length': target_chapter_length,
+                    'chaptering_set_at_pipeline_start': True
+                })
+                
+                # Store updated metadata
+                from utils.database_utils import ensure_utf8_json
+                metadata_json = ensure_utf8_json(current_metadata)
+                cursor.execute(
+                    "UPDATE drafts SET metadata = %s WHERE id = %s",
+                    (metadata_json, draft_id)
+                )
+                
+                conn.commit()
+                logger.debug(f"Stored chaptering metadata at pipeline start for draft {draft_id}: mode={chaptering_mode}, length={target_chapter_length}")
+                
+        except Exception as e:
+            logger.error(f"Failed to store chaptering metadata for draft {draft_id}: {e}")
+            raise
+        finally:
+            if conn:
+                self.db_pool.putconn(conn)
     
     def _update_draft_status(self, draft_id: str, status: str, 
                            error_message: Optional[str] = None,
@@ -391,14 +490,35 @@ class DeconstructorOrchestrator:
             
             with conn.cursor() as cursor:
                 if status == DraftStatus.COMPLETED.value:
+                    # Get current metadata and merge with new metadata
+                    cursor.execute("SELECT metadata FROM drafts WHERE id = %s", (draft_id,))
+                    result = cursor.fetchone()
+                    current_metadata = {}
+                    if result and result[0]:
+                        # Handle both cases: JSON string or already-parsed dict
+                        if isinstance(result[0], dict):
+                            current_metadata = result[0]
+                        elif isinstance(result[0], str):
+                            import json
+                            try:
+                                current_metadata = json.loads(result[0])
+                            except json.JSONDecodeError:
+                                current_metadata = {}
+                        else:
+                            current_metadata = {}
+                    
+                    # Merge with new metadata
+                    if metadata:
+                        current_metadata.update(metadata)
+                    
                     cursor.execute("""
                         UPDATE drafts 
                         SET status = %s, 
                             processing_completed_at = NOW(),
                             error_message = %s,
-                            metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                            metadata = %s
                         WHERE id = %s
-                    """, (status, error_message, metadata or {}, draft_id))
+                    """, (status, error_message, ensure_utf8_json(current_metadata), draft_id))
                 
                 elif status == DraftStatus.FAILED.value:
                     cursor.execute("""
@@ -410,12 +530,33 @@ class DeconstructorOrchestrator:
                     """, (status, error_message, draft_id))
                 
                 else:
+                    # Get current metadata and merge with new metadata
+                    cursor.execute("SELECT metadata FROM drafts WHERE id = %s", (draft_id,))
+                    result = cursor.fetchone()
+                    current_metadata = {}
+                    if result and result[0]:
+                        # Handle both cases: JSON string or already-parsed dict
+                        if isinstance(result[0], dict):
+                            current_metadata = result[0]
+                        elif isinstance(result[0], str):
+                            import json
+                            try:
+                                current_metadata = json.loads(result[0])
+                            except json.JSONDecodeError:
+                                current_metadata = {}
+                        else:
+                            current_metadata = {}
+                    
+                    # Merge with new metadata
+                    if metadata:
+                        current_metadata.update(metadata)
+                    
                     cursor.execute("""
                         UPDATE drafts 
                         SET status = %s,
-                            metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                            metadata = %s
                         WHERE id = %s
-                    """, (status, metadata or {}, draft_id))
+                    """, (status, ensure_utf8_json(current_metadata), draft_id))
                 
                 conn.commit()
             
@@ -573,16 +714,19 @@ class DeconstructorOrchestrator:
                     # Remove everything including chunks
                     tables_to_clean.append(('draft_chunks', 'draft_id'))
                 
-                # Clean up Apache AGE graph data if available
+                # Clean up Apache AGE graph data using GraphDatabaseService
                 try:
-                    # Try to clean graph nodes and relationships
-                    cursor.execute("""
-                        SELECT ag_catalog.cypher('novel_pipeline_graph', $$
-                            MATCH (n {draft_id: $draft_id})
-                            DETACH DELETE n
-                        $$, %s)
-                    """, (f'{{"draft_id": "{draft_id}"}}',))
-                    cleanup_stats['graph_cleaned'] = True
+                    if self.graph_service:
+                        deleted_count = self.graph_service.cleanup_draft_data(draft_id)
+                        cleanup_stats['graph_cleaned'] = True
+                        cleanup_stats['graph_items_deleted'] = deleted_count
+                        logger.debug(f"Cleaned {deleted_count} graph items for draft {draft_id}")
+                    else:
+                        cleanup_stats['graph_cleaned'] = 'skipped'
+                        logger.debug(f"Graph service not available, skipping graph cleanup for draft {draft_id}")
+                except GraphDatabaseNotAvailableError as e:
+                    logger.warning(f"AGE not available for graph cleanup: {e}")
+                    cleanup_stats['graph_cleaned'] = 'age_unavailable'
                 except Exception as graph_error:
                     logger.warning(f"Could not clean graph data for draft {draft_id}: {graph_error}")
                     cleanup_stats['graph_cleaned'] = False
@@ -611,6 +755,25 @@ class DeconstructorOrchestrator:
                 
                 # Update draft status based on cleanup level
                 if cleanup_level == 'reset':
+                    # Get current metadata and merge with cleanup info
+                    cursor.execute("SELECT metadata FROM drafts WHERE id = %s", (draft_id,))
+                    result = cursor.fetchone()
+                    current_metadata = {}
+                    if result and result[0]:
+                        # Handle both cases: JSON string or already-parsed dict
+                        if isinstance(result[0], dict):
+                            current_metadata = result[0]
+                        elif isinstance(result[0], str):
+                            import json
+                            try:
+                                current_metadata = json.loads(result[0])
+                            except json.JSONDecodeError:
+                                current_metadata = {}
+                        else:
+                            current_metadata = {}
+                    
+                    current_metadata.update({'last_cleanup': datetime.now().isoformat(), 'cleanup_level': cleanup_level})
+                    
                     # Reset to pending for reprocessing
                     cursor.execute("""
                         UPDATE drafts 
@@ -618,9 +781,9 @@ class DeconstructorOrchestrator:
                             processing_started_at = NULL,
                             processing_completed_at = NULL,
                             error_message = NULL,
-                            metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                            metadata = %s
                         WHERE id = %s
-                    """, (DraftStatus.PENDING.value, {'last_cleanup': datetime.now().isoformat(), 'cleanup_level': cleanup_level}, draft_id))
+                    """, (DraftStatus.PENDING.value, ensure_utf8_json(current_metadata), draft_id))
                 elif cleanup_level == 'full':
                     # Reset everything
                     cursor.execute("""
@@ -629,16 +792,35 @@ class DeconstructorOrchestrator:
                             processing_started_at = NULL,
                             processing_completed_at = NULL,
                             error_message = NULL,
-                            metadata = %s::jsonb
+                            metadata = %s
                         WHERE id = %s
-                    """, (DraftStatus.PENDING.value, {'last_cleanup': datetime.now().isoformat(), 'cleanup_level': cleanup_level}, draft_id))
+                    """, (DraftStatus.PENDING.value, ensure_utf8_json({'last_cleanup': datetime.now().isoformat(), 'cleanup_level': cleanup_level}), draft_id))
                 else:  # partial
+                    # Get current metadata and merge with cleanup info
+                    cursor.execute("SELECT metadata FROM drafts WHERE id = %s", (draft_id,))
+                    result = cursor.fetchone()
+                    current_metadata = {}
+                    if result and result[0]:
+                        # Handle both cases: JSON string or already-parsed dict
+                        if isinstance(result[0], dict):
+                            current_metadata = result[0]
+                        elif isinstance(result[0], str):
+                            import json
+                            try:
+                                current_metadata = json.loads(result[0])
+                            except json.JSONDecodeError:
+                                current_metadata = {}
+                        else:
+                            current_metadata = {}
+                    
+                    current_metadata.update({'last_cleanup': datetime.now().isoformat(), 'cleanup_level': cleanup_level})
+                    
                     # Keep current status but mark as cleaned
                     cursor.execute("""
                         UPDATE drafts 
-                        SET metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb
+                        SET metadata = %s
                         WHERE id = %s
-                    """, ({'last_cleanup': datetime.now().isoformat(), 'cleanup_level': cleanup_level}, draft_id))
+                    """, (ensure_utf8_json(current_metadata), draft_id))
                 
                 # Check if draft exists and was updated
                 cursor.execute("SELECT status FROM drafts WHERE id = %s", (draft_id,))
@@ -736,21 +918,21 @@ class DeconstructorOrchestrator:
                 # """)
                 # cleanup_stats['orphaned_manuscripts'] = cursor.rowcount
                 
-                # Clean orphaned graph data if available
+                # Clean orphaned graph data using GraphDatabaseService
                 try:
-                    cursor.execute("""
-                        SELECT ag_catalog.cypher('novel_pipeline_graph', $$
-                            MATCH (n)
-                            WHERE n.draft_id IS NOT NULL 
-                            AND NOT exists(
-                                SELECT 1 FROM ag_catalog.ag_label_vertex('drafts') d 
-                                WHERE d.properties->>'id' = n.draft_id
-                            )
-                            DETACH DELETE n
-                        $$)
-                    """)
-                    cleanup_stats['graph_orphans_cleaned'] = True
-                except Exception:
+                    if self.graph_service:
+                        orphaned_count = self.graph_service.cleanup_orphaned_graph_data()
+                        cleanup_stats['graph_orphans_cleaned'] = True
+                        cleanup_stats['graph_orphans_deleted'] = orphaned_count
+                        logger.debug(f"Cleaned {orphaned_count} orphaned graph items")
+                    else:
+                        cleanup_stats['graph_orphans_cleaned'] = 'skipped'
+                        logger.debug("Graph service not available, skipping orphaned graph cleanup")
+                except GraphDatabaseNotAvailableError as e:
+                    logger.warning(f"AGE not available for orphaned graph cleanup: {e}")
+                    cleanup_stats['graph_orphans_cleaned'] = 'age_unavailable'
+                except Exception as e:
+                    logger.warning(f"Could not clean orphaned graph data: {e}")
                     cleanup_stats['graph_orphans_cleaned'] = False
                 
                 conn.commit()

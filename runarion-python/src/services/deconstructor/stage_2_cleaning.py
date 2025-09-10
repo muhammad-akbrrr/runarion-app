@@ -7,11 +7,12 @@ import json
 import logging
 from typing import Dict, Any, List, Tuple
 from .prompt_template import DeconstructorPrompts
-from utils.database_utils import utf8_database_connection, clean_text_for_database
+from utils.database_utils import clean_text_for_database
+from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
 
-class TextCleaningStage:
+class TextCleaningStage(BasePipelineStage):
     """
     Stage 2 of the deconstruction pipeline.
     Cleans and normalizes text chunks using AI processing.
@@ -25,36 +26,34 @@ class TextCleaningStage:
             db_pool: Database connection pool
             generation_engine: AI generation engine
         """
-        self.db_pool = db_pool
-        self.generation_engine = generation_engine
+        super().__init__(db_pool, "TextCleaningStage", generation_engine)
         self.prompt_template = DeconstructorPrompts()
     
-    def run(self, draft_id: str) -> Dict[str, Any]:
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
         Execute Stage 2: Text cleaning for all chunks.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context containing draft_id
             
         Returns:
-            Stage execution results
+            PipelineStageResult with stage execution results
         """
-        logger.info(f"Starting Stage 2 text cleaning for draft {draft_id}")
+        draft_id = context.draft_id
         
         try:
             # Get all chunks for this draft
-            chunks = self._get_draft_chunks(draft_id)
+            chunks = self._get_draft_chunks(context)
             
             if not chunks:
-                logger.warning(f"No chunks found for draft {draft_id}")
-                return {
-                    'success': True,
-                    'chunks_processed': 0,
-                    'chunks_cleaned': 0,
-                    'chunks_updated': 0,
-                    'failed_chunks': 0,
-                    'message': 'No chunks to process'
-                }
+                return PipelineStageResult.success_result(
+                    self.stage_name,
+                    chunks_processed=0,
+                    chunks_cleaned=0,
+                    chunks_updated=0,
+                    failed_chunks=0,
+                    message='No chunks to process'
+                )
             
             # Process each chunk through AI cleaning
             cleaned_chunks = []
@@ -65,59 +64,70 @@ class TextCleaningStage:
                     cleaned_text = self._clean_text_chunk(raw_text)
                     cleaned_chunks.append((chunk_id, cleaned_text))
                     
-                    logger.debug(f"Cleaned chunk {chunk_number} for draft {draft_id}")
+                    self.logger.debug(f"Cleaned chunk {chunk_number} for draft {draft_id}")
                     
                 except Exception as e:
-                    logger.error(f"Failed to clean chunk {chunk_number}: {e}")
+                    self.logger.error(f"Failed to clean chunk {chunk_number}: {e}")
                     failed_chunks.append((chunk_id, chunk_number, str(e)))
                     # Use original text as fallback
                     cleaned_chunks.append((chunk_id, raw_text))
             
             # Update chunks in database
-            updated_count = self._update_cleaned_chunks(cleaned_chunks)
+            updated_count = self._update_cleaned_chunks(context, cleaned_chunks)
             
-            result = {
-                'success': True,
-                'chunks_processed': len(chunks),
-                'chunks_cleaned': len(cleaned_chunks) - len(failed_chunks),
-                'chunks_updated': updated_count,
-                'failed_chunks': len(failed_chunks),
-                'failures': failed_chunks if failed_chunks else None,
-                'execution_metadata': {
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                chunks_processed=len(chunks),
+                chunks_cleaned=len(cleaned_chunks) - len(failed_chunks),
+                chunks_updated=updated_count,
+                failed_chunks=len(failed_chunks),
+                failures=failed_chunks if failed_chunks else None,
+                execution_metadata={
                     'actual_provider': self.generation_engine.request.provider,
                     'actual_model': self.generation_engine.request.model,
-                    'api_calls_made': len(chunks) > 0  # True if any chunks were processed
+                    'api_calls_made': len(chunks) > 0
                 }
-            }
-            
-            logger.info(f"Stage 2 completed for draft {draft_id}: {updated_count} chunks cleaned")
-            return result
+            )
             
         except Exception as e:
-            logger.error(f"Stage 2 failed for draft {draft_id}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'draft_id': draft_id,
-                'execution_metadata': {
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error=str(e),
+                draft_id=draft_id,
+                execution_metadata={
                     'actual_provider': self.generation_engine.request.provider if self.generation_engine else 'unknown',
                     'actual_model': self.generation_engine.request.model if self.generation_engine else 'unknown',
-                    'api_calls_made': False  # Failed before API calls
+                    'api_calls_made': False
                 }
-            }
+            )
     
-    def _get_draft_chunks(self, draft_id: str) -> List[Tuple[int, int, str]]:
+    def run(self, draft_id: str) -> Dict[str, Any]:
         """
-        Retrieve all chunks for a draft from the database with UTF-8 safety.
+        Execute Stage 2 with legacy interface (backward compatibility).
         
         Args:
             draft_id: UUID of the draft
             
         Returns:
+            Stage execution results
+        """
+        return super().run(draft_id)
+    
+    def _get_draft_chunks(self, context: PipelineStageContext) -> List[Tuple[int, int, str]]:
+        """
+        Retrieve all chunks for a draft from the database with UTF-8 safety.
+        
+        Args:
+            context: Stage execution context
+            
+        Returns:
             List of (chunk_id, chunk_number, raw_text) tuples
         """
+        draft_id = context.draft_id
+        
         try:
-            with utf8_database_connection(self.db_pool) as conn:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
                 cursor = conn.cursor()
                 
                 cursor.execute("""
@@ -129,11 +139,11 @@ class TextCleaningStage:
                 
                 chunks = cursor.fetchall()
             
-            logger.debug(f"Retrieved {len(chunks)} chunks for draft {draft_id}")
+            self.logger.debug(f"Retrieved {len(chunks)} chunks for draft {draft_id}")
             return chunks
             
         except Exception as e:
-            logger.error(f"Failed to retrieve chunks for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to retrieve chunks for draft {draft_id}: {e}")
             raise
     
     def _clean_text_chunk(self, raw_text: str, max_retries: int = 2) -> str:
@@ -160,6 +170,9 @@ class TextCleaningStage:
                 # Update the generation request
                 self.generation_engine.request.prompt = prompt
                 self.generation_engine.request.instruction = "Clean and normalize the provided text while preserving all narrative content."
+                
+                # Set appropriate token limit for text cleaning (match input chunk size ~3000 tokens)
+                self.generation_engine.request.generation_config.max_output_tokens = 3000
                 
                 # Generate cleaned text
                 response = self.generation_engine.generate(skip_quota=True)
@@ -204,11 +217,12 @@ class TextCleaningStage:
         
         return raw_text
     
-    def _update_cleaned_chunks(self, cleaned_chunks: List[Tuple[int, str]]) -> int:
+    def _update_cleaned_chunks(self, context: PipelineStageContext, cleaned_chunks: List[Tuple[int, str]]) -> int:
         """
         Update the cleaned text for chunks in the database with UTF-8 safety.
         
         Args:
+            context: Stage execution context
             cleaned_chunks: List of (chunk_id, cleaned_text) tuples
             
         Returns:
@@ -218,7 +232,8 @@ class TextCleaningStage:
             return 0
         
         try:
-            with utf8_database_connection(self.db_pool) as conn:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
                 cursor = conn.cursor()
                 
                 # Prepare data with UTF-8 cleaning
@@ -237,10 +252,9 @@ class TextCleaningStage:
                 updated_count = cursor.rowcount
                 conn.commit()
             
-            logger.info(f"Updated {updated_count} chunks with cleaned text (UTF-8 safe)")
+            self.logger.info(f"Updated {updated_count} chunks with cleaned text (UTF-8 safe)")
             return updated_count
             
         except Exception as e:
-            logger.error(f"Failed to update cleaned chunks: {e}")
-            raise
-    
+            self.logger.error(f"Failed to update cleaned chunks: {e}")
+            raise    

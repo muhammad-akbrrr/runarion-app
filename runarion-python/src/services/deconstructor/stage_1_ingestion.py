@@ -6,11 +6,12 @@ Handles document extraction and creates initial chunks for processing.
 import logging
 from typing import Dict, Any, List, Optional
 from utils.document_processor import Chunk, DocumentProcessor
-from utils.database_utils import safe_update_text, clean_text_for_database, utf8_database_connection
+from utils.database_utils import clean_text_for_database
+from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
 
-class PDFIngestionStage:
+class PDFIngestionStage(BasePipelineStage):
     """
     Stage 1 of the deconstruction pipeline.
     Extracts text from uploaded documents and creates manageable chunks.
@@ -23,33 +24,48 @@ class PDFIngestionStage:
         Args:
             db_pool: Database connection pool
         """
-        self.db_pool = db_pool
+        super().__init__(db_pool, "PDFIngestionStage")
         self.document_processor = DocumentProcessor(provider="openai", model="gpt-4o", chunk_word_limit=2000)
     
-    def run(self, draft_id: str, file_path: str) -> Dict[str, Any]:
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
         Execute Stage 1: Document ingestion and chunking.
         
         Args:
-            draft_id: UUID of the draft
-            file_path: Path to the uploaded document
+            context: Stage execution context containing draft_id and file_path
             
         Returns:
-            Stage execution results
+            PipelineStageResult with stage execution results
         """
-        logger.info(f"Starting Stage 1 ingestion for draft {draft_id}, file: {file_path}")
+        draft_id = context.draft_id
+        file_path = context.get('file_path')
+        
+        if not file_path:
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error="file_path parameter is required for Stage 1",
+                draft_id=draft_id
+            )
         
         try:
             # Validate file
             is_valid, error_message = self.document_processor.validate_file(file_path)
             if not is_valid:
-                raise ValueError(f"File validation failed: {error_message}")
+                return PipelineStageResult.error_result(
+                    self.stage_name,
+                    error=f"File validation failed: {error_message}",
+                    draft_id=draft_id
+                )
             
             # Process document
             processing_result = self.document_processor.process_document(file_path)
             
             if processing_result['status'] != 'success':
-                raise Exception(f"Document processing failed: {processing_result['error']}")
+                return PipelineStageResult.error_result(
+                    self.stage_name,
+                    error=f"Document processing failed: {processing_result['error']}",
+                    draft_id=draft_id
+                )
             
             # Extract components
             cleaned_text = processing_result['cleaned_text']
@@ -57,7 +73,7 @@ class PDFIngestionStage:
             metadata = processing_result['metadata']
             
             # Store chunks in database
-            chunks_stored = self._store_chunks_in_database(draft_id, chunks)
+            chunks_stored = self._store_chunks_in_database(context, chunks)
             
             # Enhance metadata with word and token statistics
             enhanced_metadata = {
@@ -73,46 +89,58 @@ class PDFIngestionStage:
             }
             
             # Update draft metadata
-            self._update_draft_metadata(draft_id, enhanced_metadata)
+            self.update_draft_metadata(draft_id, enhanced_metadata)
             
-            result = {
-                'success': True,
-                'chunks_created': len(chunks),
-                'chunks_stored': chunks_stored,
-                'total_characters': len(cleaned_text),
-                'total_words': sum(chunk.get('word_count', 0) for chunk in chunks),
-                'total_tokens': sum(chunk['token_count'] for chunk in chunks),
-                'metadata': metadata
-            }
-            
-            logger.info(f"Stage 1 completed for draft {draft_id}: {chunks_stored} chunks created")
-            return result
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                chunks_created=len(chunks),
+                chunks_stored=chunks_stored,
+                total_characters=len(cleaned_text),
+                total_words=sum(chunk.get('word_count', 0) for chunk in chunks),
+                total_tokens=sum(chunk['token_count'] for chunk in chunks),
+                metadata=metadata
+            )
             
         except Exception as e:
-            logger.error(f"Stage 1 failed for draft {draft_id}: {str(e)}")
-            return {
-                'success': False,
-                'error': str(e),
-                'draft_id': draft_id
-            }
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error=str(e),
+                draft_id=draft_id
+            )
     
-    def _store_chunks_in_database(self, draft_id: str, chunks: List[Chunk]) -> int:
+    def run(self, draft_id: str, file_path: str) -> Dict[str, Any]:
+        """
+        Execute Stage 1 with legacy interface (backward compatibility).
+        
+        Args:
+            draft_id: UUID of the draft
+            file_path: Path to the uploaded document
+            
+        Returns:
+            Stage execution results
+        """
+        return super().run(draft_id, file_path=file_path)
+    
+    def _store_chunks_in_database(self, context: PipelineStageContext, chunks: List[Chunk]) -> int:
         """
         Store text chunks in the database with UTF-8 encoding safety.
         
         Args:
-            draft_id: UUID of the draft
+            context: Stage execution context
             chunks: List of chunk dictionaries
             
         Returns:
             Number of chunks stored
         """
+        draft_id = context.draft_id
+        
         if not chunks:
-            logger.warning(f"No chunks to store for draft {draft_id}")
+            self.logger.warning(f"No chunks to store for draft {draft_id}")
             return 0
         
         try:
-            with utf8_database_connection(self.db_pool) as conn:
+            db_connection = self.get_database_connection(context)
+            with db_connection as conn:
                 cursor = conn.cursor()
                 
                 # Prepare bulk insert data with UTF-8 safety
@@ -138,40 +166,11 @@ class PDFIngestionStage:
                 chunks_inserted = cursor.rowcount
                 conn.commit()
             
-            logger.info(f"Stored {chunks_inserted} chunks for draft {draft_id} with UTF-8 encoding")
+            self.logger.info(f"Stored {chunks_inserted} chunks for draft {draft_id} with UTF-8 encoding")
             return chunks_inserted
             
         except Exception as e:
-            logger.error(f"Failed to store chunks for draft {draft_id}: {e}")
-            raise
-    
-    def _update_draft_metadata(self, draft_id: str, metadata: Dict[str, Any]) -> None:
-        """
-        Update draft metadata with processing information using UTF-8 safe operations.
-        
-        Args:
-            draft_id: UUID of the draft
-            metadata: Metadata dictionary to store
-        """
-        try:
-            with utf8_database_connection(self.db_pool) as conn:
-                cursor = conn.cursor()
-                
-                # Use safe_update_text for UTF-8 handling
-                safe_update_text(
-                    cursor=cursor,
-                    table='drafts',
-                    data={'metadata': metadata},
-                    where_clause='id = %s',
-                    where_params=(draft_id,)
-                )
-                
-                conn.commit()
-            
-            logger.debug(f"Updated metadata for draft {draft_id} with UTF-8 safety")
-            
-        except Exception as e:
-            logger.error(f"Failed to update metadata for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to store chunks for draft {draft_id}: {e}")
             raise
     
     def get_chunk_statistics(self, draft_id: str) -> Dict[str, Any]:
@@ -244,7 +243,7 @@ class PDFIngestionStage:
             return stats
             
         except Exception as e:
-            logger.error(f"Failed to get chunk statistics for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to get chunk statistics for draft {draft_id}: {e}")
             if 'conn' in locals():
                 self.db_pool.putconn(conn)
             return {'error': str(e)}
@@ -273,7 +272,7 @@ class PDFIngestionStage:
             
             self.db_pool.putconn(conn)
             
-            logger.info(f"Deleted {deleted_count} existing chunks for draft {draft_id}")
+            self.logger.info(f"Deleted {deleted_count} existing chunks for draft {draft_id}")
             
             # Reprocess with new parameters
             if new_word_limit:
@@ -293,7 +292,7 @@ class PDFIngestionStage:
             return result
             
         except Exception as e:
-            logger.error(f"Failed to reprocess chunks for draft {draft_id}: {e}")
+            self.logger.error(f"Failed to reprocess chunks for draft {draft_id}: {e}")
             return {
                 'success': False,
                 'error': str(e),

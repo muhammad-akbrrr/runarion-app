@@ -193,7 +193,7 @@ check_env_vars() {
             case $var in
                 "POSTGRES_INITDB_WALDIR") export POSTGRES_INITDB_WALDIR="" ;;
                 "POSTGRES_INITDB_ARGS") export POSTGRES_INITDB_ARGS="" ;;
-                "PG_MAJOR") export PG_MAJOR="17" ;;
+                "PG_MAJOR") export PG_MAJOR="16" ;;
                 "PGDATA") export PGDATA="/var/lib/postgresql/data" ;;
                 "POSTGRES_GID") export POSTGRES_GID="999" ;;
                 "POSTGRES_UID") export POSTGRES_UID="999" ;;

@@ -45,7 +45,7 @@ class NovelGraphService
 
             // Test basic AGE functionality
             DB::select("
-                SELECT ag_catalog.cypher(?, 'RETURN 1', null)
+                SELECT ag_catalog.cypher(?, 'RETURN 1', null::agtype)
             ", [$this->graphName]);
 
             $this->ageAvailable = true;
@@ -176,7 +176,8 @@ class NovelGraphService
             ";
 
             $result = DB::select("
-                SELECT (ag_catalog.cypher(?, ?, ?) -> 0 -> 0)::bigint as vertex_id
+                SELECT (result.vertex_id)::bigint as vertex_id
+                FROM ag_catalog.cypher(?, ?, ?::agtype) AS result(vertex_id agtype)
             ", [
                 $this->graphName,
                 $cypherQuery,
@@ -276,7 +277,7 @@ class NovelGraphService
             ";
 
             $result = DB::select("
-                SELECT ag_catalog.cypher(?, ?, ?) as path_result
+                SELECT ag_catalog.cypher(?, ?, ?::agtype) as path_result
             ", [
                 $this->graphName,
                 $cypherQuery,
@@ -311,7 +312,7 @@ class NovelGraphService
             ";
 
             $result = DB::select("
-                SELECT ag_catalog.cypher(?, ?, ?) as network_result
+                SELECT ag_catalog.cypher(?, ?, ?::agtype) as network_result
             ", [
                 $this->graphName,
                 $cypherQuery,
@@ -402,7 +403,7 @@ class NovelGraphService
             ";
 
             $result = DB::select("
-                SELECT ag_catalog.cypher(?, ?, ?) as stats_result
+                SELECT ag_catalog.cypher(?, ?, ?::agtype) as stats_result
             ", [
                 $this->graphName,
                 $cypherQuery,
@@ -436,7 +437,8 @@ class NovelGraphService
             ";
 
             $result = DB::select("
-                SELECT (ag_catalog.cypher(?, ?, ?) -> 0 -> 0)::bigint as vertex_id
+                SELECT (result.vertex_id)::bigint as vertex_id
+                FROM ag_catalog.cypher(?, ?, ?::agtype) AS result(vertex_id agtype)
             ", [
                 $this->graphName,
                 $cypherQuery,
