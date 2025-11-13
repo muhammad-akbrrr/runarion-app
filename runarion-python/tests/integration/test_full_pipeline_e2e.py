@@ -23,6 +23,7 @@ from src.services.generation_engine import GenerationEngine
 from src.models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
 from src.models.deconstructor.status import DraftStatus
 from src.utils.database_utils import utf8_database_connection
+from src.utils.logging_config import configure_logging
 
 # Import Flask app to set up application context
 from src.app import app
@@ -64,7 +65,11 @@ class EndToEndPipelineTest:
         self.app_context = app.app_context()
         self.app_context.push()
         print("✓ Flask application context initialized")
-        
+
+        # Configure logging with INFO level (less verbose than DEBUG)
+        configure_logging(log_level="INFO", output_format="simple")
+        print("✓ Logging configured for pipeline visibility")
+
         # Initialize real database connection pool
         self.db_pool = self._create_database_pool()
         
@@ -347,28 +352,30 @@ class EndToEndPipelineTest:
     def cleanup_test_data(self):
         """Clean up test data from database."""
         print(f"🧹 Cleaning up test data...")
-        
+
         try:
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()
-                
+
                 # Clean related data in correct order (child tables first)
                 tables_to_clean = [
                     'plot_issues',
-                    'scenes', 
+                    'chapters',           # Stage 7 output - ADDED
+                    'final_manuscripts',  # Stage 6 output - ADDED
+                    'scenes',
                     'draft_chunks',
                     'drafts'  # Parent table last
                 ]
-                
+
                 cleaned_counts = {}
                 for table in tables_to_clean:
                     # Use 'id' column for drafts table, 'draft_id' for all others
                     column_name = 'id' if table == 'drafts' else 'draft_id'
                     cursor.execute(f"DELETE FROM {table} WHERE {column_name} = %s", (self.draft_id,))
                     cleaned_counts[table] = cursor.rowcount
-                
+
                 conn.commit()
-                
+
                 total_cleaned = sum(cleaned_counts.values())
                 print(f"✓ Test data cleaned up successfully ({total_cleaned} records)")
                 for table, count in cleaned_counts.items():

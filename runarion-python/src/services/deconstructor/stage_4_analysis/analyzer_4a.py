@@ -151,11 +151,11 @@ class SceneBySceneAnalysisStage(BasePipelineStage):
             self.logger.error(f"Failed to retrieve scenes for draft {draft_id}: {e}")
             raise
     
-    def _analyze_single_scene(self, scene_id: int, scene_number: int, title: str, setting: str, 
+    def _analyze_single_scene(self, scene_id: int, scene_number: int, title: str, setting: str,
                              characters: str, content: str) -> Dict[str, Any]:
         """
         Analyze a single scene using AI.
-        
+
         Args:
             scene_id: Scene ID
             scene_number: Scene number
@@ -163,17 +163,31 @@ class SceneBySceneAnalysisStage(BasePipelineStage):
             setting: Scene setting
             characters: Characters JSON string
             content: Scene content
-            
+
         Returns:
             Analysis data dictionary
         """
         try:
+            # Validate content length before processing
+            # Reduced from 200 to 150 chars to align with Stage 3 hydration threshold
+            if not content or len(content.strip()) < 150:
+                self.logger.warning(
+                    f"Scene {scene_number} has suspiciously short content ({len(content) if content else 0} chars) - "
+                    f"may be truncated. Analysis quality may be affected."
+                )
+                # Still attempt analysis, but log the issue
+            elif content.endswith('...') and len(content) < 500:
+                self.logger.warning(
+                    f"Scene {scene_number} appears truncated (ends with '...', length {len(content)} chars). "
+                    f"This indicates Stage 3 hydration failure."
+                )
+
             # Parse characters if it's a JSON string
             try:
                 characters_list = json.loads(characters) if characters else []
             except (json.JSONDecodeError, TypeError):
                 characters_list = []
-            
+
             # Prepare the analysis prompt
             prompt = self.prompt_template.get_scene_analysis_prompt().format(
                 scene_title=title,
@@ -191,7 +205,19 @@ class SceneBySceneAnalysisStage(BasePipelineStage):
             
             # Generate analysis
             response = self.generation_engine.generate(skip_quota=True)
-            
+
+            # Check if response was truncated due to token limit
+            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                new_limit = int(current_limit * 1.5)  # Increase by 50%
+                self.logger.warning(
+                    f"Stage 4A scene {scene_number} analysis truncated (finish_reason='length'). "
+                    f"Tokens: {response.metadata.output_tokens}. "
+                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = self.generation_engine.generate(skip_quota=True)
+
             if not response.success:
                 self.logger.error(f"AI generation failed for scene {scene_number}: {response.error_message}")
                 return {}
@@ -269,7 +295,7 @@ class SceneBySceneAnalysisStage(BasePipelineStage):
     
     def _update_draft_graph_metadata(self, context: PipelineStageContext) -> None:
         """
-        Update draft-level graph metadata flags.
+        Update draft-level graph metadata flags and prepare for Stage 4B.
         
         Args:
             context: Stage execution context
@@ -278,7 +304,8 @@ class SceneBySceneAnalysisStage(BasePipelineStage):
             draft_id = context.draft_id
             metadata_updates = {
                 'graph_initialized': True,
-                'stage_4a_completed': True
+                'stage_4a_completed': True,
+                'ready_for_graph_analysis': True
             }
             self.update_draft_metadata(draft_id, metadata_updates)
             

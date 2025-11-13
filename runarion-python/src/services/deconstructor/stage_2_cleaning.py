@@ -176,7 +176,19 @@ class TextCleaningStage(BasePipelineStage):
                 
                 # Generate cleaned text
                 response = self.generation_engine.generate(skip_quota=True)
-                
+
+                # Check if response was truncated due to token limit
+                if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                    current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                    new_limit = int(current_limit * 1.5)  # Increase by 50%
+                    logger.warning(
+                        f"Stage 2 cleaning truncated (finish_reason='length'). "
+                        f"Tokens: {response.metadata.output_tokens}. "
+                        f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                    )
+                    self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                    response = self.generation_engine.generate(skip_quota=True)
+
                 if response.success:
                     cleaned_text = response.text.strip()
                     

@@ -44,7 +44,7 @@ services:
       AGE_ENABLED: ${AGE_ENABLED:-true}
       AGE_GRAPH_NAME: ${AGE_GRAPH_NAME:-novel_pipeline_graph}
       NODE_OPTIONS: ${NODE_OPTIONS:-"--max_old_space_size=2048"}
-      npm_config_cache: ${NPM_CONFIG_CACHE:-"/tmp/npm-cache"}
+      NPM_CONFIG_CACHE: "/tmp/npm-cache"
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-"true"}
       WATCHPACK_POLLING: ${WATCHPACK_POLLING:-"true"}
     volumes:
@@ -58,6 +58,9 @@ services:
       - type: volume
         source: vendor
         target: /var/www/html/vendor
+      - type: volume
+        source: npm_cache
+        target: /tmp/npm-cache
     networks:
       - runarion-network
     depends_on:
@@ -83,12 +86,23 @@ services:
         reservations:
           memory: ${LARAVEL_MEMORY_RESERVATION}
     command: >
-      sh -c "npm install --verbose --legacy-peer-deps &&
-             php artisan key:generate --force &&
-             php artisan config:cache &&
-             php artisan route:cache &&
-             php artisan view:cache &&
-             /bin/bash /var/www/html/docker-entrypoint.sh"
+      sh -c "
+        echo '[Startup] Checking dependencies...' &&
+        if [ ! -d 'node_modules/.vite' ] || [ 'package-lock.json' -nt 'node_modules/.package-lock.json' ]; then
+          echo '[Startup] Installing npm dependencies...' &&
+          npm install --legacy-peer-deps --prefer-offline --no-audit;
+        else
+          echo '[Startup] npm dependencies are up to date';
+        fi &&
+        if ! grep -q 'APP_KEY=base64:' .env 2>/dev/null; then
+          echo '[Startup] Generating application key...' &&
+          php artisan key:generate --force;
+        else
+          echo '[Startup] Application key already exists';
+        fi &&
+        echo '[Startup] Starting services...' &&
+        /bin/bash /var/www/html/docker-entrypoint.sh
+      "
              
   python-app:
     build:
@@ -275,6 +289,7 @@ volumes:
   redis_data:
   node_modules:
   vendor:
+  npm_cache:
   python_venv:
   python_uploads:
   # sd_venv:

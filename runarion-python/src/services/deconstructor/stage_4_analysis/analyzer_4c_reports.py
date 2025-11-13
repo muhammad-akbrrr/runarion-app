@@ -271,6 +271,7 @@ class ComprehensiveReportingStage(BasePipelineStage):
         draft_id = context.draft_id
         
         if not self.age_enabled or not self.graph_service:
+            self.logger.debug("AGE disabled or graph service not available")
             return None
             
         try:
@@ -280,10 +281,15 @@ class ComprehensiveReportingStage(BasePipelineStage):
             relationships = self.graph_service.get_draft_relationships(draft_id)
             statistics = self.graph_service.get_graph_statistics(draft_id)
             
+            # Validate that we have meaningful data
+            if not characters and not locations and not relationships:
+                self.logger.warning(f"No graph data found for draft {draft_id}")
+                return None
+            
             graph_data = {
-                'characters': characters,
-                'locations': locations,
-                'relationships': relationships,
+                'characters': characters or [],
+                'locations': locations or [],
+                'relationships': relationships or [],
                 'entities_count': statistics.get('total_entities', 0),
                 'relationships_count': statistics.get('total_relationships', 0),
                 'entity_breakdown': statistics.get('entity_breakdown', {}),
@@ -426,7 +432,7 @@ class ComprehensiveReportingStage(BasePipelineStage):
                 if rel['source'] == character_name or rel['target'] == character_name:
                     relationships.append({
                         'other_character': rel['target'] if rel['source'] == character_name else rel['source'],
-                        'relationship_type': rel['relationship'],
+                        'relationship_type': rel['relationship_type'],
                         'properties': rel.get('properties', {})
                     })
         
@@ -463,13 +469,29 @@ class ComprehensiveReportingStage(BasePipelineStage):
             self.generation_engine.request.generation_config.max_output_tokens = 2000
             
             response = self.generation_engine.generate(skip_quota=True)
-            
+
+            # Check if response was truncated due to token limit
+            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                new_limit = int(current_limit * 1.5)  # Increase by 50%
+                self.logger.warning(
+                    f"Stage 4C character report for '{character_name}' truncated (finish_reason='length'). "
+                    f"Tokens: {response.metadata.output_tokens}. "
+                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = self.generation_engine.generate(skip_quota=True)
+
             if not response.success:
                 return self._create_fallback_character_report(character_name, character_data)
             
             try:
-                return json.loads(response.text.strip())
-            except json.JSONDecodeError:
+                # Use the robust JSON parser that handles markdown code blocks
+                from utils.json_response_parser import JSONResponseParser
+                parsed_data, _ = JSONResponseParser.parse_response(response, "dict", {})
+                return parsed_data
+            except Exception as parse_error:
+                self.logger.warning(f"Could not parse character report response: {parse_error}")
                 return self._create_fallback_character_report(character_name, character_data)
                 
         except Exception as e:
@@ -589,15 +611,31 @@ class ComprehensiveReportingStage(BasePipelineStage):
             
             # Set appropriate token limit for focused reports (specific aspects, not full content)
             self.generation_engine.request.generation_config.max_output_tokens = 2000
-            
+
             response = self.generation_engine.generate(skip_quota=True)
-            
+
+            # Check if response was truncated due to token limit
+            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                new_limit = int(current_limit * 1.5)  # Increase by 50%
+                self.logger.warning(
+                    f"Stage 4C theme report for '{theme}' truncated (finish_reason='length'). "
+                    f"Tokens: {response.metadata.output_tokens}. "
+                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = self.generation_engine.generate(skip_quota=True)
+
             if not response.success:
                 return self._create_fallback_theme_report(theme, theme_data)
             
             try:
-                return json.loads(response.text.strip())
-            except json.JSONDecodeError:
+                # Use the robust JSON parser that handles markdown code blocks
+                from utils.json_response_parser import JSONResponseParser
+                parsed_data, _ = JSONResponseParser.parse_response(response, "dict", {})
+                return parsed_data
+            except Exception as parse_error:
+                self.logger.warning(f"Could not parse theme report response: {parse_error}")
                 return self._create_fallback_theme_report(theme, theme_data)
                 
         except Exception as e:
@@ -623,15 +661,31 @@ class ComprehensiveReportingStage(BasePipelineStage):
             
             # Set appropriate token limit for focused reports (specific aspects, not full content)
             self.generation_engine.request.generation_config.max_output_tokens = 2000
-            
+
             response = self.generation_engine.generate(skip_quota=True)
-            
+
+            # Check if response was truncated due to token limit
+            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                new_limit = int(current_limit * 1.5)  # Increase by 50%
+                self.logger.warning(
+                    f"Stage 4C setting report for '{setting}' truncated (finish_reason='length'). "
+                    f"Tokens: {response.metadata.output_tokens}. "
+                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = self.generation_engine.generate(skip_quota=True)
+
             if not response.success:
                 return self._create_fallback_setting_report(setting, setting_data)
             
             try:
-                return json.loads(response.text.strip())
-            except json.JSONDecodeError:
+                # Use the robust JSON parser that handles markdown code blocks
+                from utils.json_response_parser import JSONResponseParser
+                parsed_data, _ = JSONResponseParser.parse_response(response, "dict", {})
+                return parsed_data
+            except Exception as parse_error:
+                self.logger.warning(f"Could not parse setting report response: {parse_error}")
                 return self._create_fallback_setting_report(setting, setting_data)
                 
         except Exception as e:
@@ -659,17 +713,32 @@ class ComprehensiveReportingStage(BasePipelineStage):
             
             # Set appropriate token limit for focused reports (specific aspects, not full content)
             self.generation_engine.request.generation_config.max_output_tokens = 2000
-            
+
             response = self.generation_engine.generate(skip_quota=True)
-            
+
+            # Check if response was truncated due to token limit
+            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                new_limit = int(current_limit * 1.5)  # Increase by 50%
+                self.logger.warning(
+                    f"Stage 4C plot thread report truncated (finish_reason='length'). "
+                    f"Tokens: {response.metadata.output_tokens}. "
+                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = self.generation_engine.generate(skip_quota=True)
+
             if not response.success:
                 return self._create_fallback_plot_thread_report(plot_thread)
             
             try:
-                report_data = json.loads(response.text.strip())
+                # Use the robust JSON parser that handles markdown code blocks
+                from utils.json_response_parser import JSONResponseParser
+                report_data, _ = JSONResponseParser.parse_response(response, "dict", {})
                 report_data['thread_metadata'] = plot_thread
                 return report_data
-            except json.JSONDecodeError:
+            except Exception as parse_error:
+                self.logger.warning(f"Could not parse plot thread report response: {parse_error}")
                 return self._create_fallback_plot_thread_report(plot_thread)
                 
         except Exception as e:
@@ -681,12 +750,27 @@ class ComprehensiveReportingStage(BasePipelineStage):
         try:
             relationships = graph_data.get('relationships', [])
             
+            if not relationships:
+                self.logger.warning("No relationships found in graph data for relationship report")
+                return {
+                    'total_relationships': 0,
+                    'relationship_types': {},
+                    'most_connected_characters': [],
+                    'network_density': 0.0,
+                    'analysis_summary': "No relationships found in graph data"
+                }
+            
             # Group relationships by type
             relationship_types = Counter()
             character_connections = {}
             
             for rel in relationships:
-                rel_type = rel['relationship']
+                # Validate relationship structure
+                if not isinstance(rel, dict) or 'relationship_type' not in rel or 'source' not in rel or 'target' not in rel:
+                    self.logger.warning(f"Invalid relationship structure: {rel}")
+                    continue
+                    
+                rel_type = rel['relationship_type']
                 relationship_types[rel_type] += 1
                 
                 source = rel['source']

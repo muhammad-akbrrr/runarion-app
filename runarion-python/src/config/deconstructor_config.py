@@ -14,7 +14,8 @@ class Stage3Config:
     OPTIMAL_SCENES_RANGE = (12, 16)  # Optimal range mentioned in prompt template
     
     # Content validation
-    MIN_SCENE_CONTENT_LENGTH = 50  # Minimum characters for scene content
+    # Increased from 50 to 150 chars to align with Stage 3 hydration threshold
+    MIN_SCENE_CONTENT_LENGTH = 150  # Minimum characters for scene content
     
     # Retry configuration
     MAX_RETRY_ATTEMPTS = 3  # Initial attempt + 2 retries

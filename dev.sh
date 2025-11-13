@@ -415,17 +415,44 @@ setup_stable_diffusion() {
 # Function to setup Laravel
 setup_laravel() {
     echo "Setting up Laravel..."
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan key:generate --force
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan migrate:fresh --seed --force
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan config:cache
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan route:cache
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan view:cache
+
+    # Key generation is now handled by docker-compose.dev.yml conditionally
+    # to avoid triggering Vite restarts. Only generate if truly missing.
+    local has_key=$(docker compose -f docker-compose.dev.yml exec -T laravel-app grep -c "APP_KEY=base64:" .env 2>/dev/null || echo "0")
+    if [ "$has_key" -eq "0" ]; then
+        echo "Generating application key..."
+        docker compose -f docker-compose.dev.yml exec laravel-app php artisan key:generate --force
+    else
+        echo "Application key already exists, skipping generation to avoid Vite restart"
+    fi
+
+    # Migrations are handled by docker-entrypoint.sh via check_migrations()
+    # Only run migrate:fresh if explicitly needed (storage/migrations_ran doesn't exist)
+    if docker compose -f docker-compose.dev.yml exec -T laravel-app test ! -f storage/migrations_ran; then
+        echo "Running fresh migrations..."
+        docker compose -f docker-compose.dev.yml exec laravel-app php artisan migrate:fresh --seed --force
+    else
+        echo "Migrations already ran, skipping to avoid data loss"
+    fi
+
+    # Skip caching in development - it causes issues with hot reload
+    # These commands are only needed in production
+    echo "Skipping cache commands in development mode"
 }
 
 # Function to install frontend dependencies
+# Note: This is now handled automatically by docker-compose.dev.yml startup command
+# This function is only needed if you want to force a rebuild
 install_frontend_deps() {
     echo "Installing frontend dependencies..."
-    docker compose -f docker-compose.dev.yml exec laravel-app npm install --verbose --legacy-peer-deps
+
+    # npm install is already handled by docker-compose.dev.yml conditionally
+    # Only force install if explicitly needed
+    echo "Note: npm install is handled automatically by container startup"
+    echo "If you need to force reinstall, run: docker compose -f docker-compose.dev.yml exec laravel-app npm install --legacy-peer-deps"
+
+    # Build assets for production
+    echo "Building frontend assets..."
     docker compose -f docker-compose.dev.yml exec laravel-app npm run build
 }
 

@@ -152,14 +152,27 @@ class CoherenceCheckStage(BasePipelineStage):
                 
                 for scene in scenes_raw:
                     scene_id, scene_number, title, setting, characters, content, analysis_json = scene
-                    
+
+                    # Validate content length
+                    # Reduced from 200 to 150 chars to align with Stage 3 hydration threshold
+                    if not content or len(content.strip()) < 150:
+                        self.logger.warning(
+                            f"Scene {scene_number} has suspiciously short content ({len(content) if content else 0} chars) - "
+                            f"may be truncated. Coherence analysis may be affected."
+                        )
+                    elif content.endswith('...') and len(content) < 500:
+                        self.logger.warning(
+                            f"Scene {scene_number} appears truncated (ends with '...', length {len(content)} chars). "
+                            f"This indicates Stage 3 hydration failure."
+                        )
+
                     try:
                         analysis = json.loads(analysis_json) if analysis_json else {}
                         characters_list = json.loads(characters) if characters else []
                     except (json.JSONDecodeError, TypeError):
                         analysis = {}
                         characters_list = []
-                    
+
                     analysis_data['scenes'].append({
                         'id': scene_id,
                         'scene_number': scene_number,
@@ -602,25 +615,43 @@ class CoherenceCheckStage(BasePipelineStage):
             self.generation_engine.request.generation_config.max_output_tokens = 1500
             
             response = self.generation_engine.generate(skip_quota=True)
-            
+
+            # Check if response was truncated due to token limit
+            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                new_limit = int(current_limit * 1.5)  # Increase by 50%
+                self.logger.warning(
+                    f"Stage 5 coherence analysis truncated (finish_reason='length'). "
+                    f"Tokens: {response.metadata.output_tokens}. "
+                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = self.generation_engine.generate(skip_quota=True)
+
             if response.success:
                 try:
-                    analysis_result = json.loads(response.text.strip())
+                    # Use the robust JSON parser that handles markdown code blocks
+                    from utils.json_response_parser import JSONResponseParser
+                    analysis_result, _ = JSONResponseParser.parse_response(response, "dict", {})
                     
                     # Convert AI analysis to our issue format
                     for category in ['timeline_issues', 'character_issues', 'plot_issues']:
                         ai_issues = analysis_result.get(category, [])
-                        for ai_issue in ai_issues:
-                            issues.append({
-                                'issue_type': ai_issue.get('issue_type', 'AI_IDENTIFIED'),
-                                'affected_scenes': ai_issue.get('affected_scenes', []),
-                                'description': ai_issue.get('description', 'AI identified issue'),
-                                'severity': ai_issue.get('severity', 'medium'),
-                                'suggested_fix': ai_issue.get('suggested_fix', 'Review and address this issue')
-                            })
+                        if isinstance(ai_issues, list):
+                            for ai_issue in ai_issues:
+                                if isinstance(ai_issue, dict):
+                                    issues.append({
+                                        'issue_type': ai_issue.get('issue_type', 'AI_IDENTIFIED'),
+                                        'affected_scenes': ai_issue.get('affected_scenes', []),
+                                        'description': ai_issue.get('description', 'AI identified issue'),
+                                        'severity': ai_issue.get('severity', 'medium'),
+                                        'suggested_fix': ai_issue.get('suggested_fix', 'Review and address this issue')
+                                    })
                     
-                except json.JSONDecodeError:
-                    self.logger.warning("Could not parse AI coherence analysis response")
+                except Exception as parse_error:
+                    self.logger.warning(f"Could not parse AI coherence analysis response: {parse_error}")
+                    if hasattr(response, 'text'):
+                        self.logger.debug(f"Raw response text: {response.text[:500]}...")
                     
         except Exception as e:
             self.logger.warning(f"Error in AI plot analysis: {e}")
