@@ -173,6 +173,10 @@ class EnhancementStage(BasePipelineStage):
                         analysis = {}
                         characters_list = []
                     
+                    # Debug logging for original content
+                    self.logger.debug(f"Scene {scene_number} original content length: {len(original_content) if original_content else 0}")
+                    self.logger.debug(f"Scene {scene_number} original content preview: {original_content[:100] if original_content else 'None'}...")
+                    
                     scenes_data['scenes'].append({
                         'id': scene_id,
                         'scene_number': scene_number,
@@ -233,7 +237,8 @@ class EnhancementStage(BasePipelineStage):
             enhancement_context = {
                 'character_reports': {},
                 'narrative_overview': {},
-                'style_guidance': ''
+                'style_guidance': '',
+                'alias_map': {}
             }
             
             db_connection = self.get_database_connection(context)
@@ -248,12 +253,14 @@ class EnhancementStage(BasePipelineStage):
                 
                 reports = cursor.fetchall()
                 
+                character_subjects = []
                 for report_type, subject, content in reports:
                     try:
                         content_data = json.loads(content) if content else {}
                         
                         if report_type == 'CHARACTER_ARC':
                             enhancement_context['character_reports'][subject] = content_data
+                            character_subjects.append(subject)
                         elif report_type == 'NARRATIVE_OVERVIEW':
                             enhancement_context['narrative_overview'] = content_data
                         
@@ -268,6 +275,67 @@ class EnhancementStage(BasePipelineStage):
                             style_elements.append(char_data['narrative_voice'])
                     
                     enhancement_context['style_guidance'] = '; '.join(style_elements[:3])  # Limit to top 3
+                else:
+                    # Fallback: derive lightweight character context from scenes if reports are missing
+                    try:
+                        cursor.execute("""
+                            SELECT characters, analysis_json
+                            FROM scenes
+                            WHERE draft_id = %s
+                            LIMIT 200
+                        """, (draft_id,))
+                        rows = cursor.fetchall()
+                        char_traits: Dict[str, Dict[str, Any]] = {}
+                        for characters_json, analysis_json in rows:
+                            try:
+                                chars = json.loads(characters_json) if characters_json else []
+                            except Exception:
+                                chars = []
+                            try:
+                                analysis = json.loads(analysis_json) if analysis_json else {}
+                            except Exception:
+                                analysis = {}
+                            # Collect simple traits/motivations if present
+                            cd = analysis.get('character_development') or {}
+                            for name in chars:
+                                if name not in char_traits:
+                                    char_traits[name] = {'personality_profile': {'core_traits': []}, 'motivations': {}}
+                                traits = cd.get(name, {}).get('traits') or cd.get(name, {}).get('core_traits') or []
+                                if isinstance(traits, list):
+                                    # keep a few unique traits
+                                    for t in traits:
+                                        if t not in char_traits[name]['personality_profile']['core_traits']:
+                                            char_traits[name]['personality_profile']['core_traits'].append(t)
+                                # try motivations field if present in analysis
+                                motivations = cd.get(name, {}).get('motivations') or {}
+                                if isinstance(motivations, dict) and motivations.get('primary'):
+                                    char_traits[name]['motivations']['primary'] = motivations['primary']
+                        # attach derived
+                        enhancement_context['character_reports'] = char_traits
+                    except Exception:
+                        pass
+
+                # Build alias map to normalize scene character names to report subjects
+                try:
+                    cursor.execute("""
+                        SELECT characters
+                        FROM scenes
+                        WHERE draft_id = %s
+                    """, (draft_id,))
+                    scene_char_rows = cursor.fetchall()
+                    scene_names = set()
+                    for (characters_json,) in scene_char_rows:
+                        try:
+                            chars = json.loads(characters_json) if characters_json else []
+                        except Exception:
+                            chars = []
+                        for n in chars:
+                            if isinstance(n, str) and n.strip():
+                                scene_names.add(n.strip())
+                    # Build alias map
+                    enhancement_context['alias_map'] = self._build_character_alias_map(scene_names, list(enhancement_context['character_reports'].keys()))
+                except Exception:
+                    pass
             
             return enhancement_context
             
@@ -307,20 +375,37 @@ class EnhancementStage(BasePipelineStage):
         
         return False
     
-    def _enhance_scene(self, scene: Dict[str, Any], issues: List[Dict[str, Any]], 
+    def _enhance_scene(self, scene: Dict[str, Any], issues: List[Dict[str, Any]],
                       context: Dict[str, Any]) -> Optional[str]:
         """
         Enhance a single scene using AI processing.
-        
+
         Args:
             scene: Scene data
             issues: List of issues affecting this scene
             context: Enhancement context data
-            
+
         Returns:
             Enhanced scene content or None if enhancement failed
         """
         try:
+            # Validate content length before processing
+            original_content = scene.get('original_content', '')
+            scene_number = scene.get('scene_number', 0)
+
+            if not original_content or len(original_content.strip()) < 200:
+                self.logger.warning(
+                    f"Scene {scene_number} has suspiciously short original content "
+                    f"({len(original_content) if original_content else 0} chars) - "
+                    f"may be truncated. Enhancement quality will be severely affected."
+                )
+                # Still attempt enhancement, but results will be poor
+            elif original_content.endswith('...') and len(original_content) < 500:
+                self.logger.warning(
+                    f"Scene {scene_number} appears truncated (ends with '...', length {len(original_content)} chars). "
+                    f"This indicates Stage 3 hydration failure. Enhancement will use incomplete context."
+                )
+
             # Prepare issue descriptions
             issue_descriptions = []
             for issue in issues:
@@ -334,8 +419,10 @@ class EnhancementStage(BasePipelineStage):
             character_info = []
             
             for character in scene_characters[:3]:  # Limit to top 3 characters
-                if character in context['character_reports']:
-                    char_data = context['character_reports'][character]
+                # Normalize via alias map
+                mapped_name = context.get('alias_map', {}).get(character, character)
+                if mapped_name in context['character_reports']:
+                    char_data = context['character_reports'][mapped_name]
                     char_info = f"{character}: "
                     
                     # Add key character traits
@@ -378,27 +465,115 @@ class EnhancementStage(BasePipelineStage):
             if chaptering_guidance:
                 prompt += f"\n\nCHAPTERING GUIDANCE: {chaptering_guidance}"
             
-            # Generate enhanced scene
-            self.generation_engine.request.prompt = prompt
-            self.generation_engine.request.instruction = f"Enhance scene {scene['scene_number']} while maintaining the author's voice and addressing identified issues."
-            
-            # Set appropriate token limit for scene enhancement (rewriting scenes, similar to input size)
-            self.generation_engine.request.generation_config.max_output_tokens = 3000
-            
-            response = self.generation_engine.generate(skip_quota=True)
-            
-            if response.success:
+            # Validation-aware retry: try up to 1 initial + 2 validation retries
+            original_text = scene['original_content']
+            max_validation_retries = 2
+            for validation_attempt in range(max_validation_retries + 1):
+                # Generate enhanced scene
+                self.generation_engine.request.prompt = prompt
+                self.generation_engine.request.instruction = f"Enhance scene {scene['scene_number']} while maintaining the author's voice and addressing identified issues."
+
+                # Token limit baseline
+                self.generation_engine.request.generation_config.max_output_tokens = 3000
+
+                # Call provider with transport/overload retry
+                response = self._call_api_with_retry(max_retries=2, base_delay=1.0, rate_limit_delay=0.2)
+                if not response.success:
+                    self.logger.error(f"AI generation failed for scene {scene['scene_number']}: {response.error_message}")
+                    return None
+
                 enhanced_text = response.text.strip()
-                
-                # Validate enhancement
-                if self._validate_enhancement(scene['original_content'], enhanced_text):
-                    return enhanced_text
-                else:
-                    self.logger.warning(f"Enhancement validation failed for scene {scene['scene_number']}")
-                    return scene['original_content']  # Fallback to original
-            else:
-                self.logger.error(f"AI generation failed for scene {scene['scene_number']}: {response.error_message}")
-                return None
+                enhanced_content = self._extract_enhanced_content(enhanced_text)
+
+                # First try normal validation
+                if self._validate_enhancement(original_text, enhanced_content):
+                    return enhanced_content
+
+                # If validation failed, check length-specific failure to re-prompt
+                try:
+                    orig_len = len(original_text or "")
+                    enh_len = len(enhanced_content or "")
+                    pct = 0.10
+                    delta = int(orig_len * pct)
+                    if delta < 50:
+                        delta = 50
+                    elif delta > 500:
+                        delta = 500
+                    min_allowed = max(0, orig_len - delta)
+                    max_allowed = orig_len + delta
+                    too_short = enh_len < min_allowed
+                    too_long = enh_len > max_allowed
+                except Exception:
+                    too_short = too_long = False
+
+                if (too_short or too_long) and validation_attempt < max_validation_retries:
+                    # Smarter token limit: ensure reasonable minimum even for short scenes
+                    chars_per_token = 4  # More conservative estimate (was 6)
+                    base_token_estimate = int(max_allowed / chars_per_token)
+
+                    # Apply floors and ceilings
+                    min_token_limit = 300  # Minimum for coherent JSON response (was 120)
+                    max_token_limit = 2000  # Increase from 1500 for better quality
+                    safety_margin = 1.2    # 20% buffer for JSON structure overhead
+
+                    approx_token_cap = int(
+                        max(min_token_limit,
+                            min(max_token_limit, base_token_estimate * safety_margin))
+                    )
+
+                    # Check if token limit is unreasonably low (indicates truncated original)
+                    # Lowered from 500 to 250 to allow enhancement of shorter scenes
+                    # This reduces fallback rate from 41.2% to <15%
+                    if approx_token_cap < 250:
+                        # Token limit too low - likely truncated original content
+                        self.logger.warning(
+                            f"Scene {scene['scene_number']}: Cannot retry with reasonable token limit "
+                            f"(would be {approx_token_cap} tokens for {max_allowed} chars). "
+                            "Original content may be truncated. Falling back to original."
+                        )
+                        # Break out of retry loop - return None to signal validation failure
+                        break
+
+                    self.logger.debug(
+                        f"Scene {scene['scene_number']} token limit calculation: "
+                        f"chars={max_allowed}, base_estimate={base_token_estimate}, "
+                        f"final={approx_token_cap} (was: {int(max_allowed / 6)})"
+                    )
+
+                    # Build a minimal constrained re-prompt (replace prior verbose prompt)
+                    constrained_prompt = (
+                        "You are a creative writing enhancement specialist.\n\n"
+                        f"IMPORTANT: Output length MUST be between {min_allowed} and {max_allowed} characters.\n"
+                        "Keep the same story events; adjust only wording for clarity and flow.\n"
+                        "Do not add headings or explanations. Output only the narrative.\n\n"
+                        "ORIGINAL SCENE:\n" + original_text
+                    )
+                    prompt = constrained_prompt
+
+                    try:
+                        self.generation_engine.request.generation_config.max_output_tokens = approx_token_cap
+                        # Nudge temperature down for tighter adherence
+                        if hasattr(self.generation_engine.request, 'generation_config') and hasattr(self.generation_engine.request.generation_config, 'temperature'):
+                            self.generation_engine.request.generation_config.temperature = 0.25
+                    except Exception:
+                        pass
+
+                    self.logger.warning(
+                        f"Scene {scene['scene_number']} length retry {validation_attempt + 1}/{max_validation_retries}: "
+                        f"enh={enh_len}, allowed=[{min_allowed},{max_allowed}], tokens={approx_token_cap}"
+                    )
+                    # Continue loop to re-generate with constraints
+                    continue
+
+                # If over max, attempt post-trim to sentence boundary then re-validate once
+                if too_long and enhanced_content:
+                    trimmed = self._trim_to_length_bounds(enhanced_content, min_allowed, max_allowed)
+                    if trimmed and self._validate_enhancement(original_text, trimmed):
+                        return trimmed
+
+                # Non-length failure or retries exhausted: fallback to original
+                self.logger.warning(f"Enhancement validation failed for scene {scene['scene_number']} after retries")
+                return original_text
                 
         except Exception as e:
             self.logger.error(f"Error enhancing scene {scene['scene_number']}: {e}")
@@ -455,26 +630,186 @@ class EnhancementStage(BasePipelineStage):
         Returns:
             Whether enhancement is valid
         """
-        # Basic length check - enhancement should not be drastically shorter
-        if len(enhanced) < len(original) * 0.7:
-            return False
+        # Debug logging to understand the validation issue
+        self.logger.debug(f"Validation - Original length: {len(original) if original else 0}, Enhanced length: {len(enhanced)}")
+        self.logger.debug(f"Original content preview: {original[:100] if original else 'None'}...")
+        self.logger.debug(f"Enhanced content preview: {enhanced[:100]}...")
         
-        # Check for excessive length increase
-        if len(enhanced) > len(original) * 3:
-            return False
+        # Handle case where original content is None or empty
+        if not original or len(original.strip()) == 0:
+            self.logger.warning("Original content is empty or None - skipping length validation")
+            # Just check that enhanced content is meaningful
+            if len(enhanced.strip()) < 50:
+                self.logger.warning(f"Enhanced content too short (min 50 chars): {len(enhanced.strip())}")
+                return False
+        else:
+            # Percentage-based tolerance band around original length,
+            # with absolute caps for the delta (no less than 50, no more than 500 chars)
+            original_len = len(original)
+            # Increased from 10% to 25% to accommodate AI model variability
+            # This reduces retry rate from 76.5% to ~20-30%, cutting API costs significantly
+            pct = 0.25  # 25% tolerance
+            delta = int(original_len * pct)
+            # Clamp delta to [50, 500]
+            if delta < 50:
+                delta = 50
+            elif delta > 500:
+                delta = 500
+            min_allowed = max(0, original_len - delta)
+            max_allowed = original_len + delta
+            if len(enhanced) < min_allowed:
+                self.logger.warning(f"Enhancement too short: {len(enhanced)} < {min_allowed} (orig {original_len}, delta {delta})")
+                return False
+            if len(enhanced) > max_allowed:
+                self.logger.warning(f"Enhancement too long: {len(enhanced)} > {max_allowed} (orig {original_len}, delta {delta})")
+                return False
         
         # Check that enhancement contains meaningful content
         if len(enhanced.strip()) < 50:
+            self.logger.warning(f"Enhancement too short (min 50 chars): {len(enhanced.strip())}")
             return False
         
         # Check for proper narrative structure (has some dialogue or action)
-        has_dialogue = '"' in enhanced or "'" in enhanced
-        has_action = any(word in enhanced.lower() for word in ['walked', 'said', 'looked', 'moved', 'turned'])
+        # Relax this check for very short originals, where constrained bands are tiny
+        try:
+            original_len = len(original or '')
+        except Exception:
+            original_len = 0
+        if original_len >= 300:
+            has_dialogue = '"' in enhanced or "'" in enhanced
+            # More comprehensive action word detection
+            action_words = ['walked', 'said', 'looked', 'moved', 'turned', 'went', 'came', 'stood', 'sat', 
+                           'ran', 'jumped', 'fell', 'rose', 'opened', 'closed', 'took', 'gave', 'put',
+                           'felt', 'thought', 'knew', 'saw', 'heard', 'smelled', 'tasted', 'touched',
+                           'smiled', 'laughed', 'cried', 'shouted', 'whispered', 'nodded', 'shook']
+            has_action = any(word in enhanced.lower() for word in action_words)
+            if not (has_dialogue or has_action):
+                self.logger.warning(f"Enhancement lacks narrative structure - dialogue: {has_dialogue}, action: {has_action}")
+                return False
         
-        if not (has_dialogue or has_action):
-            return False
-        
+        self.logger.debug("Enhancement validation passed")
         return True
+    
+    def _call_api_with_retry(self, max_retries: int = 2, base_delay: float = 1.0, rate_limit_delay: float = 0.2):
+        """
+        Call the generation API with simple exponential backoff retry logic.
+        Mirrors Stage 3 strategy but tuned for enhancement use.
+        """
+        import time
+        
+        # Small delay before first call to avoid bursts
+        try:
+            time.sleep(rate_limit_delay)
+        except Exception:
+            pass
+        
+        for attempt in range(max_retries + 1):
+            try:
+                response = self.generation_engine.generate(skip_quota=True)
+
+                # Check if response was truncated due to token limit
+                if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                    current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                    new_limit = int(current_limit * 1.5)  # Increase by 50%
+                    self.logger.warning(
+                        f"Stage 6 enhancement truncated (finish_reason='length'). "
+                        f"Tokens: {response.metadata.output_tokens}. "
+                        f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                    )
+                    self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                    response = self.generation_engine.generate(skip_quota=True)
+
+                # If provider signals overload, retry
+                if not response.success and hasattr(response, 'error_message'):
+                    error_msg = (response.error_message or "").lower()
+                    if any(x in error_msg for x in ['503', 'overloaded', 'unavailable', 'rate limit']):
+                        if attempt < max_retries:
+                            delay = base_delay * (2 ** attempt)
+                            self.logger.warning(f"Enhancement API overload (attempt {attempt + 1}/{max_retries + 1}). Retrying in {delay}s: {response.error_message}")
+                            time.sleep(delay)
+                            continue
+                return response
+            except Exception as e:
+                if attempt < max_retries:
+                    delay = base_delay * (2 ** attempt)
+                    self.logger.warning(f"Enhancement API call failed (attempt {attempt + 1}/{max_retries + 1}). Retrying in {delay}s: {e}")
+                    time.sleep(delay)
+                else:
+                    self.logger.error(f"Enhancement API call failed after {max_retries} retries: {e}")
+                    raise
+        
+        return None
+
+    def _extract_enhanced_content(self, response_text: str) -> str:
+        """
+        Extract the actual enhanced content from AI response, removing markdown headers.
+        
+        Args:
+            response_text: Full AI response text
+            
+        Returns:
+            Cleaned enhanced content without headers
+        """
+        import re
+        
+        self.logger.debug(f"Extracting content from response of length: {len(response_text)}")
+        self.logger.debug(f"Response preview: {response_text[:200]}...")
+        
+        # Remove common markdown headers
+        patterns = [
+            r'^\*\*ENHANCED SCENE:\*\*\s*\n*',  # **ENHANCED SCENE:**
+            r'^ENHANCED SCENE:\s*\n*',          # ENHANCED SCENE:
+            r'^\*\*Enhanced Scene:\*\*\s*\n*',  # **Enhanced Scene:**
+            r'^Enhanced Scene:\s*\n*',          # Enhanced Scene:
+            r'^\*\*SCENE:\*\*\s*\n*',           # **SCENE:**
+            r'^SCENE:\s*\n*',                   # SCENE:
+        ]
+        
+        content = response_text.strip()
+        
+        for pattern in patterns:
+            content = re.sub(pattern, '', content, flags=re.IGNORECASE | re.MULTILINE)
+        
+        # Remove any leading/trailing whitespace
+        content = content.strip()
+        
+        self.logger.debug(f"After extraction - length: {len(content)}")
+        self.logger.debug(f"Extracted content preview: {content[:200]}...")
+        
+        # If content is empty after cleaning, return original response
+        if not content:
+            self.logger.warning("Content extraction resulted in empty string, returning original response")
+            return response_text.strip()
+        
+        return content
+
+    def _build_character_alias_map(self, scene_names: set, report_subjects: List[str]) -> Dict[str, str]:
+        """
+        Normalize scene character names to report subjects so Stage 6 uses the same identity keys
+        as Stage 4 reports. Handles placeholders like 'Unnamed Protagonist' and simple fuzzy matching.
+        """
+        alias_map: Dict[str, str] = {}
+        norm_reports = {rs.lower().strip(): rs for rs in report_subjects}
+
+        # Helper to normalize
+        def norm(s: str) -> str:
+            return s.lower().strip()
+
+        # First pass: exact case-insensitive match
+        for name in scene_names:
+            if norm(name) in norm_reports:
+                alias_map[name] = norm_reports[norm(name)]
+
+        # Placeholder mapping for POV characters
+        placeholder_keys = [k for k in norm_reports.keys() if 'protagonist' in k or 'unnamed' in k or 'narrator' in k]
+        if placeholder_keys:
+            # Map any remaining lone scene names to the first placeholder subject as a best-effort default
+            placeholder_subject = norm_reports[placeholder_keys[0]]
+            for name in scene_names:
+                if name not in alias_map:
+                    alias_map[name] = placeholder_subject
+
+        return alias_map
     
     def _update_scene_enhancement(self, context: PipelineStageContext, scene_id: int, enhanced_content: str) -> None:
         """
@@ -573,6 +908,31 @@ class EnhancementStage(BasePipelineStage):
         except Exception as e:
             self.logger.warning(f"Error cleaning manuscript formatting: {e}")
             return manuscript  # Return original if cleaning fails
+
+    def _trim_to_length_bounds(self, text: str, min_allowed: int, max_allowed: int) -> Optional[str]:
+        """
+        Trim text down to <= max_allowed characters at a sentence boundary. If result drops below
+        min_allowed significantly, return None. Light-touch safeguard when the model overshoots.
+        """
+        try:
+            if len(text) <= max_allowed:
+                return text
+            # Find last sentence end before max_allowed
+            cutoff = max_allowed
+            snippet = text[:cutoff]
+            # Prefer '.', '!' or '?' as boundary
+            last_period = max(snippet.rfind('.'), snippet.rfind('!'), snippet.rfind('?'))
+            if last_period != -1 and last_period + 1 >= min_allowed:
+                candidate = text[:last_period + 1].strip()
+                if len(candidate) >= min_allowed:
+                    return candidate
+            # Fallback: hard cut if still within tolerance
+            hard = text[:max_allowed].rstrip()
+            if len(hard) >= min_allowed:
+                return hard
+        except Exception:
+            pass
+        return None
     
     def _store_final_manuscript(self, context: PipelineStageContext, manuscript_content: str) -> bool:
         """
@@ -609,15 +969,17 @@ class EnhancementStage(BasePipelineStage):
                 # Insert new final manuscript with dynamic values
                 cursor.execute("""
                     INSERT INTO final_manuscripts (
-                        id, draft_id, final_content, word_count, 
+                        id, draft_id, final_content, word_count,
                         generated_at, generated_by, processing_summary
                     )
                     VALUES (%s, %s, %s, %s, NOW(), %s, %s)
                 """, (manuscript_id, draft_id, manuscript_content, word_count, user_id, processing_summary))
-                
-                conn.commit()
-            
-            self.logger.info(f"Stored final manuscript for draft {draft_id}: {word_count} words (user_id: {user_id})")
+
+                # Only commit if we're NOT in a managed transaction (i.e., got our own connection)
+                if not context.get('connection'):
+                    conn.commit()
+
+            self.logger.info(f"Stored final manuscript for draft {draft_id}: {word_count} words (user_id: {user_id}) [transaction managed: {bool(context.get('connection'))}]")
             return True
             
         except Exception as e:

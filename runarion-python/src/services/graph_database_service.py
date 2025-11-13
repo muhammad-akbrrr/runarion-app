@@ -115,7 +115,45 @@ class GraphDatabaseService:
                 prop_parts.append(f"{key}: '{escaped_json}'")
         
         return "{" + ", ".join(prop_parts) + "}"
-    
+
+    def _normalize_relationship_type(self, rel_type: str) -> str:
+        """
+        Normalize relationship types to valid Apache AGE label identifiers.
+
+        Apache AGE requires relationship labels to be valid identifiers:
+        - Only alphanumeric characters and underscores
+        - No spaces or special characters
+        - Conventionally uppercase (e.g., INTERACTS_WITH, APPEARS_IN)
+
+        Args:
+            rel_type: Raw relationship type string (possibly from AI with spaces/special chars)
+
+        Returns:
+            Normalized label identifier suitable for AGE (e.g., "interacts with" -> "INTERACTS_WITH")
+
+        Examples:
+            "interacts with" -> "INTERACTS_WITH"
+            "knows" -> "KNOWS"
+            "travels-to" -> "TRAVELS_TO"
+            "loves/hates" -> "LOVESHATES"
+        """
+        import re
+
+        if not rel_type:
+            return "RELATED_TO"  # Default fallback
+
+        # Convert to uppercase and replace spaces/hyphens with underscores
+        normalized = rel_type.strip().upper().replace(' ', '_').replace('-', '_')
+
+        # Remove all non-alphanumeric characters except underscores
+        normalized = re.sub(r'[^A-Z0-9_]', '', normalized)
+
+        # Ensure we don't have empty result
+        if not normalized:
+            return "RELATED_TO"
+
+        return normalized
+
     def _validate_age_setup(self) -> None:
         """
         Validate that Apache AGE is properly installed and configured with comprehensive diagnostics.
@@ -501,12 +539,15 @@ class GraphDatabaseService:
                     
                     # AGE 1.6 requires literal dollar-quoted strings - build complete SQL with escaping
                     # Note: AGE relationship properties use object notation {prop: value}, not string notation
+                    # Normalize relationship type to valid AGE label identifier (uppercase, underscores, no special chars)
+                    safe_relationship_type = self._normalize_relationship_type(relationship_type)
+                    
                     sql_query = f"""
-                        SELECT edge_id::bigint FROM ag_catalog.cypher('{self.graph_name}', $$ 
-                        MATCH (a {{draft_id: '{safe_draft_id}', name: '{safe_source_name}'}}) 
-                        MATCH (b {{draft_id: '{safe_draft_id}', name: '{safe_target_name}'}}) 
-                        CREATE (a)-[r:{relationship_type} {safe_properties}]->(b) 
-                        RETURN id(r) 
+                        SELECT edge_id::bigint FROM ag_catalog.cypher('{self.graph_name}', $$
+                        MATCH (a {{draft_id: '{safe_draft_id}', name: '{safe_source_name}'}})
+                        MATCH (b {{draft_id: '{safe_draft_id}', name: '{safe_target_name}'}})
+                        CREATE (a)-[r:{safe_relationship_type} {safe_properties}]->(b)
+                        RETURN id(r)
                         $$) AS (edge_id agtype)
                     """
                     
@@ -592,35 +633,50 @@ class GraphDatabaseService:
         try:
             with self.get_age_connection() as conn:
                 with conn.cursor() as cursor:
-                    # Query all relationships for this draft
-                    cypher_query = """
+                    # Safely escape draft_id for Cypher
+                    safe_draft_id = self._escape_cypher_string(draft_id)
+                    
+                    # Use dollar-quoted strings for AGE 1.6 compatibility
+                    sql_query = f"""
+                        SELECT a_name, rel_type, b_name, rel_full
+                        FROM ag_catalog.cypher('{self.graph_name}', $$ 
                         MATCH (a)-[r]->(b) 
-                        WHERE a.draft_id = $draft_id
+                        WHERE a.draft_id = '{safe_draft_id}'
                         RETURN a.name, type(r), b.name, r
+                        $$) AS (a_name agtype, rel_type agtype, b_name agtype, rel_full agtype)
                     """
                     
-                    cursor.execute("""
-                        SELECT ag_catalog.cypher(%s, %s, %s::text::agtype)
-                    """, (
-                        self.graph_name,
-                        cypher_query,
-                        json.dumps({'draft_id': draft_id})
-                    ))
-                    
+                    cursor.execute(sql_query)
                     results = cursor.fetchall()
                     relationships = []
                     
                     for row in results:
-                        if row and row[0]:
-                            # Parse AGE result format
-                            rel_data = row[0]
-                            if isinstance(rel_data, (list, tuple)) and len(rel_data) >= 3:
-                                relationships.append({
-                                    'source': rel_data[0],
-                                    'relationship_type': rel_data[1],
-                                    'target': rel_data[2],
-                                    'properties': rel_data[3] if len(rel_data) > 3 else {}
-                                })
+                        if row and len(row) >= 3:
+                            try:
+                                a_name = json.loads(str(row[0])) if not isinstance(row[0], (int, float, dict, list)) else row[0]
+                            except Exception:
+                                a_name = row[0]
+                            try:
+                                rel_type = json.loads(str(row[1])) if not isinstance(row[1], (int, float, dict, list)) else row[1]
+                            except Exception:
+                                rel_type = row[1]
+                            try:
+                                b_name = json.loads(str(row[2])) if not isinstance(row[2], (int, float, dict, list)) else row[2]
+                            except Exception:
+                                b_name = row[2]
+                            rel_props = {}
+                            if len(row) > 3 and row[3] is not None:
+                                # row[3] is the full edge agtype; attempt to extract properties if JSON-like
+                                try:
+                                    rel_props = json.loads(str(row[3])) if isinstance(row[3], str) else {}
+                                except Exception:
+                                    rel_props = {}
+                            relationships.append({
+                                'source': a_name,
+                                'relationship_type': rel_type,
+                                'target': b_name,
+                                'properties': rel_props
+                            })
                     
                     logger.debug(f"Retrieved {len(relationships)} relationships for draft {draft_id}")
                     return relationships
@@ -651,33 +707,31 @@ class GraphDatabaseService:
                     # Safely escape draft_id for Cypher
                     safe_draft_id = self._escape_cypher_string(draft_id)
                     
-                    # AGE 1.6 requires literal dollar-quoted strings
+                    # AGE 1.6 requires alias list to match RETURN columns exactly
                     sql_query = f"""
-                        SELECT character_data FROM ag_catalog.cypher('{self.graph_name}', $$ 
+                        SELECT c_name, c_props FROM ag_catalog.cypher('{self.graph_name}', $$ 
                         MATCH (c:Character {{draft_id: '{safe_draft_id}'}}) 
                         RETURN c.name, c.properties 
-                        $$) AS (character_data agtype)
+                        $$) AS (c_name agtype, c_props agtype)
                     """
-                    
                     cursor.execute(sql_query)
                     results = cursor.fetchall()
                     
                     characters = []
                     for row in results:
-                        if row and row[0]:
+                        if row and len(row) == 2:
                             try:
-                                # Parse AGE result format [name, properties]
-                                char_data = json.loads(str(row[0]))
-                                if isinstance(char_data, list) and len(char_data) >= 2:
-                                    name = char_data[0]
-                                    properties = char_data[1] if isinstance(char_data[1], dict) else {}
-                                    characters.append({
-                                        'name': name,
-                                        'properties': properties
-                                    })
-                            except (json.JSONDecodeError, TypeError, IndexError) as e:
-                                logger.warning(f"Failed to parse character data: {e}")
-                                continue
+                                name = json.loads(str(row[0])) if isinstance(row[0], str) else row[0]
+                            except Exception:
+                                name = row[0]
+                            try:
+                                properties = json.loads(str(row[1])) if isinstance(row[1], str) else (row[1] if isinstance(row[1], dict) else {})
+                            except Exception:
+                                properties = {}
+                            characters.append({
+                                'name': name,
+                                'properties': properties
+                            })
                     
                     logger.debug(f"Retrieved {len(characters)} characters for draft {draft_id}")
                     return characters
@@ -708,33 +762,31 @@ class GraphDatabaseService:
                     # Safely escape draft_id for Cypher
                     safe_draft_id = self._escape_cypher_string(draft_id)
                     
-                    # AGE 1.6 requires literal dollar-quoted strings
+                    # AGE 1.6 requires alias list to match RETURN columns exactly
                     sql_query = f"""
-                        SELECT location_data FROM ag_catalog.cypher('{self.graph_name}', $$ 
+                        SELECT l_name, l_props FROM ag_catalog.cypher('{self.graph_name}', $$ 
                         MATCH (l:Location {{draft_id: '{safe_draft_id}'}}) 
                         RETURN l.name, l.properties 
-                        $$) AS (location_data agtype)
+                        $$) AS (l_name agtype, l_props agtype)
                     """
-                    
                     cursor.execute(sql_query)
                     results = cursor.fetchall()
                     
                     locations = []
                     for row in results:
-                        if row and row[0]:
+                        if row and len(row) == 2:
                             try:
-                                # Parse AGE result format [name, properties]
-                                loc_data = json.loads(str(row[0]))
-                                if isinstance(loc_data, list) and len(loc_data) >= 2:
-                                    name = loc_data[0]
-                                    properties = loc_data[1] if isinstance(loc_data[1], dict) else {}
-                                    locations.append({
-                                        'name': name,
-                                        'properties': properties
-                                    })
-                            except (json.JSONDecodeError, TypeError, IndexError) as e:
-                                logger.warning(f"Failed to parse location data: {e}")
-                                continue
+                                name = json.loads(str(row[0])) if isinstance(row[0], str) else row[0]
+                            except Exception:
+                                name = row[0]
+                            try:
+                                properties = json.loads(str(row[1])) if isinstance(row[1], str) else (row[1] if isinstance(row[1], dict) else {})
+                            except Exception:
+                                properties = {}
+                            locations.append({
+                                'name': name,
+                                'properties': properties
+                            })
                     
                     logger.debug(f"Retrieved {len(locations)} locations for draft {draft_id}")
                     return locations

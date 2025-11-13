@@ -97,45 +97,47 @@ class DeconstructorOrchestrator:
             'success': False,
             'error': None
         }
-        
+
+        # Set logging context for this pipeline run
+        logger.set_context(
+            draft_id=draft_id,
+            file_name=file_name,
+            chaptering_mode=chaptering_mode,
+            target_chapter_length=target_chapter_length,
+            use_transactions=use_transactions
+        )
+
+        logger.pipeline_start(draft_id, file_name=file_name)
+
+        # Construct full file path
+        upload_path = os.getenv('UPLOAD_PATH', '/app/uploads')
+        file_path = os.path.join(upload_path, file_name)
+
+        # Store chaptering parameters in draft metadata at the start
+        self._store_chaptering_metadata_at_start(draft_id, chaptering_mode, target_chapter_length)
+
+        # Update draft status to processing
+        self._update_draft_status(draft_id, DraftStatus.PROCESSING.value)
+
+        # Initialize cross-stage transaction
+        # Get single connection for entire pipeline (all 7 stages)
+        conn = None
+        pipeline_conn = None
+
         try:
-            # Set logging context for this pipeline run
-            logger.set_context(
-                draft_id=draft_id,
-                file_name=file_name,
-                chaptering_mode=chaptering_mode,
-                target_chapter_length=target_chapter_length,
-                use_transactions=use_transactions
-            )
-            
-            logger.pipeline_start(draft_id, file_name=file_name)
-            
-            # Construct full file path
-            upload_path = os.getenv('UPLOAD_PATH', '/app/uploads')
-            file_path = os.path.join(upload_path, file_name)
-            
-            # Store chaptering parameters in draft metadata at the start
-            self._store_chaptering_metadata_at_start(draft_id, chaptering_mode, target_chapter_length)
-            
-            # Update draft status to processing
-            self._update_draft_status(draft_id, DraftStatus.PROCESSING.value)
-            
-            # Choose execution method based on use_transactions flag
-            base_execute_stage = self._execute_stage_with_transaction if use_transactions else self._execute_stage_with_retry
-            
-            # Wrapper to pass dynamic context parameters
-            def execute_stage(stage, stage_number: str, draft_id: str, *args):
-                return base_execute_stage(
-                    stage, stage_number, draft_id, *args,
-                    user_id=user_id, workspace_id=workspace_id, 
-                    test_mode=test_mode, config=config or {}
-                )
-            
+            conn = self.db_pool.getconn()
+            conn.autocommit = False  # Enable transaction mode
+            pipeline_conn = conn
+            logger.debug(f"Initialized cross-stage transaction for draft {draft_id}")
+
             # Stage 1: Ingestion
             stage_start_time = datetime.now()
             logger.stage_start("ingestion", draft_id)
-            stage_1_result = execute_stage(self.stages[1], "1", draft_id, file_path)
-            self._update_draft_status(draft_id, DraftStatus.STAGE_1_COMPLETE.value)
+            stage_1_result = self.stages[1].run_with_connection(
+                pipeline_conn, draft_id, file_path,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             stage_duration = (datetime.now() - stage_start_time).total_seconds()
             logger.stage_complete("ingestion", draft_id, duration_seconds=stage_duration)
             pipeline_results['stages_completed'].append({
@@ -144,10 +146,36 @@ class DeconstructorOrchestrator:
                 'completed_at': datetime.now().isoformat(),
                 'result': stage_1_result
             })
-            
+
+            # Validate Stage 1 before continuing
+            validation_result = self._validate_stage_result(1, 'ingestion', stage_1_result)
+            if not validation_result.get('valid', False):
+                error_msg = validation_result.get('error', 'Stage 1 validation failed')
+                logger.error(f"Pipeline stopped at Stage 1: {error_msg}")
+
+                # ROLLBACK cross-stage transaction
+                if pipeline_conn:
+                    pipeline_conn.rollback()
+                    logger.warning(f"✗ Cross-stage transaction rolled back (Stage 1 validation failure)")
+
+                self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
+                pipeline_results.update({
+                    'success': False,
+                    'error': error_msg,
+                    'failed_at_stage': 1,
+                    'failed_at': datetime.now().isoformat()
+                })
+                return pipeline_results
+
+            self._update_draft_status(draft_id, DraftStatus.STAGE_1_COMPLETE.value)
+
             # Stage 2: Cleaning
             logger.info(f"Starting Stage 2: Cleaning for draft {draft_id}")
-            stage_2_result = execute_stage(self.stages[2], "2", draft_id)
+            stage_2_result = self.stages[2].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             self._update_draft_status(draft_id, DraftStatus.STAGE_2_COMPLETE.value)
             pipeline_results['stages_completed'].append({
                 'stage': 2,
@@ -156,43 +184,80 @@ class DeconstructorOrchestrator:
                 'result': stage_2_result
             })
             logger.info(f"Stage 2 completed for draft {draft_id}")
-            
+
             # Stage 3: Scene Detection
             logger.info(f"Starting Stage 3: Scene Detection for draft {draft_id}")
-            stage_3_result = execute_stage(self.stages[3], "3", draft_id)
-            self._update_draft_status(draft_id, DraftStatus.STAGE_3_COMPLETE.value)
+            stage_3_result = self.stages[3].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             pipeline_results['stages_completed'].append({
                 'stage': 3,
                 'name': 'scene_detection',
                 'completed_at': datetime.now().isoformat(),
                 'result': stage_3_result
             })
-            logger.info(f"Stage 3 completed for draft {draft_id}")
-             
+
+            # Validate Stage 3 before continuing (CRITICAL - prevents cascading failures)
+            validation_result = self._validate_stage_result(3, 'scene_detection', stage_3_result)
+            if not validation_result.get('valid', False):
+                error_msg = validation_result.get('error', 'Stage 3 validation failed')
+                logger.error(f"Pipeline stopped at Stage 3: {error_msg}")
+
+                # ROLLBACK cross-stage transaction
+                if pipeline_conn:
+                    pipeline_conn.rollback()
+                    logger.warning(f"✗ Cross-stage transaction rolled back (Stage 3 validation failure)")
+
+                self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
+                pipeline_results.update({
+                    'success': False,
+                    'error': error_msg,
+                    'failed_at_stage': 3,
+                    'failed_at': datetime.now().isoformat()
+                })
+                return pipeline_results
+
+            self._update_draft_status(draft_id, DraftStatus.STAGE_3_COMPLETE.value)
+            logger.info(f"Stage 3 completed and validated for draft {draft_id}")
+
             # Stage 4: Deep Analysis (3 sub-stages)
             logger.info(f"Starting Stage 4: Deep Analysis for draft {draft_id}")
-            # 
+            #
             # Stage 4A: Scene-by-scene analysis (chaptering params from metadata)
-            stage_4a_result = execute_stage(self.stages[4]['a'], "4A", draft_id)
+            stage_4a_result = self.stages[4]['a'].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             pipeline_results['stages_completed'].append({
                 'stage': '4a',
                 'name': 'scene_analysis',
                 'completed_at': datetime.now().isoformat(),
                 'result': stage_4a_result
             })
-            
+
             # Stage 4B: Graph analysis (chaptering params from metadata)
-            stage_4b_result = execute_stage(self.stages[4]['b'], "4B", draft_id)
+            stage_4b_result = self.stages[4]['b'].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             pipeline_results['stages_completed'].append({
                 'stage': '4b',
                 'name': 'graph_analysis',
                 'completed_at': datetime.now().isoformat(),
                 'result': stage_4b_result
             })
-            # 
-            
+            #
+
             # Stage 4C: Comprehensive reporting
-            stage_4c_result = execute_stage(self.stages[4]['c'], "4C", draft_id)
+            stage_4c_result = self.stages[4]['c'].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             self._update_draft_status(draft_id, DraftStatus.STAGE_4_COMPLETE.value)
             pipeline_results['stages_completed'].append({
                 'stage': '4c',
@@ -201,10 +266,44 @@ class DeconstructorOrchestrator:
                 'result': stage_4c_result
             })
             logger.info(f"Stage 4 Deep Analysis completed for draft {draft_id}")
-            
+
+            # Validate Stage 4 results
+            # Stage 4A validation
+            if stage_4a_result.get('failed_analyses', 0) > 0:
+                error_msg = (
+                    f"Stage 4A failed to analyze {stage_4a_result['failed_analyses']} scenes. "
+                    f"Possible causes: truncated AI responses, parsing failures, or insufficient tokens. "
+                    f"Successfully analyzed: {stage_4a_result.get('scenes_analyzed', 0)}"
+                )
+                logger.error(error_msg)
+                pipeline_conn.rollback()
+                self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
+                return {
+                    'success': False,
+                    'draft_id': draft_id,
+                    'error': error_msg,
+                    'stage_failed': '4a',
+                    'processing_time_seconds': (datetime.now() - pipeline_start_time).total_seconds(),
+                    'stages_completed': pipeline_results['stages_completed']
+                }
+
+            # Stage 4B validation (if AGE enabled)
+            if stage_4b_result.get('entities_created', 0) == 0 and stage_4b_result.get('skipped') is False:
+                # Only fail if graph analysis was attempted but produced no entities
+                logger.warning(
+                    f"Stage 4B created no graph entities. "
+                    f"This may indicate AI extraction failure or empty character/location lists. "
+                    f"Relationships created: {stage_4b_result.get('relationships_created', 0)}"
+                )
+                # Don't fail the pipeline - graph data is supplementary
+
             # Stage 5: Coherence Check
             logger.info(f"Starting Stage 5: Coherence Check for draft {draft_id}")
-            stage_5_result = execute_stage(self.stages[5], "5", draft_id)
+            stage_5_result = self.stages[5].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             self._update_draft_status(draft_id, DraftStatus.STAGE_5_COMPLETE.value)
             pipeline_results['stages_completed'].append({
                 'stage': 5,
@@ -213,10 +312,33 @@ class DeconstructorOrchestrator:
                 'result': stage_5_result
             })
             logger.info(f"Stage 5 completed for draft {draft_id}")
-            
+
+            # Validate Stage 5 results
+            issues_found = stage_5_result.get('issues_found', 0)
+            if issues_found < 0:  # Negative value indicates failure
+                error_msg = (
+                    f"Stage 5 coherence check failed. "
+                    f"Possible causes: truncated AI responses, parsing failures, or database errors."
+                )
+                logger.error(error_msg)
+                pipeline_conn.rollback()
+                self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
+                return {
+                    'success': False,
+                    'draft_id': draft_id,
+                    'error': error_msg,
+                    'stage_failed': '5',
+                    'processing_time_seconds': (datetime.now() - pipeline_start_time).total_seconds(),
+                    'stages_completed': pipeline_results['stages_completed']
+                }
+
             # Stage 6: Enhancement
             logger.info(f"Starting Stage 6: Enhancement for draft {draft_id}")
-            stage_6_result = execute_stage(self.stages[6], "6", draft_id)
+            stage_6_result = self.stages[6].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             self._update_draft_status(draft_id, DraftStatus.STAGE_6_COMPLETE.value)
             pipeline_results['stages_completed'].append({
                 'stage': 6,
@@ -225,57 +347,153 @@ class DeconstructorOrchestrator:
                 'result': stage_6_result
             })
             logger.info(f"Stage 6 completed for draft {draft_id}")
-            
+
             # Stage 7: Chaptering
             logger.info(f"Starting Stage 7: Chaptering for draft {draft_id}")
-            stage_7_result = execute_stage(self.stages[7], "7", draft_id)
+            stage_7_result = self.stages[7].run_with_connection(
+                pipeline_conn, draft_id,
+                user_id=user_id, workspace_id=workspace_id,
+                test_mode=test_mode, config=config or {}
+            )
             pipeline_results['stages_completed'].append({
                 'stage': 7,
                 'name': 'chaptering',
                 'completed_at': datetime.now().isoformat(),
                 'result': stage_7_result
             })
-            logger.info(f"Stage 7 completed for draft {draft_id}")
-            
-            # Mark as completed
+
+            # Validate Stage 7 (final stage - critical for output)
+            validation_result = self._validate_stage_result(7, 'chaptering', stage_7_result)
+
+            # DIAGNOSTIC: Print validation result to ensure code executes (appears in logs regardless of logging config)
+            print(f"🔍 VALIDATION CHECK - Stage 7 result: {stage_7_result}")
+            print(f"🔍 VALIDATION CHECK - Validation outcome: {validation_result}")
+
+            if not validation_result.get('valid', False):
+                error_msg = validation_result.get('error', 'Stage 7 validation failed')
+                print(f"❌ VALIDATION FAILED: {error_msg}")
+                logger.error(f"Pipeline stopped at Stage 7: {error_msg}")
+
+                # ROLLBACK cross-stage transaction
+                if pipeline_conn:
+                    pipeline_conn.rollback()
+                    logger.warning(f"✗ Cross-stage transaction rolled back (Stage 7 validation failure)")
+
+                self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
+                pipeline_results.update({
+                    'success': False,
+                    'error': error_msg,
+                    'failed_at_stage': 7,
+                    'failed_at': datetime.now().isoformat()
+                })
+                return pipeline_results
+
+            print(f"✅ VALIDATION PASSED - Stage 7 validated successfully")
+            logger.info(f"Stage 7 completed and validated for draft {draft_id}")
+
+            # Validate pipeline success by checking all stage results
             end_time = datetime.now()
             processing_time = (end_time - start_time).total_seconds()
-            
-            self._update_draft_status(
-                draft_id, 
-                DraftStatus.COMPLETED.value, 
-                metadata={'processing_time_seconds': processing_time}
-            )
-            
+
+            # Determine pipeline success based on stage validation
+            pipeline_success = self._validate_pipeline_success(pipeline_results)
+
+            # COMMIT or ROLLBACK based on validation
+            if pipeline_success:
+                if pipeline_conn:
+                    pipeline_conn.commit()
+                    logger.info(f"✓ Cross-stage transaction committed for draft {draft_id}")
+
+                # Monitor finish_reason across all stages to detect token limit issues
+                truncation_warnings = []
+                for stage_info in pipeline_results.get('stages_completed', []):
+                    stage_name = stage_info.get('name', 'unknown')
+                    stage_number = stage_info.get('stage', 'unknown')
+                    # Check if any stage result indicates truncation happened
+                    # (This is informational - we already recovered via retries, but log for monitoring)
+                    if 'truncation_detected' in str(stage_info.get('result', {})):
+                        truncation_warnings.append(f"Stage {stage_number} ({stage_name})")
+
+                if truncation_warnings:
+                    logger.warning(
+                        f"⚠️ Pipeline completed successfully, but {len(truncation_warnings)} stage(s) "
+                        f"hit token limits and required retry with increased tokens: {', '.join(truncation_warnings)}. "
+                        f"Consider increasing base max_output_tokens for these stages to reduce API overhead."
+                    )
+
+                self._update_draft_status(
+                    draft_id,
+                    DraftStatus.COMPLETED.value,
+                    metadata={'processing_time_seconds': processing_time}
+                )
+                logger.pipeline_complete(draft_id, duration_seconds=processing_time)
+            else:
+                # Pipeline failed validation - rollback everything
+                if pipeline_conn:
+                    pipeline_conn.rollback()
+                    logger.warning(f"✗ Cross-stage transaction rolled back (pipeline validation failure)")
+
+                # Collect failed stage information
+                failed_stages = [
+                    s for s in pipeline_results['stages_completed']
+                    if not s.get('result', {}).get('success', False)
+                ]
+                error_summary = f"Pipeline validation failed: {len(failed_stages)} stage(s) reported failures"
+
+                self._update_draft_status(
+                    draft_id,
+                    DraftStatus.FAILED.value,
+                    error_message=error_summary
+                )
+                logger.pipeline_failed(draft_id, error=error_summary)
+
             pipeline_results.update({
-                'success': True,
+                'success': pipeline_success,  # Now validated against all stages
                 'completed_at': end_time.isoformat(),
                 'processing_time_seconds': processing_time
             })
-            
-            logger.pipeline_complete(draft_id, duration_seconds=processing_time)
-            
+
+            # Add failed stages info if validation failed
+            if not pipeline_success:
+                failed_stages = [
+                    s for s in pipeline_results['stages_completed']
+                    if not s.get('result', {}).get('success', False)
+                ]
+                pipeline_results['failed_stages'] = failed_stages
+
+            return pipeline_results
+
         except Exception as e:
             error_message = str(e)
             error_trace = traceback.format_exc()
-            
+
             logger.pipeline_failed(draft_id, error=error_message)
             logger.debug("Full traceback", traceback=error_trace)
-            
+
+            # ROLLBACK cross-stage transaction on exception
+            if pipeline_conn:
+                pipeline_conn.rollback()
+                logger.error(f"✗ Cross-stage transaction rolled back due to exception")
+
             # Update draft status to failed
             self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_message)
-            
+
             pipeline_results.update({
                 'success': False,
                 'error': error_message,
                 'failed_at': datetime.now().isoformat()
             })
+
+            return pipeline_results
+
         finally:
+            # Return connection to pool
+            if conn:
+                self.db_pool.putconn(conn)
+
             # Clear logging context
             logger.clear_context()
-        
-        return pipeline_results
-    
+
     def _execute_stage_with_retry(self, stage, stage_number: str, draft_id: str, *args,
                                  user_id: int = None, workspace_id: str = None, 
                                  test_mode: bool = False, config: Dict[str, Any] = None,
@@ -332,82 +550,98 @@ class DeconstructorOrchestrator:
         # All retries failed, raise the last exception
         raise last_exception
     
-    @contextmanager
-    def _database_transaction(self):
-        """
-        Context manager for database transactions with automatic rollback on error.
-        """
-        conn = None
-        try:
-            conn = self.db_pool.getconn()
-            conn.autocommit = False  # Ensure we're in transaction mode
-            yield conn
-            conn.commit()
-        except Exception as e:
-            if conn:
-                conn.rollback()
-                logger.error(f"Database transaction rolled back due to error: {e}")
-            raise
-        finally:
-            if conn:
-                self.db_pool.putconn(conn)
+    # ============================================================================
+    # COMMENTED OUT: PER-STAGE TRANSACTION ARCHITECTURE (Phase 1 Cleanup)
+    # This context manager created separate transactions for each stage.
+    # Problem: If Stage 7 failed, Stages 1-6 had already committed (orphaned data).
+    # Replaced with: Single cross-stage transaction in run_pipeline()
+    # Date: 2025-11-12
+    # ============================================================================
+    #
+    # @contextmanager
+    # def _database_transaction(self):
+    #     """
+    #     Context manager for database transactions with automatic rollback on error.
+    #     """
+    #     conn = None
+    #     try:
+    #         conn = self.db_pool.getconn()
+    #         conn.autocommit = False  # Ensure we're in transaction mode
+    #         yield conn
+    #         conn.commit()
+    #     except Exception as e:
+    #         if conn:
+    #             conn.rollback()
+    #             logger.error(f"Database transaction rolled back due to error: {e}")
+    #         raise
+    #     finally:
+    #         if conn:
+    #             self.db_pool.putconn(conn)
     
-    def _execute_stage_with_transaction(self, stage, stage_number: str, draft_id: str, *args,
-                                       user_id: int = None, workspace_id: str = None, 
-                                       test_mode: bool = False, config: Dict[str, Any] = None,
-                                       max_retries: int = 10) -> Dict[str, Any]:
-        """
-        Execute a stage within a database transaction with retry mechanism.
-        
-        Args:
-            stage: Stage instance to execute
-            stage_number: Stage identifier (for logging)
-            draft_id: UUID of the draft
-            user_id: User ID executing the pipeline
-            workspace_id: Workspace ID
-            test_mode: Whether running in test mode
-            config: Configuration parameters for validation and processing
-            *args: Arguments to pass to the stage
-            max_retries: Maximum number of retry attempts
-            
-        Returns:
-            Stage execution result
-            
-        Raises:
-            Exception: If all retry attempts fail
-        """
-        last_exception = None
-        
-        for attempt in range(max_retries + 1):  # +1 for initial attempt
-            try:
-                logger.info(f"Executing stage {stage_number} for draft {draft_id} (attempt {attempt + 1}/{max_retries + 1})")
-                
-                # Execute the stage within a transaction
-                with self._database_transaction() as conn:
-                    # All stages inherit from BasePipelineStage and support transactional interface
-                    result = stage.run_with_connection(
-                        conn, draft_id, user_id=user_id, workspace_id=workspace_id,
-                        test_mode=test_mode, config=config, *args
-                    )
-                
-                logger.info(f"Stage {stage_number} completed successfully for draft {draft_id}")
-                return result
-                
-            except Exception as e:
-                last_exception = e
-                logger.warning(f"Stage {stage_number} failed for draft {draft_id} (attempt {attempt + 1}/{max_retries + 1}): {str(e)}")
-                
-                if attempt < max_retries:
-                    # Calculate exponential backoff delay (1s, 2s, 4s, 8s, etc., max 60s)
-                    delay = min(2 ** attempt, 60)
-                    logger.info(f"Retrying stage {stage_number} in {delay} seconds...")
-                    time.sleep(delay)
-                else:
-                    logger.error(f"Stage {stage_number} failed permanently for draft {draft_id} after {max_retries + 1} attempts")
-                    break
-        
-        # All retries failed, raise the last exception
-        raise last_exception
+    # ============================================================================
+    # COMMENTED OUT: PER-STAGE TRANSACTIONAL EXECUTION (Phase 1 Cleanup)
+    # This method created a NEW transaction for EACH stage independently.
+    # Problem: Each stage committed separately, causing orphaned data on late failures.
+    # Replaced with: Direct stage.run_with_connection(pipeline_conn, ...) calls
+    # Date: 2025-11-12
+    # ============================================================================
+    #
+    # def _execute_stage_with_transaction(self, stage, stage_number: str, draft_id: str, *args,
+    #                                    user_id: int = None, workspace_id: str = None,
+    #                                    test_mode: bool = False, config: Dict[str, Any] = None,
+    #                                    max_retries: int = 10) -> Dict[str, Any]:
+    #     """
+    #     Execute a stage within a database transaction with retry mechanism.
+    #
+    #     Args:
+    #         stage: Stage instance to execute
+    #         stage_number: Stage identifier (for logging)
+    #         draft_id: UUID of the draft
+    #         user_id: User ID executing the pipeline
+    #         workspace_id: Workspace ID
+    #         test_mode: Whether running in test mode
+    #         config: Configuration parameters for validation and processing
+    #         *args: Arguments to pass to the stage
+    #         max_retries: Maximum number of retry attempts
+    #
+    #     Returns:
+    #         Stage execution result
+    #
+    #     Raises:
+    #         Exception: If all retry attempts fail
+    #     """
+    #     last_exception = None
+    #
+    #     for attempt in range(max_retries + 1):  # +1 for initial attempt
+    #         try:
+    #             logger.info(f"Executing stage {stage_number} for draft {draft_id} (attempt {attempt + 1}/{max_retries + 1})")
+    #
+    #             # Execute the stage within a transaction
+    #             with self._database_transaction() as conn:
+    #                 # All stages inherit from BasePipelineStage and support transactional interface
+    #                 result = stage.run_with_connection(
+    #                     conn, draft_id, user_id=user_id, workspace_id=workspace_id,
+    #                     test_mode=test_mode, config=config, *args
+    #                 )
+    #
+    #             logger.info(f"Stage {stage_number} completed successfully for draft {draft_id}")
+    #             return result
+    #
+    #         except Exception as e:
+    #             last_exception = e
+    #             logger.warning(f"Stage {stage_number} failed for draft {draft_id} (attempt {attempt + 1}/{max_retries + 1}): {str(e)}")
+    #
+    #             if attempt < max_retries:
+    #                 # Calculate exponential backoff delay (1s, 2s, 4s, 8s, etc., max 60s)
+    #                 delay = min(2 ** attempt, 60)
+    #                 logger.info(f"Retrying stage {stage_number} in {delay} seconds...")
+    #                 time.sleep(delay)
+    #             else:
+    #                 logger.error(f"Stage {stage_number} failed permanently for draft {draft_id} after {max_retries + 1} attempts")
+    #                 break
+    #
+    #     # All retries failed, raise the last exception
+    #     raise last_exception
     
     def _store_chaptering_metadata_at_start(self, draft_id: str, chaptering_mode: str, target_chapter_length: int) -> None:
         """
@@ -464,7 +698,186 @@ class DeconstructorOrchestrator:
         finally:
             if conn:
                 self.db_pool.putconn(conn)
-    
+
+    def _validate_stage_result(self, stage_num: Any, stage_name: str,
+                              stage_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Validate individual stage result and outputs.
+
+        Args:
+            stage_num: Stage number (can be int or string like '4a')
+            stage_name: Name of the stage
+            stage_result: Result dictionary from stage execution
+
+        Returns:
+            Dictionary with 'valid' boolean and optional 'error' message
+        """
+        # Check basic success flag
+        if not stage_result.get('success', False):
+            error = stage_result.get('error', 'Unknown error')
+            logger.error(f"Stage {stage_num} ({stage_name}) reported failure: {error}")
+            return {
+                'valid': False,
+                'error': error,
+                'validation_type': 'success_flag'
+            }
+
+        # Validate stage-specific outputs for critical stages
+        if stage_num == 1:  # Ingestion
+            chunks_created = stage_result.get('chunks_created', 0)
+            if chunks_created == 0:
+                error = "Stage 1 created 0 chunks - invalid input file"
+                logger.error(error)
+                return {
+                    'valid': False,
+                    'error': error,
+                    'validation_type': 'output_validation'
+                }
+            logger.info(f"Stage 1 validation passed: {chunks_created} chunks created")
+
+        elif stage_num == 3:  # Scene Detection (CRITICAL)
+            scenes_extracted = stage_result.get('scenes_extracted', 0)
+            if scenes_extracted == 0:
+                error = "Stage 3 extracted 0 scenes - LLM parsing failed"
+                logger.error(error)
+                return {
+                    'valid': False,
+                    'error': error,
+                    'validation_type': 'output_validation'
+                }
+
+            # Check hydration quality
+            hydration_stats = stage_result.get('hydration_stats', {})
+            if hydration_stats:
+                success_rate = hydration_stats.get('success_rate', 1.0)
+                failed_count = hydration_stats.get('failed', 0)
+                attempted_count = hydration_stats.get('attempted', 0)
+
+                if success_rate < 0.75:  # Less than 75% hydration success
+                    error = (
+                        f"Stage 3 hydration quality too low: {success_rate*100:.1f}% "
+                        f"({failed_count}/{attempted_count} scenes failed hydration). "
+                        "Cannot proceed with incomplete scene content."
+                    )
+                    logger.error(error)
+                    return {
+                        'valid': False,
+                        'error': error,
+                        'validation_type': 'hydration_quality',
+                        'hydration_stats': hydration_stats
+                    }
+
+                if success_rate < 0.9:  # 75-90% - warning but continue
+                    logger.warning(
+                        f"Stage 3 hydration quality degraded: {success_rate*100:.1f}% "
+                        f"({failed_count}/{attempted_count} scenes failed). "
+                        "Continuing but quality may be affected."
+                    )
+
+            logger.info(f"Stage 3 validation passed: {scenes_extracted} scenes extracted")
+
+        elif stage_num == 6:  # Enhancement
+            # Check for validation failures in enhancement
+            failed_validations = stage_result.get('failed_validations', 0)
+            scenes_enhanced = stage_result.get('scenes_enhanced', 0)
+            total_scenes = failed_validations + scenes_enhanced
+
+            if total_scenes > 0:
+                failure_rate = failed_validations / total_scenes
+
+                # Hard failure threshold: >30% failures
+                if failure_rate > 0.3:
+                    error = (
+                        f"Stage 6 validation failure rate too high: {failure_rate*100:.1f}% "
+                        f"({failed_validations}/{total_scenes} scenes failed validation). "
+                        "Enhancement quality compromised."
+                    )
+                    logger.error(error)
+                    return {
+                        'valid': False,
+                        'error': error,
+                        'validation_type': 'enhancement_quality',
+                        'failure_rate': failure_rate
+                    }
+
+                # Warning threshold: 10-30% failures
+                elif failure_rate > 0.1:
+                    logger.warning(
+                        f"Stage 6 validation failure rate elevated: {failure_rate*100:.1f}% "
+                        f"({failed_validations}/{total_scenes} scenes). Quality may be affected."
+                    )
+
+            logger.info(f"Stage 6 validation passed: {scenes_enhanced} scenes enhanced successfully")
+
+        elif stage_num == 7:  # Chaptering
+            chapters_created = stage_result.get('chapters_created', 0)
+            chapters_stored = stage_result.get('chapters_stored', 0)
+
+            # Check if chapters were generated by LLM
+            if chapters_created == 0:
+                error = "Stage 7 created 0 chapters - LLM chaptering failed"
+                logger.error(error)
+                return {
+                    'valid': False,
+                    'error': error,
+                    'validation_type': 'output_validation'
+                }
+
+            # CRITICAL: Check if chapters were actually stored in database
+            if chapters_stored == 0:
+                error = f"Stage 7 generated {chapters_created} chapters but stored 0 in database - storage failed"
+                logger.error(error)
+                return {
+                    'valid': False,
+                    'error': error,
+                    'validation_type': 'database_validation'
+                }
+
+            logger.info(f"Stage 7 validation passed: {chapters_created} chapters created, {chapters_stored} stored in DB")
+
+        return {'valid': True}
+
+    def _validate_pipeline_success(self, pipeline_results: Dict[str, Any]) -> bool:
+        """
+        Validate that all stages completed successfully.
+
+        Args:
+            pipeline_results: Dictionary containing stages_completed list
+
+        Returns:
+            True if all stages succeeded, False otherwise
+        """
+        stages_completed = pipeline_results.get('stages_completed', [])
+
+        if not stages_completed:
+            logger.error("No stages completed")
+            return False
+
+        # Check each stage's success flag
+        failed_stages = []
+        for stage_info in stages_completed:
+            stage_num = stage_info.get('stage', 'unknown')
+            stage_name = stage_info.get('name', 'unknown')
+            stage_result = stage_info.get('result', {})
+
+            # Check if this stage reported success
+            if not stage_result.get('success', False):
+                failed_stages.append({
+                    'stage': stage_num,
+                    'name': stage_name,
+                    'error': stage_result.get('error', 'Unknown error')
+                })
+
+        # Log all failures
+        if failed_stages:
+            logger.error(f"Pipeline validation failed: {len(failed_stages)} stage(s) reported failures")
+            for failure in failed_stages:
+                logger.error(f"  Stage {failure['stage']} ({failure['name']}): {failure['error']}")
+            return False
+
+        logger.info("Pipeline validation passed: all stages reported success")
+        return True
+
     def _update_draft_status(self, draft_id: str, status: str, 
                            error_message: Optional[str] = None,
                            metadata: Optional[Dict[str, Any]] = None) -> None:

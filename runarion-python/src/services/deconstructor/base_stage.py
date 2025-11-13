@@ -117,8 +117,8 @@ class PipelineStageContext:
             try:
                 with conn.cursor() as cursor:
                     cursor.execute("""
-                        SELECT d.workspace_id, d.uploaded_by 
-                        FROM drafts d 
+                        SELECT d.workspace_id, d.user_id
+                        FROM drafts d
                         WHERE d.id = %s
                     """, (self.draft_id,))
                     

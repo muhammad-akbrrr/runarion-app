@@ -208,7 +208,19 @@ class ProgressiveGraphAnalysisStage(BasePipelineStage):
             
             # Generate graph analysis
             response = self.generation_engine.generate(skip_quota=True)
-            
+
+            # Check if response was truncated due to token limit
+            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                new_limit = int(current_limit * 1.5)  # Increase by 50%
+                self.logger.warning(
+                    f"Stage 4B graph analysis truncated (finish_reason='length'). "
+                    f"Tokens: {response.metadata.output_tokens}. "
+                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = self.generation_engine.generate(skip_quota=True)
+
             if not response.success:
                 self.logger.error(f"AI generation failed for scene batch: {response.error_message}")
                 return None
@@ -234,6 +246,7 @@ class ProgressiveGraphAnalysisStage(BasePipelineStage):
         draft_id = context.draft_id
         entities_created = 0
         relationships_created = 0
+        created_entities = set()  # Track successfully created entities
         
         try:
             # Create vertices for each entity type
@@ -244,33 +257,58 @@ class ProgressiveGraphAnalysisStage(BasePipelineStage):
             ]:
                 for entity in entities:
                     try:
+                        # Validate entity name is present and non-empty
+                        entity_name = entity.get('name', '').strip()
+                        if not entity_name or len(entity_name) < 1:
+                            self.logger.warning(f"Skipping {entity_type} entity with empty/invalid name: {entity}")
+                            continue
+
+                        # Allow entities with special characters like "V.S." or "Unnamed Baby"
+                        # Only filter out truly problematic names (e.g., only punctuation)
+                        import re
+                        if not re.search(r'[a-zA-Z0-9]', entity_name):
+                            self.logger.warning(f"Skipping {entity_type} entity with no alphanumeric characters: '{entity_name}'")
+                            continue
+
                         # Extract properties (excluding name and type)
                         properties = {k: v for k, v in entity.items() if k not in ['name', 'type']}
-                        
+
                         # Create vertex using AGE graph database
                         vertex_id = self.graph_service.create_vertex(
                             draft_id=draft_id,
-                            entity_name=entity['name'],
+                            entity_name=entity_name,
                             entity_type=entity_type,
                             properties=properties
                         )
-                        
+
                         if vertex_id:
                             entities_created += 1
-                            self.logger.debug(f"Created AGE vertex {vertex_id}: {entity['name']} ({entity_type})")
-                            
+                            created_entities.add(entity_name)  # Track successful creation
+                            self.logger.debug(f"Created AGE vertex {vertex_id}: {entity_name} ({entity_type})")
+                        else:
+                            self.logger.warning(f"Failed to create {entity_type} vertex '{entity_name}': No vertex ID returned")
+
                     except GraphDatabaseNotAvailableError as e:
                         self.logger.error(f"AGE graph database not available: {e}")
                         raise
                     except Exception as e:
-                        self.logger.error(f"Failed to create {entity_type} vertex '{entity['name']}': {e}")
+                        self.logger.error(f"Failed to create {entity_type} vertex '{entity.get('name', 'UNKNOWN')}': {e}")
+                        # Continue with other entities instead of failing completely
             
-            # Create relationships
+            # Create relationships only for entities that were successfully created
             for relationship in graph_data.get('relationships', []):
                 try:
                     source_name = relationship['source']
                     target_name = relationship['target']
                     rel_type = relationship['relationship']
+                    
+                    # Validate that both entities exist before creating relationship
+                    if source_name not in created_entities:
+                        self.logger.warning(f"Skipping relationship: source entity '{source_name}' was not created")
+                        continue
+                    if target_name not in created_entities:
+                        self.logger.warning(f"Skipping relationship: target entity '{target_name}' was not created")
+                        continue
                     
                     # Build relationship properties
                     rel_props = {
@@ -290,12 +328,15 @@ class ProgressiveGraphAnalysisStage(BasePipelineStage):
                     if edge_id:
                         relationships_created += 1
                         self.logger.debug(f"Created AGE relationship {edge_id}: {source_name} -{rel_type}-> {target_name}")
+                    else:
+                        self.logger.warning(f"Failed to create relationship {source_name} -{rel_type}-> {target_name}: No edge ID returned")
                         
                 except GraphDatabaseNotAvailableError as e:
                     self.logger.error(f"AGE graph database not available: {e}")
                     raise
                 except Exception as e:
-                    self.logger.error(f"Failed to create relationship {relationship.get('source', '')} -> {relationship.get('target', '')}: {e}")
+                    self.logger.error(f"Failed to create relationship {source_name} -{rel_type}-> {target_name}: {e}")
+                    # Continue with other relationships instead of failing completely
             
             # Log the results
             self.logger.info(f"AGE graph data stored: {entities_created} entities, {relationships_created} relationships")

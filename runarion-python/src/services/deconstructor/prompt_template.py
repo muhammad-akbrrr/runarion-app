@@ -359,47 +359,56 @@ ENHANCED SCENE:"""
 
     @staticmethod
     def get_chaptering_prompt() -> str:
-        """Prompt for Stage 7: Chapter Organization"""
-        return """You are a book structure specialist. Organize the provided manuscript into well-structured chapters with compelling titles and smooth transitions.
+        """Prompt for Stage 7: Chapter Structure Planning (v2.0)"""
+        return """You are a narrative structure expert. Analyze the provided scenes and determine optimal chapter breaks to create a well-paced, engaging book structure.
 
-MANUSCRIPT TEXT:
-{manuscript_text}
-
-SCENE BREAKDOWN:
+SCENE INFORMATION:
 {scene_information}
 
-CHAPTERING REQUIREMENTS:
-1. Create logical chapter breaks based on:
-   - Natural story beats
-   - Scene groupings
-   - Pacing considerations
-   - Cliffhangers and hooks
-2. Ensure each chapter has:
-   - Clear beginning, middle, end
-   - Consistent length (adjust as needed)
-   - Compelling chapter titles
-   - Smooth transitions
+CHAPTERING PARAMETERS:
+- Total scenes: {total_scenes}
+- Target chapters: {min_chapters} to {max_chapters}
+- Mode: {chaptering_mode}
 
-TARGET CHAPTER LENGTH: {target_length} words (flexible)
-CHAPTERING MODE: {chaptering_mode}
+YOUR TASK:
+Decide which consecutive scenes should be grouped into each chapter. Consider:
+1. Narrative arc and story beats
+2. Natural transition points and cliffhangers
+3. Thematic coherence within chapters
+4. Balanced chapter lengths (no single chapter should be 2x longer than others)
+5. Emotional pacing and reader engagement
+
+CONSTRAINTS:
+- Every scene must be assigned to exactly one chapter
+- Scenes must be consecutive (no skipping or reordering)
+- First chapter must start at scene 1
+- Last chapter must end at final scene
 
 OUTPUT FORMAT (JSON):
 {{
   "chapters": [
     {{
       "chapter_number": 1,
-      "title": "Compelling Chapter Title",
-      "content": "Full chapter text with proper formatting",
-      "word_count": 2500,
-      "summary": "Brief chapter summary",
-      "key_events": ["Major events in this chapter"],
-      "cliffhanger": "Yes/No - does it end with suspense?"
+      "title": "Compelling 2-5 word title",
+      "start_scene": 1,
+      "end_scene": 4,
+      "rationale": "Why these scenes form a coherent chapter"
+    }},
+    {{
+      "chapter_number": 2,
+      "title": "Next Chapter Title",
+      "start_scene": 5,
+      "end_scene": 8,
+      "rationale": "Thematic/narrative reason for grouping"
     }}
   ],
-  "total_word_count": 75000,
-  "chapter_count": 30,
-  "structure_notes": "Overall organization strategy used"
+  "structure_notes": "Overall chaptering strategy and pacing approach"
 }}
+
+IMPORTANT:
+- Return ONLY the structure (scene numbers and titles), NOT content
+- Ensure scene coverage is complete: start_scene of chapter N+1 must equal end_scene of chapter N + 1
+- Validate your output before responding
 
 CHAPTER STRUCTURE:"""
 

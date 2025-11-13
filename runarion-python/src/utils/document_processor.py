@@ -362,20 +362,75 @@ class DocumentProcessor:
     ) -> List[Chunk]:
         """
         Split text into chunks based on sentences, ensuring each chunk is within word and token limits.
+        For oversized sentences (>80% of limit), falls back to clause-level splitting to prevent mid-clause truncation.
         """
-        sentences = self.split_into_sentences(text)
+        sentences = self.split_into_sentences(text, allow_clause_splitting=False)
         chunks: List[Chunk] = []
         current_chunk = ""
         current_tokens = 0
         current_words = 0
         chunk_number = initial_chunk_number
 
+        # Calculate threshold for detecting oversized sentences (80% of limit)
+        oversized_sentence_threshold = int(self.chunk_word_limit * 0.8)
+
         for sentence in sentences:
             sentence = sentence.strip()
             if not sentence:
                 continue
+
             sentence_tokens = self.token_counter.safe_count(sentence)
             sentence_words = self.count_words(sentence)
+
+            # Check if this sentence is oversized and needs clause-level splitting
+            if sentence_words > oversized_sentence_threshold:
+                logger.warning(
+                    f"Long sentence detected ({sentence_words} words, >{oversized_sentence_threshold} threshold). "
+                    f"Splitting at clause boundaries to prevent mid-clause truncation."
+                )
+
+                # Save current chunk before processing oversized sentence
+                if current_chunk:
+                    chunks.append(self._create_chunk_dict(chunk_number, current_chunk))
+                    chunk_number += 1
+                    current_chunk = ""
+                    current_tokens = 0
+                    current_words = 0
+
+                # Split oversized sentence at clause boundaries
+                clauses = self.split_into_sentences(sentence, allow_clause_splitting=True)
+
+                for clause in clauses:
+                    clause = clause.strip()
+                    if not clause:
+                        continue
+
+                    clause_tokens = self.token_counter.safe_count(clause)
+                    clause_words = self.count_words(clause)
+
+                    # Check if adding clause would exceed limits
+                    if (
+                        (current_tokens + clause_tokens + 1) > self.chunk_token_limit
+                        or (current_words + clause_words) > self.chunk_word_limit
+                    ) and current_chunk:
+                        # Save current chunk at clause boundary
+                        chunks.append(self._create_chunk_dict(chunk_number, current_chunk))
+                        current_chunk = clause
+                        current_tokens = clause_tokens
+                        current_words = clause_words
+                        chunk_number += 1
+                        logger.debug(f"Created chunk boundary at clause to respect {self.chunk_word_limit} word limit")
+                    else:
+                        # Add clause to current chunk
+                        current_chunk = (
+                            current_chunk + " " + clause if current_chunk else clause
+                        )
+                        current_tokens += clause_tokens + 1
+                        current_words += clause_words
+
+                continue  # Move to next sentence
+
+            # Normal sentence processing (not oversized)
             if (
                 (current_tokens + sentence_tokens + 1) > self.chunk_token_limit
                 or (current_words + sentence_words) > self.chunk_word_limit
@@ -433,18 +488,26 @@ class DocumentProcessor:
         }
 
     @staticmethod
-    def split_into_sentences(text: str) -> List[str]:
+    def split_into_sentences(text: str, allow_clause_splitting: bool = False) -> List[str]:
         """
         Split text into sentences using improved regex pattern.
 
         Args:
             text: Text to split
+            allow_clause_splitting: If True, also split on commas and semicolons for better chunking
 
         Returns:
-            List of sentences
+            List of sentences or clauses
         """
-        # Use regex for better sentence splitting
-        sentences = re.split(r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)""", text)
+        if allow_clause_splitting:
+            # Split on sentence endings AND clause boundaries (commas, semicolons)
+            # This prevents mid-clause truncation in long sentences
+            pattern = r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)|(?<=,\s)|(?<=;\s)"""
+            sentences = re.split(pattern, text)
+        else:
+            # Original behavior: sentence-ending punctuation only
+            sentences = re.split(r"""(?<=[.!?]"\s)|(?<=[.!?]'\s)|(?<=[.!?]\s)""", text)
+
         return [s.strip() for s in sentences if s.strip()]
 
     @staticmethod
