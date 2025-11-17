@@ -402,10 +402,18 @@ class MainEditorController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to start text generation: ' . $e->getMessage(),
-            ], 500);
+            // Check if it's a quota exceeded error
+            if (str_contains($e->getMessage(), 'quota') || str_contains($e->getMessage(), 'limit')) {
+                return redirect()->route('workspace.projects.editor', [
+                    'workspace_id' => $workspace_id,
+                    'project_id' => $project_id,
+                ])->withErrors(['generation' => 'Generation quota exceeded. Please try again later.']);
+            }
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ])->withErrors(['generation' => 'Failed to start text generation.']);
         }
     }
 
@@ -665,10 +673,18 @@ class MainEditorController extends Controller
                 'trace' => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to start text regeneration: ' . $e->getMessage(),
-            ], 500);
+            // Check if it's a quota exceeded error
+            if (str_contains($e->getMessage(), 'quota') || str_contains($e->getMessage(), 'limit')) {
+                return redirect()->route('workspace.projects.editor', [
+                    'workspace_id' => $workspace_id,
+                    'project_id' => $project_id,
+                ])->withErrors(['generation' => 'Generation quota exceeded. Please try again later.']);
+            }
+
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ])->withErrors(['generation' => 'Failed to start text regeneration.']);
         }
     }
 

@@ -109,6 +109,15 @@ class StreamLLMJob implements ShouldQueue
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            // Determine error type
+            $errorType = 'generation_failed';
+            $errorMessage = $e->getMessage();
+            
+            if (str_contains($errorMessage, 'quota') || str_contains($errorMessage, 'limit') || str_contains($errorMessage, '429')) {
+                $errorType = 'quota_exceeded';
+                $errorMessage = 'Generation quota exceeded. Please try again later.';
+            }
+
             // Broadcast error event
             broadcast(new LLMStreamCompleted(
                 $this->workspaceId,
@@ -117,7 +126,8 @@ class StreamLLMJob implements ShouldQueue
                 $this->sessionId,
                 '',
                 false,
-                $e->getMessage()
+                $errorMessage,
+                $errorType
             ));
         }
     }
@@ -548,6 +558,15 @@ class StreamLLMJob implements ShouldQueue
             'trace' => $exception->getTraceAsString(),
         ]);
 
+        // Determine error type
+        $errorType = 'generation_failed';
+        $errorMessage = 'Job failed: ' . $exception->getMessage();
+        
+        if (str_contains($exception->getMessage(), 'quota') || str_contains($exception->getMessage(), 'limit')) {
+            $errorType = 'quota_exceeded';
+            $errorMessage = 'Generation quota exceeded. Please try again later.';
+        }
+
         // Broadcast error event
         broadcast(new LLMStreamCompleted(
             $this->workspaceId,
@@ -556,7 +575,8 @@ class StreamLLMJob implements ShouldQueue
             $this->sessionId,
             '',
             false,
-            'Job failed: ' . $exception->getMessage()
+            $errorMessage,
+            $errorType
         ));
     }
 }
