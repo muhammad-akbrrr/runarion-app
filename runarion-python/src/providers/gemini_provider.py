@@ -4,7 +4,7 @@ import time
 import uuid
 from flask import current_app
 from google import genai
-from google.genai.types import GenerateContentConfig, SafetySetting, HarmCategory, HarmBlockThreshold
+from google.genai.types import GenerateContentConfig, SafetySetting, HarmCategory, HarmBlockThreshold, ThinkingConfig
 from typing import Dict, Any, Generator
 from providers.base_provider import BaseProvider
 from models.request import BaseGenerationRequest, GenerationConfig
@@ -43,6 +43,7 @@ class GeminiProvider(BaseProvider):
                 stop_sequences=all_stop_sequences,
                 presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
                 frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
+                thinking_config=ThinkingConfig(thinking_budget=0),
                 safety_settings=[
                     SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.BLOCK_NONE),
                     SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.BLOCK_NONE),
@@ -203,12 +204,22 @@ class GeminiProvider(BaseProvider):
             stream = self.client.models.generate_content_stream(**gemini_kwargs)
 
             for chunk in stream:
-                # Try to extract provider request ID from any chunk (first usually)
                 provider_request_id = getattr(chunk, 'response_id', provider_request_id)
 
+                # Try to read from chunk.text
                 if hasattr(chunk, 'text') and chunk.text:
                     generated_text += chunk.text
                     yield chunk.text
+                    continue
+
+                # Fallback: read from candidates → parts
+                if hasattr(chunk, 'candidates') and chunk.candidates:
+                    candidate = chunk.candidates[0]
+                    if candidate.content and hasattr(candidate.content, 'parts'):
+                        for part in candidate.content.parts:
+                            if hasattr(part, 'text') and part.text:
+                                generated_text += part.text
+                                yield part.text
 
             # Final usage data (Gemini stream does NOT return this currently, set 0s safely)
             processing_time_ms = int((time.time() - start_time) * 1000)

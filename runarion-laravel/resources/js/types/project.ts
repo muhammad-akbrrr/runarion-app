@@ -141,7 +141,7 @@ export interface SidebarSettingsProps {
 export const DEFAULT_SETTINGS: ProjectSettings = {
     currentPreset: "story-telling",
     authorProfile: "tolkien",
-    aiModel: "gpt-4o-mini",
+    aiModel: "gemini-2.0-flash",
     memory: "",
     storyGenre: "",
     storyTone: "",

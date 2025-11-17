@@ -151,7 +151,7 @@ class StreamLLMJob implements ShouldQueue
         return [
             'usecase' => 'story',
             'provider' => $this->determineProvider(),
-            'model' => $this->settings['aiModel'] ?? 'gpt-4o-mini',
+            'model' => $this->settings['aiModel'] ?? 'gemini-2.0-flash',
             'prompt' => $this->prompt,
             'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice. Return the continuation exclusively in Markdown format with no HTML escaping or wrappers.',
             'stream' => true, // Enable streaming
@@ -194,9 +194,11 @@ class StreamLLMJob implements ShouldQueue
      */
     private function determineProvider(): string
     {
-        $model = $this->settings['aiModel'] ?? 'gpt-4o-mini';
+        $model = $this->settings['aiModel'] ?? 'gemini-2.0-flash';
         
-        if (stripos($model, 'gpt') !== false) {
+        if (stripos($model, 'gemini') !== false) {
+            return 'gemini';
+        } elseif (stripos($model, 'gpt') !== false) {
             return 'openai';
         } elseif (stripos($model, 'gemini') !== false) {
             return 'gemini';
@@ -204,7 +206,7 @@ class StreamLLMJob implements ShouldQueue
             return 'deepseek';
         }
         
-        return 'openai';
+        return 'gemini';
     }
 
     /**
