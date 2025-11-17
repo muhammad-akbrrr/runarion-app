@@ -19,9 +19,9 @@ if (import.meta.env.DEV) {
 window.Echo = new Echo({
     broadcaster: 'reverb',
     key: import.meta.env.VITE_REVERB_APP_KEY,
-    wsHost: import.meta.env.VITE_REVERB_CLIENT_HOST || window.location.hostname,
+    wsHost: import.meta.env.VITE_REVERB_CLIENT_HOST || 'localhost',
     wsPort: import.meta.env.VITE_REVERB_PORT || 8080,
-    wssPort: import.meta.env.VITE_REVERB_PORT || 443,
+    wssPort: import.meta.env.VITE_REVERB_PORT || 8080,
     forceTLS: (import.meta.env.VITE_REVERB_SCHEME || 'http') === 'https',
     enabledTransports: ['ws', 'wss'],
     disableStats: true,
