@@ -4,7 +4,6 @@ import os
 from math import ceil
 from typing import Literal, Optional, TypedDict
 
-import demjson3
 from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
 from models.response import BaseGenerationResponse
 from models.style_analyzer import AuthorStyle
@@ -14,6 +13,7 @@ from services.generation_engine import GenerationEngine
 from ulid import ULID
 from utils.database_utils import clean_text_for_database, utf8_database_connection
 from utils.document_processor import ChunkWithStart, DocumentProcessor
+from utils.json_response_parser import JSONResponseParser, ResponseFormat
 
 from .prompt_template import (
     COMBINED_AUTHOR_STYLE,
@@ -476,26 +476,24 @@ class ProfilingStage:
         Returns:
             AuthorStyle: The parsed author style object.
         """
-        start_index = text.find("{")
-        end_index = text.rfind("}")
-        if start_index == -1 or end_index == -1 or start_index >= end_index:
+        parsed, fmt = JSONResponseParser.parse_response(
+            text, expected_type="dict", fallback_value=None
+        )
+
+        if parsed is None or fmt in (
+            ResponseFormat.EMPTY_RESPONSE,
+            ResponseFormat.NON_JSON,
+        ):
             error_text = "Invalid structured response format: No valid JSON found"
-            logger.error(error_text)
-            raise ValueError(error_text)
-        clean_text = text[start_index : end_index + 1]
-
-        try:
-            data_dict = demjson3.decode(clean_text)
-        except demjson3.JSONDecodeError:
             logger.error(
-                "Invalid LLM output: Not a valid JSON. Output was: %s", clean_text
+                "%s | Parser Input: %s | Parser Output: %s", error_text, text, fmt
             )
-            raise
+            raise ValueError(error_text)
 
         try:
-            author_style = AuthorStyle(**data_dict)
+            author_style = AuthorStyle(**parsed)
         except ValidationError:
-            logger.error("Failed to parse dict into AuthorStyle: %s", str(data_dict))
+            logger.error("Failed to parse dict into AuthorStyle: %s", str(parsed))
             raise
 
         return author_style
