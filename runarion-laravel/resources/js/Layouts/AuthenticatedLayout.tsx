@@ -1,3 +1,4 @@
+import LoadingOverlay from "@/Components/LoadingOverlay";
 import { Avatar, AvatarFallback, AvatarImage } from "@/Components/ui/avatar";
 import {
     Breadcrumb,
@@ -42,9 +43,8 @@ import {
 } from "lucide-react";
 import React, { PropsWithChildren } from "react";
 import { RouteParams } from "../../../vendor/tightenco/ziggy/src/js";
-import LoadingOverlay from "@/Components/LoadingOverlay";
-import SettingsSidebar from "./Partials/SettingsSidebar";
 import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
+import SettingsSidebar from "./Partials/SettingsSidebar";
 
 export interface BreadcrumbItem {
     label: string;
@@ -108,7 +108,7 @@ export default function AuthenticatedLayout({
     }, [workspace_switching]);
 
     const handleWorkspaceSelect = (id: string) => {
-        if (id === workspaceId) return;
+        if (id === workspaceId || !workspaceId) return;
         const path = window.location.pathname;
         const newPath = path.replace(workspaceId, id);
         router.get(newPath);
@@ -126,21 +126,28 @@ export default function AuthenticatedLayout({
             label: "Home",
             icon: Home,
             path: "workspace.dashboard",
-            param: { id: workspaceId },
         },
         {
             label: "Projects",
             icon: Library,
             path: "workspace.projects",
-            param: { id: workspaceId },
         },
-        { 
-            label: "File Manager", 
-            icon: Folder, 
+        {
+            label: "File Manager",
+            icon: Folder,
             path: "workspace.files",
-            param: { id: workspaceId },
         },
-    ];
+    ].map((item) =>
+        workspaceId
+            ? {
+                  ...item,
+                  param: { workspace_id: workspaceId },
+              }
+            : {
+                  ...item,
+                  path: "raw." + item.path,
+              }
+    );
 
     const dummyFavoriteItems: SidebarItem[] = [
         { label: "The Three Musketeers" },
@@ -300,9 +307,13 @@ export default function AuthenticatedLayout({
                             <SidebarMenuItem>
                                 <SidebarMenuButton asChild>
                                     <Link
-                                        href={route("workspace.edit", {
-                                            workspace_id: workspaceId,
-                                        })}
+                                        href={
+                                            workspaceId
+                                                ? route("workspace.edit", {
+                                                      workspace_id: workspaceId,
+                                                  })
+                                                : route("raw.workspace.edit")
+                                        }
                                     >
                                         <Settings className="h-4 w-4" />
                                         <span>Settings</span>

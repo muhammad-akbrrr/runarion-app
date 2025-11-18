@@ -195,7 +195,7 @@ class WorkspaceController extends Controller
             'role' => 'owner',
         ]);
 
-        return Redirect::route('workspace.index');
+        return Redirect::route('workspace.dashboard', ['workspace_id' => $workspaceId]);
     }
 
     /**
