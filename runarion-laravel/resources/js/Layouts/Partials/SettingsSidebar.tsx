@@ -1,21 +1,21 @@
-import { Link } from "@inertiajs/react";
 import {
     SidebarGroup,
     SidebarGroupContent,
     SidebarGroupLabel,
     SidebarMenu,
-    SidebarMenuItem,
     SidebarMenuButton,
+    SidebarMenuItem,
 } from "@/Components/ui/sidebar";
+import { Link } from "@inertiajs/react";
 import {
     Bot,
     Cloud,
     DollarSign,
     LayoutGrid,
+    LucideProps,
     Settings,
     User as SingleUser,
     Users,
-    LucideProps,
 } from "lucide-react";
 import { RouteParams } from "../../../../vendor/tightenco/ziggy/src/js";
 
@@ -29,7 +29,7 @@ interface SidebarItem {
 }
 
 interface SettingsSidebarProps {
-    workspaceId: string;
+    workspaceId: string | null;
 }
 
 export default function SettingsSidebar({ workspaceId }: SettingsSidebarProps) {
@@ -47,10 +47,17 @@ export default function SettingsSidebar({ workspaceId }: SettingsSidebarProps) {
             icon: DollarSign,
             path: "workspace.edit.billing",
         },
-    ].map((item) => ({
-        ...item,
-        param: { workspace_id: workspaceId },
-    }));
+    ].map((item) =>
+        workspaceId
+            ? {
+                  ...item,
+                  param: { workspace_id: workspaceId },
+              }
+            : {
+                  ...item,
+                  path: "raw." + item.path,
+              }
+    );
 
     const mySettingsItems: SidebarItem[] = [
         { label: "Profile", icon: SingleUser, path: "profile.edit" },
