@@ -107,14 +107,16 @@ export function SidebarContent({
             {/* AI Model */}
             <div className="space-y-2">
                 <Label htmlFor="model">AI Model</Label>
-                <Select value={aiModel} onValueChange={(value) => onSettingChange?.('aiModel', value)}>
+                <Select
+                    value={aiModel}
+                    onValueChange={(value) => onSettingChange?.("aiModel", value)}
+                >
                     <SelectTrigger className="w-full">
-                        <SelectValue />
+                    <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="gemini-2.0-flash">Gemini 2.0</SelectItem>
-                        <SelectItem value="gpt-4o-mini">ChatGPT 4o</SelectItem>
-                        <SelectItem value="deepseek-chat">DeepSeek V3</SelectItem>
+                        <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
+                        <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
                     </SelectContent>
                 </Select>
             </div>

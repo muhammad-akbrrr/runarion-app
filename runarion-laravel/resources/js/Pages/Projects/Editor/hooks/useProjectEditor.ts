@@ -124,6 +124,9 @@ export function useProjectEditor({
             console.error('Stream error:', error);
             setIsGenerating(false);
             
+            // Show error alert
+            alert(error);
+            
             // On error during regeneration, restore the original chapter content
             if (isRegenerating && selectedChapter) {
                 setContent(selectedChapter.content || '');
@@ -394,7 +397,7 @@ export function useProjectEditor({
             order: selectedChapter.order,
             settings: {
                 currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || 'gpt-4o-mini',
+                aiModel: settings.aiModel || 'gemini-2.0-flash',
                 memory: settings.memory || '',
                 storyGenre: settings.storyGenre || '',
                 storyTone: settings.storyTone || '',
@@ -429,6 +432,13 @@ export function useProjectEditor({
                     console.error("Failed to start text generation:", errors);
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
+                    
+                    // Handle Inertia errors
+                    if (errors.generation) {
+                        alert(errors.generation);
+                    } else {
+                        alert('Failed to start generation. Please try again.');
+                    }
                 },
             }
         );
@@ -472,7 +482,7 @@ export function useProjectEditor({
             order: selectedChapter.order,
             settings: {
                 currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || 'gpt-4o-mini',
+                aiModel: settings.aiModel || 'gemini-2.0-flash',
                 memory: settings.memory || '',
                 storyGenre: settings.storyGenre || '',
                 storyTone: settings.storyTone || '',
@@ -507,6 +517,14 @@ export function useProjectEditor({
                     console.error("Failed to start text regeneration:", errors);
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
+                    
+                    // Handle Inertia errors
+                    if (errors.generation) {
+                        alert(errors.generation);
+                    } else {
+                        alert('Failed to start regeneration. Please try again.');
+                    }
+                    
                     // Restore original content on error
                     if (selectedChapter) {
                         setContent(selectedChapter.content || '');
