@@ -117,7 +117,7 @@ export default function ProjectEditorPage({
             // Pass current settings to regenerate function
             const currentSettings = {
                 currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || 'gpt-4o-mini',
+                aiModel: settings.aiModel || 'gemini-2.0-flash',
                 memory: settings.memory || '',
                 storyGenre: settings.storyGenre || '',
                 storyTone: settings.storyTone || '',

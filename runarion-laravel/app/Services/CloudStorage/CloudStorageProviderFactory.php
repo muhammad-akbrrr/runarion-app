@@ -4,6 +4,7 @@ namespace App\Services\CloudStorage;
 
 use App\Services\CloudStorage\Providers\GoogleDriveProvider;
 use App\Services\CloudStorage\Providers\DropboxProvider;
+use App\Services\CloudStorage\Providers\OneDriveProvider;
 use InvalidArgumentException;
 
 class CloudStorageProviderFactory
@@ -16,6 +17,7 @@ class CloudStorageProviderFactory
         return match ($provider) {
             'google_drive' => new GoogleDriveProvider(),
             'dropbox' => new DropboxProvider(),
+            'onedrive' => new OneDriveProvider(),
             default => throw new InvalidArgumentException("Invalid cloud storage provider: {$provider}")
         };
     }

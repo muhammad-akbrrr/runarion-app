@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class StreamLLMJob implements ShouldQueue
@@ -108,6 +109,15 @@ class StreamLLMJob implements ShouldQueue
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            // Determine error type
+            $errorType = 'generation_failed';
+            $errorMessage = $e->getMessage();
+            
+            if (str_contains($errorMessage, 'quota') || str_contains($errorMessage, 'limit') || str_contains($errorMessage, '429')) {
+                $errorType = 'quota_exceeded';
+                $errorMessage = 'Generation quota exceeded. Please try again later.';
+            }
+
             // Broadcast error event
             broadcast(new LLMStreamCompleted(
                 $this->workspaceId,
@@ -116,7 +126,8 @@ class StreamLLMJob implements ShouldQueue
                 $this->sessionId,
                 '',
                 false,
-                $e->getMessage()
+                $errorMessage,
+                $errorType
             ));
         }
     }
@@ -150,7 +161,7 @@ class StreamLLMJob implements ShouldQueue
         return [
             'usecase' => 'story',
             'provider' => $this->determineProvider(),
-            'model' => $this->settings['aiModel'] ?? 'gpt-4o-mini',
+            'model' => $this->settings['aiModel'] ?? 'gemini-2.0-flash',
             'prompt' => $this->prompt,
             'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice. Return the continuation exclusively in Markdown format with no HTML escaping or wrappers.',
             'stream' => true, // Enable streaming
@@ -193,9 +204,11 @@ class StreamLLMJob implements ShouldQueue
      */
     private function determineProvider(): string
     {
-        $model = $this->settings['aiModel'] ?? 'gpt-4o-mini';
+        $model = $this->settings['aiModel'] ?? 'gemini-2.0-flash';
         
-        if (stripos($model, 'gpt') !== false) {
+        if (stripos($model, 'gemini') !== false) {
+            return 'gemini';
+        } elseif (stripos($model, 'gpt') !== false) {
             return 'openai';
         } elseif (stripos($model, 'gemini') !== false) {
             return 'gemini';
@@ -203,7 +216,7 @@ class StreamLLMJob implements ShouldQueue
             return 'deepseek';
         }
         
-        return 'openai';
+        return 'gemini';
     }
 
     /**
@@ -545,6 +558,15 @@ class StreamLLMJob implements ShouldQueue
             'trace' => $exception->getTraceAsString(),
         ]);
 
+        // Determine error type
+        $errorType = 'generation_failed';
+        $errorMessage = 'Job failed: ' . $exception->getMessage();
+        
+        if (str_contains($exception->getMessage(), 'quota') || str_contains($exception->getMessage(), 'limit')) {
+            $errorType = 'quota_exceeded';
+            $errorMessage = 'Generation quota exceeded. Please try again later.';
+        }
+
         // Broadcast error event
         broadcast(new LLMStreamCompleted(
             $this->workspaceId,
@@ -553,7 +575,8 @@ class StreamLLMJob implements ShouldQueue
             $this->sessionId,
             '',
             false,
-            'Job failed: ' . $exception->getMessage()
+            $errorMessage,
+            $errorType
         ));
     }
 }

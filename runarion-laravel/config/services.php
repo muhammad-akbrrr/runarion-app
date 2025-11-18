@@ -63,4 +63,14 @@ return [
         ],
     ],
 
+    'onedrive' => [
+        'client_id' => env('ONEDRIVE_CLIENT_ID'),
+        'client_secret' => env('ONEDRIVE_CLIENT_SECRET'),
+        'redirect_uri' => env('ONEDRIVE_REDIRECT_URI'),
+        'scopes' => [
+            'Files.ReadWrite',
+            'Files.ReadWrite.All',
+        ],
+    ],
+
 ];

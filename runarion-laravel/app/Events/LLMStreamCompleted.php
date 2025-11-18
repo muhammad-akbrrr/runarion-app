@@ -21,6 +21,7 @@ class LLMStreamCompleted implements ShouldBroadcast
     public string $fullText;
     public bool $success;
     public ?string $error;
+    public ?string $errorType;
 
     /**
      * Create a new event instance.
@@ -32,7 +33,8 @@ class LLMStreamCompleted implements ShouldBroadcast
         string $sessionId,
         string $fullText,
         bool $success,
-        ?string $error = null
+        ?string $error = null,
+        ?string $errorType = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
@@ -41,6 +43,7 @@ class LLMStreamCompleted implements ShouldBroadcast
         $this->fullText = $fullText;
         $this->success = $success;
         $this->error = $error;
+        $this->errorType = $errorType;
     }
 
     /**
@@ -76,6 +79,7 @@ class LLMStreamCompleted implements ShouldBroadcast
             'full_text' => $this->fullText,
             'success' => $this->success,
             'error' => $this->error,
+            'error_type' => $this->errorType,
             'timestamp' => now()->toISOString(),
         ];
     }

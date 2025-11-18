@@ -109,7 +109,12 @@ export function useStreamingLLM({
                     if (data.success) {
                         onStreamComplete(data.full_text || streamingTextRef.current);
                     } else {
-                        onStreamError(data.error || 'Stream failed');
+                        // Handle different error types
+                        if (data.error_type === 'quota_exceeded') {
+                            onStreamError('Generation quota exceeded. Please try again later.');
+                        } else {
+                            onStreamError(data.error || 'Stream failed');
+                        }
                     }
 
                     // Reset refs
