@@ -392,7 +392,7 @@ class ProjectContent extends Model
     $this->update(['generation_history' => $history]);
     
     // Update chapter content
-    $content = $step['versions'][$versionIndex]['content'];
+    $content = $step['versions'][$versionIndex]['content'] ?? '';
     $this->updateChapterContent($chapterOrder, $content);
     
     return [
@@ -728,5 +728,29 @@ class ProjectContent extends Model
       'versionIndex' => $versionIndex,
       'totalVersions' => count($step['versions']),
     ];
+  }
+
+  /**
+   * Get current content for a chapter based on generation history
+   */
+  public function getCurrentContent($chapterOrder)
+  {
+    $stepInfo = $this->getCurrentStepInfo($chapterOrder);
+    
+    if (!$stepInfo) {
+      // Fallback to chapter content if no generation history
+      $chapters = $this->content ?? [];
+      foreach ($chapters as $chapter) {
+        if (isset($chapter['order']) && $chapter['order'] === $chapterOrder) {
+          return $chapter['content'] ?? '';
+        }
+      }
+      return '';
+    }
+    
+    $step = $stepInfo['step'];
+    $versionIndex = $stepInfo['versionIndex'];
+    
+    return $step['versions'][$versionIndex]['content'] ?? '';
   }
 }

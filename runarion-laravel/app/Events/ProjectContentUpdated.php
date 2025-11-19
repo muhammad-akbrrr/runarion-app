@@ -27,13 +27,13 @@ class ProjectContentUpdated implements ShouldBroadcast
         string $workspaceId,
         string $projectId,
         int $chapterOrder,
-        string $content,
+        ?string $content,
         string $trigger = 'manual'
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
         $this->chapterOrder = $chapterOrder;
-        $this->content = $content;
+        $this->content = $content ?? '';
         $this->trigger = $trigger;
     }
 

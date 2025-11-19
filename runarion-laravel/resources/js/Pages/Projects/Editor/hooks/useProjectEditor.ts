@@ -4,6 +4,7 @@ import { Project, ProjectChapter } from '@/types';
 import { useUnifiedSave } from './useUnifiedSave';
 import { useStreamingLLM } from './useStreamingLLM';
 import { useVersionControl } from './useVersionControl';
+import Echo from '@/echo';
 
 interface UseProjectEditorProps {
     workspaceId: string;
@@ -259,6 +260,47 @@ export function useProjectEditor({
             console.log("Auto-selected first chapter:", localChapters[0].chapter_name);
         }
     }, [localChapters, selectedChapter, preservedChapterOrder]);
+
+    // Listen for content updates from undo/redo operations
+    useEffect(() => {
+        const channelName = `project.${workspaceId}.${projectId}`;
+        let channel: any = null;
+
+        try {
+            channel = Echo.private(channelName);
+            
+            channel.listen('.project.content.updated', (data: any) => {
+                console.log('Project content updated via websocket:', data);
+                
+                // Only handle updates for the current chapter and specific triggers
+                if (selectedChapter && 
+                    data.chapter_order === selectedChapter.order && 
+                    ['undo_step', 'redo_step', 'regenerate_switch_to_parent'].includes(data.trigger)) {
+                    
+                    console.log('Updating content from websocket:', data.content);
+                    setContent(data.content || '');
+                    originalContent.current = data.content || '';
+                    
+                    // Refresh the page data to get updated generation history
+                    router.reload({ only: ['project'] });
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error setting up content update listener:', error);
+        }
+
+        return () => {
+            if (channel) {
+                try {
+                    channel.stopListening('.project.content.updated');
+                    Echo.leave(channelName);
+                } catch (error) {
+                    console.error('Error cleaning up content update listener:', error);
+                }
+            }
+        };
+    }, [workspaceId, projectId, selectedChapter?.order]);
 
     // Chapter management functions
     const handleChapterSelect = useCallback((chapterOrder: number) => {

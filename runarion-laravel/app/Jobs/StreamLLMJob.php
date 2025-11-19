@@ -540,7 +540,7 @@ class StreamLLMJob implements ShouldQueue
                     $this->workspaceId,
                     $this->projectId,
                     $this->chapterOrder,
-                    $finalContent,
+                    $finalContent ?? '',
                     $this->isRegenerate ? 'llm_regeneration' : 'llm_generation'
                 ));
             })->afterResponse();
