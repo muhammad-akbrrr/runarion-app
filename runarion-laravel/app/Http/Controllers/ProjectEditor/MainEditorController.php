@@ -40,11 +40,15 @@ class MainEditorController extends Controller
         if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
             $chapters = $projectContent->content;
             
-            // Add generation history to each chapter
+            // Add generation history to each chapter and set current content
             $generationHistory = $projectContent->generation_history ?? [];
             foreach ($chapters as &$chapter) {
                 if (isset($generationHistory[$chapter['order']])) {
                     $chapter['generation_history'] = $generationHistory[$chapter['order']];
+                    
+                    // Set the current content based on generation history
+                    $currentContent = $projectContent->getCurrentContent($chapter['order']);
+                    $chapter['content'] = $currentContent;
                 }
             }
         }
@@ -635,6 +639,18 @@ class MainEditorController extends Controller
                     $parentStep = $history[$validated['order']]['steps'][$parentStepIndex];
                     $parentVersionIndex = $history[$validated['order']]['lastSelectedVersions'][$currentStepInfo['step']['parentId']] ?? 0;
                     $parentContent = $parentStep['versions'][$parentVersionIndex]['content'] ?? '';
+                    
+                    // Switch to parent step immediately to show the base content
+                    $projectContent->switchToStep($validated['order'], $currentStepInfo['step']['parentId'], $parentVersionIndex);
+                    
+                    // Broadcast the switch to parent content
+                    broadcast(new ProjectContentUpdated(
+                        $workspace_id,
+                        $project_id,
+                        $validated['order'],
+                        $parentContent,
+                        'regenerate_switch_to_parent'
+                    ));
                 }
             }
 
@@ -765,7 +781,7 @@ class MainEditorController extends Controller
                 $workspace_id,
                 $project_id,
                 $validated['order'],
-                $result['content'],
+                $result['content'] ?? '',
                 'undo_step'
             ));
 
@@ -814,7 +830,7 @@ class MainEditorController extends Controller
                 $workspace_id,
                 $project_id,
                 $validated['order'],
-                $result['content'],
+                $result['content'] ?? '',
                 'redo_step'
             ));
 
