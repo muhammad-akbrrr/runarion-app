@@ -53,14 +53,17 @@ export function useStreamingLLM({
                 Echo.leave(channelName);
             }
             
-            // Join private channel
-            channelRef.current = Echo.private(channelName);
+            // Join public channel
+            channelRef.current = Echo.channel(channelName);
             
             // Listen for stream started event
             channelRef.current.listen('.llm.stream.started', (data: any) => {
                 console.log('Stream started:', data);
                 
-                if (data.chapter_order === chapterOrder) {
+                // Security: Only process events for current workspace/project/chapter
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder) {
                     currentSessionRef.current = data.session_id;
                     streamingTextRef.current = '';
                     
@@ -79,7 +82,10 @@ export function useStreamingLLM({
             channelRef.current.listen('.llm.stream.chunk', (data: any) => {
                 console.log('Stream chunk received:', data);
                 
-                if (data.chapter_order === chapterOrder && 
+                // Security: Only process events for current workspace/project/chapter/session
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder && 
                     data.session_id === currentSessionRef.current) {
                     
                     streamingTextRef.current += data.chunk;
@@ -95,7 +101,10 @@ export function useStreamingLLM({
             channelRef.current.listen('.llm.stream.completed', (data: any) => {
                 console.log('Stream completed:', data);
                 
-                if (data.chapter_order === chapterOrder && 
+                // Security: Only process events for current workspace/project/chapter/session
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder && 
                     data.session_id === currentSessionRef.current) {
                     
                     setState(prev => ({
@@ -127,8 +136,10 @@ export function useStreamingLLM({
             channelRef.current.listen('.project.content.updated', (data: any) => {
                 console.log('Content updated:', data);
                 
-                // Handle content updates from LLM generation
-                if (data.chapter_order === chapterOrder && 
+                // Security: Only process events for current workspace/project/chapter
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder && 
                     data.trigger === 'llm_generation' &&
                     !state.isStreaming) {
                     // This is a completed generation update
