@@ -3,31 +3,14 @@ import { router } from '@inertiajs/react';
 import { Project, ProjectChapter } from '@/types';
 import { useUnifiedSave } from './useUnifiedSave';
 import { useStreamingLLM } from './useStreamingLLM';
-import { useVersionControl } from './useVersionControl';
+import { useOptimizedVersionControl } from './useOptimizedVersionControl';
+import Echo from '@/echo';
 
 interface UseProjectEditorProps {
     workspaceId: string;
     projectId: string;
     project: Project;
     initialChapters: ProjectChapter[];
-}
-
-interface GenerationHistory {
-    steps: Array<{
-        id: string;
-        parentId: string | null;
-        content: string;
-        timestamp: number;
-        settings: any;
-        isUserGenerated: boolean;
-        versions: Array<{
-            index: number;
-            content: string;
-            timestamp: number;
-        }>;
-    }>;
-    currentStepId: string | null;
-    lastSelectedVersions: Record<string, number>;
 }
 
 export function useProjectEditor({
@@ -43,7 +26,6 @@ export function useProjectEditor({
     const [localChapters, setLocalChapters] = useState<ProjectChapter[]>(initialChapters);
     const [selectedChapter, setSelectedChapter] = useState<ProjectChapter | null>(null);
     const [preservedChapterOrder, setPreservedChapterOrder] = useState<number | null>(null);
-    const [generationHistory, setGenerationHistory] = useState<Record<number, GenerationHistory>>({});
     
     // Refs for tracking state
     const isInitialized = useRef(false);
@@ -114,6 +96,11 @@ export function useProjectEditor({
             setContent(finalContent);
             originalContent.current = finalContent;
             
+            // Force refresh navigation info after generation
+            setTimeout(() => {
+                router.reload({ only: ['chapters'] });
+            }, 500);
+            
             console.log('Updated content state after streaming completion:', {
                 baseContentLength: baseContent.length,
                 generatedTextLength: generatedText.length,
@@ -136,37 +123,21 @@ export function useProjectEditor({
     });
 
     // Version control hook
-    const versionControl = useVersionControl({
+    const versionControl = useOptimizedVersionControl({
         workspaceId,
         projectId,
         chapterOrder: selectedChapter?.order ?? 0,
-        generationHistory: selectedChapter ? generationHistory[selectedChapter.order] || null : null,
-        onHistoryUpdate: (history) => {
-            if (selectedChapter) {
-                setGenerationHistory(prev => ({
-                    ...prev,
-                    [selectedChapter.order]: history,
-                }));
-            }
-        },
+        initialNavigationInfo: selectedChapter?.navigation_info,
         onContentUpdate: (newContent) => {
             setContent(newContent);
             originalContent.current = newContent;
         },
+        isGenerating: isGenerating || isStreaming,
     });
 
     // Update local chapters when prop changes
     useEffect(() => {
         setLocalChapters(initialChapters);
-        
-        // Extract generation history from chapters
-        const newGenerationHistory: Record<number, GenerationHistory> = {};
-        initialChapters.forEach(chapter => {
-            if (chapter.generation_history) {
-                newGenerationHistory[chapter.order] = chapter.generation_history;
-            }
-        });
-        setGenerationHistory(newGenerationHistory);
         
         // Restore preserved chapter after generation
         if (preservedChapterOrder !== null) {
@@ -197,11 +168,8 @@ export function useProjectEditor({
             setContent(chapterContent);
             originalContent.current = chapterContent;
             
-            // Initialize generation history if it doesn't exist and create initial step
-            if (!selectedChapter.generation_history || 
-                !selectedChapter.generation_history.steps || 
-                selectedChapter.generation_history.steps.length === 0) {
-                console.log('Creating initial generation step for chapter:', selectedChapter.chapter_name);
+            // Initialize version control if needed
+            if (!selectedChapter.navigation_info) {
                 initializeChapterHistory(selectedChapter.order, chapterContent);
             }
         } else {
@@ -259,6 +227,60 @@ export function useProjectEditor({
             console.log("Auto-selected first chapter:", localChapters[0].chapter_name);
         }
     }, [localChapters, selectedChapter, preservedChapterOrder]);
+
+    // Listen for content updates from operations
+    useEffect(() => {
+        const channelName = `project.${workspaceId}.${projectId}`;
+        let channel: any = null;
+
+        try {
+            channel = Echo.private(channelName);
+            
+            channel.listen('.project.content.updated', (data: any) => {
+                console.log('Project content updated via websocket:', data);
+                
+                // Only handle updates for the current chapter
+                if (selectedChapter && data.chapter_order === selectedChapter.order) {
+                    
+                    // Handle different types of updates
+                    if (['undo_step', 'redo_step', 'version_switch'].includes(data.trigger)) {
+                        // Full content replacement for navigation operations
+                        console.log('Updating content from navigation operation:', data.content);
+                        setContent(data.content || '');
+                        originalContent.current = data.content || '';
+                        
+                        // Refresh the page data to get updated navigation info
+                        router.reload({ only: ['chapters'] });
+                    } else if (data.trigger === 'regenerate_switch_to_parent') {
+                        // Switch to parent content during regeneration
+                        console.log('Switching to parent content for regeneration:', data.content);
+                        setContent(data.content || '');
+                        originalContent.current = data.content || '';
+                    } else if (['llm_generation', 'llm_regeneration'].includes(data.trigger)) {
+                        // Generation completed - refresh navigation info
+                        console.log('Generation completed, refreshing navigation info');
+                        setTimeout(() => {
+                            router.reload({ only: ['chapters'] });
+                        }, 100);
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error setting up content update listener:', error);
+        }
+
+        return () => {
+            if (channel) {
+                try {
+                    channel.stopListening('.project.content.updated');
+                    Echo.leave(channelName);
+                } catch (error) {
+                    console.error('Error cleaning up content update listener:', error);
+                }
+            }
+        };
+    }, [workspaceId, projectId, selectedChapter?.order]);
 
     // Chapter management functions
     const handleChapterSelect = useCallback((chapterOrder: number) => {
@@ -455,29 +477,6 @@ export function useProjectEditor({
 
         console.log("Starting text regeneration");
 
-        // Get the parent content for regeneration
-        const currentStepInfo = versionControl.currentStep;
-        let parentContent = '';
-        
-        if (currentStepInfo && currentStepInfo.parentId && generationHistory[selectedChapter.order]) {
-            const history = generationHistory[selectedChapter.order];
-            const parentStep = history.steps.find(step => step.id === currentStepInfo.parentId);
-            if (parentStep) {
-                const parentVersionIndex = history.lastSelectedVersions[currentStepInfo.parentId] ?? 0;
-                parentContent = parentStep.versions[parentVersionIndex]?.content ?? '';
-            }
-        }
-
-        console.log("Loading parent content for regeneration:", {
-            parentContent: parentContent.substring(0, 100) + '...',
-            parentContentLength: parentContent.length,
-            currentContentLength: content.length
-        });
-
-        // Load the parent content into the editor immediately
-        setContent(parentContent);
-        originalContent.current = parentContent;
-
         const regenerationSettings = {
             order: selectedChapter.order,
             settings: {
@@ -518,22 +517,15 @@ export function useProjectEditor({
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
                     
-                    // Handle Inertia errors
                     if (errors.generation) {
                         alert(errors.generation);
                     } else {
                         alert('Failed to start regeneration. Please try again.');
                     }
-                    
-                    // Restore original content on error
-                    if (selectedChapter) {
-                        setContent(selectedChapter.content || '');
-                        originalContent.current = selectedChapter.content || '';
-                    }
                 },
             }
         );
-    }, [workspaceId, projectId, selectedChapter, isGenerating, isStreaming, settings, versionControl.canRegenerate, versionControl.currentStep, generationHistory, content]);
+    }, [workspaceId, projectId, selectedChapter, isGenerating, isStreaming, settings, versionControl.canRegenerate]);
 
     const handleCancelGeneration = useCallback(() => {
         if (isStreaming) {
