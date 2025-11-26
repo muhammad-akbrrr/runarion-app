@@ -4,44 +4,38 @@ namespace App\Events;
 
 use Illuminate\Broadcasting\Channel;
 use Illuminate\Broadcasting\InteractsWithSockets;
-use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class ProjectContentUpdated implements ShouldBroadcast
+class OperationStateChanged implements ShouldBroadcast
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
     public string $workspaceId;
     public string $projectId;
     public int $chapterOrder;
-    public string $content;
-    public string $trigger;
+    public string $operation;
+    public bool $isLocked;
+    public array $navigationInfo;
 
-    /**
-     * Create a new event instance.
-     */
     public function __construct(
         string $workspaceId,
         string $projectId,
         int $chapterOrder,
-        ?string $content,
-        string $trigger = 'manual'
+        string $operation,
+        bool $isLocked,
+        array $navigationInfo = []
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
         $this->chapterOrder = $chapterOrder;
-        $this->content = $content ?? '';
-        $this->trigger = $trigger;
+        $this->operation = $operation;
+        $this->isLocked = $isLocked;
+        $this->navigationInfo = $navigationInfo;
     }
 
-    /**
-     * Get the channels the event should broadcast on.
-     *
-     * @return array<int, \Illuminate\Broadcasting\Channel>
-     */
     public function broadcastOn(): array
     {
         return [
@@ -49,25 +43,20 @@ class ProjectContentUpdated implements ShouldBroadcast
         ];
     }
 
-    /**
-     * The event's broadcast name.
-     */
     public function broadcastAs(): string
     {
-        return 'project.content.updated';
+        return 'operation.state.changed';
     }
 
-    /**
-     * Get the data to broadcast.
-     */
     public function broadcastWith(): array
     {
         return [
             'workspace_id' => $this->workspaceId,
             'project_id' => $this->projectId,
             'chapter_order' => $this->chapterOrder,
-            'content' => $this->content,
-            'trigger' => $this->trigger,
+            'operation' => $this->operation,
+            'is_locked' => $this->isLocked,
+            'navigation_info' => $this->navigationInfo,
             'timestamp' => now()->toISOString(),
         ];
     }
