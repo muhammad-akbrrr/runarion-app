@@ -234,10 +234,15 @@ export function useProjectEditor({
         let channel: any = null;
 
         try {
-            channel = Echo.private(channelName);
+            channel = Echo.channel(channelName);
             
             channel.listen('.project.content.updated', (data: any) => {
                 console.log('Project content updated via websocket:', data);
+                
+                // Security: Only process events for current workspace/project
+                if (data.workspace_id !== workspaceId || data.project_id !== projectId) {
+                    return;
+                }
                 
                 // Only handle updates for the current chapter
                 if (selectedChapter && data.chapter_order === selectedChapter.order) {

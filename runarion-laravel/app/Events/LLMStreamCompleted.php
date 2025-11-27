@@ -54,7 +54,7 @@ class LLMStreamCompleted implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("project.{$this->workspaceId}.{$this->projectId}"),
+            new Channel("project.{$this->workspaceId}.{$this->projectId}"),
         ];
     }
 
