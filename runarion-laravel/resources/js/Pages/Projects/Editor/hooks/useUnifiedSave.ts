@@ -1,6 +1,7 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { router } from '@inertiajs/react';
 import { ProjectChapter } from '@/types';
+import { logError, parseErrorDetails } from '@/Lib/errorHandler';
 
 interface SaveOperation {
     id: string;
@@ -15,6 +16,7 @@ interface SaveOperation {
     };
     resolve: (result: any) => void;
     reject: (error: any) => void;
+    retryCount?: number;
 }
 
 interface UseUnifiedSaveProps {
@@ -23,6 +25,24 @@ interface UseUnifiedSaveProps {
     onContentSaved?: (chapters: ProjectChapter[]) => void;
     onSettingsSaved?: () => void;
     onSaveError?: (error: any) => void;
+}
+
+// Error handling configuration
+const MAX_RETRIES = 3;
+const INITIAL_RETRY_DELAY = 1000; // 1 second
+const MAX_RETRY_DELAY = 10000; // 10 seconds
+
+/**
+ * Calculate exponential backoff delay with jitter
+ */
+function calculateBackoffDelay(retryCount: number): number {
+    const exponentialDelay = Math.min(
+        INITIAL_RETRY_DELAY * Math.pow(2, retryCount),
+        MAX_RETRY_DELAY
+    );
+    // Add jitter (random 0-20% variation) to prevent thundering herd
+    const jitter = exponentialDelay * 0.2 * Math.random();
+    return exponentialDelay + jitter;
 }
 
 export function useUnifiedSave({
@@ -45,7 +65,7 @@ export function useUnifiedSave({
         return `save_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }, []);
 
-    // Process the save queue
+    // Process the save queue with retry logic
     const processQueue = useCallback(async () => {
         if (isProcessing.current || saveQueue.current.length === 0) {
             return;
@@ -62,9 +82,11 @@ export function useUnifiedSave({
             let latestContent: SaveOperation['data']['content'] | undefined;
             let latestSettings: SaveOperation['data']['settings'] | undefined;
             const allResolvers: Array<{ resolve: Function; reject: Function }> = [];
+            let maxRetryCount = 0;
 
             operations.forEach(op => {
                 allResolvers.push({ resolve: op.resolve, reject: op.reject });
+                maxRetryCount = Math.max(maxRetryCount, op.retryCount || 0);
                 
                 if (op.data.content) {
                     latestContent = op.data.content;
@@ -94,7 +116,8 @@ export function useUnifiedSave({
             console.log('Processing unified save:', {
                 contentChanged: !!contentChanged,
                 settingsChanged: !!settingsChanged,
-                operationCount: operations.length
+                operationCount: operations.length,
+                retryCount: maxRetryCount
             });
 
             // Prepare unified save data
@@ -112,7 +135,7 @@ export function useUnifiedSave({
                 saveData.settings = latestSettings;
             }
 
-            // Make unified save request
+            // Make unified save request with retry logic
             const savePromise = new Promise((resolve, reject) => {
                 console.log('Saving payload:', saveData);
                 router.patch(
@@ -125,7 +148,11 @@ export function useUnifiedSave({
                         preserveState: true,
                         preserveScroll: true,
                         onSuccess: (page) => {
-                            console.log('Unified save successful');
+                            console.log('Unified save successful', {
+                                contentSaved: !!latestContent,
+                                settingsSaved: !!latestSettings,
+                                retryCount: maxRetryCount
+                            });
                             
                             // Update last saved data
                             if (latestContent) {
@@ -153,9 +180,62 @@ export function useUnifiedSave({
                             resolve(page);
                         },
                         onError: (errors) => {
-                            console.error('Unified save failed:', errors);
-                            onSaveError?.(errors);
-                            reject(errors);
+                            // Log error with context
+                            logError(errors, {
+                                component: 'useUnifiedSave',
+                                action: 'save',
+                                projectId,
+                                workspaceId,
+                                retryCount: maxRetryCount,
+                                maxRetries: MAX_RETRIES,
+                                hasContent: !!latestContent,
+                                hasSettings: !!latestSettings,
+                            });
+                            
+                            // Determine if error is retryable
+                            const isRetryable = isRetryableError(errors);
+                            
+                            if (isRetryable && maxRetryCount < MAX_RETRIES) {
+                                // Schedule retry with exponential backoff
+                                const delay = calculateBackoffDelay(maxRetryCount);
+                                console.log(`Retrying save in ${delay}ms (attempt ${maxRetryCount + 1}/${MAX_RETRIES})`);
+                                
+                                setTimeout(() => {
+                                    // Re-queue the operation with incremented retry count
+                                    const retryOperation: SaveOperation = {
+                                        id: generateOperationId(),
+                                        timestamp: Date.now(),
+                                        data: { content: latestContent, settings: latestSettings },
+                                        resolve,
+                                        reject,
+                                        retryCount: maxRetryCount + 1
+                                    };
+                                    saveQueue.current.push(retryOperation);
+                                    setTimeout(processQueue, 0);
+                                }, delay);
+                            } else {
+                                // Max retries reached or non-retryable error
+                                const errorDetails = parseErrorDetails(errors, {
+                                    component: 'useUnifiedSave',
+                                    action: 'save',
+                                    projectId,
+                                    workspaceId,
+                                    retryCount: maxRetryCount,
+                                });
+                                
+                                console.error('Save failed permanently:', errorDetails.userMessage);
+                                onSaveError?.({ 
+                                    ...errors, 
+                                    message: errorDetails.userMessage, 
+                                    retryCount: maxRetryCount,
+                                    type: errorDetails.type
+                                });
+                                reject({ 
+                                    ...errors, 
+                                    message: errorDetails.userMessage,
+                                    type: errorDetails.type
+                                });
+                            }
                         },
                     }
                 );
@@ -166,7 +246,10 @@ export function useUnifiedSave({
                 const result = await savePromise;
                 allResolvers.forEach(({ resolve }) => resolve(result));
             } catch (error) {
-                allResolvers.forEach(({ reject }) => reject(error));
+                // Only reject if not retrying
+                if (!isRetryableError(error) || maxRetryCount >= MAX_RETRIES) {
+                    allResolvers.forEach(({ reject }) => reject(error));
+                }
             }
 
         } catch (error) {
@@ -183,6 +266,75 @@ export function useUnifiedSave({
             }
         }
     }, [workspaceId, projectId, onContentSaved, onSettingsSaved, onSaveError]);
+
+    /**
+     * Determine if an error is retryable
+     */
+    const isRetryableError = (error: any): boolean => {
+        // Network errors are retryable
+        if (error?.message?.includes('network') || error?.message?.includes('timeout')) {
+            return true;
+        }
+        
+        // 5xx server errors are retryable
+        if (error?.status >= 500 && error?.status < 600) {
+            return true;
+        }
+        
+        // 429 Too Many Requests is retryable
+        if (error?.status === 429) {
+            return true;
+        }
+        
+        // 408 Request Timeout is retryable
+        if (error?.status === 408) {
+            return true;
+        }
+        
+        // Connection errors are retryable
+        if (error?.code === 'ECONNREFUSED' || error?.code === 'ETIMEDOUT') {
+            return true;
+        }
+        
+        // 4xx client errors (except 429 and 408) are not retryable
+        if (error?.status >= 400 && error?.status < 500) {
+            return false;
+        }
+        
+        // Default to not retryable for unknown errors
+        return false;
+    };
+
+    /**
+     * Format error message for user display
+     */
+    const formatErrorMessage = (error: any, retryCount: number): string => {
+        if (retryCount >= MAX_RETRIES) {
+            return `Failed to save after ${MAX_RETRIES} attempts. Please check your connection and try again.`;
+        }
+        
+        if (error?.status === 422) {
+            return 'Validation error: Please check your input and try again.';
+        }
+        
+        if (error?.status === 401 || error?.status === 403) {
+            return 'Authentication error: Please refresh the page and log in again.';
+        }
+        
+        if (error?.status === 404) {
+            return 'Project not found. Please refresh the page.';
+        }
+        
+        if (error?.status >= 500) {
+            return 'Server error: Please try again in a moment.';
+        }
+        
+        if (error?.message) {
+            return error.message;
+        }
+        
+        return 'An unexpected error occurred. Please try again.';
+    };
 
     // Add operation to queue
     const queueSave = useCallback((data: SaveOperation['data']): Promise<any> => {

@@ -47,6 +47,15 @@ export interface GenerationHistory {
     lastSelectedVersions: Record<string, number>;
 }
 
+export interface NavigationInfo {
+    currentVersionIndex: number;
+    totalVersions: number;
+    canUndo: boolean;
+    canRedo: boolean;
+    canRegenerate: boolean;
+    versionDisplayText: string;
+}
+
 export interface ProjectChapter {
     order: number;
     chapter_name: string;
@@ -54,6 +63,7 @@ export interface ProjectChapter {
     summary: string;
     plot_points: Array<string>;
     generation_history?: GenerationHistory;
+    navigation_info?: NavigationInfo;
 }
 
 export interface ProjectContent {
