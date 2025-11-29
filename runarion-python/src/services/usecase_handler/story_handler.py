@@ -20,11 +20,14 @@ class StoryHandler(UseCaseHandler):
             builder = InstructionBuilder(config=prompt_config)
             prompt = raw_json.get("prompt", "")
             
+            # Extract writing guidance from request (backward compatible - defaults to empty list)
+            writing_guidance = raw_json.get("writing_guidance", [])
+            
             # Determine if this is a continuation or a new story
             if prompt:
-                instruction = builder.build()
+                instruction = builder.build(writing_guidance=writing_guidance)
             else:
-                instruction = builder.build_from_scratch()
+                instruction = builder.build_from_scratch(writing_guidance=writing_guidance)
 
             # Extract generation config with defaults
             generation_config_data = raw_json.get("generation_config", {})

@@ -168,6 +168,10 @@ export function useProjectEditor({
             setContent(chapterContent);
             originalContent.current = chapterContent;
             
+            // Save last viewed chapter to localStorage
+            const storageKey = `lastChapter_${projectId}`;
+            localStorage.setItem(storageKey, selectedChapter.order.toString());
+            
             // Initialize version control if needed
             if (!selectedChapter.navigation_info) {
                 initializeChapterHistory(selectedChapter.order, chapterContent);
@@ -176,34 +180,54 @@ export function useProjectEditor({
             setContent("");
             originalContent.current = "";
         }
-    }, [selectedChapter?.order, selectedChapter?.content]);
+    }, [selectedChapter?.order, selectedChapter?.content, projectId]);
 
-    // Initialize settings
+    // Initialize settings - only on mount or when project.settings changes from server
     useEffect(() => {
         const initialSettings = project.settings || {};
-        setSettings(initialSettings);
-        originalSettings.current = initialSettings;
+        
+        // Only update if settings have actually changed from server
+        // This prevents resetting user changes during chapter switches
+        const settingsChanged = JSON.stringify(initialSettings) !== JSON.stringify(originalSettings.current);
+        
+        if (settingsChanged || !isInitialized.current) {
+            console.log('Initializing settings from project:', { settingsChanged, isInitialized: isInitialized.current });
+            setSettings(initialSettings);
+            originalSettings.current = initialSettings;
+        }
         
         // Mark as initialized
-        const timer = setTimeout(() => {
-            isInitialized.current = true;
-            console.log("Project editor initialized");
-        }, 100);
+        if (!isInitialized.current) {
+            const timer = setTimeout(() => {
+                isInitialized.current = true;
+                console.log("Project editor initialized");
+            }, 100);
 
-        return () => clearTimeout(timer);
+            return () => clearTimeout(timer);
+        }
     }, [project.settings]);
 
     // Auto-save settings when they change
     useEffect(() => {
         if (!isInitialized.current || isGenerating || isStreaming) {
+            console.log('Skipping settings auto-save:', { 
+                isInitialized: isInitialized.current, 
+                isGenerating, 
+                isStreaming 
+            });
             return;
         }
 
         const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
         
         if (settingsChanged) {
-            console.log('Settings changed, auto-saving');
-            debouncedSaveSettings(settings, 1000);
+            console.log('Settings changed, auto-saving with 2s debounce', {
+                changedKeys: Object.keys(settings).filter(key => 
+                    JSON.stringify(settings[key]) !== JSON.stringify(originalSettings.current[key])
+                )
+            });
+            // Use 2 second debounce for settings to batch rapid changes
+            debouncedSaveSettings(settings, 2000);
         }
     }, [settings, debouncedSaveSettings, isGenerating, isStreaming]);
 
@@ -220,13 +244,30 @@ export function useProjectEditor({
         }
     }, [isStreaming, streamingText, isRegenerating]);
 
-    // Auto-select first chapter
+    // Auto-select chapter (restore last viewed or default to first)
     useEffect(() => {
         if (localChapters.length > 0 && !selectedChapter && preservedChapterOrder === null) {
-            setSelectedChapter(localChapters[0]);
-            console.log("Auto-selected first chapter:", localChapters[0].chapter_name);
+            // Try to restore last viewed chapter from localStorage
+            const storageKey = `lastChapter_${projectId}`;
+            const lastChapterOrder = localStorage.getItem(storageKey);
+            
+            let chapterToSelect = localChapters[0];
+            
+            if (lastChapterOrder !== null) {
+                const lastChapter = localChapters.find(ch => ch.order === parseInt(lastChapterOrder));
+                if (lastChapter) {
+                    chapterToSelect = lastChapter;
+                    console.log("Restored last viewed chapter:", lastChapter.chapter_name);
+                } else {
+                    console.log("Last viewed chapter not found, using first chapter");
+                }
+            } else {
+                console.log("No last viewed chapter, using first chapter");
+            }
+            
+            setSelectedChapter(chapterToSelect);
         }
-    }, [localChapters, selectedChapter, preservedChapterOrder]);
+    }, [localChapters, selectedChapter, preservedChapterOrder, projectId]);
 
     // Listen for content updates from operations
     useEffect(() => {
@@ -297,21 +338,33 @@ export function useProjectEditor({
         const chapter = localChapters.find(c => c.order === chapterOrder);
         if (chapter) {
             // Save current content before switching if changed
-            if (selectedChapter && content !== originalContent.current) {
-                console.log('Saving content before chapter switch');
-                forceSave({
-                    content: {
+            const contentChanged = selectedChapter && content !== originalContent.current;
+            const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
+            
+            if (contentChanged || settingsChanged) {
+                console.log('Saving before chapter switch', { contentChanged, settingsChanged });
+                
+                const saveData: any = {};
+                
+                if (contentChanged) {
+                    saveData.content = {
                         order: selectedChapter.order,
                         content: content ?? '', // Treat null as empty string
                         trigger: 'manual'
-                    }
-                });
+                    };
+                }
+                
+                if (settingsChanged) {
+                    saveData.settings = settings;
+                }
+                
+                forceSave(saveData);
             }
             
             setSelectedChapter(chapter);
             console.log("Chapter switched to:", chapter.chapter_name);
         }
-    }, [localChapters, isGenerating, isStreaming, selectedChapter, content, forceSave]);
+    }, [localChapters, isGenerating, isStreaming, selectedChapter, content, settings, forceSave]);
 
     const handleAddChapter = useCallback((chapterName: string) => {
         if (isGenerating || isStreaming) {
@@ -319,15 +372,28 @@ export function useProjectEditor({
         }
 
         return new Promise<void>((resolve, reject) => {
-            // Save current content before adding chapter
-            if (selectedChapter && content !== originalContent.current) {
-                forceSave({
-                    content: {
+            // Save current content and settings before adding chapter
+            const contentChanged = selectedChapter && content !== originalContent.current;
+            const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
+            
+            if (contentChanged || settingsChanged) {
+                console.log('Saving before adding chapter', { contentChanged, settingsChanged });
+                
+                const saveData: any = {};
+                
+                if (contentChanged) {
+                    saveData.content = {
                         order: selectedChapter.order,
                         content: content ?? '', // Treat null as empty string
                         trigger: 'manual'
-                    }
-                });
+                    };
+                }
+                
+                if (settingsChanged) {
+                    saveData.settings = settings;
+                }
+                
+                forceSave(saveData);
             }
             
             router.post(
@@ -354,7 +420,7 @@ export function useProjectEditor({
                 }
             );
         });
-    }, [workspaceId, projectId, isGenerating, isStreaming, selectedChapter, content, forceSave]);
+    }, [workspaceId, projectId, isGenerating, isStreaming, selectedChapter, content, settings, forceSave]);
 
     // Settings management
     const handleSettingChange = useCallback((key: string, value: any) => {
@@ -406,16 +472,34 @@ export function useProjectEditor({
         setPreservedChapterOrder(selectedChapter.order);
         setIsGenerating(true);
 
-        // Save current content before generation
-        if (content !== originalContent.current) {
-            forceSave({
-                content: {
+        // Save current content and settings before generation
+        const contentChanged = content !== originalContent.current;
+        const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
+        
+        if (contentChanged || settingsChanged) {
+            console.log('Saving before generation', { contentChanged, settingsChanged });
+            
+            const saveData: any = {};
+            
+            if (contentChanged) {
+                saveData.content = {
                     order: selectedChapter.order,
                     content: content ?? '', // Treat null as empty string
                     trigger: 'manual'
-                }
-            });
+                };
+            }
+            
+            if (settingsChanged) {
+                saveData.settings = settings;
+            }
+            
+            forceSave(saveData);
         }
+        
+        // CRITICAL: Update originalContent to current content before generation
+        // This ensures that when stream completes, we append to the correct base
+        // (including any guidance markers the user added)
+        originalContent.current = content ?? '';
 
         console.log("Starting text generation");
 
