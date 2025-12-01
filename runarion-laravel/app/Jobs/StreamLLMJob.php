@@ -76,6 +76,7 @@ class StreamLLMJob implements ShouldQueue
                 'project_id' => $this->projectId,
                 'chapter_order' => $this->chapterOrder,
                 'is_regenerate' => $this->isRegenerate,
+                'attempt' => $this->attempts(),
             ]);
 
             broadcast(new LLMStreamStarted(
@@ -89,32 +90,93 @@ class StreamLLMJob implements ShouldQueue
             $requestData = $this->prepareRequestData();
             $this->streamFromPythonService($requestData);
 
-        } catch (\Exception $e) {
-            Log::error('LLM streaming job failed', [
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Connection error in LLM streaming job', [
                 'session_id' => $this->sessionId,
                 'error' => $e->getMessage(),
+                'attempt' => $this->attempts(),
+            ]);
+
+            $this->handleStreamingError($e, 'connection_error', 
+                'Failed to connect to AI service. Please check your connection and try again.');
+
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::error('Request error in LLM streaming job', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'status' => $e->response?->status(),
+                'attempt' => $this->attempts(),
+            ]);
+
+            $errorType = 'generation_failed';
+            $errorMessage = 'AI service request failed. Please try again.';
+            
+            if ($e->response) {
+                $status = $e->response->status();
+                
+                if ($status === 429) {
+                    $errorType = 'quota_exceeded';
+                    $errorMessage = 'Generation quota exceeded. Please try again later.';
+                } elseif ($status === 401 || $status === 403) {
+                    $errorType = 'authentication_error';
+                    $errorMessage = 'AI service authentication failed. Please check your API keys.';
+                } elseif ($status === 400) {
+                    $errorType = 'invalid_request';
+                    $errorMessage = 'Invalid generation request. Please check your settings.';
+                } elseif ($status >= 500) {
+                    $errorType = 'service_error';
+                    $errorMessage = 'AI service is temporarily unavailable. Please try again later.';
+                }
+            }
+
+            $this->handleStreamingError($e, $errorType, $errorMessage);
+
+        } catch (\Exception $e) {
+            Log::error('Unexpected error in LLM streaming job', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'type' => get_class($e),
                 'trace' => $e->getTraceAsString(),
+                'attempt' => $this->attempts(),
             ]);
 
             $errorType = 'generation_failed';
             $errorMessage = $e->getMessage();
             
+            // Categorize common errors
             if (str_contains($errorMessage, 'quota') || str_contains($errorMessage, 'limit') || str_contains($errorMessage, '429')) {
                 $errorType = 'quota_exceeded';
                 $errorMessage = 'Generation quota exceeded. Please try again later.';
+            } elseif (str_contains($errorMessage, 'timeout')) {
+                $errorType = 'timeout_error';
+                $errorMessage = 'Generation timed out. Please try again with shorter content or lower output length.';
+            } elseif (str_contains($errorMessage, 'memory') || str_contains($errorMessage, 'out of memory')) {
+                $errorType = 'memory_error';
+                $errorMessage = 'Insufficient memory for generation. Please try with shorter content.';
+            } elseif (str_contains($errorMessage, 'token')) {
+                $errorType = 'token_limit_error';
+                $errorMessage = 'Content exceeds token limit. Please reduce the input size.';
             }
 
-            broadcast(new LLMStreamCompleted(
-                $this->workspaceId,
-                $this->projectId,
-                $this->chapterOrder,
-                $this->sessionId,
-                '',
-                false,
-                $errorMessage,
-                $errorType
-            ));
+            $this->handleStreamingError($e, $errorType, $errorMessage);
         }
+    }
+
+    /**
+     * Handle streaming errors with proper logging and broadcasting
+     */
+    private function handleStreamingError(\Exception $e, string $errorType, string $errorMessage): void
+    {
+        broadcast(new LLMStreamCompleted(
+            $this->workspaceId,
+            $this->projectId,
+            $this->chapterOrder,
+            $this->sessionId,
+            '',
+            false,
+            $errorMessage,
+            $errorType
+        ));
     }
 
     /**
@@ -122,11 +184,15 @@ class StreamLLMJob implements ShouldQueue
      */
     private function prepareRequestData(): array
     {
+        // Process writing guidance from the prompt
+        $processedPrompt = $this->processWritingGuidance($this->prompt);
+        
         return [
             'usecase' => 'story',
             'provider' => $this->determineProvider(),
             'model' => $this->settings['aiModel'] ?? 'gemini-2.0-flash',
-            'prompt' => $this->prompt,
+            'prompt' => $processedPrompt['baseContent'],
+            'writing_guidance' => $processedPrompt['guidance'],
             'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice. Return the continuation exclusively in Markdown format with no HTML escaping or wrappers.',
             'stream' => true,
             'generation_config' => [
@@ -164,6 +230,55 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
+     * Process writing guidance from content.
+     * Extracts text within parentheses ((), [], {}) as guidance instructions for the AI.
+     * Returns both the base content (without markers) for AI processing and the guidance array.
+     * 
+     * NOTE: The guidance markers are NOT removed from the editor content - they remain visible.
+     * This method only extracts them for sending to the AI as separate instructions.
+     * 
+     * @param string $content The content to process
+     * @return array Array with 'baseContent' (for AI) and 'guidance' keys
+     */
+    private function processWritingGuidance(string $content): array
+    {
+        $guidance = [];
+        $baseContent = $content;
+        
+        // Match all types of parentheses: (), [], {}
+        // This regex captures text within any type of bracket
+        $pattern = '/[\(\[\{]([^\)\]\}]+)[\)\]\}]/';
+        
+        // Extract all guidance instructions
+        if (preg_match_all($pattern, $content, $matches)) {
+            if (!empty($matches[1])) {
+                $guidance = $matches[1];
+                
+                // Remove guidance markers from base content FOR AI PROCESSING ONLY
+                // The original content in the editor remains unchanged
+                $baseContent = preg_replace($pattern, '', $content);
+                
+                // Clean up extra whitespace that may result from removal
+                $baseContent = preg_replace('/\s+/', ' ', $baseContent);
+                $baseContent = trim($baseContent);
+            }
+        }
+        
+        Log::info('Processed writing guidance', [
+            'session_id' => $this->sessionId,
+            'original_length' => strlen($content),
+            'base_content_length' => strlen($baseContent),
+            'guidance_count' => count($guidance),
+            'guidance' => $guidance,
+        ]);
+        
+        return [
+            'baseContent' => $baseContent,
+            'guidance' => $guidance,
+        ];
+    }
+
+    /**
      * Determine AI provider based on model
      */
     private function determineProvider(): string
@@ -195,10 +310,35 @@ class StreamLLMJob implements ShouldQueue
         Log::info('Making streaming request to Python service', [
             'session_id' => $this->sessionId,
             'url' => $pythonServiceUrl . '/api/stream',
+            'model' => $requestData['model'] ?? 'unknown',
+            'provider' => $requestData['provider'] ?? 'unknown',
         ]);
 
         try {
             $response = Http::timeout($this->timeout)
+                ->retry(2, 1000, function ($exception, $request) {
+                    // Retry on connection errors and 5xx errors
+                    if ($exception instanceof \Illuminate\Http\Client\ConnectionException) {
+                        Log::warning('Connection error, retrying...', [
+                            'session_id' => $this->sessionId,
+                            'error' => $exception->getMessage()
+                        ]);
+                        return true;
+                    }
+                    
+                    if ($exception instanceof \Illuminate\Http\Client\RequestException) {
+                        $status = $exception->response?->status();
+                        if ($status && $status >= 500 && $status < 600) {
+                            Log::warning('Server error, retrying...', [
+                                'session_id' => $this->sessionId,
+                                'status' => $status
+                            ]);
+                            return true;
+                        }
+                    }
+                    
+                    return false;
+                })
                 ->withHeaders([
                     'Content-Type' => 'application/json',
                     'Accept' => 'text/event-stream',
@@ -212,7 +352,27 @@ class StreamLLMJob implements ShouldQueue
                 ->post($pythonServiceUrl . '/api/stream', $requestData);
 
             if (!$response->successful()) {
-                throw new \Exception('Failed to connect to Python service: ' . $response->body());
+                $statusCode = $response->status();
+                $body = $response->body();
+                
+                Log::error('Python service returned error', [
+                    'session_id' => $this->sessionId,
+                    'status' => $statusCode,
+                    'body' => $body
+                ]);
+                
+                // Provide specific error messages based on status code
+                if ($statusCode === 429) {
+                    throw new \Exception('Generation quota exceeded. Please try again later.');
+                } elseif ($statusCode === 401 || $statusCode === 403) {
+                    throw new \Exception('AI service authentication failed. Please check your API keys.');
+                } elseif ($statusCode === 400) {
+                    throw new \Exception('Invalid generation request: ' . $body);
+                } elseif ($statusCode >= 500) {
+                    throw new \Exception('AI service is temporarily unavailable. Please try again later.');
+                } else {
+                    throw new \Exception('Failed to connect to Python service (HTTP ' . $statusCode . '): ' . $body);
+                }
             }
 
             $body = $response->getBody();
@@ -252,10 +412,21 @@ class StreamLLMJob implements ShouldQueue
                 'is_regenerate' => $this->isRegenerate,
             ]);
 
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Connection error during streaming', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'url' => $pythonServiceUrl
+            ]);
+            throw new \Exception('Failed to connect to AI service. Please check your connection and try again.');
+
         } catch (\Exception $e) {
             Log::error('Streaming error', [
                 'session_id' => $this->sessionId,
                 'error' => $e->getMessage(),
+                'type' => get_class($e),
+                'chunks_received' => $chunkIndex,
+                'text_length' => strlen($fullText)
             ]);
             throw $e;
         }
@@ -329,73 +500,101 @@ class StreamLLMJob implements ShouldQueue
     private function updateProjectContentOptimized(string $generatedText): void
     {
         if (empty($generatedText)) {
+            Log::warning('Attempted to save empty generated text', [
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder
+            ]);
             return;
         }
 
-        DB::transaction(function () use ($generatedText) {
-            $versionControlService = app(VersionControlService::class);
-            
-            $baseContent = $this->prompt;
-            $finalContent = $baseContent;
-            
-            if ($baseContent !== '') {
-                if (!str_ends_with($baseContent, "\n") && !str_starts_with($generatedText, "\n")) {
-                    if (!str_ends_with($baseContent, " ")) {
-                        $finalContent .= " ";
+        try {
+            DB::transaction(function () use ($generatedText) {
+                $versionControlService = app(VersionControlService::class);
+                
+                // Keep the original prompt content intact (including guidance markers)
+                // The guidance was already extracted and sent to the AI, but we don't remove it from the editor
+                $baseContent = $this->prompt;
+                $finalContent = $baseContent;
+                
+                if ($baseContent !== '') {
+                    if (!str_ends_with($baseContent, "\n") && !str_starts_with($generatedText, "\n")) {
+                        if (!str_ends_with($baseContent, " ")) {
+                            $finalContent .= " ";
+                        }
                     }
                 }
-            }
+                
+                $finalContent .= $generatedText;
+
+                if ($this->isRegenerate && $this->regenerateNodeId) {
+                    // Add new version to the specified node (not current state)
+                    $versionIndex = $versionControlService->addVersion($this->regenerateNodeId, $finalContent);
+                    
+                    Log::info('Added new version to regenerate node', [
+                        'session_id' => $this->sessionId,
+                        'chapter_order' => $this->chapterOrder,
+                        'node_id' => $this->regenerateNodeId,
+                        'version_index' => $versionIndex,
+                        'final_content_length' => strlen($finalContent),
+                    ]);
+                } else {
+                    // Create new node with current node as parent
+                    $currentState = $versionControlService->getCurrentState($this->projectId, $this->chapterOrder);
+                    $parentNodeId = $currentState ? $currentState['node_id'] : null;
+                    $parentVersionIndex = $currentState ? $currentState['version_index'] : null;
+                    
+                    $nodeId = $versionControlService->createNode(
+                        $this->projectId,
+                        $this->chapterOrder,
+                        $finalContent,
+                        $this->settings,
+                        $parentNodeId,
+                        $parentVersionIndex
+                    );
+                    
+                    Log::info('Created new generation node', [
+                        'session_id' => $this->sessionId,
+                        'chapter_order' => $this->chapterOrder,
+                        'node_id' => $nodeId,
+                        'parent_node_id' => $parentNodeId,
+                        'parent_version_index' => $parentVersionIndex,
+                        'final_content_length' => strlen($finalContent),
+                    ]);
+                }
+
+                // Clear cache to ensure fresh data
+                $this->clearCache($this->projectId, $this->chapterOrder);
+            });
+
+            // Broadcast content updated event after transaction
+            broadcast(new ProjectContentUpdated(
+                $this->workspaceId,
+                $this->projectId,
+                $this->chapterOrder,
+                $generatedText, // Send only the generated part for streaming
+                $this->isRegenerate ? 'llm_regeneration' : 'llm_generation'
+            ));
+
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Database error saving generated content', [
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'error' => $e->getMessage(),
+                'code' => $e->getCode()
+            ]);
             
-            $finalContent .= $generatedText;
+            throw new \Exception('Failed to save generated content to database. Please try again.');
 
-            if ($this->isRegenerate && $this->regenerateNodeId) {
-                // Add new version to the specified node (not current state)
-                $versionIndex = $versionControlService->addVersion($this->regenerateNodeId, $finalContent);
-                
-                Log::info('Added new version to regenerate node', [
-                    'session_id' => $this->sessionId,
-                    'chapter_order' => $this->chapterOrder,
-                    'node_id' => $this->regenerateNodeId,
-                    'version_index' => $versionIndex,
-                    'final_content_length' => strlen($finalContent),
-                ]);
-            } else {
-                // Create new node with current node as parent
-                $currentState = $versionControlService->getCurrentState($this->projectId, $this->chapterOrder);
-                $parentNodeId = $currentState ? $currentState['node_id'] : null;
-                $parentVersionIndex = $currentState ? $currentState['version_index'] : null;
-                
-                $nodeId = $versionControlService->createNode(
-                    $this->projectId,
-                    $this->chapterOrder,
-                    $finalContent,
-                    $this->settings,
-                    $parentNodeId,
-                    $parentVersionIndex
-                );
-                
-                Log::info('Created new generation node', [
-                    'session_id' => $this->sessionId,
-                    'chapter_order' => $this->chapterOrder,
-                    'node_id' => $nodeId,
-                    'parent_node_id' => $parentNodeId,
-                    'parent_version_index' => $parentVersionIndex,
-                    'final_content_length' => strlen($finalContent),
-                ]);
-            }
-
-            // Clear cache to ensure fresh data
-            $this->clearCache($this->projectId, $this->chapterOrder);
-        });
-
-        // Broadcast content updated event after transaction
-        broadcast(new ProjectContentUpdated(
-            $this->workspaceId,
-            $this->projectId,
-            $this->chapterOrder,
-            $generatedText, // Send only the generated part for streaming
-            $this->isRegenerate ? 'llm_regeneration' : 'llm_generation'
-        ));
+        } catch (\Exception $e) {
+            Log::error('Error saving generated content', [
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'error' => $e->getMessage(),
+                'type' => get_class($e)
+            ]);
+            
+            throw new \Exception('Failed to save generated content: ' . $e->getMessage());
+        }
     }
 
     private function clearCache(string $projectId, int $chapterOrder): void
@@ -409,19 +608,55 @@ class StreamLLMJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        Log::error('StreamLLMJob failed', [
+        Log::error('StreamLLMJob failed permanently', [
             'session_id' => $this->sessionId,
+            'workspace_id' => $this->workspaceId,
+            'project_id' => $this->projectId,
+            'chapter_order' => $this->chapterOrder,
             'error' => $exception->getMessage(),
+            'type' => get_class($exception),
             'trace' => $exception->getTraceAsString(),
+            'attempts' => $this->attempts(),
         ]);
 
-        // Determine error type
+        // Determine error type and provide user-friendly message
         $errorType = 'generation_failed';
-        $errorMessage = 'Job failed: ' . $exception->getMessage();
+        $errorMessage = 'Generation failed after multiple attempts. Please try again.';
         
-        if (str_contains($exception->getMessage(), 'quota') || str_contains($exception->getMessage(), 'limit')) {
+        if ($exception instanceof \Illuminate\Http\Client\ConnectionException) {
+            $errorType = 'connection_error';
+            $errorMessage = 'Failed to connect to AI service. Please check your connection and try again.';
+        } elseif ($exception instanceof \Illuminate\Http\Client\RequestException) {
+            $status = $exception->response?->status();
+            
+            if ($status === 429) {
+                $errorType = 'quota_exceeded';
+                $errorMessage = 'Generation quota exceeded. Please try again later.';
+            } elseif ($status === 401 || $status === 403) {
+                $errorType = 'authentication_error';
+                $errorMessage = 'AI service authentication failed. Please check your API keys.';
+            } elseif ($status === 400) {
+                $errorType = 'invalid_request';
+                $errorMessage = 'Invalid generation request. Please check your settings.';
+            } elseif ($status >= 500) {
+                $errorType = 'service_error';
+                $errorMessage = 'AI service is temporarily unavailable. Please try again later.';
+            }
+        } elseif (str_contains($exception->getMessage(), 'quota') || str_contains($exception->getMessage(), 'limit')) {
             $errorType = 'quota_exceeded';
             $errorMessage = 'Generation quota exceeded. Please try again later.';
+        } elseif (str_contains($exception->getMessage(), 'timeout')) {
+            $errorType = 'timeout_error';
+            $errorMessage = 'Generation timed out. Please try again with shorter content or lower output length.';
+        } elseif (str_contains($exception->getMessage(), 'memory')) {
+            $errorType = 'memory_error';
+            $errorMessage = 'Insufficient memory for generation. Please try with shorter content.';
+        } elseif (str_contains($exception->getMessage(), 'token')) {
+            $errorType = 'token_limit_error';
+            $errorMessage = 'Content exceeds token limit. Please reduce the input size.';
+        } elseif (str_contains($exception->getMessage(), 'database') || str_contains($exception->getMessage(), 'Database')) {
+            $errorType = 'database_error';
+            $errorMessage = 'Failed to save generated content. Please try again.';
         }
 
         // Broadcast error event

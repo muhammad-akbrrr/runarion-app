@@ -16,6 +16,7 @@ use App\Events\ProjectContentUpdated;
 use App\Events\LLMStreamCompleted;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
 use App\Services\VersionControlService;
 use App\Events\OperationStateChanged;
 
@@ -195,6 +196,19 @@ class MainEditorController extends Controller
         }
 
         $chapters = $projectContent->content ?? [];
+        
+        // Validate for duplicate chapter names (case-insensitive with whitespace trimming)
+        $normalizedNewName = strtolower(trim($validated['chapter_name']));
+        
+        foreach ($chapters as $chapter) {
+            $existingName = strtolower(trim($chapter['chapter_name']));
+            if ($existingName === $normalizedNewName) {
+                return back()->withErrors([
+                    'chapter_name' => "A chapter named '{$chapter['chapter_name']}' already exists."
+                ]);
+            }
+        }
+        
         $newOrder = count($chapters);
         $newChapter = [
             'order' => $newOrder,
@@ -405,23 +419,56 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
             ]);
 
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation error in text generation', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'errors' => $e->errors()
+            ]);
+            
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ])->withErrors($e->errors());
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::error('Project or chapter not found for generation', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'error' => $e->getMessage()
+            ]);
+            
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ])->withErrors(['generation' => 'Project or chapter not found. Please refresh the page.']);
+
         } catch (\Exception $e) {
             Log::error('Error starting text generation', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
                 'error' => $e->getMessage(),
+                'type' => get_class($e),
                 'trace' => $e->getTraceAsString(),
             ]);
 
+            $errorMessage = 'Failed to start text generation. Please try again.';
+            
+            // Provide specific error messages
             if (str_contains($e->getMessage(), 'quota') || str_contains($e->getMessage(), 'limit')) {
-                return redirect()->route('workspace.projects.editor', [
-                    'workspace_id' => $workspace_id,
-                    'project_id' => $project_id,
-                ])->withErrors(['generation' => 'Generation quota exceeded. Please try again later.']);
+                $errorMessage = 'Generation quota exceeded. Please try again later.';
+            } elseif (str_contains($e->getMessage(), 'authentication') || str_contains($e->getMessage(), 'API key')) {
+                $errorMessage = 'AI service authentication failed. Please check your API keys.';
+            } elseif (str_contains($e->getMessage(), 'connection') || str_contains($e->getMessage(), 'network')) {
+                $errorMessage = 'Failed to connect to AI service. Please check your connection.';
+            } elseif (str_contains($e->getMessage(), 'timeout')) {
+                $errorMessage = 'Request timed out. Please try again.';
             }
 
             return redirect()->route('workspace.projects.editor', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
-            ])->withErrors(['generation' => 'Failed to start text generation.']);
+            ])->withErrors(['generation' => $errorMessage]);
         }
     }
 
@@ -430,47 +477,61 @@ class MainEditorController extends Controller
      */
     public function updateProjectUnified(Request $request, string $workspace_id, string $project_id)
     {
-        Log::info('Incoming request payload', $request->all());
-        $validated = $request->validate([
-            // Content validation
-            'content' => 'nullable|array',
-            'content.order' => 'required_with:content|integer',
-            'content.content' => 'sometimes|nullable|string|max:1000000',
-            'content.trigger' => 'nullable|string|in:manual,auto,llm_generation',
-            
-            // Settings validation
-            'settings' => 'nullable|array',
-            'settings.currentPreset' => 'nullable|string',
-            'settings.authorProfile' => 'nullable|string',
-            'settings.aiModel' => 'nullable|string',
-            'settings.memory' => 'nullable|string',
-            'settings.storyGenre' => 'nullable|string',
-            'settings.storyTone' => 'nullable|string',
-            'settings.storyPov' => 'nullable|string',
-            'settings.temperature' => 'nullable|numeric|min:0|max:2',
-            'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
-            'settings.outputLength' => 'nullable|integer|min:50|max:1000',
-            'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
-            'settings.topP' => 'nullable|numeric|min:0|max:1',
-            'settings.tailFree' => 'nullable|numeric|min:0|max:1',
-            'settings.topA' => 'nullable|numeric|min:0|max:1',
-            'settings.topK' => 'nullable|numeric|min:0|max:1',
-            'settings.phraseBias' => 'nullable|array',
-            'settings.phraseBias.*' => 'nullable|array',
-            'settings.bannedPhrases' => 'nullable|array',
-            'settings.bannedPhrases.*' => 'nullable|string',
-            'settings.stopSequences' => 'nullable|array',
-            'settings.stopSequences.*' => 'nullable|string',
-        ]);
+        try {
+            Log::info('Incoming unified save request', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'has_content' => $request->has('content'),
+                'has_settings' => $request->has('settings'),
+                'request_id' => Str::uuid()->toString()
+            ]);
 
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->firstOrFail();
+            $validated = $request->validate([
+                // Content validation
+                'content' => 'nullable|array',
+                'content.order' => 'required_with:content|integer',
+                'content.content' => 'sometimes|nullable|string|max:1000000',
+                'content.trigger' => 'nullable|string|in:manual,auto,llm_generation',
+                
+                // Settings validation
+                'settings' => 'nullable|array',
+                'settings.currentPreset' => 'nullable|string',
+                'settings.authorProfile' => 'nullable|string',
+                'settings.aiModel' => 'nullable|string',
+                'settings.memory' => 'nullable|string',
+                'settings.storyGenre' => 'nullable|string',
+                'settings.storyTone' => 'nullable|string',
+                'settings.storyPov' => 'nullable|string',
+                'settings.temperature' => 'nullable|numeric|min:0|max:2',
+                'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
+                'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+                'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
+                'settings.topP' => 'nullable|numeric|min:0|max:1',
+                'settings.tailFree' => 'nullable|numeric|min:0|max:1',
+                'settings.topA' => 'nullable|numeric|min:0|max:1',
+                'settings.topK' => 'nullable|numeric|min:0|max:1',
+                'settings.phraseBias' => 'nullable|array',
+                'settings.phraseBias.*' => 'nullable|array',
+                'settings.bannedPhrases' => 'nullable|array',
+                'settings.bannedPhrases.*' => 'nullable|string',
+                'settings.stopSequences' => 'nullable|array',
+                'settings.stopSequences.*' => 'nullable|string',
+            ]);
 
-        $updatedChapters = null;
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
 
-        // Use database transaction for consistency
-        \DB::transaction(function () use ($validated, $project, $project_id, $workspace_id, &$updatedChapters) {
+            $updatedChapters = null;
+
+            // Use database transaction for consistency with deadlock retry
+            $maxAttempts = 3;
+            $attempt = 0;
+            $lastException = null;
+
+            while ($attempt < $maxAttempts) {
+                try {
+                    \DB::transaction(function () use ($validated, $project, $project_id, $workspace_id, &$updatedChapters) {
             // Update content if provided
             if (isset($validated['content'])) {
                 $contentData = $validated['content'];
@@ -478,23 +539,61 @@ class MainEditorController extends Controller
                 $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
                 $chapters = $projectContent->content ?? [];
 
-                // Update chapter content
+                // Update chapter content in JSON
                 foreach ($chapters as &$chapter) {
                     if (isset($chapter['order']) && $chapter['order'] === $contentData['order']) {
-                        $chapter['content'] = $contentData['content'];
+                        $chapter['content'] = $contentData['content'] ?? '';
                         break;
                     }
                 }
 
                 $projectContent->content = $chapters;
                 $projectContent->updateLastEdited();
-                
-                // Also update the current step version in generation history
-                $projectContent->updateCurrentStepVersion($contentData['order'], $contentData['content']);
-                
                 $projectContent->save();
 
+                // CRITICAL FIX: Also update version control current content
+                // This is the key fix - after generation, manual edits must update the ContentVersion
+                $currentState = $this->versionControl->getCurrentState($project_id, $contentData['order']);
+                
+                if ($currentState) {
+                    // Update the current version's content
+                    // This ensures that getCurrentContent() returns the manually edited content
+                    $updated = $this->versionControl->updateCurrentVersion(
+                        $currentState['node_id'],
+                        $currentState['version_index'],
+                        $contentData['content'] ?? ''
+                    );
+                    
+                    if (!$updated) {
+                        Log::warning('Failed to update version control, but ProjectContent saved', [
+                            'project_id' => $project_id,
+                            'chapter_order' => $contentData['order'],
+                            'node_id' => $currentState['node_id'],
+                            'version_index' => $currentState['version_index']
+                        ]);
+                    }
+                } else {
+                    // Initialize if doesn't exist (first save before any generation)
+                    $this->versionControl->initializeChapter(
+                        $project_id,
+                        $contentData['order'],
+                        $contentData['content'] ?? ''
+                    );
+                }
+                
+                // Clear cache to ensure fresh data on next load
+                Cache::forget("content:{$project_id}:{$contentData['order']}");
+                Cache::forget("navigation:{$project_id}:{$contentData['order']}");
+
                 $updatedChapters = $chapters;
+
+                Log::info('Unified save completed', [
+                    'project_id' => $project_id,
+                    'chapter_order' => $contentData['order'],
+                    'content_length' => strlen($contentData['content'] ?? ''),
+                    'trigger' => $contentData['trigger'] ?? 'manual',
+                    'version_control_updated' => isset($currentState)
+                ]);
 
                 // Broadcast content update event
                 broadcast(new ProjectContentUpdated(
@@ -506,24 +605,121 @@ class MainEditorController extends Controller
                 ));
             }
 
-            // Update settings if provided
-            if (isset($validated['settings'])) {
-                $project->settings = $validated['settings'];
-                $project->save();
+                        // Update settings if provided
+                        if (isset($validated['settings'])) {
+                            $project->settings = $validated['settings'];
+                            $project->save();
+                            
+                            Log::info('Settings updated', [
+                                'project_id' => $project_id,
+                                'settings_keys' => array_keys($validated['settings'])
+                            ]);
+                        }
+                    });
+
+                    // Transaction succeeded, break out of retry loop
+                    break;
+
+                } catch (\Illuminate\Database\QueryException $e) {
+                    $attempt++;
+                    $lastException = $e;
+                    
+                    // Check if it's a deadlock or lock timeout
+                    $isDeadlock = str_contains($e->getMessage(), 'Deadlock') || 
+                                  str_contains($e->getMessage(), 'Lock wait timeout') ||
+                                  $e->getCode() === '40001' || 
+                                  $e->getCode() === '40P01';
+                    
+                    if ($isDeadlock && $attempt < $maxAttempts) {
+                        // Wait with exponential backoff before retrying
+                        $delay = min(100 * pow(2, $attempt - 1), 1000); // 100ms, 200ms, 400ms max
+                        usleep($delay * 1000);
+                        
+                        Log::warning('Database deadlock detected, retrying', [
+                            'attempt' => $attempt,
+                            'max_attempts' => $maxAttempts,
+                            'delay_ms' => $delay,
+                            'project_id' => $project_id,
+                            'error' => $e->getMessage()
+                        ]);
+                        
+                        continue;
+                    }
+                    
+                    // Not a deadlock or max attempts reached
+                    throw $e;
+                }
             }
-        });
 
-        Log::info('Unified project update completed', [
-            'workspace_id' => $workspace_id,
-            'project_id' => $project_id,
-            'content_updated' => isset($validated['content']),
-            'settings_updated' => isset($validated['settings']),
-        ]);
+            Log::info('Unified project update completed', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'content_updated' => isset($validated['content']),
+                'settings_updated' => isset($validated['settings']),
+                'attempts' => $attempt + 1
+            ]);
 
-        return redirect()->route('workspace.projects.editor', [
-            'workspace_id' => $workspace_id,
-            'project_id' => $project_id,
-        ]);
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation error in unified save', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'errors' => $e->errors()
+            ]);
+            
+            return back()->withErrors($e->errors())->withInput();
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::error('Project not found in unified save', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'error' => $e->getMessage()
+            ]);
+            
+            return back()->withErrors([
+                'save' => 'Project not found. Please refresh the page.'
+            ])->setStatusCode(404);
+
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Database error in unified save', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'error' => $e->getMessage(),
+                'code' => $e->getCode(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            $errorMessage = 'Failed to save changes due to a database error. Please try again.';
+            
+            // Check for specific database errors
+            if (str_contains($e->getMessage(), 'Deadlock') || str_contains($e->getMessage(), 'Lock wait timeout')) {
+                $errorMessage = 'Save failed due to concurrent updates. Please try again.';
+            } elseif (str_contains($e->getMessage(), 'Duplicate entry')) {
+                $errorMessage = 'Duplicate data detected. Please check your input.';
+            } elseif (str_contains($e->getMessage(), 'Data too long')) {
+                $errorMessage = 'Content is too large. Please reduce the size and try again.';
+            }
+            
+            return back()->withErrors([
+                'save' => $errorMessage
+            ])->setStatusCode(500);
+
+        } catch (\Exception $e) {
+            Log::error('Unexpected error in unified save', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            
+            return back()->withErrors([
+                'save' => 'An unexpected error occurred. Please try again.'
+            ])->setStatusCode(500);
+        }
     }
 
     /**
