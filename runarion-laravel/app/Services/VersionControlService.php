@@ -8,6 +8,7 @@ use App\Models\ChapterState;
 use App\Models\ProjectContent;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class VersionControlService
 {
@@ -261,6 +262,58 @@ class VersionControlService
             'node_id' => $state->current_node_id,
             'version_index' => $state->current_version_index,
         ];
+    }
+
+    /**
+     * Update the content of a specific version.
+     * This is critical for manual edits after generation - it ensures the current
+     * ContentVersion stays in sync with ProjectContent JSON.
+     * 
+     * @param string $nodeId The node ID
+     * @param int $versionIndex The version index within the node
+     * @param string $content The new content
+     * @return bool True if updated successfully, false otherwise
+     */
+    public function updateCurrentVersion(string $nodeId, int $versionIndex, string $content): bool
+    {
+        try {
+            $version = ContentVersion::where('node_id', $nodeId)
+                ->where('version_index', $versionIndex)
+                ->first();
+            
+            if (!$version) {
+                Log::warning('Version not found for update', [
+                    'node_id' => $nodeId,
+                    'version_index' => $versionIndex
+                ]);
+                return false;
+            }
+            
+            // Update the content
+            $version->content = $content;
+            $version->save();
+            
+            // Clear cache to ensure fresh data
+            $node = ContentNode::find($nodeId);
+            if ($node) {
+                $this->clearCache($node->project_id, $node->chapter_order);
+            }
+            
+            Log::info('Updated current version content', [
+                'node_id' => $nodeId,
+                'version_index' => $versionIndex,
+                'content_length' => strlen($content)
+            ]);
+            
+            return true;
+        } catch (\Exception $e) {
+            Log::error('Failed to update current version', [
+                'node_id' => $nodeId,
+                'version_index' => $versionIndex,
+                'error' => $e->getMessage()
+            ]);
+            return false;
+        }
     }
 
     /**

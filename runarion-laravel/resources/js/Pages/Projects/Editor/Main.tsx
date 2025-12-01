@@ -84,20 +84,55 @@ export default function ProjectEditorPage({
     const [addChapterDialogOpen, setAddChapterDialogOpen] = useState(false);
     const [newChapterName, setNewChapterName] = useState("");
     const [addChapterLoading, setAddChapterLoading] = useState(false);
+    const [addChapterError, setAddChapterError] = useState<string>("");
 
     // Handler for adding a new chapter
     const handleAddChapterClick = async () => {
         if (!newChapterName.trim()) return;
 
+        // Clear previous errors
+        setAddChapterError("");
         setAddChapterLoading(true);
+        
         try {
             await handleAddChapter(newChapterName);
             setAddChapterDialogOpen(false);
             setNewChapterName("");
-        } catch (error) {
+            setAddChapterError("");
+        } catch (error: any) {
             console.error("Failed to add chapter:", error);
+            // Extract error message from Inertia error object
+            if (error?.chapter_name) {
+                setAddChapterError(error.chapter_name);
+            } else if (typeof error === 'string') {
+                setAddChapterError(error);
+            } else {
+                setAddChapterError("Failed to add chapter. Please try again.");
+            }
         } finally {
             setAddChapterLoading(false);
+        }
+    };
+
+    // Get existing chapter names for validation
+    const existingChapterNames = localChapters.map(ch => ch.chapter_name);
+
+    // Handle dialog open/close to reset state
+    const handleDialogOpenChange = (open: boolean) => {
+        setAddChapterDialogOpen(open);
+        if (!open) {
+            // Reset state when closing
+            setNewChapterName("");
+            setAddChapterError("");
+        }
+    };
+
+    // Handle chapter name change to clear errors
+    const handleChapterNameChange = (name: string) => {
+        setNewChapterName(name);
+        // Clear backend error when user starts typing
+        if (addChapterError) {
+            setAddChapterError("");
         }
     };
 
@@ -229,11 +264,13 @@ export default function ProjectEditorPage({
                         </Button>
                         <AddChapterDialog
                             open={addChapterDialogOpen}
-                            setOpen={setAddChapterDialogOpen}
+                            setOpen={handleDialogOpenChange}
                             chapterName={newChapterName}
-                            setChapterName={setNewChapterName}
+                            setChapterName={handleChapterNameChange}
                             loading={addChapterLoading}
                             handleAddChapter={handleAddChapterClick}
+                            existingChapterNames={existingChapterNames}
+                            error={addChapterError}
                         />
                     </div>
                 </div>
