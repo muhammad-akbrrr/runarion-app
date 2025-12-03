@@ -4,16 +4,17 @@ import os
 from math import ceil
 from typing import Literal, Optional, TypedDict
 
-from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
-from models.response import BaseGenerationResponse
-from models.style_analyzer import AuthorStyle
 from psycopg2.pool import SimpleConnectionPool
 from pydantic import ValidationError
 from services.generation_engine import GenerationEngine
 from ulid import ULID
-from utils.database_utils import clean_text_for_database, utf8_database_connection
-from utils.document_processor import ChunkWithStart, DocumentProcessor
-from utils.json_response_parser import JSONResponseParser, ResponseFormat
+
+from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
+from src.models.response import BaseGenerationResponse
+from src.models.style_analyzer import AuthorStyle
+from src.utils.database_utils import clean_text_for_database, utf8_database_connection
+from src.utils.document_processor import ChunkWithStart, DocumentProcessor
+from src.utils.json_response_parser import JSONResponseParser, ResponseFormat
 
 from .prompt_template import (
     COMBINED_AUTHOR_STYLE,
@@ -518,10 +519,16 @@ class ProfilingStage:
         ]
 
         success_count = sum(1 for s in partial_styles if s["token"] > 0)
-        if isinstance(self.min_success_partial_style, int):
-            okay = success_count >= self.min_success_partial_style
+        if len(partial_styles) > 0:
+            if isinstance(self.min_success_partial_style, int):
+                okay = success_count >= self.min_success_partial_style
+            else:
+                okay = (
+                    success_count / len(partial_styles)
+                    >= self.min_success_partial_style
+                )
         else:
-            okay = success_count / len(partial_styles) >= self.min_success_partial_style
+            okay = False
         if not okay:
             error_text = f"Not enough successful partial styles: {success_count} out of {len(partial_styles)}"
             logger.error(error_text)
