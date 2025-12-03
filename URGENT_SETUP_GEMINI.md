@@ -64,7 +64,7 @@ After creating `.env` and restarting:
 docker exec runarion-app-python-app-1 printenv | findstr GEMINI
 ```
 
-Should show: `GEMINI_API_KEY=AIzaSy...`
+Should show: `GEMINI_API_KEY=your_gemini_api_key_here` (first few chars)
 
 ## Still Not Working?
 
@@ -83,4 +83,5 @@ That's a separate Laravel issue (not related to conversation history). For now:
 - We can fix project creation separately
 
 The conversation history system works with existing projects!
+
 

@@ -66,7 +66,7 @@ PYTHON_SERVICE_URL=http://python-app:5000
    ```bash
    docker exec runarion-app-python-app-1 env | findstr GEMINI
    ```
-   Should show: `GEMINI_API_KEY=AIzaSy...`
+   Should show: `GEMINI_API_KEY=your_gemini_api_key_here` (first few chars)
 
 2. **Try generating again in Laravel UI**
 
@@ -100,4 +100,5 @@ PYTHON_SERVICE_URL=http://python-app:5000
 1. **Don't commit `.env` to git** - It should be in `.gitignore`
 2. **Restart containers** after changing `.env` file
 3. **Use docker-compose.dev.yml** if you're in development mode
+
 
