@@ -28,11 +28,12 @@ import {
     X,
     Book,
 } from "lucide-react";
-import { SidebarSettingsProps, DEFAULT_SETTINGS } from "@/types/project";
+import { SidebarSettingsProps, DEFAULT_SETTINGS, THINKING_MODELS, DEFAULT_THINKING_BUDGETS } from "@/types/project";
 
 export function SidebarContent({ 
     settings,
-    onSettingChange
+    onSettingChange,
+    authorStyles = []
 }: SidebarSettingsProps) {
     // UI State only - no data state
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -62,6 +63,10 @@ export function SidebarContent({
     const phraseBias = settings.phraseBias ?? DEFAULT_SETTINGS.phraseBias;
     const bannedPhrases = settings.bannedPhrases ?? DEFAULT_SETTINGS.bannedPhrases;
     const stopSequences = settings.stopSequences ?? DEFAULT_SETTINGS.stopSequences;
+    const thinkingBudget = settings.thinkingBudget ?? DEFAULT_SETTINGS.thinkingBudget;
+    
+    // Check if current model supports thinking
+    const isThinkingModel = THINKING_MODELS.includes(aiModel);
 
     return (
         <div
@@ -78,12 +83,9 @@ export function SidebarContent({
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="story-telling">
-                            Story Telling
-                        </SelectItem>
-                        <SelectItem value="creative-writing">
-                            Creative Writing
-                        </SelectItem>
+                        <SelectItem value="none">None (Default)</SelectItem>
+                        <SelectItem value="story-telling">Story Telling</SelectItem>
+                        <SelectItem value="creative-writing">Creative Writing</SelectItem>
                         <SelectItem value="technical-writing">Technical Writing</SelectItem>
                     </SelectContent>
                 </Select>
@@ -92,16 +94,45 @@ export function SidebarContent({
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select value={authorProfile} onValueChange={(value) => onSettingChange?.('authorProfile', value)}>
+                <p className="text-xs text-gray-500">
+                    Writing style from analyzed samples
+                </p>
+                <Select 
+                    value={authorProfile || "__none__"} 
+                    onValueChange={(value) => onSettingChange?.('authorProfile', value === "__none__" ? "" : value)}
+                >
                     <SelectTrigger className="w-full">
-                        <SelectValue />
+                        <SelectValue placeholder="Select author style..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="tolkien">Tolkien</SelectItem>
-                        <SelectItem value="hemingway">Hemingway</SelectItem>
-                        <SelectItem value="shakespeare">Shakespeare</SelectItem>
+                        {authorStyles && authorStyles.length > 0 ? (
+                            <>
+                                <SelectItem value="__none__">None</SelectItem>
+                                {authorStyles.map((style) => {
+                                    const isReady = style.status === 'profiling_completed';
+                                    return (
+                                        <SelectItem 
+                                            key={style.id} 
+                                            value={style.id}
+                                            disabled={!isReady}
+                                        >
+                                            {style.name} {!isReady && '(Processing...)'}
+                                        </SelectItem>
+                                    );
+                                })}
+                            </>
+                        ) : (
+                            <SelectItem value="__none__">
+                                No author styles available
+                            </SelectItem>
+                        )}
                     </SelectContent>
                 </Select>
+                {authorStyles?.length === 0 && (
+                    <p className="text-xs text-amber-600">
+                        Create author styles in File Manager
+                    </p>
+                )}
             </div>
 
             {/* AI Model */}
@@ -109,16 +140,58 @@ export function SidebarContent({
                 <Label htmlFor="model">AI Model</Label>
                 <Select
                     value={aiModel}
-                    onValueChange={(value) => onSettingChange?.("aiModel", value)}
+                    onValueChange={(value) => {
+                        onSettingChange?.("aiModel", value);
+                        // Auto-set default thinking budget when switching to a thinking model
+                        if (THINKING_MODELS.includes(value)) {
+                            const defaultBudget = DEFAULT_THINKING_BUDGETS[value] ?? 4096;
+                            onSettingChange?.("thinkingBudget", defaultBudget);
+                        }
+                    }}
                 >
                     <SelectTrigger className="w-full">
                     <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                        <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                        <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash (Stable)</SelectItem>
+                        <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash (Fast + Thinking)</SelectItem>
+                        <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro (Quality + Thinking)</SelectItem>
+                        <SelectItem value="gemini-3-pro-preview">Gemini 3.0 Pro (Paid API Key)</SelectItem>
                     </SelectContent>
                 </Select>
+            </div>
+
+            {/* Thinking Budget - Only for thinking models */}
+            <div className={`space-y-3 ${!isThinkingModel ? 'opacity-50' : ''}`}>
+                <div className="flex justify-between items-center">
+                    <Label className={!isThinkingModel ? 'text-gray-400' : ''}>
+                        Thinking Budget
+                    </Label>
+                    <span className="text-sm text-gray-500">
+                        {isThinkingModel ? `${thinkingBudget} tokens` : 'N/A'}
+                    </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                    {isThinkingModel 
+                        ? "Tokens for AI reasoning before responding (higher = better quality, slower)"
+                        : "Only available for thinking models (2.5 Flash, 2.5 Pro, 3.0 Pro)"
+                    }
+                </p>
+                <Slider
+                    value={[thinkingBudget]}
+                    onValueChange={(value) => onSettingChange?.('thinkingBudget', value[0])}
+                    max={8192}
+                    min={1024}
+                    step={256}
+                    className="w-full"
+                    disabled={!isThinkingModel}
+                />
+                {isThinkingModel && (
+                    <div className="flex justify-between text-xs text-gray-400">
+                        <span>1024 (Fast)</span>
+                        <span>8192 (Quality)</span>
+                    </div>
+                )}
             </div>
 
             {/* Memory */}
@@ -196,18 +269,36 @@ export function SidebarContent({
             {/* Story POV */}
             <div className="space-y-2">
                 <Label htmlFor="pov">Story POV</Label>
-                <div className="flex flex-row items-center gap-2">
+                <p className="text-xs text-gray-500">
+                    Point of view for the narrative
+                </p>
+                <Select 
+                    value={storyPov || "__select__"} 
+                    onValueChange={(value) => onSettingChange?.('storyPov', value === "__select__" ? "" : value)}
+                >
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select POV..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="__select__">Select POV...</SelectItem>
+                        <SelectItem value="First Person">First Person (I/We)</SelectItem>
+                        <SelectItem value="Second Person">Second Person (You)</SelectItem>
+                        <SelectItem value="Third Person Limited">Third Person Limited</SelectItem>
+                        <SelectItem value="Third Person Omniscient">Third Person Omniscient</SelectItem>
+                        <SelectItem value="Third Person Objective">Third Person Objective</SelectItem>
+                        <SelectItem value="Multiple POV">Multiple POV / Alternating</SelectItem>
+                    </SelectContent>
+                </Select>
+                {/* Custom POV input if needed */}
+                {storyPov && !["First Person", "Second Person", "Third Person Limited", "Third Person Omniscient", "Third Person Objective", "Multiple POV", "", "__select__"].includes(storyPov) && (
                     <Input
-                        id="pov"
-                        placeholder="Search for an entry"
-                        className="pr-8"
+                        id="custom-pov"
+                        placeholder="Custom POV description..."
+                        className="mt-2"
                         value={storyPov}
                         onChange={(e) => onSettingChange?.('storyPov', e.target.value)}
                     />
-                    <Button variant="outline" className="h-9 w-9 p-0">
-                        <Book className="h-3 w-3" />
-                    </Button>
-                </div>
+                )}
             </div>
 
             {/* Advanced Section */}

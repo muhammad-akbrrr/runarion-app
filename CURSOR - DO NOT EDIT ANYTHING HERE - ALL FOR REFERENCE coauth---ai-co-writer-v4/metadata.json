@@ -1,0 +1,5 @@
+{
+  "name": "CoAuth - AI Co-Writer V4",
+  "description": "A sophisticated AI-powered collaborative writing environment using Gemini 3.0 Pro. Write freely and prompt the AI to continue your story with specific stylistic instructions.",
+  "requestFramePermissions": []
+}

@@ -11,6 +11,7 @@ interface SaveOperation {
             order: number;
             content: string | null;
             trigger?: string;
+            ai_ranges?: number[][];
         };
         settings?: any;
     };
@@ -56,7 +57,7 @@ export function useUnifiedSave({
     const isProcessing = useRef<boolean>(false);
     const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
     const lastSaveData = useRef<{
-        content?: { order: number; content: string };
+        content?: { order: number; content: string; ai_ranges?: number[][] };
         settings?: any;
     }>({});
 
@@ -68,9 +69,11 @@ export function useUnifiedSave({
     // Process the save queue with retry logic
     const processQueue = useCallback(async () => {
         if (isProcessing.current || saveQueue.current.length === 0) {
+            console.log('📤 processQueue skipped:', { isProcessing: isProcessing.current, queueLength: saveQueue.current.length });
             return;
         }
 
+        console.log('📤 processQueue starting, queue length:', saveQueue.current.length);
         isProcessing.current = true;
 
         try {
@@ -100,7 +103,9 @@ export function useUnifiedSave({
             const contentChanged = latestContent && (
                 !lastSaveData.current.content ||
                 lastSaveData.current.content.order !== latestContent.order ||
-                (lastSaveData.current.content.content ?? '') !== (latestContent.content ?? '') // Compare with null handling
+                (lastSaveData.current.content.content ?? '') !== (latestContent.content ?? '') || // Compare with null handling
+                // Also check if ai_ranges changed (for color coding persistence)
+                JSON.stringify(lastSaveData.current.content.ai_ranges ?? []) !== JSON.stringify(latestContent.ai_ranges ?? [])
             );
 
             const settingsChanged = latestSettings && (
@@ -127,7 +132,8 @@ export function useUnifiedSave({
                 saveData.content = {
                     order: latestContent.order,
                     content: latestContent.content ?? '',
-                    trigger: latestContent.trigger || 'manual'
+                    trigger: latestContent.trigger || 'manual',
+                    ai_ranges: latestContent.ai_ranges,
                 };
             }
 
@@ -135,110 +141,111 @@ export function useUnifiedSave({
                 saveData.settings = latestSettings;
             }
 
-            // Make unified save request with retry logic
-            const savePromise = new Promise((resolve, reject) => {
+            // Make unified save request using axios (has CSRF token configured)
+            const savePromise = (async () => {
                 console.log('Saving payload:', saveData);
-                router.patch(
-                    route("editor.project.updateUnified", {
-                        workspace_id: workspaceId,
-                        project_id: projectId,
-                    }),
-                    saveData,
-                    {
-                        preserveState: true,
-                        preserveScroll: true,
-                        onSuccess: (page) => {
-                            console.log('Unified save successful', {
-                                contentSaved: !!latestContent,
-                                settingsSaved: !!latestSettings,
-                                retryCount: maxRetryCount
-                            });
-                            
-                            // Update last saved data
-                            if (latestContent) {
-                                lastSaveData.current.content = {
-                                    order: latestContent.order,
-                                    content: latestContent.content ?? ''
-                                };
-                            }
-                            if (latestSettings) {
-                                lastSaveData.current.settings = { ...latestSettings };
-                            }
+                
+                const url = route("editor.project.updateUnified", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                });
+                
+                const response = await window.axios.patch(url, saveData, {
+                    headers: {
+                        'Accept': 'application/json',
+                    },
+                });
+                
+                const result = response.data;
+                
+                console.log('Unified save successful', {
+                    contentSaved: !!latestContent,
+                    settingsSaved: !!latestSettings,
+                    retryCount: maxRetryCount
+                });
+                
+                // Update last saved data
+                if (latestContent) {
+                    lastSaveData.current.content = {
+                        order: latestContent.order,
+                        content: latestContent.content ?? '',
+                        ai_ranges: latestContent.ai_ranges
+                    };
+                }
+                if (latestSettings) {
+                    lastSaveData.current.settings = { ...latestSettings };
+                }
 
-                            // Call callbacks
-                            if (latestContent && onContentSaved) {
-                                const updatedChapters = page.props.chapters as ProjectChapter[];
-                                if (updatedChapters) {
-                                    onContentSaved(updatedChapters);
-                                }
-                            }
-                            
-                            if (latestSettings && onSettingsSaved) {
-                                onSettingsSaved();
-                            }
+                // Call callbacks
+                if (latestContent && onContentSaved && result.chapters) {
+                    onContentSaved(result.chapters as ProjectChapter[]);
+                }
+                
+                if (latestSettings && onSettingsSaved) {
+                    onSettingsSaved();
+                }
 
-                            resolve(page);
-                        },
-                        onError: (errors) => {
-                            // Log error with context
-                            logError(errors, {
-                                component: 'useUnifiedSave',
-                                action: 'save',
-                                projectId,
-                                workspaceId,
-                                retryCount: maxRetryCount,
-                                maxRetries: MAX_RETRIES,
-                                hasContent: !!latestContent,
-                                hasSettings: !!latestSettings,
-                            });
-                            
-                            // Determine if error is retryable
-                            const isRetryable = isRetryableError(errors);
-                            
-                            if (isRetryable && maxRetryCount < MAX_RETRIES) {
-                                // Schedule retry with exponential backoff
-                                const delay = calculateBackoffDelay(maxRetryCount);
-                                console.log(`Retrying save in ${delay}ms (attempt ${maxRetryCount + 1}/${MAX_RETRIES})`);
-                                
-                                setTimeout(() => {
-                                    // Re-queue the operation with incremented retry count
-                                    const retryOperation: SaveOperation = {
-                                        id: generateOperationId(),
-                                        timestamp: Date.now(),
-                                        data: { content: latestContent, settings: latestSettings },
-                                        resolve,
-                                        reject,
-                                        retryCount: maxRetryCount + 1
-                                    };
-                                    saveQueue.current.push(retryOperation);
-                                    setTimeout(processQueue, 0);
-                                }, delay);
-                            } else {
-                                // Max retries reached or non-retryable error
-                                const errorDetails = parseErrorDetails(errors, {
-                                    component: 'useUnifiedSave',
-                                    action: 'save',
-                                    projectId,
-                                    workspaceId,
-                                    retryCount: maxRetryCount,
-                                });
-                                
-                                console.error('Save failed permanently:', errorDetails.userMessage);
-                                onSaveError?.({ 
-                                    ...errors, 
-                                    message: errorDetails.userMessage, 
-                                    retryCount: maxRetryCount,
-                                    type: errorDetails.type
-                                });
-                                reject({ 
-                                    ...errors, 
-                                    message: errorDetails.userMessage,
-                                    type: errorDetails.type
-                                });
-                            }
-                        },
-                    }
-                );
+                return result;
+            })().catch((errors) => {
+                // Log error with context
+                logError(errors, {
+                    component: 'useUnifiedSave',
+                    action: 'save',
+                    projectId,
+                    workspaceId,
+                    retryCount: maxRetryCount,
+                    maxRetries: MAX_RETRIES,
+                    hasContent: !!latestContent,
+                    hasSettings: !!latestSettings,
+                });
+                
+                // Determine if error is retryable
+                const isRetryable = isRetryableError(errors);
+                
+                if (isRetryable && maxRetryCount < MAX_RETRIES) {
+                    // Schedule retry with exponential backoff
+                    const delay = calculateBackoffDelay(maxRetryCount);
+                    console.log(`Retrying save in ${delay}ms (attempt ${maxRetryCount + 1}/${MAX_RETRIES})`);
+                    
+                    // Return a promise that will retry
+                    return new Promise((resolve, reject) => {
+                        setTimeout(async () => {
+                            // Re-queue the operation with incremented retry count
+                            const retryOperation: SaveOperation = {
+                                id: generateOperationId(),
+                                timestamp: Date.now(),
+                                data: { content: latestContent, settings: latestSettings },
+                                resolve,
+                                reject,
+                                retryCount: maxRetryCount + 1
+                            };
+                            saveQueue.current.push(retryOperation);
+                            setTimeout(processQueue, 0);
+                        }, delay);
+                    });
+                } else {
+                    // Max retries reached or non-retryable error
+                    const errorDetails = parseErrorDetails(errors, {
+                        component: 'useUnifiedSave',
+                        action: 'save',
+                        projectId,
+                        workspaceId,
+                        retryCount: maxRetryCount,
+                    });
+                    
+                    console.error('Save failed permanently:', errorDetails.userMessage);
+                    onSaveError?.({ 
+                        ...errors, 
+                        message: errorDetails.userMessage, 
+                        retryCount: maxRetryCount,
+                        type: errorDetails.type
+                    });
+                    throw { 
+                        ...errors, 
+                        message: errorDetails.userMessage,
+                        type: errorDetails.type
+                    };
+                }
             });
 
             // Wait for save to complete and resolve all operations
@@ -259,9 +266,11 @@ export function useUnifiedSave({
             saveQueue.current = [];
         } finally {
             isProcessing.current = false;
+            console.log('📤 processQueue finished, remaining queue length:', saveQueue.current.length);
             
             // Process any new operations that were added during processing
             if (saveQueue.current.length > 0) {
+                console.log('📤 Processing remaining operations...');
                 setTimeout(processQueue, 0);
             }
         }
@@ -347,6 +356,15 @@ export function useUnifiedSave({
                 reject,
             };
 
+            console.log('📥 Queueing save operation:', {
+                id: operation.id,
+                hasContent: !!data.content,
+                hasAiRanges: !!data.content?.ai_ranges,
+                aiRangesLength: data.content?.ai_ranges?.length,
+                queueLength: saveQueue.current.length,
+                isProcessing: isProcessing.current
+            });
+
             saveQueue.current.push(operation);
             
             // Process queue immediately for immediate saves
@@ -375,9 +393,9 @@ export function useUnifiedSave({
     }, [queueSave]);
 
     // Save content only
-    const saveContent = useCallback(async (order: number, content: string | null, trigger: string = 'manual'): Promise<any> => {
+    const saveContent = useCallback(async (order: number, content: string | null, trigger: string = 'manual', aiRanges?: number[][]): Promise<any> => {
         return queueSave({
-            content: { order, content: content ?? '', trigger }
+            content: { order, content: content ?? '', trigger, ai_ranges: aiRanges }
         });
     }, [queueSave]);
 
@@ -397,9 +415,9 @@ export function useUnifiedSave({
     }, [queueSave]);
 
     // Debounced content save
-    const debouncedSaveContent = useCallback(async (order: number, content: string | null, trigger: string = 'auto', delay: number = 1000): Promise<any> => {
+    const debouncedSaveContent = useCallback(async (order: number, content: string | null, trigger: string = 'auto', delay: number = 1000, aiRanges?: number[][]): Promise<any> => {
         return debouncedSave({
-            content: { order, content: content ?? '', trigger }
+            content: { order, content: content ?? '', trigger, ai_ranges: aiRanges }
         }, delay);
     }, [debouncedSave]);
 

@@ -1,4 +1,4 @@
-import { Link } from "@inertiajs/react";
+import { Link, router } from "@inertiajs/react";
 import { Ellipsis } from "lucide-react";
 import { Badge } from "@/Components/ui/badge";
 import {
@@ -108,25 +108,22 @@ export default function ItemCard(props: ItemCardProps) {
         );
     } else {
         const { item, onDelete, onSettings, workspaceId } = props;
+        const editorUrl = route("workspace.projects.editor", {
+            workspace_id: workspaceId,
+            project_id: item.id,
+        });
+        
         return (
-            <div
-                className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer relative"
-            >
+            <div className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition relative group">
                 <Link
-                    href={route("workspace.projects.editor", {
-                        workspace_id: workspaceId,
-                        project_id: item.id,
-                    })}
-                    className="absolute inset-0 z-0 w-full h-full"
+                    href={editorUrl}
+                    className="absolute inset-0 z-0"
                 />
-                <div className="flex flex-row gap-2 justify-between items-start">
-                    <div className="flex flex-col justify-start items-start gap-1">
+                <div className="flex flex-row gap-2 justify-between items-start relative z-10">
+                    <div className="flex flex-col justify-start items-start gap-1 flex-1">
                         <Link
-                            href={route("workspace.projects.editor", {
-                                workspace_id: workspaceId,
-                                project_id: item.id,
-                            })}
-                            className="text-base"
+                            href={editorUrl}
+                            className="text-base font-medium hover:underline"
                         >
                             {item.name}
                         </Link>
@@ -135,22 +132,34 @@ export default function ItemCard(props: ItemCardProps) {
                         </p>
                     </div>
                     <DropdownMenu>
-                        <DropdownMenuTrigger>
-                            <div className="cursor-pointer relative z-20 p-2 m-[-8px]">
-                                <Ellipsis className="h-4 w-4" />
-                            </div>
+                        <DropdownMenuTrigger
+                            className="cursor-pointer relative z-20 p-2 m-[-8px] rounded hover:bg-gray-100 flex items-center justify-center"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }}
+                        >
+                            <Ellipsis className="h-4 w-4" />
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                            <DropdownMenuItem onClick={() => onDelete(item.id, item.name)}>
+                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                            <DropdownMenuItem onClick={(e) => { 
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onDelete(item.id, item.name); 
+                            }}>
                                 <span>Delete project</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={() => onSettings(item.id)}>
+                            <DropdownMenuItem onClick={(e) => { 
+                                e.preventDefault();
+                                e.stopPropagation();
+                                onSettings(item.id); 
+                            }}>
                                 <span>Project settings</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
-                <div className="flex flex-row gap-2 justify-between items-center">
+                <div className="flex flex-row gap-2 justify-between items-center relative z-10">
                     <p className="text-sm">{formatTimeAgo(item.updated_at)}</p>
                     {item.category && (
                         <Badge variant="secondary" className="capitalize">
@@ -161,4 +170,4 @@ export default function ItemCard(props: ItemCardProps) {
             </div>
         );
     }
-} 
+}

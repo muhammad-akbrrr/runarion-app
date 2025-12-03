@@ -180,10 +180,18 @@ export default function ProjectList({
                 onSuccess: (page) => {
                     setProjectModalOpen(false);
                     setProjectName("");
-                    // The backend redirects to the editor, so no need to do anything else
+                    // Backend redirects to editor - Inertia will follow the redirect automatically
                 },
-                onFinish: () => setProjectLoading(false),
-                preserveScroll: true,
+                onError: (errors) => {
+                    console.error('Error creating project:', errors);
+                    setProjectLoading(false);
+                },
+                onFinish: () => {
+                    // Only set loading to false if we're still on this page
+                    // (redirect should have happened if successful)
+                    setTimeout(() => setProjectLoading(false), 100);
+                },
+                preserveScroll: false, // Allow scroll reset on redirect
             }
         );
     };

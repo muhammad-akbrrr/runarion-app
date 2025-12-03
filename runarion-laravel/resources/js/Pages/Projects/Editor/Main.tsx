@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Head, usePage } from "@inertiajs/react";
 import { ChevronDown } from "lucide-react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
@@ -16,7 +16,7 @@ import {
 } from "@/Components/ui/dropdown-menu";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
-import { useProjectEditor } from "./Hooks";
+import { useProjectEditor } from "./hooks";
 
 // Import Echo for WebSocket connection
 import "@/echo";
@@ -32,7 +32,15 @@ export default function ProjectEditorPage({
     project: Project;
     chapters?: ProjectChapter[];
 }>) {
-    const { errors } = usePage().props;
+    const { errors, authorStyles: rawAuthorStyles } = usePage().props;
+    
+    // Get author styles from page props (provided by controller)
+    // Controller sends: { id, name, status, avatar, color }
+    const authorStyles = (rawAuthorStyles as Array<{ id: string; name: string; status?: string }> | undefined)?.map(style => ({
+        id: style.id,
+        name: style.name,
+        status: style.status,
+    })) ?? [];
 
     // Use custom hook for all editor logic
     const {
@@ -48,6 +56,10 @@ export default function ProjectEditorPage({
         streamingText,
         streamError,
         isRegenerating,
+        baseContent,
+        aiRanges,
+        isColorCoded,
+        setIsColorCoded,
         versionControl,
         handleChapterSelect,
         handleAddChapter,
@@ -66,6 +78,14 @@ export default function ProjectEditorPage({
 
     // State to prevent saves during UI interactions
     const [isInteracting, setIsInteracting] = useState(false);
+    
+    // Ref to get current editor content
+    const getCurrentEditorContentRef = useRef<(() => string) | null>(null);
+    
+    // Debug: Log when aiRanges changes
+    useEffect(() => {
+        console.log('🎨 Main.tsx aiRanges updated:', aiRanges);
+    }, [aiRanges]);
 
     // Handle focus out save - only save if content has changed
     const handleEditorBlur = useCallback(() => {
@@ -188,6 +208,7 @@ export default function ProjectEditorPage({
                 onSettingChange={handleSettingChange}
                 workspaceId={workspaceId}
                 projectId={projectId}
+                authorStyles={authorStyles}
             >
                 <div className="flex items-center justify-between">
                     {/* Left side - Menu items */}
@@ -281,18 +302,34 @@ export default function ProjectEditorPage({
                         setContent={setContent}
                         isStreaming={isStreaming}
                         streamingText={streamingText}
+                        baseContent={baseContent}
+                        aiRanges={aiRanges}
+                        isColorCoded={isColorCoded}
                         selectedChapter={selectedChapter}
                         isInteracting={isInteracting}
                         setIsInteracting={setIsInteracting}
                         isRegenerating={isRegenerating}
                         onBlur={handleEditorBlur}
+                        onGetCurrentContent={(getter) => {
+                            getCurrentEditorContentRef.current = getter;
+                        }}
                     />
 
                     <div className="absolute left-0 bottom-0 w-full p-4">
                         <EditorToolbar
-                            onSend={handleGenerateText}
+                            onSend={() => {
+                                // Get current editor content directly before generating
+                                const currentEditorContent = getCurrentEditorContentRef.current?.() ?? content ?? '';
+                                handleGenerateText(currentEditorContent);
+                            }}
                             isGenerating={isGenerating}
                             versionControl={versionControlState}
+                            isColorCoded={isColorCoded}
+                            onToggleColorCoding={() => {
+                                if (typeof setIsColorCoded === 'function') {
+                                    setIsColorCoded(!isColorCoded);
+                                }
+                            }}
                             wordCount={
                                 content
                                     ? (() => {

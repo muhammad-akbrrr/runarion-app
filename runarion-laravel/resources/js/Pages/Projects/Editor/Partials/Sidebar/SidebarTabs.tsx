@@ -8,7 +8,8 @@ export function SidebarTabs({
     settings,
     onSettingChange,
     workspaceId, 
-    projectId 
+    projectId,
+    authorStyles
 }: SidebarSettingsProps) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
@@ -72,6 +73,7 @@ export function SidebarTabs({
                             onSettingChange={onSettingChange}
                             workspaceId={workspaceId}
                             projectId={projectId}
+                            authorStyles={authorStyles}
                         />
                     </TabsContent>
 

@@ -14,6 +14,7 @@ import {
     SlidersHorizontal,
     RefreshCw,
     Loader2,
+    Palette,
 } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -36,6 +37,8 @@ interface EditorToolbarProps {
     isGenerating?: boolean;
     wordCount?: number;
     versionControl?: VersionControlState;
+    isColorCoded?: boolean;
+    onToggleColorCoding?: () => void;
 }
 
 export function EditorToolbar({
@@ -43,6 +46,8 @@ export function EditorToolbar({
     isGenerating = false,
     wordCount = 0,
     versionControl,
+    isColorCoded = true,
+    onToggleColorCoding,
 }: EditorToolbarProps) {
     const [isButtonDisabled, setIsButtonDisabled] = useState(false);
 
@@ -121,6 +126,20 @@ export function EditorToolbar({
                     <span className="text-sm text-gray-500">
                         {displayWordCount} Words
                     </span>
+                    
+                    {/* Color Coding Toggle */}
+                    {onToggleColorCoding && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-8 ${isColorCoded ? 'bg-blue-50 text-blue-700' : ''}`}
+                            onClick={onToggleColorCoding}
+                            title={isColorCoded ? 'Disable color coding' : 'Enable color coding'}
+                        >
+                            <Palette className="h-4 w-4" />
+                        </Button>
+                    )}
+                    
                     {/* Auto dropdown - opens upward */}
                     <DropdownMenu>
                         <DropdownMenuTrigger>

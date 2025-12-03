@@ -79,6 +79,18 @@ start_reverb() {
     }
 }
 
+# Function to start queue worker with auto-restart
+start_queue_worker() {
+    log "Starting queue worker (with auto-restart)..."
+    while true; do
+        # AuthorStyleJob needs longer timeout (up to 15 min for multiple LLM calls)
+        php artisan queue:work --tries=2 --timeout=900 --max-jobs=500 --max-time=3600 --sleep=3 --rest=0 || {
+            log "Warning: Queue worker crashed, restarting in 5 seconds..."
+            sleep 5
+        }
+    done
+}
+
 # Function to handle shutdown
 cleanup() {
     log "Shutting down..."
@@ -107,6 +119,10 @@ VITE_PID=$!
 # Start Reverb WebSocket server (background)
 start_reverb &
 REVERB_PID=$!
+
+# Start queue worker (background)
+start_queue_worker &
+QUEUE_PID=$!
 
 # Wait for services to be ready
 check_vite || exit 1

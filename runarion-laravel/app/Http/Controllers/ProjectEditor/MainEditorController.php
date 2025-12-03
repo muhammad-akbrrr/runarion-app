@@ -19,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
 use App\Services\VersionControlService;
 use App\Events\OperationStateChanged;
+use App\Models\AuthorStyle;
 
 class MainEditorController extends Controller
 {
@@ -33,40 +34,77 @@ class MainEditorController extends Controller
      */
     public function editor(Request $request, string $workspace_id, string $project_id)
     {
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->first();
+        try {
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->first();
 
-        if (!$project) {
-            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
-        }
-
-        // Query project content
-        $projectContent = ProjectContent::where('project_id', $project_id)->first();
-
-        // Extract chapters from JSON content field
-        $chapters = [];
-        if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
-            $chapters = $projectContent->content;
-            
-            // Get current content from version control for each chapter
-            foreach ($chapters as &$chapter) {
-                $currentContent = $this->versionControl->getCurrentContent($project_id, $chapter['order']);
-                if ($currentContent !== null) {
-                    $chapter['content'] = $currentContent;
-                }
-                
-                // Add navigation info for version control
-                $chapter['navigation_info'] = $this->versionControl->getNavigationInfo($project_id, $chapter['order']);
+            if (!$project) {
+                return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
+                    ->withErrors(['project' => 'Project not found']);
             }
-        }
 
-        return Inertia::render('Projects/Editor/Main', [
-            'workspaceId' => $workspace_id,
-            'projectId' => $project_id,
-            'project' => $project,
-            'chapters' => $chapters,
-        ]);
+            // Query project content
+            $projectContent = ProjectContent::where('project_id', $project_id)->first();
+
+            // Extract chapters from JSON content field
+            $chapters = [];
+            if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
+                $chapters = $projectContent->content;
+                
+                // Get current content from version control for each chapter
+                foreach ($chapters as &$chapter) {
+                    try {
+                        $currentContent = $this->versionControl->getCurrentContent($project_id, $chapter['order']);
+                        if ($currentContent !== null) {
+                            $chapter['content'] = $currentContent;
+                        }
+                        
+                        // Add navigation info for version control
+                        $chapter['navigation_info'] = $this->versionControl->getNavigationInfo($project_id, $chapter['order']);
+                    } catch (\Exception $e) {
+                        Log::warning('Error getting version control info for chapter', [
+                            'project_id' => $project_id,
+                            'chapter_order' => $chapter['order'] ?? null,
+                            'error' => $e->getMessage()
+                        ]);
+                        // Continue with default content
+                    }
+                }
+            }
+
+            // Get author styles for this workspace
+            $authorStyles = AuthorStyle::where('workspace_id', $workspace_id)
+                ->get()
+                ->map(function ($style) {
+                    $colors = ['bg-blue-100', 'bg-purple-100', 'bg-green-100', 'bg-pink-100', 'bg-amber-100', 'bg-cyan-100'];
+                    $colorIndex = crc32($style->id) % count($colors);
+                    return [
+                        'id' => $style->id,
+                        'name' => $style->author_name,
+                        'status' => $style->status ?? 'init_completed',
+                        'avatar' => strtoupper(substr($style->author_name, 0, 1)),
+                        'color' => $colors[$colorIndex],
+                    ];
+                });
+
+            return Inertia::render('Projects/Editor/Main', [
+                'workspaceId' => $workspace_id,
+                'projectId' => $project_id,
+                'project' => $project,
+                'chapters' => $chapters,
+                'authorStyles' => $authorStyles,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error loading editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
+                ->withErrors(['editor' => 'Failed to load editor: ' . $e->getMessage()]);
+        }
     }
 
     /**
@@ -107,11 +145,27 @@ class MainEditorController extends Controller
                 $chapters = $project->content;
             }
 
+            // Get author styles for this workspace
+            $authorStyles = AuthorStyle::where('workspace_id', $workspace_id)
+                ->get()
+                ->map(function ($style) {
+                    $colors = ['bg-blue-100', 'bg-purple-100', 'bg-green-100', 'bg-pink-100', 'bg-amber-100', 'bg-cyan-100'];
+                    $colorIndex = crc32($style->id) % count($colors);
+                    return [
+                        'id' => $style->id,
+                        'name' => $style->author_name,
+                        'status' => $style->status ?? 'init_completed',
+                        'avatar' => strtoupper(substr($style->author_name, 0, 1)),
+                        'color' => $colors[$colorIndex],
+                    ];
+                });
+
             return Inertia::render('Projects/Editor/Main', [
                 'workspaceId' => $workspace_id,
                 'projectId' => $project_id,
                 'project' => $project,
                 'chapters' => $chapters,
+                'authorStyles' => $authorStyles,
             ]);
         }
 
@@ -335,6 +389,7 @@ class MainEditorController extends Controller
                 'order' => 'required|integer',
                 'settings' => 'nullable|array',
                 'settings.currentPreset' => 'nullable|string',
+                'settings.authorProfile' => 'nullable|string',
                 'settings.aiModel' => 'nullable|string',
                 'settings.memory' => 'nullable|string',
                 'settings.storyGenre' => 'nullable|string',
@@ -384,30 +439,35 @@ class MainEditorController extends Controller
                 return response()->json(['error' => 'Chapter not found'], 404);
             }
 
-            // Get current content and node info for parent tracking
-            $currentContent = $this->versionControl->getCurrentContent($project_id, $validated['order']);
-            if ($currentContent === null) {
-                // Initialize if not exists
-                $currentContent = $validated['prompt'] ?? '';
+            // CRITICAL: Use the prompt from request (current editor content), not database
+            // The frontend sends the current editor content as 'prompt'
+            $currentContent = $validated['prompt'] ?? '';
+            
+            // Initialize version control if needed
+            $existingContent = $this->versionControl->getCurrentContent($project_id, $validated['order']);
+            if ($existingContent === null) {
                 $this->versionControl->initializeChapter($project_id, $validated['order'], $currentContent);
             }
+            // Note: We don't update version control here - the current content is what user typed
+            // Version control will create a new node when generation completes
 
             Log::info('Text generation request', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
                 'chapter_order' => $validated['order'],
+                'prompt_length' => strlen($currentContent),
                 'settings' => $settings,
                 'session_id' => $sessionId,
                 'user_id' => $user->id,
                 'model' => $settings['aiModel'] ?? 'default',
             ]);
 
-            // Dispatch streaming job
+            // Dispatch streaming job with CURRENT editor content
             StreamLLMJob::dispatch(
                 $workspace_id,
                 $project_id,
                 $validated['order'],
-                $currentContent,
+                $currentContent, // Use current editor content, not stale database content
                 $settings,
                 $user->id,
                 $sessionId,
@@ -492,6 +552,9 @@ class MainEditorController extends Controller
                 'content.order' => 'required_with:content|integer',
                 'content.content' => 'sometimes|nullable|string|max:1000000',
                 'content.trigger' => 'nullable|string|in:manual,auto,llm_generation',
+                'content.ai_ranges' => 'nullable|array',
+                'content.ai_ranges.*' => 'nullable|array',
+                'content.ai_ranges.*.*' => 'nullable|integer',
                 
                 // Settings validation
                 'settings' => 'nullable|array',
@@ -539,10 +602,14 @@ class MainEditorController extends Controller
                 $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
                 $chapters = $projectContent->content ?? [];
 
-                // Update chapter content in JSON
+                // Update chapter content and ai_ranges in JSON
                 foreach ($chapters as &$chapter) {
                     if (isset($chapter['order']) && $chapter['order'] === $contentData['order']) {
                         $chapter['content'] = $contentData['content'] ?? '';
+                        // Update ai_ranges if provided
+                        if (array_key_exists('ai_ranges', $contentData)) {
+                            $chapter['ai_ranges'] = $contentData['ai_ranges'];
+                        }
                         break;
                     }
                 }
@@ -659,9 +726,12 @@ class MainEditorController extends Controller
                 'attempts' => $attempt + 1
             ]);
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            // For XHR/Inertia PATCH requests, return the updated chapters as JSON
+            // This prevents page reloads and allows the frontend to update state
+            return response()->json([
+                'success' => true,
+                'chapters' => $updatedChapters,
+                'message' => 'Content saved successfully'
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -788,6 +858,7 @@ class MainEditorController extends Controller
                 'order' => 'required|integer',
                 'settings' => 'nullable|array',
                 'settings.currentPreset' => 'nullable|string',
+                'settings.authorProfile' => 'nullable|string',
                 'settings.aiModel' => 'nullable|string',
                 'settings.memory' => 'nullable|string',
                 'settings.storyGenre' => 'nullable|string',

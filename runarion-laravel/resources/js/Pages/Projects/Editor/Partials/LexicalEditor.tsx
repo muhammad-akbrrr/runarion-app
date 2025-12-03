@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useState, useEffect } from "react";
 import {
     LexicalComposer,
     type InitialConfigType,
@@ -37,7 +37,7 @@ import {
 } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
 import { $setBlocksType } from "@lexical/selection";
-import { ContentUpdatePlugin, EditorRefPlugin, StreamingPlugin } from "../Plugins";
+import { ContentUpdatePlugin, EditorRefPlugin, StreamingPlugin, ColorCodingPlugin } from "../plugins";
 import {
     ContextMenu,
     ContextMenuContent,
@@ -122,11 +122,15 @@ interface LexicalEditorProps {
     setContent: (content: string) => void;
     isStreaming: boolean;
     streamingText: string;
+    baseContent: string;
+    aiRanges: number[][]; // Array of [start, end] positions for AI text
+    isColorCoded: boolean;
     selectedChapter: any;
     isInteracting: boolean;
     setIsInteracting: (interacting: boolean) => void;
     isRegenerating?: boolean;
     onBlur: () => void;
+    onGetCurrentContent?: (callback: () => string) => void;
 }
 
 export function LexicalEditor({
@@ -134,14 +138,38 @@ export function LexicalEditor({
     setContent,
     isStreaming,
     streamingText,
+    baseContent,
+    aiRanges,
+    isColorCoded,
     selectedChapter,
     isInteracting,
     setIsInteracting,
     isRegenerating = false,
     onBlur,
+    onGetCurrentContent,
 }: LexicalEditorProps) {
     // Store editor instance for context menu
     const editorRef = useRef<any>(null);
+    
+    // Debug: Log aiRanges when they change
+    useEffect(() => {
+        console.log('🎨 LexicalEditor received aiRanges:', aiRanges);
+    }, [aiRanges]);
+    
+    // Expose function to get current editor content
+    useEffect(() => {
+        if (onGetCurrentContent) {
+            onGetCurrentContent(() => {
+                if (!editorRef.current) return '';
+                
+                let currentContent = '';
+                editorRef.current.getEditorState().read(() => {
+                    currentContent = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
+                });
+                return currentContent;
+            });
+        }
+    }, [onGetCurrentContent]);
 
     // Handle streaming updates from the plugin
     const handleStreamingUpdate = useCallback((fullContent: string) => {
@@ -210,7 +238,10 @@ export function LexicalEditor({
             <ContextMenu>
                 <ContextMenuTrigger asChild>
                     <div 
-                        className="bg-white rounded-lg min-h-full h-auto p-6 !pb-18 flex items-start justify-start"
+                        className={`bg-white rounded-lg min-h-full h-auto p-6 !pb-18 flex items-start justify-start editor-content ${
+                            isColorCoded ? 'color-coded' : ''
+                        }`}
+                        data-user-content-length={baseContent?.length || 0}
                         onContextMenu={() => setIsInteracting(true)}
                     >
                         <LexicalComposer initialConfig={editorConfig}>
@@ -257,9 +288,13 @@ export function LexicalEditor({
                             <StreamingPlugin 
                                 isStreaming={isStreaming}
                                 streamingText={streamingText}
-                                baseContent={content} // Use current content as base for streaming
+                                baseContent={baseContent} // User text before generation (preserved)
                                 isRegenerating={isRegenerating}
                                 onStreamingUpdate={handleStreamingUpdate}
+                            />
+                            <ColorCodingPlugin 
+                                aiRanges={aiRanges || []}
+                                isColorCoded={isColorCoded}
                             />
                             <EditorRefPlugin editorRef={editorRef} />
                         </LexicalComposer>

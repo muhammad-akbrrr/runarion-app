@@ -14,6 +14,17 @@ class AuthorStyleJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    /**
+     * The number of seconds the job can run before timing out.
+     * Style analysis requires multiple LLM calls and can take 10+ minutes.
+     */
+    public $timeout = 900; // 15 minutes
+
+    /**
+     * The number of times the job may be attempted.
+     */
+    public $tries = 2;
+
     protected $userId;
     protected $workspaceId;
     protected $projectId;
@@ -41,8 +52,10 @@ class AuthorStyleJob implements ShouldQueue
         $apiUrl = "http://python-app:5000/api/analyze-style";
 
         // Prepare request data
+        // on_exist: "update" allows re-running analysis if a previous attempt failed
         $requestData = [
             "author_name" => $this->authorName,
+            "on_exist" => "update",
             "caller" => [
                 "user_id" => (string)$this->userId,
                 "workspace_id" => $this->workspaceId,
@@ -75,16 +88,22 @@ class AuthorStyleJob implements ShouldQueue
                 'contents' => json_encode($requestData)
             ];
 
-            // Make the API call
-            $response = Http::timeout(300)->withoutVerifying()->asMultipart()->post($apiUrl, $multipartFiles);
+            // Make the API call - style analysis can take 10+ minutes with multiple LLM calls
+            $response = Http::timeout(840)->withoutVerifying()->asMultipart()->post($apiUrl, $multipartFiles);
 
-            // Log the response
+            // Log the response with body for debugging
             Log::info('Author style analysis API response', [
                 'status' => $response->status(),
                 'success' => $response->successful(),
                 'author_name' => $this->authorName,
                 'duration_ms' => (int)((microtime(true) - $startTime) * 1000),
+                'response_body' => $response->successful() ? 'success' : $response->body(),
             ]);
+
+            // Throw exception if request failed to trigger job retry
+            if (!$response->successful()) {
+                throw new \Exception("API request failed with status {$response->status()}: {$response->body()}");
+            }
 
         } catch (\Exception $e) {
             Log::error('Exception in AuthorStyleJob', [

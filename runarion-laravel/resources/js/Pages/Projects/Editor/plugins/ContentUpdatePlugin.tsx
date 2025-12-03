@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import {
     $getRoot,
@@ -45,11 +45,27 @@ interface ContentUpdatePluginProps {
  */
 export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePluginProps) {
     const [editor] = useLexicalComposerContext();
+    const wasStreamingRef = useRef(false);
+    const skipNextUpdateRef = useRef(false);
 
     useEffect(() => {
+        // Track when streaming ends - skip the next update to prevent flicker
+        if (wasStreamingRef.current && !isStreaming) {
+            console.log('ContentUpdatePlugin: Streaming just ended, will skip next update');
+            skipNextUpdateRef.current = true;
+        }
+        wasStreamingRef.current = isStreaming;
+        
         // Don't update content during streaming to avoid conflicts
         if (isStreaming) {
             console.log('ContentUpdatePlugin: Skipping update during streaming');
+            return;
+        }
+        
+        // Skip the update right after streaming ends (StreamingPlugin already rendered the content)
+        if (skipNextUpdateRef.current) {
+            console.log('ContentUpdatePlugin: Skipping post-streaming update to prevent flicker');
+            skipNextUpdateRef.current = false;
             return;
         }
 

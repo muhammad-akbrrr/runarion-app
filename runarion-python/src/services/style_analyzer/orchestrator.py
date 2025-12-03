@@ -264,10 +264,15 @@ class StyleAnalyzerOrchestrator:
         author_style_id, techniques_json, examples_json = self._get_author_style(
             caller.workspace_id, author_name
         )
+        
+        logger.info(f"check_and_clean: author_name={author_name}, workspace={caller.workspace_id}, "
+                    f"found_id={author_style_id}, on_exist={on_exist}")
 
         if author_style_id is not None:
             if on_exist == "update":
+                # Soft delete relations so we can re-run the analysis
                 self._soft_delete_author_style_relations(author_style_id)
+                logger.info(f"Soft deleted relations for author_style_id={author_style_id}")
                 return author_style_id, None
             elif on_exist == "get":
                 if techniques_json is not None and examples_json is not None:
@@ -302,8 +307,13 @@ class StyleAnalyzerOrchestrator:
         start_time = time.time()
         if author_style_id is None:
             author_style_id = str(ULID())
+            logger.info(f"run_pipeline: Generated new author_style_id={author_style_id}")
+        else:
+            logger.info(f"run_pipeline: Using existing author_style_id={author_style_id}")
+        
         try:
             self._create_author_style(author_style_id, author_name, caller)
+            logger.info(f"run_pipeline: Created/updated author_style record in DB")
         except Exception as e:
             logger.error(str(e), exc_info=True)
             return {

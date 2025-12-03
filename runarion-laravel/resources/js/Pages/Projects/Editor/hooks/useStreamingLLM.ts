@@ -56,9 +56,19 @@ export function useStreamingLLM({
             // Join public channel
             channelRef.current = Echo.channel(channelName);
             
+            // Listen for subscription success
+            channelRef.current.subscribed(() => {
+                console.log('✅ Successfully subscribed to channel:', channelName);
+            });
+            
+            // Listen for any error
+            channelRef.current.error((error: any) => {
+                console.error('❌ WebSocket channel error:', error);
+            });
+            
             // Listen for stream started event
             channelRef.current.listen('.llm.stream.started', (data: any) => {
-                console.log('Stream started:', data);
+                console.log('✅ Stream started event received:', data);
                 
                 // Security: Only process events for current workspace/project/chapter
                 if (data.workspace_id === workspaceId && 
@@ -80,7 +90,7 @@ export function useStreamingLLM({
 
             // Listen for stream chunks
             channelRef.current.listen('.llm.stream.chunk', (data: any) => {
-                console.log('Stream chunk received:', data);
+                console.log('✅ Stream chunk received:', data);
                 
                 // Security: Only process events for current workspace/project/chapter/session
                 if (data.workspace_id === workspaceId && 
@@ -99,7 +109,7 @@ export function useStreamingLLM({
 
             // Listen for stream completion
             channelRef.current.listen('.llm.stream.completed', (data: any) => {
-                console.log('Stream completed:', data);
+                console.log('✅ Stream completed event received:', data);
                 
                 // Security: Only process events for current workspace/project/chapter/session
                 if (data.workspace_id === workspaceId && 

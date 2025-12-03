@@ -3,6 +3,7 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { $getRoot, $createTextNode, $createParagraphNode } from 'lexical';
 import { 
     $convertFromMarkdownString,
+    $convertToMarkdownString,
     HEADING,
     UNORDERED_LIST,
     ORDERED_LIST,
@@ -51,41 +52,47 @@ export function StreamingPlugin({
     const [editor] = useLexicalComposerContext();
     const lastStreamingTextRef = useRef<string>('');
     const isStreamingRef = useRef<boolean>(false);
+    const hasInitializedRef = useRef<boolean>(false);
+    const baseContentAtStartRef = useRef<string>('');
 
     useEffect(() => {
         // Track streaming state changes
         if (isStreaming !== isStreamingRef.current) {
             isStreamingRef.current = isStreaming;
             if (!isStreaming) {
-                // Streaming ended, reset the ref
+                // Streaming ended, reset refs
                 lastStreamingTextRef.current = '';
+                hasInitializedRef.current = false;
+                baseContentAtStartRef.current = '';
                 console.log('StreamingPlugin: Streaming ended');
             } else {
-                console.log('StreamingPlugin: Streaming started');
+                // Streaming started - capture baseContent at this moment
+                baseContentAtStartRef.current = baseContent || '';
+                hasInitializedRef.current = false;
+                console.log('StreamingPlugin: Streaming started with baseContent:', {
+                    baseContentLength: baseContent?.length || 0,
+                    baseContentPreview: baseContent?.substring(0, 50) || ''
+                });
             }
         }
 
         if (isStreaming && streamingText && streamingText !== lastStreamingTextRef.current) {
             lastStreamingTextRef.current = streamingText;
             
-            console.log('StreamingPlugin: Updating with streaming text', {
-                baseContentLength: baseContent?.length || 0,
-                streamingTextLength: streamingText?.length || 0,
-                streamingTextPreview: streamingText?.substring(0, 50) + '...',
-                isRegenerating
-            });
-
+            // Use the baseContent captured at stream start to avoid race conditions
+            const effectiveBaseContent = baseContentAtStartRef.current || baseContent || '';
+            
             // Combine base content with streaming text
             let separator = '';
-            if (baseContent) {
+            if (effectiveBaseContent) {
                 // Add space if base content doesn't end with newline or space
-                if (!baseContent.endsWith('\n') && !baseContent.endsWith(' ') && 
+                if (!effectiveBaseContent.endsWith('\n') && !effectiveBaseContent.endsWith(' ') && 
                     !streamingText.startsWith('\n') && !streamingText.startsWith(' ')) {
                     separator = ' ';
                 }
             }
             
-            const fullContent = baseContent + separator + streamingText;
+            const fullContent = effectiveBaseContent + separator + streamingText;
 
             // Notify parent component of the streaming update
             if (onStreamingUpdate) {
@@ -94,15 +101,14 @@ export function StreamingPlugin({
 
             editor.update(() => {
                 const root = $getRoot();
+                
+                // Clear and re-render the full content
+                // This is necessary because Lexical doesn't have a good way to append markdown
                 root.clear();
 
+                // Render the full content (user text + AI text)
                 try {
-                    // Convert the combined markdown to Lexical nodes
                     $convertFromMarkdownString(fullContent, SUPPORTED_TRANSFORMERS);
-                    console.log('StreamingPlugin: Successfully converted markdown to Lexical nodes', {
-                        isRegenerating,
-                        fullContentLength: fullContent.length
-                    });
                 } catch (error) {
                     console.error('StreamingPlugin: Error parsing streaming markdown:', error);
                     // Fallback: add as plain text in a paragraph
@@ -111,20 +117,7 @@ export function StreamingPlugin({
                     paragraph.append(textNode);
                     root.append(paragraph);
                 }
-
-                // Move cursor to end - use a more reliable method
-                setTimeout(() => {
-                    editor.update(() => {
-                        const root = $getRoot();
-                        if (root.getChildrenSize() > 0) {
-                            const lastChild = root.getLastChild();
-                            if (lastChild) {
-                                lastChild.selectEnd();
-                            }
-                        }
-                    });
-                }, 10); // Slightly longer timeout to ensure DOM is updated
-            });
+            }, { discrete: true }); // Use discrete update to batch changes
         }
     }, [isStreaming, streamingText, baseContent, isRegenerating, editor, onStreamingUpdate]);
 

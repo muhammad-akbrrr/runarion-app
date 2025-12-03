@@ -17,6 +17,45 @@ export interface AuthorStyle {
   fileCount: number;
   avatar: string;
   color: string;
+  status: 'init_completed' | 'sampling_completed' | 'sampling_failed' | 'profiling_completed' | 'profiling_failed';
+  projectIds: string[];
+  techniques?: {
+    dialogue?: {
+      conversation_style?: string;
+      dialogue_balance?: string;
+      character_voices?: string;
+    };
+    action?: {
+      action_sequences?: string;
+      fight_scenes?: string;
+      tension?: string;
+    };
+    literary?: {
+      devices?: string;
+      metaphors?: string;
+      pacing?: string;
+      transitions?: string;
+      word_patterns?: string;
+      scene_structure?: string;
+    };
+    descriptions?: {
+      atmosphere?: string;
+      scene_painting?: string;
+      character_descriptions?: string;
+    };
+    worldbuilding?: {
+      world_reveals?: string;
+      exposition?: string;
+      history_magic?: string;
+    };
+  };
+  examples?: {
+    dialogue?: string[];
+    action?: string[];
+    literary?: string[];
+    descriptions?: string[];
+    worldbuilding?: string[];
+  };
 }
 
 // Define the project type

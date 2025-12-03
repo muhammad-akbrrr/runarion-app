@@ -44,6 +44,9 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/files', [FileManagerController::class, 'show'])->name('workspace.files');
     Route::post('/{workspace_id}/files/author-styles', [FileManagerController::class, 'storeAuthorStyle'])->name('workspace.files.author-styles.store');
+    Route::get('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'getAuthorStyle'])->name('workspace.files.author-styles.show');
+    Route::patch('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'updateAuthorStyle'])->name('workspace.files.author-styles.update');
+    Route::delete('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'deleteAuthorStyle'])->name('workspace.files.author-styles.delete');
 
     Route::get('/files', fn() => '')->name('raw.workspace.files');
 });

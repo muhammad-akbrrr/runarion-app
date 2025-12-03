@@ -128,6 +128,7 @@ export interface ProjectSettings {
     repetitionPenalty: number;
     outputLength: number;
     minOutputToken: number;
+    thinkingBudget: number;  // Token budget for AI reasoning (thinking models only)
     
     // Sampling
     topP: number;
@@ -146,11 +147,26 @@ export interface SidebarSettingsProps {
     onSettingChange: (key: keyof ProjectSettings, value: any) => void;
     workspaceId?: string;
     projectId?: string;
+    authorStyles?: Array<{ id: string; name: string; status?: string }>;  // Available author styles from workspace
 }
+
+// Models that support thinking (internal reasoning before responding)
+export const THINKING_MODELS = [
+    "gemini-2.5-pro",
+    "gemini-2.5-flash", 
+    "gemini-3-pro-preview"
+];
+
+// Default thinking budgets per model
+export const DEFAULT_THINKING_BUDGETS: Record<string, number> = {
+    "gemini-2.5-pro": 4096,
+    "gemini-2.5-flash": 2048,
+    "gemini-3-pro-preview": 4096,
+};
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
     currentPreset: "story-telling",
-    authorProfile: "tolkien",
+    authorProfile: "",  // Empty - user must select from available workspace author styles
     aiModel: "gemini-2.0-flash",
     memory: "",
     storyGenre: "",
@@ -160,6 +176,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
     repetitionPenalty: 0,
     outputLength: 300,
     minOutputToken: 50,
+    thinkingBudget: 4096,  // Default thinking budget (only used for thinking models)
     topP: 0.85,
     tailFree: 0.85,
     topA: 0.85,

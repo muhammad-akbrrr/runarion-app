@@ -24,6 +24,10 @@ class GenerationConfig(BaseModel):
     banned_tokens: Optional[List[str]] = None
     stop_sequences: Optional[List[str]] = None
     stream: bool = False
+    # Gemini thinking config - allows configurable thinking budget for supported models
+    # Set to None to use model-specific defaults, 0 to disable, or a positive value for custom budget
+    thinking_budget: Optional[int] = None
+    include_thinking: Optional[bool] = False
 
 class BaseGenerationRequest(BaseModel):
     usecase: str = "mock"
