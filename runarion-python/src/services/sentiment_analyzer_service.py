@@ -395,9 +395,8 @@ Return JSON only:
                     except ValueError:
                         raw_order = 0
                         
-                chapter_number = raw_order + 1 if raw_order == 0 else raw_order  # Convert 0 to 1
-                if chapter_number < 1:
-                    chapter_number = 1
+                # Always convert 0-indexed order to 1-indexed chapter number
+                chapter_number = raw_order + 1
                 chapter_name = chapter.get('chapter_name', f"Chapter {chapter_number}")
                 chapter_content = chapter.get('content', '')
                 
@@ -801,7 +800,7 @@ Return JSON only:
                     relationships.append(result)
                     
                     # Store relationship in database
-                    self._store_relationship_v2(project_id, result)
+                    self._store_relationship_v2(project_id, workspace_id, result, model, provider)
                 
                 # Rate limiting delay between character pairs to avoid 429 errors
                 # This is on top of the per-chapter delays
@@ -823,7 +822,7 @@ Return JSON only:
             logger.error(f"Error in extract_relationships_v2: {e}", exc_info=True)
             return {'error': str(e), 'success': False}
     
-    def _store_relationship_v2(self, project_id: str, relationship_data: Dict[str, Any]) -> None:
+    def _store_relationship_v2(self, project_id: str, workspace_id: str, relationship_data: Dict[str, Any], model: str = "gemini-2.0-flash", provider: str = "gemini") -> None:
         """
         Store the V2 relationship data in the database.
         
@@ -835,29 +834,49 @@ Return JSON only:
             target = relationship_data['target']
             new_chapter_analyses = relationship_data.get('chapter_analyses', [])
             
+            logger.info(f"=== STORING V2: {source} → {target}, new chapters: {len(new_chapter_analyses)} ===")
+            
             # =====================================================
-            # STEP 1: Check for existing relationship and merge
+            # STEP 1: DIRECTLY query existing chapter_analyses from DB
             # =====================================================
             existing_chapters = []
-            existing_rel = self._get_existing_relationship(project_id, source, target)
             
-            if existing_rel:
-                # Load existing chapter analyses from properties (where they're actually stored)
-                rel_props = existing_rel.get('properties', {})
-                existing_chapters_json = rel_props.get('chapter_analyses', '[]')
-                
-                logger.info(f"Found existing relationship: {source} → {target}")
-                logger.debug(f"Existing properties keys: {list(rel_props.keys()) if rel_props else 'none'}")
-                
+            # Get vertex IDs
+            source_vertex_id = self.records_manager._get_vertex_id_by_name(project_id, source)
+            target_vertex_id = self.records_manager._get_vertex_id_by_name(project_id, target)
+            
+            if source_vertex_id and target_vertex_id:
+                conn = None
                 try:
-                    if isinstance(existing_chapters_json, str):
-                        existing_chapters = json.loads(existing_chapters_json)
-                    elif isinstance(existing_chapters_json, list):
-                        existing_chapters = existing_chapters_json
-                    logger.info(f"Loaded {len(existing_chapters)} existing chapter analyses for merge")
-                except (json.JSONDecodeError, TypeError) as e:
-                    logger.warning(f"Could not parse existing chapter_analyses: {e}")
-                    existing_chapters = []
+                    conn = self.records_manager.db_pool.getconn()
+                    with conn.cursor() as cursor:
+                        # Direct query for chapter_analyses using PostgreSQL JSON operator
+                        cursor.execute("""
+                            SELECT properties->>'chapter_analyses' 
+                            FROM novel_graph_edges 
+                            WHERE project_id = %s 
+                            AND source_vertex_id = %s 
+                            AND target_vertex_id = %s
+                            ORDER BY updated_at DESC
+                            LIMIT 1
+                        """, (project_id, source_vertex_id, target_vertex_id))
+                        
+                        result = cursor.fetchone()
+                        if result and result[0]:
+                            try:
+                                existing_chapters = json.loads(result[0])
+                                existing_ch_nums = [ch.get('chapter_number', '?') for ch in existing_chapters]
+                                logger.info(f"Found {len(existing_chapters)} existing chapters: {existing_ch_nums}")
+                            except (json.JSONDecodeError, TypeError) as e:
+                                logger.warning(f"Could not parse existing chapter_analyses: {e}")
+                                existing_chapters = []
+                        else:
+                            logger.info(f"No existing chapters found for {source} → {target}")
+                except Exception as e:
+                    logger.warning(f"Error fetching existing chapters: {e}")
+                finally:
+                    if conn:
+                        self.records_manager.db_pool.putconn(conn)
             
             # =====================================================
             # STEP 2: Merge chapter analyses (update by chapter number, add new)
@@ -872,9 +891,13 @@ Return JSON only:
                 # We merged with existing data, need to re-synthesize
                 logger.info(f"Re-synthesizing overall score from {len(merged_chapters)} merged chapters")
                 overall = self._synthesize_overall_from_chapters(
+                    project_id=project_id,
+                    workspace_id=workspace_id,
                     source_character=source,
                     target_character=target,
-                    chapter_analyses=merged_chapters
+                    chapter_analyses=merged_chapters,
+                    model=model,
+                    provider=provider
                 )
             else:
                 # No existing data to merge, use the provided overall
@@ -924,25 +947,71 @@ Return JSON only:
         """
         Get existing relationship between source and target if it exists.
         
+        Uses PostgreSQL metadata table for reliable retrieval of large JSON properties
+        like chapter_analyses (AGE has issues with large escaped JSON).
+        
         Returns:
             Relationship dict with properties including chapter_analyses, or None if not found
         """
         try:
-            relationships = self.records_manager.get_project_relationships(project_id)
-            source_lower = source.lower().strip()
-            target_lower = target.lower().strip()
+            logger.info(f"Looking up existing relationship: {source} → {target} in project {project_id}")
             
-            for rel in relationships:
-                rel_source = str(rel.get('source', '')).lower().strip()
-                rel_target = str(rel.get('target', '')).lower().strip()
+            # Use metadata table for reliable chapter_analyses retrieval
+            rel = self.records_manager.get_relationship_metadata_by_names(project_id, source, target)
+            
+            if rel:
+                logger.info(f"Found existing relationship: {source} → {target}")
+                props = rel.get('properties', {})
                 
-                if rel_source == source_lower and rel_target == target_lower:
-                    logger.debug(f"Found existing relationship: {source} → {target}")
+                if not props:
+                    logger.warning(f"Relationship found but properties is empty/None")
                     return rel
+                
+                logger.debug(f"Properties keys: {list(props.keys())}")
+                
+                # Get chapter_analyses - could be string (JSON) or already parsed list
+                chapter_analyses_raw = props.get('chapter_analyses')
+                
+                if chapter_analyses_raw is None:
+                    logger.warning(f"chapter_analyses key not found in properties")
+                    logger.info(f"Found existing relationship with 0 chapter analyses")
+                    return rel
+                
+                # Parse chapter_analyses
+                try:
+                    if isinstance(chapter_analyses_raw, str):
+                        if chapter_analyses_raw.strip() == '' or chapter_analyses_raw.strip() == '[]':
+                            chapters = []
+                        else:
+                            chapters = json.loads(chapter_analyses_raw)
+                    elif isinstance(chapter_analyses_raw, list):
+                        chapters = chapter_analyses_raw
+                    else:
+                        logger.warning(f"Unexpected chapter_analyses type: {type(chapter_analyses_raw)}")
+                        chapters = []
+                    
+                    logger.info(f"Found existing relationship with {len(chapters)} chapter analyses")
+                    
+                    # Log chapter numbers for debugging
+                    if chapters:
+                        chapter_nums = [ch.get('chapter_number', ch.get('chapter_order', '?')) for ch in chapters]
+                        logger.debug(f"Existing chapter numbers: {chapter_nums}")
+                        
+                except json.JSONDecodeError as parse_err:
+                    logger.error(f"JSON decode error for chapter_analyses: {parse_err}")
+                    logger.debug(f"Raw chapter_analyses value: {str(chapter_analyses_raw)[:200]}...")
+                    logger.info(f"Found existing relationship with 0 chapter analyses (parse error)")
+                except Exception as parse_err:
+                    logger.error(f"Unexpected error parsing chapter_analyses: {parse_err}", exc_info=True)
+                    logger.info(f"Found existing relationship with 0 chapter analyses (error)")
+                    
+                return rel
+            else:
+                logger.info(f"No existing relationship found for {source} → {target}")
             
             return None
         except Exception as e:
-            logger.warning(f"Error getting existing relationship: {e}")
+            logger.error(f"Error getting existing relationship: {e}", exc_info=True)
             return None
     
     def _merge_chapter_analyses(
@@ -981,9 +1050,13 @@ Return JSON only:
     
     def _synthesize_overall_from_chapters(
         self,
+        project_id: str,
+        workspace_id: str,
         source_character: str,
         target_character: str,
-        chapter_analyses: List[Dict[str, Any]]
+        chapter_analyses: List[Dict[str, Any]],
+        model: str = "gemini-2.0-flash",
+        provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
         Re-synthesize overall relationship assessment from ALL chapter analyses.
@@ -1006,12 +1079,14 @@ Return JSON only:
         # Try AI synthesis first
         try:
             # Use the existing synthesis method
-            overall = self._synthesize_relationship_overall(
+            overall = self._synthesize_overall_relationship(
+                project_id=project_id,
+                workspace_id=workspace_id,
                 source_character=source_character,
                 target_character=target_character,
                 chapter_analyses=chapter_analyses,
-                model="gemini-2.0-flash",
-                provider="gemini"
+                model=model,
+                provider=provider
             )
             if overall:
                 return overall
@@ -1326,11 +1401,9 @@ Return JSON only:
                 logger.info(f"=== 1-TO-1 MODE: Extracting ONLY {char1} <-> {char2} ===")
                 
                 for chapter in chapters_to_process:
-                    # Ensure 1-based chapter numbering
+                    # Always convert 0-indexed order to 1-indexed chapter number
                     raw_order = chapter.get('order', 0)
-                    chapter_number = raw_order + 1 if raw_order == 0 else raw_order
-                    if chapter_number < 1:
-                        chapter_number = 1
+                    chapter_number = raw_order + 1
                     chapter_name = chapter.get('chapter_name', f"Chapter {chapter_number}")
                     chapter_content = chapter.get('content', '')
                     
@@ -1391,11 +1464,9 @@ Return JSON only:
                     character_interactions = []
                     
                     for chapter in chapters_to_process:
-                        # Ensure 1-based chapter numbering
+                        # Always convert 0-indexed order to 1-indexed chapter number
                         raw_order = chapter.get('order', 0)
-                        chapter_number = raw_order + 1 if raw_order == 0 else raw_order
-                        if chapter_number < 1:
-                            chapter_number = 1
+                        chapter_number = raw_order + 1
                         chapter_name = chapter.get('chapter_name', f"Chapter {chapter_number}")
                         chapter_content = chapter.get('content', '')
                         

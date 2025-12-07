@@ -1150,6 +1150,95 @@ class RecordsManager:
             if conn:
                 self.db_pool.putconn(conn)
     
+    def get_relationship_metadata_by_names(
+        self,
+        project_id: str,
+        source_name: str,
+        target_name: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get relationship metadata from PostgreSQL by source and target names.
+        This is more reliable than reading from AGE for large JSON properties like chapter_analyses.
+        
+        Args:
+            project_id: Project UUID
+            source_name: Source entity name
+            target_name: Target entity name
+            
+        Returns:
+            Dict with properties including chapter_analyses, or None if not found
+        """
+        conn = None
+        try:
+            # First get vertex IDs for source and target
+            source_vertex_id = self._get_vertex_id_by_name(project_id, source_name)
+            target_vertex_id = self._get_vertex_id_by_name(project_id, target_name)
+            
+            logger.debug(f"Vertex ID lookup: source={source_name} -> {source_vertex_id}, target={target_name} -> {target_vertex_id}")
+            
+            if not source_vertex_id or not target_vertex_id:
+                logger.debug(f"Could not find vertex IDs for {source_name} or {target_name}")
+                return None
+            
+            conn = self.db_pool.getconn()
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    SELECT edge_id, edge_label, properties
+                    FROM novel_graph_edges
+                    WHERE project_id = %s 
+                    AND source_vertex_id = %s 
+                    AND target_vertex_id = %s
+                    ORDER BY updated_at DESC
+                    LIMIT 1
+                """, (project_id, source_vertex_id, target_vertex_id))
+                
+                result = cursor.fetchone()
+                if result:
+                    edge_id, edge_label, properties_json = result
+                    
+                    # Debug: Log raw properties type and content
+                    logger.debug(f"Raw properties_json type: {type(properties_json)}")
+                    
+                    # Parse properties - handle both string and dict cases
+                    if properties_json is None:
+                        properties = {}
+                    elif isinstance(properties_json, str):
+                        try:
+                            properties = json.loads(properties_json)
+                        except json.JSONDecodeError as e:
+                            logger.error(f"Failed to parse properties JSON string: {e}")
+                            properties = {}
+                    elif isinstance(properties_json, dict):
+                        properties = properties_json
+                    else:
+                        logger.warning(f"Unexpected properties type: {type(properties_json)}")
+                        properties = {}
+                    
+                    # Debug: Log parsed properties keys and chapter_analyses info
+                    logger.debug(f"Parsed properties keys: {list(properties.keys()) if properties else 'empty'}")
+                    if 'chapter_analyses' in properties:
+                        ch_val = properties['chapter_analyses']
+                        logger.debug(f"chapter_analyses type: {type(ch_val)}, length: {len(str(ch_val)) if ch_val else 0}")
+                    else:
+                        logger.debug("chapter_analyses key NOT found in properties")
+                    
+                    return {
+                        'edge_id': edge_id,
+                        'source': source_name,
+                        'target': target_name,
+                        'relationship_type': edge_label,
+                        'properties': properties or {}
+                    }
+                else:
+                    logger.debug(f"No edge found in metadata table for {source_name} -> {target_name}")
+            return None
+        except Exception as e:
+            logger.warning(f"Error getting relationship metadata by names: {e}", exc_info=True)
+            return None
+        finally:
+            if conn:
+                self.db_pool.putconn(conn)
+    
     def _create_edge_metadata(
         self,
         project_id: str,
@@ -1159,26 +1248,50 @@ class RecordsManager:
         edge_label: str,
         properties: Dict[str, Any]
     ) -> None:
-        """Create metadata record in novel_graph_edges table."""
+        """Create or update metadata record in novel_graph_edges table."""
         conn = None
         try:
             conn = self.db_pool.getconn()
             with conn.cursor() as cursor:
+                # Check if record exists
                 cursor.execute("""
-                    INSERT INTO novel_graph_edges 
-                    (project_id, source_vertex_id, target_vertex_id, edge_id, edge_label, properties, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
-                    ON CONFLICT DO NOTHING
-                """, (
-                    project_id,
-                    source_vertex_id,
-                    target_vertex_id,
-                    edge_id,
-                    edge_label,
-                    json.dumps(properties)
-                ))
+                    SELECT id FROM novel_graph_edges 
+                    WHERE project_id = %s AND source_vertex_id = %s AND target_vertex_id = %s
+                    LIMIT 1
+                """, (project_id, source_vertex_id, target_vertex_id))
+                existing = cursor.fetchone()
+                
+                if existing:
+                    # Update existing record
+                    cursor.execute("""
+                        UPDATE novel_graph_edges 
+                        SET edge_id = %s, edge_label = %s, properties = %s, updated_at = NOW()
+                        WHERE project_id = %s AND source_vertex_id = %s AND target_vertex_id = %s
+                    """, (
+                        edge_id,
+                        edge_label,
+                        json.dumps(properties),
+                        project_id,
+                        source_vertex_id,
+                        target_vertex_id
+                    ))
+                    logger.debug(f"Updated metadata record for edge {edge_id}")
+                else:
+                    # Insert new record
+                    cursor.execute("""
+                        INSERT INTO novel_graph_edges 
+                        (project_id, source_vertex_id, target_vertex_id, edge_id, edge_label, properties, created_at, updated_at)
+                        VALUES (%s, %s, %s, %s, %s, %s, NOW(), NOW())
+                    """, (
+                        project_id,
+                        source_vertex_id,
+                        target_vertex_id,
+                        edge_id,
+                        edge_label,
+                        json.dumps(properties)
+                    ))
+                    logger.debug(f"Created metadata record for edge {edge_id}")
                 conn.commit()
-                logger.debug(f"Created metadata record for edge {edge_id}")
         except Exception as e:
             if conn:
                 conn.rollback()
