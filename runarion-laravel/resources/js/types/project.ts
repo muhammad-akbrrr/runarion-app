@@ -118,6 +118,7 @@ export interface ProjectSettings {
     currentPreset: string;
     authorProfile: string;
     aiModel: string;
+    selectionToolbarMode: 'formatting' | 'ai-rewrite';  // What toolbar to show on text selection
     memory: string;
     storyGenre: string;
     storyTone: string;
@@ -148,6 +149,7 @@ export interface SidebarSettingsProps {
     workspaceId?: string;
     projectId?: string;
     authorStyles?: Array<{ id: string; name: string; status?: string }>;  // Available author styles from workspace
+    onApplyStoryFix?: (oldText: string, newText: string) => boolean;  // Callback to apply story fixes to editor, returns true if successful
 }
 
 // Models that support thinking (internal reasoning before responding)
@@ -168,6 +170,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
     currentPreset: "story-telling",
     authorProfile: "",  // Empty - user must select from available workspace author styles
     aiModel: "gemini-2.0-flash",
+    selectionToolbarMode: "formatting",  // Default to formatting toolbar on text selection
     memory: "",
     storyGenre: "",
     storyTone: "",

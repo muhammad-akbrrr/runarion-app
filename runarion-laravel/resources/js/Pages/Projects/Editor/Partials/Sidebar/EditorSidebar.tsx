@@ -17,7 +17,8 @@ export function EditorSidebar({
     onSettingChange,
     workspaceId, 
     projectId,
-    authorStyles
+    authorStyles,
+    onApplyStoryFix
 }: EditorSidebarProps) {
     return (
         <SidebarProvider
@@ -54,6 +55,7 @@ export function EditorSidebar({
                             workspaceId={workspaceId}
                             projectId={projectId}
                             authorStyles={authorStyles}
+                            onApplyStoryFix={onApplyStoryFix}
                         />
                     </SidebarContent>
                 </Sidebar>

@@ -277,6 +277,145 @@ def stream_text_route():
         current_app.logger.error(f"Validation error: {e}")
         return {"error": "Invalid request data", "details": e.errors()}, 400
 
+@generate.route("/rewrite-selection", methods=["POST"])
+def rewrite_selection_route():
+    """
+    Rewrite selected text with context awareness.
+    
+    Actions:
+    - rewrite: Improve the writing quality while preserving meaning
+    - humanize: Make the text sound more natural and human-written
+    - custom: Apply a custom instruction to transform the text
+    
+    Request body:
+        project_id: ULID of the project
+        workspace_id: ULID of the workspace
+        selected_text: The text to rewrite
+        context_before: Text that comes before the selection (for flow)
+        context_after: Text that comes after the selection (for flow)
+        action: "rewrite" | "humanize" | "custom"
+        custom_instruction: Custom instruction (only for "custom" action)
+        model: AI model to use (default: gemini-2.5-flash)
+        provider: AI provider (default: gemini)
+        
+    Returns:
+        200: {"success": true, "new_text": "..."}
+        400: {"error": "..."}
+        500: {"error": "..."}
+    """
+    json_data = request.get_json()
+    
+    selected_text = json_data.get("selected_text", "")
+    context_before = json_data.get("context_before", "")
+    context_after = json_data.get("context_after", "")
+    action = json_data.get("action", "rewrite")
+    custom_instruction = json_data.get("custom_instruction", "")
+    model = json_data.get("model", "gemini-2.5-flash")
+    provider = json_data.get("provider", "gemini")
+    project_id = json_data.get("project_id")
+    workspace_id = json_data.get("workspace_id")
+    
+    if not selected_text:
+        return jsonify({"error": "selected_text is required"}), 400
+    
+    if action not in ["rewrite", "humanize", "custom"]:
+        return jsonify({"error": f"Invalid action: {action}"}), 400
+    
+    if action == "custom" and not custom_instruction:
+        return jsonify({"error": "custom_instruction is required for custom action"}), 400
+    
+    try:
+        # Build the prompt based on action
+        if action == "rewrite":
+            instruction = """Rewrite the selected text to improve clarity, flow, and style while preserving the original meaning and tone. Make it more engaging and polished."""
+        elif action == "humanize":
+            instruction = """Rewrite the selected text to sound more natural, conversational, and human-written. Remove any robotic or AI-like patterns. Add personality and authentic voice while maintaining the meaning."""
+        else:  # custom
+            instruction = custom_instruction
+        
+        prompt = f"""You are an expert editor helping to refine a piece of writing.
+
+CONTEXT BEFORE THE SELECTION:
+---
+{context_before[-500:] if context_before else "(Beginning of document)"}
+---
+
+SELECTED TEXT TO REWRITE:
+---
+{selected_text}
+---
+
+CONTEXT AFTER THE SELECTION:
+---
+{context_after[:500] if context_after else "(End of document)"}
+---
+
+INSTRUCTION: {instruction}
+
+IMPORTANT RULES:
+1. ONLY output the rewritten text - no explanations, no quotes, no markdown formatting
+2. The rewritten text must flow naturally with the context before and after
+3. Maintain the same approximate length (within 20% of original)
+4. Preserve any proper nouns, character names, and specific terminology
+5. Keep the same tense and perspective as the original
+6. Do not add new information or change the core meaning
+
+Rewritten text:"""
+
+        # Build the request for generation
+        from models.request import BaseGenerationRequest, GenerationConfig
+        from models.quota import QuotaCaller
+        
+        # Create a caller for the request
+        caller = QuotaCaller.from_request_data(
+            user_id=1,  # Default user ID (will use default API keys)
+            workspace_id=workspace_id or "system",
+            project_id=project_id or "system",
+            session_id="rewrite-selection",
+            api_keys={}  # Will use default API keys from environment
+        )
+        
+        req_obj = BaseGenerationRequest(
+            usecase="novel_pipeline",
+            provider=provider,
+            model=model,
+            prompt=prompt,
+            generation_config=GenerationConfig(
+                max_output_tokens=2000,
+                temperature=0.7,
+                stream=False
+            ),
+            caller=caller
+        )
+        
+        engine = GenerationEngine(req_obj)
+        response = engine.generate(skip_quota=True)
+        
+        if not response or not response.text:
+            return jsonify({"error": "Failed to generate rewrite"}), 500
+        
+        # Clean up the response - remove any accidental quotes or formatting
+        new_text = response.text.strip()
+        
+        # Remove surrounding quotes if present
+        if (new_text.startswith('"') and new_text.endswith('"')) or \
+           (new_text.startswith("'") and new_text.endswith("'")):
+            new_text = new_text[1:-1]
+        
+        current_app.logger.info(f"Rewrite successful: {len(selected_text)} chars -> {len(new_text)} chars")
+        
+        return jsonify({
+            "success": True,
+            "new_text": new_text,
+            "action": action
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Rewrite error: {type(e).__name__} - {e}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({"error": f"Failed to rewrite text: {str(e)}"}), 500
+
+
 def stream_generator(engine, conversation_manager=None, project_id=None, chapter_order=None):
     """
     Generator function that yields SSE formatted chunks from the streaming engine.

@@ -674,16 +674,16 @@ class StreamLLMJob implements ShouldQueue
                 
                 foreach ($chunks as $subChunk) {
                     $subChunkSize = strlen($subChunk);
-                    broadcast(new LLMStreamChunk(
-                        $this->workspaceId,
-                        $this->projectId,
-                        $this->chapterOrder,
-                        $this->sessionId,
+                broadcast(new LLMStreamChunk(
+                    $this->workspaceId,
+                    $this->projectId,
+                    $this->chapterOrder,
+                    $this->sessionId,
                         $subChunk,
-                        $chunkIndex
-                    ));
-                    
-                    $chunkIndex++;
+                    $chunkIndex
+                ));
+                
+                $chunkIndex++;
                 }
             }
         } catch (\Exception $e) {

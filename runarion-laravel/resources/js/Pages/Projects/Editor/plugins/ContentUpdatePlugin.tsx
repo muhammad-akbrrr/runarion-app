@@ -21,7 +21,7 @@ import {
 } from '@lexical/markdown';
 
 // Define supported transformers using the correct exports
-const SUPPORTED_TRANSFORMERS = [
+export const SUPPORTED_TRANSFORMERS = [
     HEADING,
     UNORDERED_LIST,
     ORDERED_LIST,
@@ -47,6 +47,7 @@ export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePlugi
     const [editor] = useLexicalComposerContext();
     const wasStreamingRef = useRef(false);
     const skipNextUpdateRef = useRef(false);
+    const lastContentLengthRef = useRef(0);
 
     useEffect(() => {
         // Track when streaming ends - skip the next update to prevent flicker
@@ -74,6 +75,11 @@ export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePlugi
             contentPreview: content?.substring(0, 50) + '...'
         });
 
+        // Save scroll position before update
+        const editorElement = editor.getRootElement();
+        const scrollContainer = editorElement?.closest('.overflow-y-auto') || editorElement?.parentElement;
+        const savedScrollTop = scrollContainer?.scrollTop || 0;
+
         editor.update(() => {
             const root = $getRoot();
             
@@ -85,10 +91,19 @@ export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePlugi
                 return; // No need to update
             }
             
+            // Determine if this is a major change (chapter switch) or minor edit
+            const previousLength = lastContentLengthRef.current;
+            const newLength = content?.length || 0;
+            const lengthDiff = Math.abs(newLength - previousLength);
+            const isMajorChange = previousLength === 0 || lengthDiff > previousLength * 0.5;
+            
             console.log('ContentUpdatePlugin: Updating editor content', {
                 currentLength: currentMarkdown.length,
-                newLength: content?.length || 0
+                newLength: newLength,
+                isMajorChange
             });
+            
+            lastContentLengthRef.current = newLength;
             
             // Clear the editor
             root.clear();
@@ -112,17 +127,27 @@ export function ContentUpdatePlugin({ content, isStreaming }: ContentUpdatePlugi
                 root.append(paragraph);
             }
 
-            // Set cursor to end after content is loaded - use setTimeout to avoid race conditions
-            setTimeout(() => {
-                editor.update(() => {
-                    if (root.getChildrenSize() > 0) {
-                        const lastChild = root.getLastChild();
-                        if (lastChild) {
-                            lastChild.selectEnd();
+            // Only set cursor to end on major changes (chapter switches)
+            // For minor edits, preserve scroll position
+            if (isMajorChange) {
+                setTimeout(() => {
+                    editor.update(() => {
+                        if (root.getChildrenSize() > 0) {
+                            const lastChild = root.getLastChild();
+                            if (lastChild) {
+                                lastChild.selectEnd();
+                            }
                         }
+                    });
+                }, 10);
+            } else {
+                // Restore scroll position for minor edits
+                setTimeout(() => {
+                    if (scrollContainer) {
+                        scrollContainer.scrollTop = savedScrollTop;
                     }
-                });
-            }, 10);
+                }, 20);
+            }
         });
     }, [content, editor, isStreaming]);
 

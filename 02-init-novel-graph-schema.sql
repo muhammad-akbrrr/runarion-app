@@ -48,6 +48,9 @@ SELECT create_vlabel('novel_pipeline_graph', 'Scene');
 -- Drafts (bridge to relational data)
 SELECT create_vlabel('novel_pipeline_graph', 'Draft');
 
+-- Interaction Records (individual character interactions that build up relationships)
+SELECT create_vlabel('novel_pipeline_graph', 'Interaction');
+
 -- =============================================================================
 -- Create Edge Labels (Relationship Types)
 -- =============================================================================
@@ -94,6 +97,10 @@ SELECT create_elabel('novel_pipeline_graph', 'FOLLOWS_FROM');
 -- Draft relationships
 SELECT create_elabel('novel_pipeline_graph', 'BELONGS_TO');
 SELECT create_elabel('novel_pipeline_graph', 'DERIVED_FROM');
+
+-- Interaction relationships (link interactions to character relationships)
+SELECT create_elabel('novel_pipeline_graph', 'HAS_INTERACTION');
+SELECT create_elabel('novel_pipeline_graph', 'INVOLVES');
 
 -- =============================================================================
 -- Create Indexes for Performance (AGE manages its own internal indexes)

@@ -1,0 +1,33 @@
+# Dependencies - these are HUGE and you never edit them
+**/node_modules/
+**/vendor/
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/venv/
+
+# Build outputs
+**/dist/
+**/build/
+**/.next/
+
+# Logs & cache
+**/storage/logs/
+**/storage/framework/cache/
+**/storage/framework/sessions/
+**/storage/framework/views/
+
+# Git internals
+**/.git/
+
+# Reference folder you said not to edit
+CURSOR - DO NOT EDIT ANYTHING HERE - ALL FOR REFERENCE coauth---ai-co-writer-v4/
+
+# Lock files (large and auto-generated)
+**/package-lock.json
+**/composer.lock
+
+# IDE folders
+**/.idea/
+**/.vscode/
+

@@ -282,6 +282,175 @@ class MainEditorController extends Controller
     }
 
     /**
+     * Get all chapters for a project as JSON.
+     */
+    public function getChapters(Request $request, string $workspace_id, string $project_id)
+    {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (!$project) {
+            return response()->json(['error' => 'Project not found'], 404);
+        }
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->first();
+        $chapters = [];
+        
+        if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
+            $chapters = $projectContent->content;
+            
+            // Get current content from version control for each chapter (same as editor method)
+            foreach ($chapters as &$chapter) {
+                try {
+                    $currentContent = $this->versionControl->getCurrentContent($project_id, $chapter['order']);
+                    if ($currentContent !== null) {
+                        $chapter['content'] = $currentContent;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Error getting version control content for chapter in getChapters', [
+                        'project_id' => $project_id,
+                        'chapter_order' => $chapter['order'] ?? null,
+                        'error' => $e->getMessage()
+                    ]);
+                    // Keep existing content if any
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'chapters' => $chapters
+        ], 200);
+    }
+
+    /**
+     * Update a chapter's title and/or content.
+     */
+    public function updateChapter(Request $request, string $workspace_id, string $project_id, int $order)
+    {
+        $validated = $request->validate([
+            'chapter_name' => 'sometimes|string|max:255',
+            'content' => 'sometimes|string',
+        ]);
+
+        // Ensure at least one field is provided
+        if (empty($validated)) {
+            return response()->json([
+                'error' => 'At least chapter_name or content must be provided'
+            ], 422);
+        }
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+        $chapters = $projectContent->content ?? [];
+
+        // Validate for duplicate chapter names (excluding current chapter) if chapter_name is being updated
+        if (isset($validated['chapter_name'])) {
+            $normalizedNewName = strtolower(trim($validated['chapter_name']));
+            foreach ($chapters as $chapter) {
+                if ($chapter['order'] !== $order) {
+                    $existingName = strtolower(trim($chapter['chapter_name']));
+                    if ($existingName === $normalizedNewName) {
+                        return response()->json([
+                            'error' => "A chapter named '{$chapter['chapter_name']}' already exists."
+                        ], 422);
+                    }
+                }
+            }
+        }
+
+        // Update chapter fields
+        $updated = false;
+        foreach ($chapters as &$chapter) {
+            if (isset($chapter['order']) && $chapter['order'] === $order) {
+                if (isset($validated['chapter_name'])) {
+                    $chapter['chapter_name'] = $validated['chapter_name'];
+                }
+                if (isset($validated['content'])) {
+                    $chapter['content'] = $validated['content'];
+                }
+                $updated = true;
+                break;
+            }
+        }
+
+        if (!$updated) {
+            return response()->json([
+                'error' => 'Chapter not found'
+            ], 404);
+        }
+
+        $projectContent->content = $chapters;
+        $projectContent->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Chapter updated successfully',
+            'chapters' => $chapters
+        ], 200);
+    }
+
+    /**
+     * Delete a chapter.
+     */
+    public function deleteChapter(Request $request, string $workspace_id, string $project_id, int $order)
+    {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+        $chapters = $projectContent->content ?? [];
+
+        // Remove the chapter (use == for type-coerced comparison to handle int/string mismatch)
+        $chapterCountBefore = count($chapters);
+        $chapters = array_filter($chapters, function ($chapter) use ($order) {
+            // Use != instead of !== to allow type coercion (e.g., "3" == 3)
+            return isset($chapter['order']) && (int)$chapter['order'] != (int)$order;
+        });
+        $chapterCountAfter = count($chapters);
+        
+        Log::info('Chapter deletion', [
+            'project_id' => $project_id,
+            'order_to_delete' => $order,
+            'chapters_before' => $chapterCountBefore,
+            'chapters_after' => $chapterCountAfter,
+            'deleted' => $chapterCountBefore - $chapterCountAfter
+        ]);
+
+        // Reorder remaining chapters
+        $reorderedChapters = [];
+        foreach (array_values($chapters) as $index => $chapter) {
+            $chapter['order'] = $index;
+            $reorderedChapters[] = $chapter;
+        }
+
+        $projectContent->content = $reorderedChapters;
+        $projectContent->save();
+
+        // Also clean up version control for this chapter
+        try {
+            // Note: Version control cleanup would go here if needed
+        } catch (\Exception $e) {
+            Log::warning('Error cleaning up version control for deleted chapter', [
+                'project_id' => $project_id,
+                'chapter_order' => $order,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Chapter deleted successfully',
+            'chapters' => $reorderedChapters
+        ], 200);
+    }
+
+    /**
      * Function to handle project Saves with broadcasting.
      */
     public function updateProjectData(Request $request, string $workspace_id, string $project_id)
@@ -561,6 +730,7 @@ class MainEditorController extends Controller
                 'settings.currentPreset' => 'nullable|string',
                 'settings.authorProfile' => 'nullable|string',
                 'settings.aiModel' => 'nullable|string',
+                'settings.selectionToolbarMode' => 'nullable|string|in:formatting,ai-rewrite',
                 'settings.memory' => 'nullable|string',
                 'settings.storyGenre' => 'nullable|string',
                 'settings.storyTone' => 'nullable|string',
@@ -1191,6 +1361,103 @@ class MainEditorController extends Controller
                 'success' => false,
                 'message' => 'Failed to initialize chapter history: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Function to handle selection-based text rewriting.
+     * Takes selected text with context and rewrites it using AI.
+     */
+    public function rewriteSelection(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'selected_text' => 'required|string|min:1|max:10000',
+                'context_before' => 'nullable|string|max:2000',
+                'context_after' => 'nullable|string|max:2000',
+                'action' => 'required|string|in:rewrite,humanize,custom',
+                'custom_instruction' => 'nullable|string|max:500',
+                'chapter_order' => 'required|integer',
+                'model' => 'nullable|string',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            // Determine the model to use
+            $model = $validated['model'] ?? $project->settings['aiModel'] ?? 'gemini-2.5-flash';
+            
+            // Map model names to provider
+            $provider = 'gemini';
+            if (str_starts_with($model, 'gpt-')) {
+                $provider = 'openai';
+            } elseif (str_starts_with($model, 'deepseek')) {
+                $provider = 'deepseek';
+            }
+
+            Log::info('Selection rewrite request', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'chapter_order' => $validated['chapter_order'],
+                'action' => $validated['action'],
+                'selected_text_length' => strlen($validated['selected_text']),
+                'model' => $model,
+                'user_id' => $user->id,
+            ]);
+
+            // Call Python API for rewrite
+            $pythonApiUrl = env('PYTHON_SERVICE_URL', 'http://python-app:5000');
+            
+            $response = Http::timeout(60)->post("{$pythonApiUrl}/api/rewrite-selection", [
+                'project_id' => $project_id,
+                'workspace_id' => $workspace_id,
+                'selected_text' => $validated['selected_text'],
+                'context_before' => $validated['context_before'] ?? '',
+                'context_after' => $validated['context_after'] ?? '',
+                'action' => $validated['action'],
+                'custom_instruction' => $validated['custom_instruction'] ?? '',
+                'model' => $model,
+                'provider' => $provider,
+            ]);
+
+            if (!$response->successful()) {
+                $error = $response->json('error') ?? 'Failed to rewrite text';
+                Log::error('Rewrite API error', [
+                    'status' => $response->status(),
+                    'error' => $error,
+                ]);
+                return response()->json(['error' => $error], $response->status());
+            }
+
+            $result = $response->json();
+
+            return response()->json([
+                'success' => true,
+                'new_text' => $result['new_text'] ?? '',
+                'action' => $validated['action'],
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation error in rewrite selection', [
+                'errors' => $e->errors()
+            ]);
+            return response()->json(['error' => 'Invalid request', 'details' => $e->errors()], 422);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['error' => 'Project not found'], 404);
+
+        } catch (\Exception $e) {
+            Log::error('Error in rewrite selection', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Failed to rewrite text: ' . $e->getMessage()], 500);
         }
     }
 

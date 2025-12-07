@@ -1,6 +1,7 @@
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { PageProps, Project } from "@/types";
 import { Head } from "@inertiajs/react";
+import RecordsPanel from "./RecordsPanel";
 
 export default function ProjectEditorPage({
     workspaceId,
@@ -18,7 +19,10 @@ export default function ProjectEditorPage({
             workspaceId={workspaceId}
         >
             <Head title="Project Database" />
-            {/* Main content goes here */}
+            <RecordsPanel 
+                workspaceId={workspaceId}
+                projectId={projectId}
+            />
         </ProjectEditorLayout>
     );
 }

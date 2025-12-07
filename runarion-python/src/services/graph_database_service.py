@@ -395,6 +395,7 @@ class GraphDatabaseService:
     def get_age_connection(self):
         """
         Context manager for database connections with AGE session initialized.
+        Includes retry logic for connection pool exhaustion.
         
         Yields:
             Database connection with AGE session configured
@@ -404,34 +405,61 @@ class GraphDatabaseService:
         """
         conn = None
         original_search_path = None
+        max_retries = 3
+        retry_delay = 0.5  # seconds
+        import time
         
         try:
-            conn = self.db_pool.getconn()
-            
-            # Initialize AGE session
-            with conn.cursor() as cursor:
-                # Store original search path
-                cursor.execute("SELECT current_setting('search_path')")
-                original_search_path = cursor.fetchone()[0]
-                
-                if not self._initialize_age_session(cursor):
-                    raise GraphDatabaseNotAvailableError(
-                        f"Failed to initialize AGE session for graph operations. "
-                        f"Graph: {self.graph_name}"
-                    )
-            
-            yield conn
-            
-        except GraphDatabaseNotAvailableError:
-            if conn:
-                conn.rollback()
-            raise
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            raise GraphDatabaseNotAvailableError(
-                f"Graph database operation failed: {e}"
-            ) from e
+            for attempt in range(max_retries):
+                try:
+                    try:
+                        conn = self.db_pool.getconn()
+                    except Exception as pool_error:
+                        if "connection pool exhausted" in str(pool_error).lower() and attempt < max_retries - 1:
+                            logger.warning(f"Connection pool exhausted (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                            continue
+                        else:
+                            raise GraphDatabaseNotAvailableError(
+                                f"Connection pool exhausted after {max_retries} attempts: {pool_error}"
+                            )
+                    
+                    # Initialize AGE session
+                    with conn.cursor() as cursor:
+                        # Store original search path
+                        cursor.execute("SELECT current_setting('search_path')")
+                        original_search_path = cursor.fetchone()[0]
+                        
+                        if not self._initialize_age_session(cursor):
+                            raise GraphDatabaseNotAvailableError(
+                                f"Failed to initialize AGE session for graph operations. "
+                                f"Graph: {self.graph_name}"
+                            )
+                    
+                    yield conn
+                    break  # Success, exit retry loop
+                    
+                except GraphDatabaseNotAvailableError:
+                    if conn:
+                        conn.rollback()
+                        self.db_pool.putconn(conn)
+                        conn = None
+                    if attempt == max_retries - 1:
+                        raise
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                except Exception as e:
+                    if conn:
+                        conn.rollback()
+                        self.db_pool.putconn(conn)
+                        conn = None
+                    if attempt == max_retries - 1:
+                        raise GraphDatabaseNotAvailableError(
+                            f"Graph database operation failed after {max_retries} attempts: {e}"
+                        ) from e
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
         finally:
             if conn and original_search_path:
                 # Restore original search path

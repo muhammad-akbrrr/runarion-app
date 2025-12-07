@@ -2,13 +2,28 @@ from flask import Flask, jsonify
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
+import logging
+import sys
 from psycopg2 import pool
 from api.generation import generate
 from api.deconstructor import deconstruct
 from api.style_analyzer import analyze_style
 from api.novel_writer import rewrite_novel
+from api.records import records
+from api.auditor import auditor
+from api.advisor import advisor
 
 load_dotenv()
+
+# Configure logging for all modules
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
+    stream=sys.stdout
+)
+# Ensure all loggers output to stdout
+for handler in logging.root.handlers:
+    handler.setLevel(logging.DEBUG)
 
 app = Flask(__name__)
 
@@ -43,8 +58,8 @@ if missing_vars:
 
 try:
     connection_pool = pool.SimpleConnectionPool(
-        minconn=1,
-        maxconn=20,  # Increased from 10 to 20 to help avoid connection pool exhaustion for concurrent requests
+        minconn=2,
+        maxconn=50,  # Increased to 50 to handle concurrent summarization and entity extraction operations
         host=os.getenv('DB_HOST'),
         port=os.getenv('DB_PORT'),
         database=os.getenv('DB_DATABASE'),
@@ -77,6 +92,9 @@ app.register_blueprint(generate, url_prefix='/api')
 app.register_blueprint(deconstruct, url_prefix='/api')
 app.register_blueprint(analyze_style, url_prefix='/api')
 app.register_blueprint(rewrite_novel, url_prefix='/api')
+app.register_blueprint(records, url_prefix='/api')
+app.register_blueprint(auditor, url_prefix='/api')
+app.register_blueprint(advisor, url_prefix='/api')
 
 # --- Health Check ---
 

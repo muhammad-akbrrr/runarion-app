@@ -75,7 +75,7 @@ export default function FileManager() {
         {/* Author Styles Section */}
         <AuthorStyleCard 
           authorStyles={authorStyles} 
-          onAddClick={() => setIsAuthorStyleDialogOpen(true)}
+          onAddClick={() => setIsAuthorStyleDialogOpen(true)} 
           onEditClick={handleEditClick}
           onDeleteClick={handleDeleteClick}
         />

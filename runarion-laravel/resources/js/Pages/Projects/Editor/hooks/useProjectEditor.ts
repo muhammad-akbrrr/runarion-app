@@ -113,6 +113,9 @@ export function useProjectEditor({
     const originalContent = useRef<string>('');
     const originalSettings = useRef<any>({});
     
+    // Track the last chapter order to detect actual chapter switches vs content updates
+    const lastChapterOrderRef = useRef<number | null>(null);
+    
     // Base content for streaming (user text before generation starts)
     const [baseContent, setBaseContent] = useState<string>('');
     const baseContentRef = useRef<string>('');
@@ -310,19 +313,43 @@ export function useProjectEditor({
             }
         }
         
-        // Update selected chapter if it exists in new chapters
+        // Update or reset selected chapter based on whether it still exists
         if (selectedChapter) {
             const updatedChapter = initialChapters.find(ch => ch.order === selectedChapter.order);
-            if (updatedChapter && updatedChapter.content !== selectedChapter.content) {
-                console.log('Chapter content updated from server');
-                setSelectedChapter(updatedChapter);
+            if (updatedChapter) {
+                // Chapter still exists - update if content changed
+                if (updatedChapter.content !== selectedChapter.content) {
+                    console.log('Chapter content updated from server');
+                    setSelectedChapter(updatedChapter);
+                }
+            } else {
+                // Chapter was deleted - reset to first available chapter or null
+                console.log('Selected chapter was deleted, selecting first available chapter');
+                
+                // Clear the lastChapterOrderRef so the chapter switch useEffect treats this as a new switch
+                lastChapterOrderRef.current = null;
+                
+                if (initialChapters.length > 0) {
+                    const newChapter = initialChapters[0];
+                    console.log('Switching to chapter:', newChapter.chapter_name, 'with content length:', newChapter.content?.length || 0);
+                    
+                    // Clear localStorage of deleted chapter reference
+                    const storageKey = `lastChapter_${projectId}`;
+                    localStorage.setItem(storageKey, newChapter.order.toString());
+                    
+                    // Set the new chapter - the useEffect watching selectedChapter will load content
+                    setSelectedChapter(newChapter);
+                } else {
+                    setSelectedChapter(null);
+                    // Only clear content if there are no chapters at all
+                    setContent("");
+                    originalContent.current = "";
+                    setAiRanges([]);
+                }
             }
         }
-    }, [initialChapters, preservedChapterOrder]);
+    }, [initialChapters, preservedChapterOrder, projectId]);
 
-    // Track the last chapter order to detect actual chapter switches vs content updates
-    const lastChapterOrderRef = useRef<number | null>(null);
-    
     // Initialize content when chapter changes
     useEffect(() => {
         if (selectedChapter) {

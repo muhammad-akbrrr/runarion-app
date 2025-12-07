@@ -267,8 +267,8 @@ export default function AuthorStyleDialog({
                         
                         {/* Project List */}
                         <div className="w-full border rounded-md max-h-[150px] overflow-y-auto">
-                            {projects && projects.length > 0 ? (
-                                projects.map((project) => (
+                                {projects && projects.length > 0 ? (
+                                    projects.map((project) => (
                                     <div 
                                         key={project.id}
                                         className="flex items-center space-x-2 px-3 py-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
@@ -280,12 +280,12 @@ export default function AuthorStyleDialog({
                                         />
                                         <span className="text-sm">{project.name}</span>
                                     </div>
-                                ))
-                            ) : (
+                                    ))
+                                ) : (
                                 <div className="px-3 py-2 text-sm text-muted-foreground">
-                                    No projects available
+                                        No projects available
                                 </div>
-                            )}
+                                )}
                         </div>
                         
                         {selectedProjectIds.length > 0 && (

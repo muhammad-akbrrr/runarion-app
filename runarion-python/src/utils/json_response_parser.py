@@ -221,6 +221,14 @@ class JSONResponseParser:
     def _parse_malformed_json(cls, text: str, expected_type: str) -> tuple[Optional[Any], ResponseFormat]:
         """Try repairing and parsing malformed JSON."""
         repaired_text = text
+        
+        # First, strip markdown wrappers if present
+        for pattern, flags in cls.MARKDOWN_JSON_PATTERNS:
+            matches = re.findall(pattern, repaired_text, flags)
+            if matches:
+                # Use the first match as the raw JSON
+                repaired_text = matches[0].strip()
+                break
 
         # Apply quote mismatch repairs FIRST (before other patterns)
         # This handles subtle quote issues like "YAY" he said." or ["foo", bar"]
@@ -245,6 +253,20 @@ class JSONResponseParser:
             logger.debug(f"JSON parsing still failed after repairs: {e}")
         except Exception as e:
             logger.debug(f"Malformed JSON parsing failed: {e}")
+
+        # Try advanced unescaped quotes repair (for LLM outputs with unescaped quotes in values)
+        try:
+            # Use the already markdown-stripped text
+            repaired_text2 = cls._repair_unescaped_quotes_in_values(repaired_text)
+            if repaired_text2 != repaired_text:
+                parsed = json.loads(repaired_text2)
+                if cls._validate_json_type(parsed, expected_type):
+                    logger.info("Successfully parsed JSON after unescaped quotes repair")
+                    return parsed, ResponseFormat.MALFORMED_JSON
+        except json.JSONDecodeError as e:
+            logger.debug(f"JSON parsing still failed after unescaped quotes repair: {e}")
+        except Exception as e:
+            logger.debug(f"Unescaped quotes repair failed: {e}")
 
         return None, ResponseFormat.MALFORMED_JSON
 
@@ -366,6 +388,99 @@ class JSONResponseParser:
             logger.debug("Applied quote mismatch repairs to JSON")
 
         return repaired
+
+    @classmethod
+    def _repair_unescaped_quotes_in_values(cls, json_text: str) -> str:
+        """
+        Repair JSON where string values contain unescaped internal quotes.
+        
+        Handles patterns like:
+        - "key": "He said "hello" to her" → "key": "He said \"hello\" to her"
+        
+        This happens when LLMs forget to escape quotes in generated JSON.
+        """
+        try:
+            # For fix_story_text responses, we expect exactly these three keys in order
+            # Find positions of all three keys
+            old_text_match = re.search(r'"old_text"\s*:\s*"', json_text)
+            new_text_match = re.search(r'"new_text"\s*:\s*"', json_text)  
+            explanation_match = re.search(r'"explanation"\s*:\s*"', json_text)
+            
+            if not all([old_text_match, new_text_match, explanation_match]):
+                return json_text
+            
+            # The order should be: old_text, new_text, explanation
+            # old_text value ends where new_text key starts (minus comma and whitespace)
+            old_text_start = old_text_match.end()
+            old_text_end = new_text_match.start()
+            
+            # new_text value ends where explanation key starts
+            new_text_start = new_text_match.end()
+            new_text_end = explanation_match.start()
+            
+            # explanation value ends at the closing brace
+            explanation_start = explanation_match.end()
+            last_brace = json_text.rfind('}')
+            if last_brace == -1:
+                return json_text
+            explanation_end = last_brace
+            
+            # Extract raw values (need to strip trailing ", and whitespace)
+            def extract_value(text, start, end):
+                value = text[start:end].strip()
+                # Remove trailing comma, quotes, and whitespace
+                value = re.sub(r'[,\s]*$', '', value)
+                # Remove trailing quote if present (it's the end of the value)
+                if value.endswith('"'):
+                    value = value[:-1]
+                return value
+            
+            old_text_raw = extract_value(json_text, old_text_start, old_text_end)
+            new_text_raw = extract_value(json_text, new_text_start, new_text_end)
+            explanation_raw = extract_value(json_text, explanation_start, explanation_end)
+            
+            # Properly escape quotes and special chars in all values
+            def escape_for_json(s):
+                result = ''
+                i = 0
+                while i < len(s):
+                    c = s[i]
+                    if c == '"':
+                        # Check if already escaped
+                        if i > 0 and s[i-1] == '\\':
+                            result += '"'
+                        else:
+                            result += '\\"'
+                    elif c == '\\':
+                        # Check if it's escaping something
+                        if i + 1 < len(s) and s[i+1] in '"\\nrt':
+                            result += c
+                        else:
+                            result += '\\\\'
+                    elif c == '\n':
+                        result += '\\n'
+                    elif c == '\r':
+                        result += '\\r'
+                    elif c == '\t':
+                        result += '\\t'
+                    else:
+                        result += c
+                    i += 1
+                return result
+            
+            old_text_escaped = escape_for_json(old_text_raw)
+            new_text_escaped = escape_for_json(new_text_raw)
+            explanation_escaped = escape_for_json(explanation_raw)
+            
+            # Reconstruct valid JSON
+            repaired = f'{{"old_text": "{old_text_escaped}", "new_text": "{new_text_escaped}", "explanation": "{explanation_escaped}"}}'
+            
+            logger.debug(f"Reconstructed JSON with escaped quotes")
+            return repaired
+            
+        except Exception as e:
+            logger.debug(f"Unescaped quotes repair reconstruction failed: {e}")
+            return json_text
 
     @classmethod
     def _is_likely_truncated_json(cls, json_text: str) -> bool:
@@ -650,3 +765,19 @@ def parse_graph_analysis_response(response: Any, context: Any = None) -> Dict[st
     """Parse graph analysis AI response."""
     parsed_data, _ = JSONResponseParser.parse_response(response, "dict", {})
     return JSONResponseParser.validate_graph_data(parsed_data, context=context)
+
+def parse_entity_extraction_response(response: Any, context: Any = None) -> Dict[str, Any]:
+    """
+    Parse entity extraction AI response - preserves ALL keys from the response.
+    Unlike validate_graph_data which filters to hardcoded keys, this preserves
+    custom category keys like 'factions', 'philosophical_concepts', etc.
+    """
+    parsed_data, format_type = JSONResponseParser.parse_response(response, "dict", {})
+    
+    if not isinstance(parsed_data, dict):
+        logger.warning(f"Expected entity extraction response to be dict, got {type(parsed_data)}")
+        return {}
+    
+    # Return the raw parsed data - don't filter out custom keys!
+    logger.info(f"Entity extraction response parsed: keys={list(parsed_data.keys())}, format={format_type}")
+    return parsed_data

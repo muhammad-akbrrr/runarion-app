@@ -78,16 +78,16 @@ export default function AuthorStyleCard({
                     const isReady = style.status === 'profiling_completed';
                     
                     return (
-                        <div
-                            key={style.id}
+                    <div
+                        key={style.id}
                             className={`w-full bg-white rounded-md border hover:shadow-md transition-shadow ${!isReady ? 'opacity-80' : ''}`}
-                        >
+                    >
                             <div className="p-4 relative flex flex-col items-stretch justify-between gap-3">
                                 {/* Header row with avatar and status */}
-                                <div className="flex flex-row items-start justify-between gap-3">
-                                    <div
+                            <div className="flex flex-row items-start justify-between gap-3">
+                                <div
                                         className={`${style.color} p-2 rounded-full flex items-center justify-center font-medium text-sm`}
-                                    >
+                                >
                                         {style.avatar}
                                     </div>
                                     <TooltipProvider>
@@ -110,10 +110,10 @@ export default function AuthorStyleCard({
                                 </div>
                                 
                                 {/* Name */}
-                                <div className="truncate">
-                                    <p className="font-medium text-sm">
-                                        {style.name}
-                                    </p>
+                            <div className="truncate">
+                                <p className="font-medium text-sm">
+                                    {style.name}
+                                </p>
                                 </div>
                                 
                                 {/* Action buttons */}
