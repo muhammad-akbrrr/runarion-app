@@ -1462,6 +1462,138 @@ class MainEditorController extends Controller
     }
 
     /**
+     * Function to enhance text using AI with context-aware prompts.
+     * Used by the Magic Wand feature to enhance unsent text.
+     */
+    public function enhanceText(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'text' => 'required|string|min:1|max:10000',
+                'enhancement_mode' => 'required|string|in:story_text,chat_message,property,custom_instruction,entity_name,chapter_name,description,summary',
+                'model' => 'nullable|string',
+                'chapter_content' => 'nullable|string|max:50000', // Optional chapter content for chapter_name mode
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            // Determine the model to use
+            $model = $validated['model'] ?? $project->settings['aiModel'] ?? 'gemini-2.5-flash';
+            
+            // Map model names to provider
+            $provider = 'gemini';
+            if (str_starts_with($model, 'gpt-')) {
+                $provider = 'openai';
+            } elseif (str_starts_with($model, 'deepseek')) {
+                $provider = 'deepseek';
+            }
+
+            Log::info('Text enhancement request', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'enhancement_mode' => $validated['enhancement_mode'],
+                'text_length' => strlen($validated['text']),
+                'model' => $model,
+                'user_id' => $user->id,
+            ]);
+
+            // Call Python API for enhancement
+            $pythonApiUrl = env('PYTHON_SERVICE_URL', 'http://python-app:5000');
+            
+            try {
+                $response = Http::timeout(60)->post("{$pythonApiUrl}/api/enhance-text", [
+                    'text' => $validated['text'],
+                    'enhancement_mode' => $validated['enhancement_mode'],
+                    'model' => $model,
+                    'provider' => $provider,
+                    'project_id' => $project_id,
+                    'workspace_id' => $workspace_id,
+                    'chapter_content' => $validated['chapter_content'] ?? null,
+                ]);
+
+                if (!$response->successful()) {
+                    $errorBody = $response->body();
+                    $errorData = $response->json();
+                    $error = $errorData['error'] ?? $errorData['message'] ?? $errorBody ?? 'Failed to enhance text';
+                    
+                    Log::error('Enhancement API error', [
+                        'status' => $response->status(),
+                        'error' => $error,
+                        'response_body' => $errorBody,
+                    ]);
+                    
+                    return response()->json([
+                        'error' => $error,
+                        'status' => $response->status()
+                    ], $response->status());
+                }
+
+                $result = $response->json();
+                
+                if (!isset($result['enhanced_text']) || empty($result['enhanced_text'])) {
+                    Log::error('Enhancement API returned empty result', [
+                        'result' => $result
+                    ]);
+                    return response()->json(['error' => 'Enhancement API returned empty result'], 500);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'enhanced_text' => $result['enhanced_text'],
+                ]);
+                
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                Log::error('Enhancement API connection error', [
+                    'error' => $e->getMessage(),
+                    'url' => "{$pythonApiUrl}/api/enhance-text",
+                ]);
+                return response()->json([
+                    'error' => 'Could not connect to enhancement service. Please check if the Python service is running.',
+                    'details' => $e->getMessage()
+                ], 503);
+            } catch (\Illuminate\Http\Client\RequestException $e) {
+                Log::error('Enhancement API request error', [
+                    'error' => $e->getMessage(),
+                    'response' => $e->response?->body(),
+                ]);
+                return response()->json([
+                    'error' => 'Enhancement service error: ' . $e->getMessage(),
+                ], 500);
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation error in enhance text', [
+                'errors' => $e->errors()
+            ]);
+            return response()->json(['error' => 'Invalid request', 'details' => $e->errors()], 422);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['error' => 'Project not found'], 404);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Already handled above, but catch here to prevent duplicate handling
+            throw $e;
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            // Already handled above
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error in enhance text', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Failed to enhance text: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
      * Function to get version control info for a chapter.
      */
     public function getVersionControlInfo(Request $request, string $workspace_id, string $project_id)

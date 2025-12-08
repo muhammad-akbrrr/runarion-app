@@ -25,6 +25,7 @@ import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
 import { useProjectEditor } from "./hooks";
 import { PendingEditsProvider } from "./contexts/PendingEditsContext";
+import { MagicWandButton } from "@/Components/MagicWandButton";
 
 // Import Echo for WebSocket connection
 import "@/echo";
@@ -568,6 +569,8 @@ export default function ProjectEditorPage({
                             handleAddChapter={handleAddChapterClick}
                             existingChapterNames={existingChapterNames}
                             error={addChapterError}
+                            workspaceId={workspaceId}
+                            projectId={projectId}
                         />
                     </div>
                 </div>
@@ -584,16 +587,32 @@ export default function ProjectEditorPage({
                         <div className="space-y-4 py-4">
                             <div>
                                 <label className="text-sm font-medium">Chapter Name</label>
-                                <Input
-                                    value={editingChapterName}
-                                    onChange={(e) => {
-                                        setEditingChapterName(e.target.value);
-                                        setEditChapterError("");
-                                    }}
-                                    placeholder="Enter chapter name"
-                                    className="mt-1"
-                                    disabled={editChapterLoading}
-                                />
+                                <div className="flex gap-2 mt-1">
+                                    <Input
+                                        value={editingChapterName}
+                                        onChange={(e) => {
+                                            setEditingChapterName(e.target.value);
+                                            setEditChapterError("");
+                                        }}
+                                        placeholder="Enter chapter name"
+                                        className="flex-1"
+                                        disabled={editChapterLoading}
+                                    />
+                                    <MagicWandButton
+                                        text={editingChapterName}
+                                        onEnhanced={(enhanced) => {
+                                            setEditingChapterName(enhanced);
+                                            setEditChapterError("");
+                                        }}
+                                        enhancementMode="chapter_name"
+                                        workspaceId={workspaceId}
+                                        projectId={projectId}
+                                        disabled={editChapterLoading}
+                                        size="icon"
+                                        variant="outline"
+                                        chapterContent={editingChapter?.content || ''}
+                                    />
+                                </div>
                                 {editChapterError && (
                                     <p className="text-sm text-red-500 mt-1">{editChapterError}</p>
                                 )}

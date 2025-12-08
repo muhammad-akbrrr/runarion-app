@@ -11,6 +11,7 @@ import {
     SelectValue,
 } from "@/Components/ui/select";
 import { Lock, X, HelpCircle, ChevronDown, ChevronRight, BookOpen, Trash2 } from "lucide-react";
+import { MagicWandButton } from "@/Components/MagicWandButton";
 import {
     Tooltip,
     TooltipContent,
@@ -477,13 +478,25 @@ export default function EntityForm({
         <form onSubmit={handleSubmit} className="space-y-4">
             <div>
                 <Label htmlFor="name">Entity Name *</Label>
-                <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    required
-                    placeholder="Enter entity name"
-                />
+                <div className="flex gap-2">
+                    <Input
+                        id="name"
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        required
+                        placeholder="Enter entity name"
+                        className="flex-1"
+                    />
+                    <MagicWandButton
+                        text={name}
+                        onEnhanced={(enhanced) => setName(enhanced)}
+                        enhancementMode="entity_name"
+                        workspaceId={workspaceId}
+                        projectId={projectId}
+                        size="icon"
+                        variant="outline"
+                    />
+                </div>
             </div>
 
             <div>
@@ -588,19 +601,42 @@ export default function EntityForm({
                                             </p>
                                         </div>
                                     ) : field.type === 'textarea' ? (
-                                        <Textarea
-                                            value={String(value)}
-                                            onChange={(e) => handlePropertyChange(field.key, e.target.value)}
-                                            placeholder={field.placeholder}
-                                            className="min-h-[80px] text-sm"
-                                        />
+                                        <div className="flex gap-2">
+                                            <Textarea
+                                                value={String(value)}
+                                                onChange={(e) => handlePropertyChange(field.key, e.target.value)}
+                                                placeholder={field.placeholder}
+                                                className="min-h-[80px] text-sm flex-1"
+                                            />
+                                            <MagicWandButton
+                                                text={String(value)}
+                                                onEnhanced={(enhanced) => handlePropertyChange(field.key, enhanced)}
+                                                enhancementMode="property"
+                                                workspaceId={workspaceId}
+                                                projectId={projectId}
+                                                size="icon"
+                                                variant="outline"
+                                                className="self-start mt-1"
+                                            />
+                                        </div>
                                     ) : (
-                                        <Input
-                                            value={String(value)}
-                                            onChange={(e) => handlePropertyChange(field.key, e.target.value)}
-                                            placeholder={field.placeholder}
-                                            className="text-sm"
-                                        />
+                                        <div className="flex gap-2">
+                                            <Input
+                                                value={String(value)}
+                                                onChange={(e) => handlePropertyChange(field.key, e.target.value)}
+                                                placeholder={field.placeholder}
+                                                className="text-sm flex-1"
+                                            />
+                                            <MagicWandButton
+                                                text={String(value)}
+                                                onEnhanced={(enhanced) => handlePropertyChange(field.key, enhanced)}
+                                                enhancementMode="property"
+                                                workspaceId={workspaceId}
+                                                projectId={projectId}
+                                                size="icon"
+                                                variant="outline"
+                                            />
+                                        </div>
                                     )}
                                 </div>
                             );
@@ -627,6 +663,15 @@ export default function EntityForm({
                                 onChange={(e) => handlePropertyChange(key, e.target.value)}
                                 className="flex-1 text-sm"
                                 placeholder="Enter value"
+                            />
+                            <MagicWandButton
+                                text={String(value)}
+                                onEnhanced={(enhanced) => handlePropertyChange(key, enhanced)}
+                                enhancementMode="property"
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                size="icon"
+                                variant="outline"
                             />
                             <Button
                                 type="button"

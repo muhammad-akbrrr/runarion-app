@@ -416,6 +416,187 @@ Rewritten text:"""
         return jsonify({"error": f"Failed to rewrite text: {str(e)}"}), 500
 
 
+@generate.route("/enhance-text", methods=["POST"])
+def enhance_text_route():
+    """
+    Enhance text using AI with context-aware prompts based on enhancement mode.
+    
+    Enhancement modes:
+    - story_text: Enhance story content to be more vivid and engaging
+    - chat_message: Improve message clarity and structure
+    - property: Enhance property descriptions to be more detailed
+    - custom_instruction: Refine instructions to be clearer and actionable
+    - entity_name: Improve entity names to be more evocative
+    - chapter_name: Enhance chapter titles to be more compelling
+    - description: Enhance descriptions to be more vivid
+    - summary: Improve summaries to be more comprehensive
+    
+    Request body:
+        text: The text to enhance
+        enhancement_mode: One of the modes above
+        model: AI model to use (default: gemini-2.5-flash)
+        provider: AI provider (default: gemini)
+        project_id: Optional project ID for context
+        workspace_id: Optional workspace ID
+        chapter_content: Optional chapter content (for chapter_name mode)
+        
+    Returns:
+        200: {"success": true, "enhanced_text": "..."}
+        400: {"error": "..."}
+        500: {"error": "..."}
+    """
+    json_data = request.get_json()
+    
+    if not json_data:
+        return jsonify({"error": "Request body is required"}), 400
+    
+    # Safely get text and handle None values
+    text = json_data.get("text") or ""
+    if isinstance(text, str):
+        text = text.strip()
+    else:
+        text = ""
+    
+    enhancement_mode = json_data.get("enhancement_mode", "description")
+    model = json_data.get("model", "gemini-2.5-flash")
+    provider = json_data.get("provider", "gemini")
+    project_id = json_data.get("project_id")
+    workspace_id = json_data.get("workspace_id")
+    
+    # Safely get chapter_content and handle None values
+    chapter_content = json_data.get("chapter_content") or ""
+    if isinstance(chapter_content, str):
+        chapter_content = chapter_content.strip()
+    else:
+        chapter_content = ""
+    
+    if not text:
+        return jsonify({"error": "text is required"}), 400
+    
+    valid_modes = [
+        "story_text", "chat_message", "property", "custom_instruction",
+        "entity_name", "chapter_name", "description", "summary"
+    ]
+    if enhancement_mode not in valid_modes:
+        return jsonify({"error": f"Invalid enhancement_mode. Must be one of: {', '.join(valid_modes)}"}), 400
+    
+    try:
+        # Build context-aware prompts based on mode
+        mode_prompts = {
+            "story_text": """Enhance this story text to be more vivid, engaging, and polished while maintaining the author's voice and style. Improve clarity, flow, and emotional impact. Make it more immersive and compelling without changing the core meaning or plot.""",
+            
+            "chat_message": """Improve this message to be clearer, more helpful, and better structured. Make it more concise if it's too wordy, or more detailed if it's too brief. Ensure it communicates the intent effectively and professionally.""",
+            
+            "property": """Enhance this description to be more detailed, vivid, and informative. Add relevant details that would be useful for world-building or character development. Make it more engaging while keeping it accurate and relevant.""",
+            
+            "custom_instruction": """Refine this instruction to be clearer, more specific, and actionable. Make it easier to understand and follow. Ensure it precisely communicates what needs to be done without ambiguity.""",
+            
+            "entity_name": """Improve this entity name to be more evocative, memorable, and fitting for a fantasy/sci-fi story. Make it sound more unique and interesting while keeping it pronounceable and appropriate to the genre.""",
+            
+            "chapter_name": """Enhance this chapter title to be more compelling, intriguing, and memorable. Make it hint at the chapter's content in an engaging way. Keep it concise but impactful. The title should reflect the themes, events, or emotional tone of the chapter content provided.""",
+            
+            "description": """Enhance this description to be more vivid, detailed, and engaging. Add sensory details and make it more immersive. Improve clarity and flow while keeping it relevant and accurate.""",
+            
+            "summary": """Improve this summary to be more comprehensive, clear, and well-structured. Ensure it captures all key points effectively. Make it more engaging while maintaining accuracy and completeness."""
+        }
+        
+        instruction = mode_prompts.get(enhancement_mode, mode_prompts["description"])
+        
+        # Add chapter content context for chapter_name mode
+        chapter_context = ""
+        if enhancement_mode == "chapter_name" and chapter_content:
+            # Limit chapter content to first 5000 chars to avoid token limits
+            chapter_preview = chapter_content[:5000]
+            chapter_context = f"""
+
+CHAPTER CONTENT (for context):
+---
+{chapter_preview}
+---
+"""
+        
+        prompt = f"""You are an expert writing assistant helping to enhance text.
+
+TEXT TO ENHANCE:
+---
+{text}
+---{chapter_context}
+INSTRUCTION: {instruction}
+
+IMPORTANT RULES:
+1. ONLY output the enhanced text - no explanations, no quotes, no markdown formatting, no prefixes
+2. Maintain the same approximate length (within 30% of original) unless the mode specifically requires expansion
+3. Preserve any proper nouns, character names, and specific terminology
+4. Keep the same tense and perspective as the original
+5. Do not add information that contradicts or significantly changes the original meaning
+6. The output should be ready to use directly - no "Here's the enhanced version:" or similar prefixes
+
+Enhanced text:"""
+
+        # Build the request for generation
+        from models.request import BaseGenerationRequest, GenerationConfig
+        from models.quota import QuotaCaller
+        
+        # Create a caller for the request
+        caller = QuotaCaller.from_request_data(
+            user_id=1,  # Default user ID (will use default API keys)
+            workspace_id=workspace_id or "system",
+            project_id=project_id or "system",
+            session_id="enhance-text",
+            api_keys={}  # Will use default API keys from environment
+        )
+        
+        req_obj = BaseGenerationRequest(
+            usecase="novel_pipeline",
+            provider=provider,
+            model=model,
+            prompt=prompt,
+            generation_config=GenerationConfig(
+                max_output_tokens=2000,
+                temperature=0.7,
+                stream=False
+            ),
+            caller=caller
+        )
+        
+        engine = GenerationEngine(req_obj)
+        response = engine.generate(skip_quota=True)
+        
+        if not response or not response.text:
+            return jsonify({"error": "Failed to generate enhancement"}), 500
+        
+        # Clean up the response - remove any accidental quotes or formatting
+        enhanced_text = response.text.strip()
+        
+        # Remove common prefixes that models sometimes add
+        prefixes_to_remove = [
+            "Here's the enhanced text:",
+            "Enhanced text:",
+            "Here's the improved version:",
+            "Improved version:",
+            "Here's the refined text:",
+            "Refined text:",
+        ]
+        for prefix in prefixes_to_remove:
+            if enhanced_text.startswith(prefix):
+                enhanced_text = enhanced_text[len(prefix):].strip()
+        
+        # Remove quotes if the entire response is wrapped in them
+        if (enhanced_text.startswith('"') and enhanced_text.endswith('"')) or \
+           (enhanced_text.startswith("'") and enhanced_text.endswith("'")):
+            enhanced_text = enhanced_text[1:-1].strip()
+        
+        return jsonify({
+            "success": True,
+            "enhanced_text": enhanced_text
+        }), 200
+        
+    except Exception as e:
+        current_app.logger.error(f"Error in enhance-text: {type(e).__name__} - {e}")
+        current_app.logger.error(traceback.format_exc())
+        return jsonify({"error": f"Internal server error: {str(e)}"}), 500
+
+
 def stream_generator(engine, conversation_manager=None, project_id=None, chapter_order=None):
     """
     Generator function that yields SSE formatted chunks from the streaming engine.

@@ -23,6 +23,7 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::post('/{workspace_id}/projects/{project_id}/editor/generate', [MainEditorController::class, 'generateText'])->name('editor.project.generate');
     Route::post('/{workspace_id}/projects/{project_id}/editor/regenerate', [MainEditorController::class, 'regenerateText'])->name('editor.project.regenerate');
     Route::post('/{workspace_id}/projects/{project_id}/editor/rewrite-selection', [MainEditorController::class, 'rewriteSelection'])->name('editor.project.rewrite-selection');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/enhance-text', [MainEditorController::class, 'enhanceText'])->name('editor.project.enhance-text');
     Route::post('/{workspace_id}/projects/{project_id}/editor/cancel-generation', [MainEditorController::class, 'cancelGeneration'])->name('editor.project.cancel-generation');
     Route::post('/{workspace_id}/projects/{project_id}/editor/switch-version', [MainEditorController::class, 'switchVersion'])->name('editor.project.switch-version');
     Route::post('/{workspace_id}/projects/{project_id}/editor/undo-step', [MainEditorController::class, 'undoStep'])->name('editor.project.undo-step');

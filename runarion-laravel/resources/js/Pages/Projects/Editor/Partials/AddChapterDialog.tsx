@@ -10,6 +10,7 @@ import { Input } from "@/Components/ui/input";
 import { Button } from "@/Components/ui/button";
 import { AlertCircle } from "lucide-react";
 import React from "react";
+import { MagicWandButton } from "@/Components/MagicWandButton";
 
 interface AddChapterDialogProps {
     open: boolean;
@@ -20,6 +21,8 @@ interface AddChapterDialogProps {
     handleAddChapter: () => void;
     existingChapterNames?: string[];
     error?: string;
+    workspaceId?: string;
+    projectId?: string;
 }
 
 const AddChapterDialog: React.FC<AddChapterDialogProps> = ({
@@ -31,6 +34,8 @@ const AddChapterDialog: React.FC<AddChapterDialogProps> = ({
     handleAddChapter,
     existingChapterNames = [],
     error,
+    workspaceId,
+    projectId,
 }) => {
     // Check for duplicate name (case-insensitive, trimmed)
     const normalizedInput = chapterName.trim().toLowerCase();
@@ -50,14 +55,28 @@ const AddChapterDialog: React.FC<AddChapterDialogProps> = ({
                 </DialogHeader>
                 <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-2">
-                        <Input
-                            type="text"
-                            placeholder="Chapter name"
-                            value={chapterName}
-                            onChange={(e) => setChapterName(e.target.value)}
-                            autoFocus
-                            className={showDuplicateError || error ? "border-red-500" : ""}
-                        />
+                        <div className="flex gap-2">
+                            <Input
+                                type="text"
+                                placeholder="Chapter name"
+                                value={chapterName}
+                                onChange={(e) => setChapterName(e.target.value)}
+                                autoFocus
+                                className={`flex-1 ${showDuplicateError || error ? "border-red-500" : ""}`}
+                            />
+                            {workspaceId && projectId && (
+                                <MagicWandButton
+                                    text={chapterName}
+                                    onEnhanced={(enhanced) => setChapterName(enhanced)}
+                                    enhancementMode="chapter_name"
+                                    workspaceId={workspaceId}
+                                    projectId={projectId}
+                                    disabled={loading}
+                                    size="icon"
+                                    variant="outline"
+                                />
+                            )}
+                        </div>
                         {showDuplicateError && (
                             <div className="flex items-start gap-2 text-sm text-red-600">
                                 <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />

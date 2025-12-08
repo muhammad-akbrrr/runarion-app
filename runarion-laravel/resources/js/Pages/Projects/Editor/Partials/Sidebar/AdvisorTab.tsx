@@ -48,6 +48,7 @@ import {
     MessageCircle,
 } from "lucide-react";
 import { usePendingEdits, AdvisorMode } from "../../contexts/PendingEditsContext";
+import { MagicWandButton } from "@/Components/MagicWandButton";
 
 interface AdvisorChat {
     id: string;
@@ -1399,19 +1400,35 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                         className="min-h-[50px] max-h-[100px] resize-none text-sm"
                         disabled={!activeChat || isStreaming}
                     />
-                    {isStreaming ? (
-                        <Button variant="destructive" size="icon" onClick={cancelStreaming} className="h-[50px] w-10">
-                            <X className="h-4 w-4" />
-                        </Button>
-                    ) : (
-                        <Button
-                            onClick={() => sendMessage()}
-                            disabled={!activeChat || !inputMessage.trim()}
-                            className="h-[50px] w-10"
-                        >
-                            <Send className="h-4 w-4" />
-                        </Button>
-                    )}
+                    <div className="flex flex-col gap-2">
+                        {!isStreaming && (
+                            <MagicWandButton
+                                text={inputMessage}
+                                onEnhanced={(enhanced) => setInputMessage(enhanced)}
+                                enhancementMode="chat_message"
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                aiModel={selectedModel}
+                                disabled={isStreaming || !inputMessage.trim()}
+                                size="icon"
+                                variant="outline"
+                                className="h-[50px] w-10 border-green-600 bg-green-600 hover:bg-green-500 text-white"
+                            />
+                        )}
+                        {isStreaming ? (
+                            <Button variant="destructive" size="icon" onClick={cancelStreaming} className="h-[50px] w-10">
+                                <X className="h-2.5 w-2.5" />
+                            </Button>
+                        ) : (
+                            <Button
+                                onClick={() => sendMessage()}
+                                disabled={!activeChat || !inputMessage.trim()}
+                                className="h-[50px] w-10"
+                            >
+                                <Send className="h-2.5 w-2.5" />
+                            </Button>
+                        )}
+                    </div>
                 </div>
             </div>
 

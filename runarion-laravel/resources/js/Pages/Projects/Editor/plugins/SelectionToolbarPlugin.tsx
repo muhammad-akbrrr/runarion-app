@@ -13,6 +13,7 @@ import { $createParagraphNode } from 'lexical';
 import { createPortal } from 'react-dom';
 import { Button } from '@/Components/ui/button';
 import { Input } from '@/Components/ui/input';
+import { Textarea } from '@/Components/ui/textarea';
 import {
     Sparkles,
     PenLine,
@@ -20,7 +21,9 @@ import {
     Loader2,
     X,
     ChevronRight,
+    Send,
 } from 'lucide-react';
+import { MagicWandButton } from '@/Components/MagicWandButton';
 
 interface SelectionToolbarPluginProps {
     workspaceId: string;
@@ -52,7 +55,7 @@ export function SelectionToolbarPlugin({
     const [showCustomPrompt, setShowCustomPrompt] = useState(false);
     const [customPrompt, setCustomPrompt] = useState('');
     const toolbarRef = useRef<HTMLDivElement>(null);
-    const inputRef = useRef<HTMLInputElement>(null);
+    const inputRef = useRef<HTMLTextAreaElement>(null);
     const isInteractingRef = useRef(false);
     const lastSelectionRef = useRef<string>('');
 
@@ -601,7 +604,7 @@ export function SelectionToolbarPlugin({
                         </Button>
                     </div>
                 ) : (
-                    <div className="p-2 w-80">
+                    <div className="p-2 w-96">
                         <div className="flex items-center gap-2 mb-2">
                             <Button
                                 variant="ghost"
@@ -613,29 +616,46 @@ export function SelectionToolbarPlugin({
                             </Button>
                             <span className="text-sm text-zinc-400">Custom instruction</span>
                         </div>
-                        <div className="flex gap-2">
-                            <Input
-                                ref={inputRef}
-                                placeholder="e.g., Make it more dramatic..."
-                                value={customPrompt}
-                                onChange={handleInputChange}
-                                onKeyDown={handleInputKeyDown}
-                                onFocus={handleInputFocus}
-                                className="h-8 bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500 text-sm focus:ring-violet-500 focus:border-violet-500"
-                                autoFocus
-                            />
-                            <Button
-                                size="sm"
-                                className="h-8 px-3 bg-violet-600 hover:bg-violet-700 shrink-0"
-                                onClick={handleSubmitClick}
-                                disabled={isLoading || !customPrompt.trim()}
-                            >
-                                {isLoading ? (
-                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Sparkles className="h-4 w-4" />
-                                )}
-                            </Button>
+                        <div className="space-y-2">
+                            <div className="flex gap-2">
+                                <Textarea
+                                    ref={inputRef}
+                                    placeholder="e.g., Make it more dramatic...&#10;Or write a full paragraph of instructions..."
+                                    value={customPrompt}
+                                    onChange={(e) => setCustomPrompt(e.target.value)}
+                                    onKeyDown={handleInputKeyDown}
+                                    onFocus={handleInputFocus}
+                                    className="min-h-[80px] max-h-[200px] bg-zinc-800 border-zinc-700 text-white placeholder:text-zinc-500 text-sm focus:ring-violet-500 focus:border-violet-500 resize-y"
+                                    autoFocus
+                                />
+                                <div className="flex flex-col gap-2">
+                                    <MagicWandButton
+                                        text={customPrompt}
+                                        onEnhanced={(enhanced) => setCustomPrompt(enhanced)}
+                                        enhancementMode="custom_instruction"
+                                        workspaceId={workspaceId}
+                                        projectId={projectId}
+                                        aiModel={aiModel}
+                                        disabled={isLoading}
+                                        size="icon"
+                                        variant="outline"
+                                        className="h-10 w-10 border-green-600 bg-green-900/20 hover:bg-green-900/40 hover:border-green-500 text-green-400 shrink-0"
+                                    />
+                                    <Button
+                                        size="icon"
+                                        className="h-10 w-10 bg-violet-600 hover:bg-violet-700 shrink-0"
+                                        onClick={handleSubmitClick}
+                                        disabled={isLoading || !customPrompt.trim()}
+                                        title="Submit"
+                                    >
+                                        {isLoading ? (
+                                            <Loader2 className="h-5 w-5 animate-spin" />
+                                        ) : (
+                                            <Send className="h-5 w-5" />
+                                        )}
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
