@@ -844,8 +844,18 @@ class MainEditorController extends Controller
 
                         // Update settings if provided
                         if (isset($validated['settings'])) {
-                            $project->settings = $validated['settings'];
+                        // Merge settings to preserve existing values
+                        $existingSettings = $project->settings ?? [];
+                        $newSettings = $validated['settings'] ?? [];
+                        $project->settings = array_merge($existingSettings, $newSettings);
                             $project->save();
+                        
+                        // Log settings save for debugging
+                        Log::info('Settings saved', [
+                            'project_id' => $project_id,
+                            'aiModel' => $project->settings['aiModel'] ?? 'not set',
+                            'all_settings' => $project->settings,
+                        ]);
                             
                             Log::info('Settings updated', [
                                 'project_id' => $project_id,
@@ -1484,8 +1494,10 @@ class MainEditorController extends Controller
                 return response()->json(['error' => 'User not authenticated'], 401);
             }
 
-            // Determine the model to use
-            $model = $validated['model'] ?? $project->settings['aiModel'] ?? 'gemini-2.5-flash';
+            // Determine the model to use - check settings properly
+            $model = $validated['model'] 
+                ?? ($project->settings && isset($project->settings['aiModel']) ? $project->settings['aiModel'] : null)
+                ?? 'gemini-2.0-flash'; // Default to 2.0 flash (most stable)
             
             // Map model names to provider
             $provider = 'gemini';

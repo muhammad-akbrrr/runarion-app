@@ -15,7 +15,9 @@ import {
     RefreshCw,
     Loader2,
     Palette,
+    Network,
 } from "lucide-react";
+import { Link } from "@inertiajs/react";
 import { useState, useEffect } from "react";
 
 interface VersionControlState {
@@ -39,6 +41,8 @@ interface EditorToolbarProps {
     versionControl?: VersionControlState;
     isColorCoded?: boolean;
     onToggleColorCoding?: () => void;
+    workspaceId?: string;
+    projectId?: string;
 }
 
 export function EditorToolbar({
@@ -48,6 +52,8 @@ export function EditorToolbar({
     versionControl,
     isColorCoded = true,
     onToggleColorCoding,
+    workspaceId,
+    projectId,
 }: EditorToolbarProps) {
     const [isButtonDisabled, setIsButtonDisabled] = useState(false);
 
@@ -249,6 +255,26 @@ export function EditorToolbar({
                             <RefreshCw className="h-4 w-4" />
                         )}
                     </Button>
+
+                    {/* Multi-Prompt Button */}
+                    {workspaceId && projectId && (
+                        <Link
+                            href={route('workspace.projects.editor.multiprompt', {
+                                workspace_id: workspaceId,
+                                project_id: projectId,
+                            })}
+                        >
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                className="h-8"
+                                title="Open Multi-Node Prompt Builder"
+                            >
+                                <Network className="h-4 w-4 mr-2" />
+                                Multi-Prompt
+                            </Button>
+                        </Link>
+                    )}
 
                     {/* Send Button */}
                     <Button

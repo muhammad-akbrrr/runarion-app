@@ -67,6 +67,7 @@ export default function ProjectEditorPage({
         isRegenerating,
         baseContent,
         aiRanges,
+        setAiRanges,
         isColorCoded,
         setIsColorCoded,
         versionControl,
@@ -90,6 +91,131 @@ export default function ProjectEditorPage({
     
     // Ref to get current editor content
     const getCurrentEditorContentRef = useRef<(() => string) | null>(null);
+
+    // Check for pending chainbuilder result
+    useEffect(() => {
+        const resultKey = `chainbuilder_result_${projectId}`;
+        const timestampKey = `chainbuilder_result_timestamp_${projectId}`;
+        
+        const result = localStorage.getItem(resultKey);
+        const timestamp = localStorage.getItem(timestampKey);
+        
+        // Only apply if result is recent (within last 5 minutes)
+        if (result && timestamp && selectedChapter) {
+            const resultAge = Date.now() - parseInt(timestamp);
+            if (resultAge < 5 * 60 * 1000) { // 5 minutes
+                // Get current content - try ref first, then fallback to state
+                // Use a small delay to ensure ref is set
+                setTimeout(() => {
+                const currentContent = getCurrentEditorContentRef.current?.() ?? content ?? '';
+                    
+                    // FIX: Remove any overlap between current content and result
+                    // The result might already include some of the current content if it was in story context
+                    let cleanResult = result.trim();
+                    
+                    // Only append if we have current content (don't replace empty chapter)
+                    if (currentContent.trim()) {
+                        // Check if result starts with current content (duplication)
+                        const currentTrimmed = currentContent.trim();
+                        if (cleanResult.startsWith(currentTrimmed)) {
+                            // Result already includes current content, strip it
+                            cleanResult = cleanResult.slice(currentTrimmed.length).trimStart();
+                        } else {
+                            // Check for partial overlap at the end of current content
+                            // Look for the last few words/sentences of current content in the result
+                            const currentWords = currentTrimmed.split(/\s+/).filter(Boolean);
+                            const resultWords = cleanResult.split(/\s+/).filter(Boolean);
+                            
+                            // Check if result starts with tail of current content (overlap)
+                            if (currentWords.length > 0 && resultWords.length > 0) {
+                                // Check last 10 words of current content
+                                const tailWords = currentWords.slice(-10).join(' ');
+                                if (tailWords && cleanResult.startsWith(tailWords)) {
+                                    cleanResult = cleanResult.slice(tailWords.length).trimStart();
+                                }
+                            }
+                        }
+                        
+                        // Only append if we have new content to add
+                        if (cleanResult) {
+                            const separator = currentContent && !currentContent.endsWith('\n') && !currentContent.endsWith(' ') 
+                                ? '\n\n' 
+                                : '';
+                            const appendedText = separator + cleanResult;
+                            const newContent = currentContent + appendedText;
+                        
+                        // Calculate AI range for the appended content
+                        // Get plain text length of current content (without markdown)
+                        // Use the same function as useProjectEditor for consistency
+                        const getPlainTextLength = (text: string): number => {
+                            if (!text) return 0;
+                            // Simple approach: just get the text length
+                            // The editor uses markdown, but for range tracking we use plain text
+                            // Remove markdown formatting for accurate length calculation
+                            return text.replace(/#{1,6}\s+/g, '') // headers
+                                       .replace(/\*\*(.*?)\*\*/g, '$1') // bold
+                                       .replace(/\*(.*?)\*/g, '$1') // italic
+                                       .replace(/`(.*?)`/g, '$1') // inline code
+                                       .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // links
+                                       .replace(/\n+/g, '\n') // normalize newlines
+                                       .length;
+                        };
+                        
+                            const currentPlainLength = getPlainTextLength(currentContent);
+                            const appendedPlainLength = getPlainTextLength(appendedText);
+                            const aiRangeStart = currentPlainLength;
+                            const aiRangeEnd = currentPlainLength + appendedPlainLength;
+                            
+                            // Update content and AI ranges
+                            setContent(newContent);
+                            
+                            // Add AI range for the appended content
+                            setAiRanges((prev: number[][]) => {
+                                // Remove any overlapping ranges and add new one
+                                const filtered = prev.filter(range => 
+                                    range[1] <= aiRangeStart || range[0] >= aiRangeEnd
+                                );
+                                return [...filtered, [aiRangeStart, aiRangeEnd]].sort((a, b) => a[0] - b[0]);
+                            });
+                            
+                            // Save with AI ranges
+                            if (selectedChapter) {
+                                smartSave(selectedChapter.order, newContent, 'manual');
+                            }
+                        }
+                        // If cleanResult is empty after deduplication, don't append anything
+                    } else {
+                        // If chapter is empty, just set the content (no append needed)
+                        setContent(cleanResult);
+                        
+                            // Mark entire result as AI-generated
+                            const getPlainTextLength = (text: string): number => {
+                                return text.replace(/#{1,6}\s+/g, '')
+                                           .replace(/\*\*(.*?)\*\*/g, '$1')
+                                           .replace(/\*(.*?)\*/g, '$1')
+                                           .replace(/`(.*?)`/g, '$1')
+                                           .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
+                                           .length;
+                            };
+                            const resultPlainLength = getPlainTextLength(cleanResult);
+                            setAiRanges([[0, resultPlainLength]]);
+                            
+                            if (selectedChapter) {
+                                smartSave(selectedChapter.order, cleanResult, 'manual');
+                            }
+                    }
+                
+                // Clear the stored result
+                localStorage.removeItem(resultKey);
+                localStorage.removeItem(timestampKey);
+                }, 100); // Small delay to ensure ref is set
+            } else {
+                // Clear old result
+                localStorage.removeItem(resultKey);
+                localStorage.removeItem(timestampKey);
+            }
+        }
+    }, [projectId, content, setContent, selectedChapter, smartSave, setAiRanges]);
     
     // Debug: Log when aiRanges changes
     useEffect(() => {
@@ -680,6 +806,8 @@ export default function ProjectEditorPage({
                                     setIsColorCoded(!isColorCoded);
                                 }
                             }}
+                            workspaceId={workspaceId}
+                            projectId={projectId}
                             wordCount={
                                 content
                                     ? (() => {

@@ -455,15 +455,40 @@ export function useProjectEditor({
         const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
         
         if (settingsChanged) {
-            console.log('Settings changed, auto-saving with 2s debounce', {
-                changedKeys: Object.keys(settings).filter(key => 
+            const changedKeys = Object.keys(settings).filter(key => 
                     JSON.stringify(settings[key]) !== JSON.stringify(originalSettings.current[key])
-                )
+            );
+            
+            console.log('Settings changed, auto-saving', {
+                changedKeys,
+                aiModel: settings.aiModel,
             });
-            // Use 2 second debounce for settings to batch rapid changes
-            debouncedSaveSettings(settings, 2000);
+            
+            // If aiModel changed, save immediately (no debounce) to ensure it's persisted
+            if (changedKeys.includes('aiModel')) {
+                console.log('AI Model changed, saving immediately:', settings.aiModel);
+                saveSettings(settings).catch(console.error);
+            } else {
+                // Use 1 second debounce for other settings to batch rapid changes
+                debouncedSaveSettings(settings, 1000);
+            }
         }
-    }, [settings, debouncedSaveSettings, isGenerating, isStreaming]);
+    }, [settings, debouncedSaveSettings, saveSettings, isGenerating, isStreaming]);
+
+    // Save settings immediately when component unmounts (e.g., switching tabs)
+    useEffect(() => {
+        return () => {
+            // On unmount, save settings immediately if there are pending changes
+            if (isInitialized.current) {
+                const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
+                if (settingsChanged) {
+                    console.log('Component unmounting, force-saving settings immediately');
+                    // Force immediate save on unmount (bypass debounce)
+                    saveSettings(settings).catch(console.error);
+                }
+            }
+        };
+    }, [settings, saveSettings]);
 
     // Handle streaming text updates - removed duplicate logic
     // The StreamingPlugin will handle the visual streaming updates
@@ -1015,6 +1040,7 @@ export function useProjectEditor({
         isRegenerating,
         baseContent, // User text before generation (for StreamingPlugin)
         aiRanges, // Array of [start, end] positions for AI text (for color coding)
+        setAiRanges, // Update AI ranges (for external content appends)
         isColorCoded, // Color coding toggle state
         setIsColorCoded, // Toggle color coding
         

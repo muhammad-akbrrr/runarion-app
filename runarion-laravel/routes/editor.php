@@ -7,6 +7,7 @@ use App\Http\Controllers\ProjectEditor\MultiPromptController;
 use App\Http\Controllers\ProjectEditor\ImageGeneratorController;
 use App\Http\Controllers\ProjectEditor\RecordsController;
 use App\Http\Controllers\ProjectEditor\AdvisorController;
+use App\Http\Controllers\ProjectEditor\ChainBuilderController;
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'editor'])->name('workspace.projects.editor');
@@ -137,4 +138,13 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     
     // Story context
     Route::get('/{workspace_id}/projects/{project_id}/editor/advisor/story-context', [AdvisorController::class, 'getStoryContext'])->name('advisor.story-context');
+});
+
+// Chain Builder Routes - Multi-Node Prompt System
+Route::middleware(['auth', 'project-editor'])->group(function () {
+    Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/execute-node', [ChainBuilderController::class, 'executeNode'])->name('chain-builder.execute-node');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/generate-layout', [ChainBuilderController::class, 'generateGraphLayout'])->name('chain-builder.generate-layout');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/generate-instruction', [ChainBuilderController::class, 'generateInstruction'])->name('chain-builder.generate-instruction');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/refine-selection', [ChainBuilderController::class, 'refineSelection'])->name('chain-builder.refine-selection');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/enhance-auto-build-prompt', [ChainBuilderController::class, 'enhanceAutoBuildPrompt'])->name('chain-builder.enhance-auto-build-prompt');
 });
