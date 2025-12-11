@@ -5,16 +5,18 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Services\GraphConstants;
 
 class NovelGraphEdge extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'novel_graph_edges';
 
     protected $fillable = [
         'draft_id',
+        'project_id',
         'scene_id',
         'source_vertex_id',
         'target_vertex_id',

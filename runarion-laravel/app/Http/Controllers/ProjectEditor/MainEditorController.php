@@ -264,6 +264,20 @@ class MainEditorController extends Controller
         }
         
         $newOrder = count($chapters);
+        
+        // Defensive cleanup: ensure no leftover version control data exists for this order
+        // This can happen if a chapter was deleted but version control wasn't cleaned up properly
+        try {
+            $this->versionControl->deleteChapterVersionControl($project_id, $newOrder);
+        } catch (\Exception $e) {
+            // Log but don't fail - this is defensive cleanup
+            Log::warning('Error cleaning up version control when creating new chapter', [
+                'project_id' => $project_id,
+                'chapter_order' => $newOrder,
+                'error' => $e->getMessage()
+            ]);
+        }
+        
         $newChapter = [
             'order' => $newOrder,
             'chapter_name' => $validated['chapter_name'],
@@ -422,6 +436,14 @@ class MainEditorController extends Controller
             'deleted' => $chapterCountBefore - $chapterCountAfter
         ]);
 
+        // Build mapping of old orders to new orders for version control reordering
+        // Before reordering, capture the old orders
+        $oldOrders = [];
+        foreach (array_values($chapters) as $index => $chapter) {
+            $oldOrder = $chapter['order'] ?? $index;
+            $oldOrders[$oldOrder] = $index; // Map old order => new order
+        }
+
         // Reorder remaining chapters
         $reorderedChapters = [];
         foreach (array_values($chapters) as $index => $chapter) {
@@ -432,15 +454,29 @@ class MainEditorController extends Controller
         $projectContent->content = $reorderedChapters;
         $projectContent->save();
 
-        // Also clean up version control for this chapter
+        // Clean up version control for the deleted chapter
         try {
-            // Note: Version control cleanup would go here if needed
+            $this->versionControl->deleteChapterVersionControl($project_id, $order);
         } catch (\Exception $e) {
             Log::warning('Error cleaning up version control for deleted chapter', [
                 'project_id' => $project_id,
                 'chapter_order' => $order,
                 'error' => $e->getMessage()
             ]);
+        }
+
+        // Reorder version control data for remaining chapters
+        // Only reorder chapters that actually changed order
+        if (!empty($oldOrders)) {
+            try {
+                $this->versionControl->reorderChapters($project_id, $oldOrders);
+            } catch (\Exception $e) {
+                Log::warning('Error reordering version control data after chapter deletion', [
+                    'project_id' => $project_id,
+                    'order_mapping' => $oldOrders,
+                    'error' => $e->getMessage()
+                ]);
+            }
         }
 
         return response()->json([

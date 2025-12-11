@@ -6,7 +6,10 @@ certifi==2025.1.31
 charset-normalizer==3.4.1
 click==8.1.8
 controlnet-aux==0.0.9
-diffusers==0.33.1
+# Layer Diffusion library - installed via Dockerfile from sd-forge-layerdiffuse
+# Note: transparent-background is installed separately in Dockerfile to avoid timm conflict
+# Diffusers for SDXL pipelines
+diffusers>=0.30.0
 einops==0.8.1
 fastapi==0.115.12
 ffmpy==0.5.0

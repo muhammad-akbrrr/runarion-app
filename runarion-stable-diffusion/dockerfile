@@ -37,8 +37,25 @@ RUN python3 -m venv /app/venv
 COPY requirements.txt .
 
 # Install Python dependencies
+# Note: Installing packages, skipping hash verification for dependencies that may have been updated
 RUN . /app/venv/bin/activate && \
+  python -m pip install --upgrade pip setuptools wheel && \
+  python -m pip install --no-cache-dir -r requirements.txt --no-deps || true && \
   python -m pip install --no-cache-dir -r requirements.txt
+
+# Install LayerDiffuse from LayerDiffuse_DiffusersCLI (the CORRECT repo for pure diffusers)
+# This is lllyasviel's official CLI version for diffusers - NOT the Forge/WebUI version
+RUN . /app/venv/bin/activate && \
+  cd /tmp && \
+  git clone https://github.com/lllyasviel/LayerDiffuse_DiffusersCLI.git && \
+  cd LayerDiffuse_DiffusersCLI && \
+  # Install the requirements for LayerDiffuse
+  pip install -r requirements.txt || true && \
+  # Copy the lib_layerdiffuse folder to site-packages (this is the correct folder name)
+  cp -r lib_layerdiffuse $(python -c "import site; print(site.getsitepackages()[0])") 2>/dev/null || \
+  cp -r lib_layerdiffuse /app/venv/lib/python3.10/site-packages/ && \
+  cd / && \
+  rm -rf /tmp/LayerDiffuse_DiffusersCLI
 
 # Copy application code
 COPY . .

@@ -12,6 +12,7 @@ from api.novel_writer import rewrite_novel
 from api.records import records
 from api.auditor import auditor
 from api.advisor import advisor
+from api.book_publishing import book_publishing
 
 load_dotenv()
 
@@ -95,6 +96,7 @@ app.register_blueprint(rewrite_novel, url_prefix='/api')
 app.register_blueprint(records, url_prefix='/api')
 app.register_blueprint(auditor, url_prefix='/api')
 app.register_blueprint(advisor, url_prefix='/api')
+app.register_blueprint(book_publishing, url_prefix='/api')
 
 # --- Health Check ---
 

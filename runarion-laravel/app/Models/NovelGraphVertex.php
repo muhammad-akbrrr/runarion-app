@@ -6,16 +6,18 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 use App\Services\GraphConstants;
 
 class NovelGraphVertex extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'novel_graph_vertices';
 
     protected $fillable = [
         'draft_id',
+        'project_id',
         'entity_type',
         'entity_name',
         'vertex_id',

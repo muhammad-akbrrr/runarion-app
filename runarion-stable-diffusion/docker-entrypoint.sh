@@ -29,23 +29,28 @@ check_cuda() {
 
 # Function to check if required models are present
 check_models() {
-    log "Checking required models..."
-    local required_models=(
-        "models/stable-diffusion-v1-5/model_index.json"
-        "models/stable-diffusion-v1-5/v1-5-pruned.safetensors"
-        "models/stable-diffusion-v1-5/scheduler/scheduler_config.json"
-        "models/controlnet/diffusion_pytorch_model.safetensors"
-        "models/controlnet/config.json"
-    )
+    log "Checking for local SDXL models..."
+    local sd_model_path="/app/models/juggernaut-xl-v11"
+    local cn_model_path="/app/models/controlnet-sdxl"
     
-    for model in "${required_models[@]}"; do
-        if [ ! -f "/app/$model" ]; then
-            log "Warning: Required model file $model not found. Please ensure models are properly mounted."
-            return 1
+    # Check SDXL model
+    if [ -d "$sd_model_path" ] && [ -f "$sd_model_path/model_index.json" ]; then
+        log "SDXL model found locally at $sd_model_path"
+    else
+        log "SDXL model not found locally. Will download from HuggingFace on first use."
+        log "Note: SDXL models are large (~6.6GB). Download may take 15-30 minutes."
+    fi
+    
+    # Check ControlNet model (optional)
+    if [ "$USE_CONTROLNET" = "true" ]; then
+        if [ -d "$cn_model_path" ] && [ -f "$cn_model_path/config.json" ]; then
+            log "SDXL ControlNet model found locally at $cn_model_path"
         else
-            log "Model file $model found"
+            log "SDXL ControlNet model not found locally. Will download from HuggingFace on first use."
         fi
-    done
+    else
+        log "ControlNet is disabled (USE_CONTROLNET=false)"
+    fi
 }
 
 # Function to check cache directory
@@ -86,8 +91,8 @@ check_cuda
 # Check cache directory
 check_cache
 
-# Check required models
-check_models
+# Check for models (non-blocking, models can be downloaded on first use)
+check_models || log "Model check completed with warnings, continuing..."
 
 # Start the service
 start_service

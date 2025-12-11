@@ -22,8 +22,8 @@ runarion-stable-diffusion/
 │   ├── main.py           # FastAPI application and model initialization
 │   └── utils/            # Utility functions and helpers
 ├── models/               # Model storage directory
-│   ├── stable-diffusion-v1-5/
-│   └── controlnet/
+│   ├── juggernaut-xl-v11/  # SDXL model (Juggernaut XL v11)
+│   └── controlnet-sdxl/    # SDXL ControlNet model
 ├── outputs/             # Generated image storage
 ├── inputs/              # Input image storage
 ├── cache/               # Model cache directory
@@ -94,8 +94,8 @@ Create a `.env` file with the following variables:
 ```
 # Model Configuration
 MODELS_DIR=/app/models
-CONTROLNET_MODEL_PATH=controlnet
-STABLE_DIFFUSION_MODEL_PATH=stable-diffusion-v1-5
+CONTROLNET_MODEL_PATH=controlnet-sdxl
+STABLE_DIFFUSION_MODEL_PATH=juggernaut-xl-v11
 USE_SAFETENSORS=true
 ENABLE_MODEL_CACHING=true
 CACHE_DIR=/app/cache

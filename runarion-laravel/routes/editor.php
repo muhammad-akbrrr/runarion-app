@@ -8,6 +8,7 @@ use App\Http\Controllers\ProjectEditor\ImageGeneratorController;
 use App\Http\Controllers\ProjectEditor\RecordsController;
 use App\Http\Controllers\ProjectEditor\AdvisorController;
 use App\Http\Controllers\ProjectEditor\ChainBuilderController;
+use App\Http\Controllers\ProjectEditor\VersionHistoryController;
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'editor'])->name('workspace.projects.editor');
@@ -48,8 +49,24 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/image', [ImageGeneratorController::class, 'imageGenerator'])->name('workspace.projects.editor.image');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/image/generate-cover', [ImageGeneratorController::class, 'generateChapterCover'])->name('editor.image.generate-cover');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/image/generate-pdf', [ImageGeneratorController::class, 'generatePDF'])->name('editor.image.generate-pdf');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/image/generate-border', [ImageGeneratorController::class, 'generateBorderTemplate'])->name('editor.image.generate-border');
+    Route::get('/{workspace_id}/projects/{project_id}/editor/image/border-templates', [ImageGeneratorController::class, 'listBorderTemplates'])->name('editor.image.border-templates');
 
     Route::get('/projects/{project_id}/editor/image', fn() => '')->name('raw.workspace.projects.editor.image');
+});
+
+// Version History Routes
+Route::middleware(['auth', 'project-editor'])->group(function () {
+    Route::get('/{workspace_id}/projects/{project_id}/editor/version-history', [VersionHistoryController::class, 'index'])->name('workspace.projects.editor.version-history');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots', [VersionHistoryController::class, 'createSnapshot'])->name('version-history.snapshots.create');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}/load', [VersionHistoryController::class, 'loadSnapshot'])->name('version-history.snapshots.load');
+    Route::put('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}', [VersionHistoryController::class, 'updateSnapshot'])->name('version-history.snapshots.update');
+    Route::delete('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}', [VersionHistoryController::class, 'deleteSnapshot'])->name('version-history.snapshots.delete');
+    Route::get('/{workspace_id}/projects/{project_id}/editor/version-history/chapters/{chapter_order}/tree', [VersionHistoryController::class, 'getChapterVersionTree'])->name('version-history.chapters.tree');
+
+    Route::get('/projects/{project_id}/editor/version-history', fn() => '')->name('raw.workspace.projects.editor.version-history');
 });
 
 // Records System Routes

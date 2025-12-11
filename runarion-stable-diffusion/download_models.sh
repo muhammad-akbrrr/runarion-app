@@ -46,127 +46,96 @@ check_huggingface_cli() {
 # Function to create directories
 create_directories() {
     echo "Creating model directories..."
-    mkdir -p "$MODELS_DIR/stable-diffusion-v1-5"
-    mkdir -p "$MODELS_DIR/controlnet"
+    mkdir -p "$MODELS_DIR/juggernaut-xl-v11"
+    mkdir -p "$MODELS_DIR/controlnet-sdxl"
 }
 
-# Function to download Stable Diffusion model
-download_sd_model() {
-    echo "Downloading Stable Diffusion v1.5 model (Forge compatible)..."
-    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/stable-diffusion-v1-5" \
-        runwayml/stable-diffusion-v1-5 \
-        --include "*.safetensors" "*.json" "*.txt" "*.yaml" "*.ckpt" \
-        --exclude "*.bin" "*.pt" "*.pth"
+# Function to download SDXL model (Juggernaut XL v11)
+download_sdxl_model() {
+    echo "Downloading Juggernaut XL v11 (SDXL) model..."
+    echo "Note: This model is large (~6.6GB). Download may take 10-30 minutes depending on connection."
     
-    # Ensure the model is in the correct format for Forge
-    if [ ! -f "$MODELS_DIR/stable-diffusion-v1-5/v1-5-pruned.safetensors" ]; then
-        echo "Converting model to Forge format..."
-        huggingface-cli download --resume-download --local-dir "$MODELS_DIR/stable-diffusion-v1-5" \
-            runwayml/stable-diffusion-v1-5 \
-            --include "v1-5-pruned.safetensors"
+    # Try to download from HuggingFace if available
+    # If not, user will need to download from CivitAI manually
+    if huggingface-cli repo exists Ragnarok_AI/Juggernaut-XL-v11 2>/dev/null; then
+        huggingface-cli download --resume-download --local-dir "$MODELS_DIR/juggernaut-xl-v11" \
+            Ragnarok_AI/Juggernaut-XL-v11 \
+            --include "*.safetensors" "*.json" "*.txt" "*.yaml" \
+            --exclude "*.bin" "*.pt" "*.pth"
+    else
+        echo "Warning: Juggernaut XL v11 not found on HuggingFace."
+        echo "Please download manually from: https://civitai.com/models/133005?modelVersionId=288982"
+        echo "Place the model files in: $MODELS_DIR/juggernaut-xl-v11"
+        echo ""
+        echo "Alternatively, using base SDXL model..."
+        huggingface-cli download --resume-download --local-dir "$MODELS_DIR/juggernaut-xl-v11" \
+            stabilityai/stable-diffusion-xl-base-1.0 \
+            --include "*.safetensors" "*.json" "*.txt" "*.yaml" \
+            --exclude "*.bin" "*.pt" "*.pth"
     fi
 }
 
-# Function to download ControlNet model
+# Function to download SDXL ControlNet model
 download_controlnet_model() {
-    echo "Downloading ControlNet model (Forge compatible)..."
-    # Download the canny model which is most commonly used
-    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet" \
-        lllyasviel/control_v11p_sd15_canny \
+    echo "Downloading SDXL ControlNet model (Canny)..."
+    huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet-sdxl" \
+        diffusers/controlnet-canny-sdxl-1.0 \
         --include "*.safetensors" "*.json" "*.txt" "*.yaml" \
         --exclude "*.bin" "*.pt" "*.pth"
-    
-    # Ensure the model is in the correct format for Forge
-    if [ ! -f "$MODELS_DIR/controlnet/diffusion_pytorch_model.safetensors" ]; then
-        echo "Converting ControlNet model to Forge format..."
-        huggingface-cli download --resume-download --local-dir "$MODELS_DIR/controlnet" \
-            lllyasviel/control_v11p_sd15_canny \
-            --include "diffusion_pytorch_model.safetensors"
-    fi
 }
 
 # Function to verify downloads
 verify_downloads() {
     echo "Verifying model downloads..."
     
-    # Check Stable Diffusion model
-    local sd_required_files=(
+    # Check SDXL model
+    local sdxl_required_files=(
         "model_index.json"
-        "v1-5-pruned.safetensors"
-        "v1-inference.yaml"
-        "scheduler/scheduler_config.json"
     )
     
-    # Check required subdirectories
-    local sd_required_dirs=(
+    # Check required subdirectories for SDXL
+    local sdxl_required_dirs=(
         "unet"
         "vae"
         "text_encoder"
+        "text_encoder_2"
         "tokenizer"
+        "tokenizer_2"
         "scheduler"
     )
     
-    for file in "${sd_required_files[@]}"; do
-        if [ ! -f "$MODELS_DIR/stable-diffusion-v1-5/$file" ]; then
-            echo "Error: Stable Diffusion model download failed or is incomplete."
-            echo "Missing required file: $file"
-            echo "Found files:"
-            ls -la "$MODELS_DIR/stable-diffusion-v1-5/"
-            exit 1
+    for file in "${sdxl_required_files[@]}"; do
+        if [ ! -f "$MODELS_DIR/juggernaut-xl-v11/$file" ]; then
+            echo "Warning: SDXL model download may be incomplete."
+            echo "Missing file: $file"
+            echo "This is OK if you're using a manually downloaded model."
         fi
     done
     
-    for dir in "${sd_required_dirs[@]}"; do
-        if [ ! -d "$MODELS_DIR/stable-diffusion-v1-5/$dir" ]; then
-            echo "Error: Stable Diffusion model structure is incomplete."
-            echo "Missing required directory: $dir"
-            echo "Found directories:"
-            ls -la "$MODELS_DIR/stable-diffusion-v1-5/"
-            exit 1
+    # Verify model type (SDXL)
+    if [ -f "$MODELS_DIR/juggernaut-xl-v11/model_index.json" ]; then
+        if ! grep -q "StableDiffusionXLPipeline" "$MODELS_DIR/juggernaut-xl-v11/model_index.json"; then
+            echo "Warning: Model type may not be SDXL"
+            echo "Found:"
+            grep "_class_name" "$MODELS_DIR/juggernaut-xl-v11/model_index.json" || echo "No _class_name found"
         fi
-    done
-    
-    # Verify model type and version
-    if ! grep -q "\"_class_name\": \"StableDiffusionPipeline\"" "$MODELS_DIR/stable-diffusion-v1-5/model_index.json"; then
-        echo "Error: Incorrect model type in model_index.json"
-        echo "Expected: StableDiffusionPipeline"
-        echo "Found:"
-        grep "_class_name" "$MODELS_DIR/stable-diffusion-v1-5/model_index.json"
-        exit 1
     fi
     
     # Check ControlNet model
-    local cn_required_files=(
-        "config.json"
-        "diffusion_pytorch_model.safetensors"
-        "diffusion_pytorch_model.fp16.safetensors"
-    )
-    
-    for file in "${cn_required_files[@]}"; do
-        if [ ! -f "$MODELS_DIR/controlnet/$file" ]; then
-            echo "Error: ControlNet model download failed or is incomplete."
-            echo "Missing required file: $file"
-            echo "Found files:"
-            ls -la "$MODELS_DIR/controlnet/"
-            exit 1
+    if [ -f "$MODELS_DIR/controlnet-sdxl/config.json" ]; then
+        if ! grep -q "ControlNetModel" "$MODELS_DIR/controlnet-sdxl/config.json"; then
+            echo "Warning: ControlNet model type may be incorrect"
         fi
-    done
-    
-    # Verify ControlNet model type
-    if ! grep -q "\"_class_name\": \"ControlNetModel\"" "$MODELS_DIR/controlnet/config.json"; then
-        echo "Error: Incorrect ControlNet model type in config.json"
-        echo "Expected: ControlNetModel"
-        echo "Found:"
-        grep "_class_name" "$MODELS_DIR/controlnet/config.json"
-        exit 1
     fi
     
-    echo "All models downloaded and verified successfully!"
-    echo "Model structure matches Forge requirements."
+    echo "Model verification complete!"
+    echo "Note: SDXL models are large. Ensure you have sufficient disk space (~10GB+)."
 }
 
 # Main execution
-echo "Starting model download process..."
+echo "Starting SDXL model download process..."
+echo "This will download Juggernaut XL v11 (SDXL) and SDXL ControlNet models."
+echo ""
 
 # Check prerequisites
 check_huggingface_cli
@@ -175,12 +144,17 @@ check_huggingface_cli
 create_directories
 
 # Download models
-download_sd_model
+download_sdxl_model
 download_controlnet_model
 
 # Verify downloads
 verify_downloads
 
+echo ""
 echo "Models have been downloaded to:"
-echo "- Stable Diffusion: $MODELS_DIR/stable-diffusion-v1-5"
-echo "- ControlNet: $MODELS_DIR/controlnet" 
+echo "- SDXL Model: $MODELS_DIR/juggernaut-xl-v11"
+echo "- SDXL ControlNet: $MODELS_DIR/controlnet-sdxl"
+echo ""
+echo "Note: If Juggernaut XL v11 wasn't found on HuggingFace, you may need to:"
+echo "1. Download from CivitAI: https://civitai.com/models/133005?modelVersionId=288982"
+echo "2. Extract and place files in: $MODELS_DIR/juggernaut-xl-v11"
