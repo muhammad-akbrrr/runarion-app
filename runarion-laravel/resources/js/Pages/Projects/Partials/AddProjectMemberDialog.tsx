@@ -168,7 +168,7 @@ export default function AddProjectMemberDialog({
                     )}
                 </ScrollArea>
 
-                <DialogFooter className="flex flex-row items-center !justify-between">
+                <DialogFooter className="flex flex-row items-center justify-between!">
                     <p className="text-sm text-muted-foreground">
                         {selectedCount} of {availableMembers.length} Selected
                     </p>

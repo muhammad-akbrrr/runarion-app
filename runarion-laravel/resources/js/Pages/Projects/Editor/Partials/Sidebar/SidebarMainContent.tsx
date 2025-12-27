@@ -236,7 +236,7 @@ export function SidebarContent({
                     <Textarea
                         id="memory"
                         placeholder="Type here..."
-                        className="min-h-[80px] pr-8"
+                        className="min-h-20 pr-8"
                         value={memory}
                         onChange={(e) => onSettingChange?.('memory', e.target.value)}
                     />
@@ -260,7 +260,7 @@ export function SidebarContent({
                     <Textarea
                         id="genre"
                         placeholder="Type here..."
-                        className="min-h-[80px] pr-8"
+                        className="min-h-20 pr-8"
                         value={storyGenre}
                         onChange={(e) => onSettingChange?.('storyGenre', e.target.value)}
                     />
@@ -284,7 +284,7 @@ export function SidebarContent({
                     <Textarea
                         id="tone"
                         placeholder="Type here..."
-                        className="min-h-[80px] pr-8"
+                        className="min-h-20 pr-8"
                         value={storyTone}
                         onChange={(e) => onSettingChange?.('storyTone', e.target.value)}
                     />
@@ -339,7 +339,7 @@ export function SidebarContent({
                     <Button
                         variant="ghost"
                         className="
-                            w-full justify-between !p-0
+                            w-full justify-between p-0!
                             rounded-none h-auto
                             hover:bg-transparent
                         "
@@ -627,7 +627,7 @@ export function SidebarContent({
                         <div className="relative">
                             <Textarea
                                 placeholder="Type here..."
-                                className="min-h-[80px] pr-8"
+                                className="min-h-20 pr-8"
                             />
                             <Button
                                 variant="ghost"
@@ -764,7 +764,7 @@ export function SidebarContent({
                         <div className="relative">
                             <Textarea
                                 placeholder="Type here..."
-                                className="min-h-[80px] pr-8"
+                                className="min-h-20 pr-8"
                             />
                             <Button
                                 variant="ghost"

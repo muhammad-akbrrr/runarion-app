@@ -10,7 +10,7 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin";
-import { 
+import {
     HEADING,
     UNORDERED_LIST,
     ORDERED_LIST,
@@ -21,17 +21,20 @@ import {
     ITALIC_UNDERSCORE,
     STRIKETHROUGH,
     INLINE_CODE,
-    $convertToMarkdownString 
+    $convertToMarkdownString,
 } from "@lexical/markdown";
-import {
-    TextNode,
-} from "lexical";
-import {
-    HeadingNode,
-    QuoteNode,
-} from "@lexical/rich-text";
+import { TextNode } from "lexical";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
-import { ContentUpdatePlugin, EditorRefPlugin, StreamingPlugin, ColorCodingPlugin, SelectionToolbarPlugin, FormattingToolbarPlugin, InlineDiffPlugin } from "../plugins";
+import {
+    ContentUpdatePlugin,
+    EditorRefPlugin,
+    StreamingPlugin,
+    ColorCodingPlugin,
+    SelectionToolbarPlugin,
+    FormattingToolbarPlugin,
+    InlineDiffPlugin,
+} from "../plugins";
 
 // Define supported transformers using the correct exports
 const SUPPORTED_TRANSFORMERS = [
@@ -48,20 +51,17 @@ const SUPPORTED_TRANSFORMERS = [
 ];
 
 // Debug: Log supported transformers
-console.log('Supported transformers:', SUPPORTED_TRANSFORMERS.map(t => ({
-    type: t.type,
-    tag: (t as any).tag ?? undefined
-})));
+console.log(
+    "Supported transformers:",
+    SUPPORTED_TRANSFORMERS.map((t) => ({
+        type: t.type,
+        tag: (t as any).tag ?? undefined,
+    }))
+);
 
 const editorConfig: InitialConfigType = {
     namespace: "MyEditor",
-    nodes: [
-        HeadingNode,
-        ListNode,
-        ListItemNode,
-        QuoteNode,
-        TextNode,
-    ],
+    nodes: [HeadingNode, ListNode, ListItemNode, QuoteNode, TextNode],
     theme: {
         paragraph: "text-base leading-relaxed text-gray-900",
         heading: {
@@ -122,7 +122,7 @@ interface LexicalEditorProps {
     workspaceId?: string;
     projectId?: string;
     aiModel?: string;
-    selectionToolbarMode?: 'formatting' | 'ai-rewrite';
+    selectionToolbarMode?: "formatting" | "ai-rewrite";
     // Props for inline diff (Agent mode)
     onApplyEdit?: (oldText: string, newText: string) => boolean;
 }
@@ -144,26 +144,28 @@ export function LexicalEditor({
     workspaceId,
     projectId,
     aiModel,
-    selectionToolbarMode = 'formatting',
+    selectionToolbarMode = "formatting",
     onApplyEdit,
 }: LexicalEditorProps) {
     // Store editor instance for context menu
     const editorRef = useRef<any>(null);
-    
+
     // Debug: Log aiRanges when they change
     useEffect(() => {
-        console.log('🎨 LexicalEditor received aiRanges:', aiRanges);
+        console.log("🎨 LexicalEditor received aiRanges:", aiRanges);
     }, [aiRanges]);
-    
+
     // Expose function to get current editor content
     useEffect(() => {
         if (onGetCurrentContent) {
             onGetCurrentContent(() => {
-                if (!editorRef.current) return '';
-                
-                let currentContent = '';
+                if (!editorRef.current) return "";
+
+                let currentContent = "";
                 editorRef.current.getEditorState().read(() => {
-                    currentContent = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
+                    currentContent = $convertToMarkdownString(
+                        SUPPORTED_TRANSFORMERS
+                    );
                 });
                 return currentContent;
             });
@@ -171,17 +173,20 @@ export function LexicalEditor({
     }, [onGetCurrentContent]);
 
     // Handle streaming updates from the plugin
-    const handleStreamingUpdate = useCallback((fullContent: string) => {
-        // Update the content state to match what's being displayed
-        // This keeps the state in sync with the visual content during streaming
-        console.log('LexicalEditor: Received streaming update', {
-            fullContentLength: fullContent.length,
-            isStreaming,
-            isRegenerating
-        });
-        // Don't update content state during streaming to avoid conflicts
-        // The final content will be set when streaming completes
-    }, [isStreaming, isRegenerating]);
+    const handleStreamingUpdate = useCallback(
+        (fullContent: string) => {
+            // Update the content state to match what's being displayed
+            // This keeps the state in sync with the visual content during streaming
+            console.log("LexicalEditor: Received streaming update", {
+                fullContentLength: fullContent.length,
+                isStreaming,
+                isRegenerating,
+            });
+            // Don't update content state during streaming to avoid conflicts
+            // The final content will be set when streaming completes
+        },
+        [isStreaming, isRegenerating]
+    );
 
     return (
         <div
@@ -191,9 +196,9 @@ export function LexicalEditor({
                 absolute top-0 left-0 w-full h-full
             "
         >
-            <div 
-                className={`bg-white rounded-lg min-h-full h-auto p-6 !pb-18 flex items-start justify-start editor-content ${
-                    isColorCoded ? 'color-coded' : ''
+            <div
+                className={`bg-white rounded-lg min-h-full h-auto p-6 pb-18! flex items-start justify-start editor-content ${
+                    isColorCoded ? "color-coded" : ""
                 }`}
                 data-user-content-length={baseContent?.length || 0}
             >
@@ -212,63 +217,86 @@ export function LexicalEditor({
                     />
                     <HistoryPlugin />
                     <ListPlugin />
-                    <MarkdownShortcutPlugin transformers={SUPPORTED_TRANSFORMERS} />
+                    <MarkdownShortcutPlugin
+                        transformers={SUPPORTED_TRANSFORMERS}
+                    />
                     <OnChangePlugin
                         onChange={(editorState, editor) => {
                             // Only update content state when not streaming and not interacting
                             // Don't update during regeneration to prevent conflicts
-                            if (!isStreaming && !isInteracting && !isRegenerating) {
+                            if (
+                                !isStreaming &&
+                                !isInteracting &&
+                                !isRegenerating
+                            ) {
                                 editorState.read(() => {
-                                    const newContent = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
-                                    console.log('OnChangePlugin: Content changed', {
-                                        newContentLength: newContent.length,
-                                        isStreaming,
-                                        isInteracting,
-                                        isRegenerating
-                                    });
+                                    const newContent = $convertToMarkdownString(
+                                        SUPPORTED_TRANSFORMERS
+                                    );
+                                    console.log(
+                                        "OnChangePlugin: Content changed",
+                                        {
+                                            newContentLength: newContent.length,
+                                            isStreaming,
+                                            isInteracting,
+                                            isRegenerating,
+                                        }
+                                    );
                                     setContent(newContent);
                                 });
                             } else {
-                                console.log('OnChangePlugin: Skipping content update', {
-                                    isStreaming,
-                                    isInteracting,
-                                    isRegenerating
-                                });
+                                console.log(
+                                    "OnChangePlugin: Skipping content update",
+                                    {
+                                        isStreaming,
+                                        isInteracting,
+                                        isRegenerating,
+                                    }
+                                );
                             }
                         }}
                     />
-                    <ContentUpdatePlugin content={content} isStreaming={isStreaming} />
-                    <StreamingPlugin 
+                    <ContentUpdatePlugin
+                        content={content}
+                        isStreaming={isStreaming}
+                    />
+                    <StreamingPlugin
                         isStreaming={isStreaming}
                         streamingText={streamingText}
                         baseContent={baseContent} // User text before generation (preserved)
                         isRegenerating={isRegenerating}
                         onStreamingUpdate={handleStreamingUpdate}
                     />
-                    <ColorCodingPlugin 
+                    <ColorCodingPlugin
                         aiRanges={aiRanges || []}
                         isColorCoded={isColorCoded}
                     />
                     <EditorRefPlugin editorRef={editorRef} />
-                    
+
                     {/* Formatting Toolbar - shown when mode is 'formatting' */}
-                    {selectionToolbarMode === 'formatting' && (
+                    {selectionToolbarMode === "formatting" && (
                         <FormattingToolbarPlugin />
                     )}
-                    
+
                     {/* AI Rewrite Toolbar - shown when mode is 'ai-rewrite' */}
-                    {selectionToolbarMode === 'ai-rewrite' && workspaceId && projectId && selectedChapter && (
-                        <SelectionToolbarPlugin
-                            workspaceId={workspaceId}
-                            projectId={projectId}
-                            chapterOrder={selectedChapter.order}
-                            aiModel={aiModel}
-                            onRewriteComplete={(oldText, newText) => {
-                                console.log('Selection rewritten:', { oldText: oldText.substring(0, 50), newText: newText.substring(0, 50) });
-                            }}
-                        />
-                    )}
-                    
+                    {selectionToolbarMode === "ai-rewrite" &&
+                        workspaceId &&
+                        projectId &&
+                        selectedChapter && (
+                            <SelectionToolbarPlugin
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                chapterOrder={selectedChapter.order}
+                                aiModel={aiModel}
+                                onRewriteComplete={(oldText, newText) => {
+                                    console.log("Selection rewritten:", {
+                                        oldText: oldText.substring(0, 50),
+                                        newText: newText.substring(0, 50),
+                                    });
+                                }}
+                            />
+                        )}
+
                     {/* Inline Diff Plugin - for Agent mode edits */}
                     {onApplyEdit && (
                         <InlineDiffPlugin

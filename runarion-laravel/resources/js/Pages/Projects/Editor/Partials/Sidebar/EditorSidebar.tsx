@@ -11,30 +11,30 @@ interface EditorSidebarProps extends SidebarSettingsProps {
     children: React.ReactNode;
 }
 
-export function EditorSidebar({ 
+export function EditorSidebar({
     children,
     settings,
     onSettingChange,
-    workspaceId, 
+    workspaceId,
     projectId,
     authorStyles,
-    onApplyStoryFix
+    onApplyStoryFix,
 }: EditorSidebarProps) {
     return (
         <SidebarProvider
             defaultOpen={true}
             style={{ "--sidebar-width": "22rem" } as React.CSSProperties}
-            className="flex flex-col flex-grow h-full min-h-0"
+            className="flex flex-col grow h-full min-h-0"
         >
             <div
                 className="
-                    flex flex-row w-full flex-grow min-h-0 relative
+                    flex flex-row w-full grow min-h-0 relative
                 "
             >
                 {/* Main content area - takes remaining space */}
                 <div
                     className="
-                        flex-1 flex flex-col flex-grow
+                        flex-1 flex flex-col grow
                         min-w-0 min-h-0
                         p-4 gap-4
                     "
@@ -49,7 +49,7 @@ export function EditorSidebar({
                     className="absolute flex flex-col h-auto"
                 >
                     <SidebarContent className="overflow-y-auto overflow-x-hidden group-data-[collapsible=icon]:overflow-hidden">
-                        <SidebarTabs 
+                        <SidebarTabs
                             settings={settings}
                             onSettingChange={onSettingChange}
                             workspaceId={workspaceId}

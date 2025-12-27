@@ -1,5 +1,13 @@
 import { useState, useEffect } from "react";
-import { X, Edit, Lock, ChevronDown, ChevronRight, BookOpen, Trash2 } from "lucide-react";
+import {
+    X,
+    Edit,
+    Lock,
+    ChevronDown,
+    ChevronRight,
+    BookOpen,
+    Trash2,
+} from "lucide-react";
 import { Button } from "@/Components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { Input } from "@/Components/ui/input";
@@ -11,23 +19,23 @@ import SummaryTab from "./SummaryTab";
 
 // Protected fields that cannot be deleted (required by deconstructor)
 const PROTECTED_FIELDS: Record<string, string[]> = {
-    character: ['traits', 'role', 'emotional_state'],
-    location: ['description', 'atmosphere'],
-    item: ['description', 'significance'],
+    character: ["traits", "role", "emotional_state"],
+    location: ["description", "atmosphere"],
+    item: ["description", "significance"],
     // Theme and PlotPoint don't have deconstructor-required fields yet
     theme: [],
     plot_point: [],
 };
 
 interface Entity {
-    vertex_id: string;  // String to avoid JS precision loss with large Apache AGE IDs
+    vertex_id: string; // String to avoid JS precision loss with large Apache AGE IDs
     name: string;
     type: string;
     properties: Record<string, any>;
 }
 
 interface Relationship {
-    edge_id: string;  // String to avoid JS precision loss with large Apache AGE IDs
+    edge_id: string; // String to avoid JS precision loss with large Apache AGE IDs
     source: string;
     target: string;
     relationship_type: string;
@@ -60,14 +68,23 @@ export default function EntityDetailSidebar({
     const [activeTab, setActiveTab] = useState("details");
     const [isEditing, setIsEditing] = useState(false);
     const [editedName, setEditedName] = useState("");
-    const [editedProperties, setEditedProperties] = useState<Record<string, any>>({});
+    const [editedProperties, setEditedProperties] = useState<
+        Record<string, any>
+    >({});
     const [newPropertyKey, setNewPropertyKey] = useState("");
     const [newPropertyValue, setNewPropertyValue] = useState("");
     const [saving, setSaving] = useState(false);
-    const [expandedSummaries, setExpandedSummaries] = useState<Set<number>>(new Set());
+    const [expandedSummaries, setExpandedSummaries] = useState<Set<number>>(
+        new Set()
+    );
 
     // Get summaries from edited properties, filtering out the _summaries key from regular properties display
-    const getSummaries = (): Array<{chapter_number: number, chapter_name?: string, activity?: string, key_moments?: string[]}> => {
+    const getSummaries = (): Array<{
+        chapter_number: number;
+        chapter_name?: string;
+        activity?: string;
+        key_moments?: string[];
+    }> => {
         const summaries = editedProperties._summaries;
         if (Array.isArray(summaries)) {
             return summaries;
@@ -77,7 +94,7 @@ export default function EntityDetailSidebar({
 
     // Toggle summary expansion
     const toggleSummaryExpansion = (chapterNumber: number) => {
-        setExpandedSummaries(prev => {
+        setExpandedSummaries((prev) => {
             const next = new Set(prev);
             if (next.has(chapterNumber)) {
                 next.delete(chapterNumber);
@@ -89,27 +106,38 @@ export default function EntityDetailSidebar({
     };
 
     // Update a specific summary
-    const handleSummaryChange = (chapterNumber: number, field: string, value: any) => {
+    const handleSummaryChange = (
+        chapterNumber: number,
+        field: string,
+        value: any
+    ) => {
         const summaries = getSummaries();
-        const updatedSummaries = summaries.map(s => 
+        const updatedSummaries = summaries.map((s) =>
             s.chapter_number === chapterNumber ? { ...s, [field]: value } : s
         );
         setEditedProperties({
             ...editedProperties,
-            _summaries: updatedSummaries
+            _summaries: updatedSummaries,
         });
     };
 
     // Delete a specific summary
     const handleDeleteSummary = (chapterNumber: number) => {
-        if (!confirm(`Are you sure you want to delete the summary for Chapter ${chapterNumber}?`)) {
+        if (
+            !confirm(
+                `Are you sure you want to delete the summary for Chapter ${chapterNumber}?`
+            )
+        ) {
             return;
         }
         const summaries = getSummaries();
-        const updatedSummaries = summaries.filter(s => s.chapter_number !== chapterNumber);
+        const updatedSummaries = summaries.filter(
+            (s) => s.chapter_number !== chapterNumber
+        );
         setEditedProperties({
             ...editedProperties,
-            _summaries: updatedSummaries.length > 0 ? updatedSummaries : undefined
+            _summaries:
+                updatedSummaries.length > 0 ? updatedSummaries : undefined,
         });
     };
 
@@ -117,7 +145,9 @@ export default function EntityDetailSidebar({
     // Internal properties start with _ (like _summaries, _settings, _property_changes, etc.)
     const getDisplayProperties = () => {
         return Object.fromEntries(
-            Object.entries(editedProperties).filter(([key]) => !key.startsWith('_'))
+            Object.entries(editedProperties).filter(
+                ([key]) => !key.startsWith("_")
+            )
         );
     };
 
@@ -134,40 +164,65 @@ export default function EntityDetailSidebar({
 
     // Filter relationships for this entity (only character entities have relationships)
     // Relationships can match by name OR by vertex_id
-    const entityRelationships = entity && entity.name
-        ? relationships.filter(
-              (rel) => {
+    const entityRelationships =
+        entity && entity.name
+            ? relationships.filter((rel) => {
                   // Match by entity name
-                  const nameMatch = rel.source === entity.name || rel.target === entity.name;
+                  const nameMatch =
+                      rel.source === entity.name || rel.target === entity.name;
                   // Also check if we have source_id/target_id and match by vertex_id
-                  const idMatch = (rel.source_id && rel.source_id === entity.vertex_id) || 
-                                 (rel.target_id && rel.target_id === entity.vertex_id);
+                  const idMatch =
+                      (rel.source_id && rel.source_id === entity.vertex_id) ||
+                      (rel.target_id && rel.target_id === entity.vertex_id);
                   return nameMatch || idMatch;
-              }
-          )
-        : [];
-    
+              })
+            : [];
+
     // Debug logging
-    console.log("EntityDetailSidebar - Relationships debug:", JSON.stringify({
-        entityName: entity?.name,
-        entityVertexId: entity?.vertex_id,
-        relationshipsCount: relationships.length,
-        entityRelationshipsCount: entityRelationships.length,
-        allRelationships: relationships.map(r => ({ source: r.source, target: r.target, type: r.relationship_type })),
-        filteredRelationships: entityRelationships.map(r => ({ source: r.source, target: r.target, type: r.relationship_type }))
-    }, null, 2));
-    
+    console.log(
+        "EntityDetailSidebar - Relationships debug:",
+        JSON.stringify(
+            {
+                entityName: entity?.name,
+                entityVertexId: entity?.vertex_id,
+                relationshipsCount: relationships.length,
+                entityRelationshipsCount: entityRelationships.length,
+                allRelationships: relationships.map((r) => ({
+                    source: r.source,
+                    target: r.target,
+                    type: r.relationship_type,
+                })),
+                filteredRelationships: entityRelationships.map((r) => ({
+                    source: r.source,
+                    target: r.target,
+                    type: r.relationship_type,
+                })),
+            },
+            null,
+            2
+        )
+    );
+
     // Log each relationship to see its structure
     relationships.forEach((rel, idx) => {
-        console.log(`Relationship ${idx}:`, JSON.stringify({
-            source: rel.source,
-            target: rel.target,
-            source_id: rel.source_id,
-            target_id: rel.target_id,
-            type: rel.relationship_type,
-            matchesEntity: rel.source === entity?.name || rel.target === entity?.name,
-            entityName: entity?.name
-        }, null, 2));
+        console.log(
+            `Relationship ${idx}:`,
+            JSON.stringify(
+                {
+                    source: rel.source,
+                    target: rel.target,
+                    source_id: rel.source_id,
+                    target_id: rel.target_id,
+                    type: rel.relationship_type,
+                    matchesEntity:
+                        rel.source === entity?.name ||
+                        rel.target === entity?.name,
+                    entityName: entity?.name,
+                },
+                null,
+                2
+            )
+        );
     });
 
     // Check if this entity type supports relationships (only characters)
@@ -176,7 +231,8 @@ export default function EntityDetailSidebar({
     // Get protected fields for this entity type
     const entityTypeKey = entity?.type?.toLowerCase() || "";
     const protectedFields = PROTECTED_FIELDS[entityTypeKey] || [];
-    const isFieldProtected = (fieldName: string) => protectedFields.includes(fieldName);
+    const isFieldProtected = (fieldName: string) =>
+        protectedFields.includes(fieldName);
 
     useEffect(() => {
         if (entity) {
@@ -198,7 +254,7 @@ export default function EntityDetailSidebar({
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
-                        "Accept": "application/json",
+                        Accept: "application/json",
                         "X-CSRF-TOKEN":
                             document
                                 .querySelector('meta[name="csrf-token"]')
@@ -218,14 +274,16 @@ export default function EntityDetailSidebar({
                     `/${workspaceId}/projects/${projectId}/editor/records/entities/${entity.vertex_id}`,
                     {
                         headers: {
-                            "Accept": "application/json",
+                            Accept: "application/json",
                         },
                     }
                 );
                 if (updatedResponse.ok) {
                     const updatedData = await updatedResponse.json();
                     if (updatedData.entity) {
-                        setEditedProperties(updatedData.entity.properties || {});
+                        setEditedProperties(
+                            updatedData.entity.properties || {}
+                        );
                     }
                 }
                 onEntityUpdated();
@@ -241,7 +299,9 @@ export default function EntityDetailSidebar({
             }
         } catch (error: any) {
             console.error("Error updating entity:", error);
-            alert(`Failed to update entity: ${error?.message || String(error)}`);
+            alert(
+                `Failed to update entity: ${error?.message || String(error)}`
+            );
         } finally {
             setSaving(false);
         }
@@ -258,7 +318,7 @@ export default function EntityDetailSidebar({
                 {
                     method: "DELETE",
                     headers: {
-                        "Accept": "application/json",
+                        Accept: "application/json",
                         "X-CSRF-TOKEN":
                             document
                                 .querySelector('meta[name="csrf-token"]')
@@ -281,7 +341,11 @@ export default function EntityDetailSidebar({
             }
         } catch (error: any) {
             console.error("Error deleting relationship:", error);
-            alert(`Failed to delete relationship: ${error?.message || String(error)}`);
+            alert(
+                `Failed to delete relationship: ${
+                    error?.message || String(error)
+                }`
+            );
         }
     };
 
@@ -328,7 +392,11 @@ export default function EntityDetailSidebar({
             </div>
 
             {/* Tabs */}
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+            <Tabs
+                value={activeTab}
+                onValueChange={setActiveTab}
+                className="flex-1 flex flex-col overflow-hidden"
+            >
                 <TabsList className="mx-4 mt-4">
                     <TabsTrigger value="details">Details</TabsTrigger>
                     <TabsTrigger value="summary">Summary</TabsTrigger>
@@ -341,7 +409,10 @@ export default function EntityDetailSidebar({
                 </TabsList>
 
                 {/* Details Tab */}
-                <TabsContent value="details" className="flex-1 overflow-y-auto p-4 space-y-4">
+                <TabsContent
+                    value="details"
+                    className="flex-1 overflow-y-auto p-4 space-y-4"
+                >
                     {isEditing ? (
                         <>
                             <div>
@@ -349,7 +420,9 @@ export default function EntityDetailSidebar({
                                 <Input
                                     id="entity-name"
                                     value={editedName}
-                                    onChange={(e) => setEditedName(e.target.value)}
+                                    onChange={(e) =>
+                                        setEditedName(e.target.value)
+                                    }
                                 />
                             </div>
 
@@ -361,84 +434,133 @@ export default function EntityDetailSidebar({
                             <div>
                                 <Label>Properties</Label>
                                 <p className="text-sm text-gray-500 mb-2">
-                                    Add custom properties to store additional information (e.g., age, description, notes).
+                                    Add custom properties to store additional
+                                    information (e.g., age, description, notes).
                                 </p>
                                 <div className="space-y-2 mt-2">
-                                    {Object.entries(getDisplayProperties()).map(([key, value]) => {
-                                        const isProtected = isFieldProtected(key);
-                                        return (
-                                            <div
-                                                key={key}
-                                                className={`flex items-center gap-2 p-2 rounded ${
-                                                    isProtected ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
-                                                }`}
-                                            >
-                                                <div className="flex items-center gap-2 flex-1">
-                                                    {isProtected && (
-                                                        <Lock className="h-3 w-3 text-blue-600" title="Protected field (required by deconstructor)" />
-                                                    )}
-                                                    <div className="flex-1">
-                                                        <span className="font-medium text-sm">{key}:</span>
-                                                        {Array.isArray(value) ? (
-                                                            <Textarea
-                                                                value={JSON.stringify(value, null, 2)}
-                                                                onChange={(e) => {
-                                                                    try {
-                                                                        const parsed = JSON.parse(e.target.value);
-                                                                        if (Array.isArray(parsed)) {
-                                                                            setEditedProperties({
-                                                                                ...editedProperties,
-                                                                                [key]: parsed,
-                                                                            });
-                                                                        }
-                                                                    } catch {
-                                                                        // Invalid JSON, keep as is
-                                                                    }
-                                                                }}
-                                                                className="mt-1 text-sm min-h-[60px]"
-                                                                placeholder='Enter JSON array, e.g., ["trait1", "trait2"]'
-                                                            />
-                                                        ) : (
-                                                            <Input
-                                                                value={String(value)}
-                                                                onChange={(e) => {
-                                                                    setEditedProperties({
-                                                                        ...editedProperties,
-                                                                        [key]: e.target.value,
-                                                                    });
-                                                                }}
-                                                                className="mt-1 h-8 text-sm"
-                                                                placeholder="Enter value"
+                                    {Object.entries(getDisplayProperties()).map(
+                                        ([key, value]) => {
+                                            const isProtected =
+                                                isFieldProtected(key);
+                                            return (
+                                                <div
+                                                    key={key}
+                                                    className={`flex items-center gap-2 p-2 rounded ${
+                                                        isProtected
+                                                            ? "bg-blue-50 border border-blue-200"
+                                                            : "bg-gray-50"
+                                                    }`}
+                                                >
+                                                    <div className="flex items-center gap-2 flex-1">
+                                                        {isProtected && (
+                                                            <Lock
+                                                                className="h-3 w-3 text-blue-600"
+                                                                title="Protected field (required by deconstructor)"
                                                             />
                                                         )}
+                                                        <div className="flex-1">
+                                                            <span className="font-medium text-sm">
+                                                                {key}:
+                                                            </span>
+                                                            {Array.isArray(
+                                                                value
+                                                            ) ? (
+                                                                <Textarea
+                                                                    value={JSON.stringify(
+                                                                        value,
+                                                                        null,
+                                                                        2
+                                                                    )}
+                                                                    onChange={(
+                                                                        e
+                                                                    ) => {
+                                                                        try {
+                                                                            const parsed =
+                                                                                JSON.parse(
+                                                                                    e
+                                                                                        .target
+                                                                                        .value
+                                                                                );
+                                                                            if (
+                                                                                Array.isArray(
+                                                                                    parsed
+                                                                                )
+                                                                            ) {
+                                                                                setEditedProperties(
+                                                                                    {
+                                                                                        ...editedProperties,
+                                                                                        [key]: parsed,
+                                                                                    }
+                                                                                );
+                                                                            }
+                                                                        } catch {
+                                                                            // Invalid JSON, keep as is
+                                                                        }
+                                                                    }}
+                                                                    className="mt-1 text-sm min-h-[60px]"
+                                                                    placeholder='Enter JSON array, e.g., ["trait1", "trait2"]'
+                                                                />
+                                                            ) : (
+                                                                <Input
+                                                                    value={String(
+                                                                        value
+                                                                    )}
+                                                                    onChange={(
+                                                                        e
+                                                                    ) => {
+                                                                        setEditedProperties(
+                                                                            {
+                                                                                ...editedProperties,
+                                                                                [key]: e
+                                                                                    .target
+                                                                                    .value,
+                                                                            }
+                                                                        );
+                                                                    }}
+                                                                    className="mt-1 h-8 text-sm"
+                                                                    placeholder="Enter value"
+                                                                />
+                                                            )}
+                                                        </div>
                                                     </div>
+                                                    {!isProtected && (
+                                                        <Button
+                                                            type="button"
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            onClick={() => {
+                                                                const newProps =
+                                                                    {
+                                                                        ...editedProperties,
+                                                                    };
+                                                                delete newProps[
+                                                                    key
+                                                                ];
+                                                                setEditedProperties(
+                                                                    newProps
+                                                                );
+                                                            }}
+                                                            title="Remove property"
+                                                        >
+                                                            <X className="h-4 w-4" />
+                                                        </Button>
+                                                    )}
                                                 </div>
-                                                {!isProtected && (
-                                                    <Button
-                                                        type="button"
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() => {
-                                                            const newProps = { ...editedProperties };
-                                                            delete newProps[key];
-                                                            setEditedProperties(newProps);
-                                                        }}
-                                                        title="Remove property"
-                                                    >
-                                                        <X className="h-4 w-4" />
-                                                    </Button>
-                                                )}
-                                            </div>
-                                        );
-                                    })}
-                                    
+                                            );
+                                        }
+                                    )}
+
                                     {/* Add Property Inputs */}
                                     <div className="flex gap-2 pt-2 border-t">
                                         <Input
                                             id="new-property-key"
                                             placeholder="Property name (e.g., age)"
                                             value={newPropertyKey}
-                                            onChange={(e) => setNewPropertyKey(e.target.value)}
+                                            onChange={(e) =>
+                                                setNewPropertyKey(
+                                                    e.target.value
+                                                )
+                                            }
                                             onKeyPress={(e) => {
                                                 if (e.key === "Enter") {
                                                     e.preventDefault();
@@ -450,7 +572,11 @@ export default function EntityDetailSidebar({
                                             id="new-property-value"
                                             placeholder="Property value (e.g., 30)"
                                             value={newPropertyValue}
-                                            onChange={(e) => setNewPropertyValue(e.target.value)}
+                                            onChange={(e) =>
+                                                setNewPropertyValue(
+                                                    e.target.value
+                                                )
+                                            }
                                             onKeyPress={(e) => {
                                                 if (e.key === "Enter") {
                                                     e.preventDefault();
@@ -474,16 +600,27 @@ export default function EntityDetailSidebar({
                                 <div className="pt-4 border-t">
                                     <div className="flex items-center gap-2 mb-2">
                                         <BookOpen className="h-4 w-4 text-blue-600" />
-                                        <Label>Chapter Summaries ({getSummaries().length})</Label>
+                                        <Label>
+                                            Chapter Summaries (
+                                            {getSummaries().length})
+                                        </Label>
                                     </div>
                                     <p className="text-xs text-gray-500 mb-3">
-                                        Edit how this entity appears across chapters.
+                                        Edit how this entity appears across
+                                        chapters.
                                     </p>
                                     <div className="space-y-2 max-h-[300px] overflow-y-auto pr-1">
                                         {getSummaries()
-                                            .sort((a, b) => (a.chapter_number || 0) - (b.chapter_number || 0))
+                                            .sort(
+                                                (a, b) =>
+                                                    (a.chapter_number || 0) -
+                                                    (b.chapter_number || 0)
+                                            )
                                             .map((summary) => {
-                                                const isExpanded = expandedSummaries.has(summary.chapter_number);
+                                                const isExpanded =
+                                                    expandedSummaries.has(
+                                                        summary.chapter_number
+                                                    );
                                                 return (
                                                     <div
                                                         key={`summary-edit-${summary.chapter_number}`}
@@ -492,8 +629,12 @@ export default function EntityDetailSidebar({
                                                         {/* Summary Header - Collapsible */}
                                                         <button
                                                             type="button"
-                                                            onClick={() => toggleSummaryExpansion(summary.chapter_number)}
-                                                            className="w-full flex items-center justify-between p-2 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors"
+                                                            onClick={() =>
+                                                                toggleSummaryExpansion(
+                                                                    summary.chapter_number
+                                                                )
+                                                            }
+                                                            className="w-full flex items-center justify-between p-2 bg-linear-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors"
                                                         >
                                                             <div className="flex items-center gap-2">
                                                                 {isExpanded ? (
@@ -502,16 +643,26 @@ export default function EntityDetailSidebar({
                                                                     <ChevronRight className="h-3 w-3 text-blue-600" />
                                                                 )}
                                                                 <span className="font-medium text-xs text-gray-800">
-                                                                    Ch. {summary.chapter_number}: {summary.chapter_name || 'Untitled'}
+                                                                    Ch.{" "}
+                                                                    {
+                                                                        summary.chapter_number
+                                                                    }
+                                                                    :{" "}
+                                                                    {summary.chapter_name ||
+                                                                        "Untitled"}
                                                                 </span>
                                                             </div>
                                                             <Button
                                                                 type="button"
                                                                 variant="ghost"
                                                                 size="sm"
-                                                                onClick={(e) => {
+                                                                onClick={(
+                                                                    e
+                                                                ) => {
                                                                     e.stopPropagation();
-                                                                    handleDeleteSummary(summary.chapter_number);
+                                                                    handleDeleteSummary(
+                                                                        summary.chapter_number
+                                                                    );
                                                                 }}
                                                                 className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
                                                                 title="Delete this chapter summary"
@@ -525,32 +676,68 @@ export default function EntityDetailSidebar({
                                                             <div className="p-2 space-y-2 border-t bg-gray-50/50">
                                                                 {/* Activity */}
                                                                 <div>
-                                                                    <Label className="text-xs text-gray-600 mb-1 block">Activity</Label>
+                                                                    <Label className="text-xs text-gray-600 mb-1 block">
+                                                                        Activity
+                                                                    </Label>
                                                                     <Textarea
-                                                                        value={summary.activity || ''}
-                                                                        onChange={(e) => handleSummaryChange(summary.chapter_number, 'activity', e.target.value)}
+                                                                        value={
+                                                                            summary.activity ||
+                                                                            ""
+                                                                        }
+                                                                        onChange={(
+                                                                            e
+                                                                        ) =>
+                                                                            handleSummaryChange(
+                                                                                summary.chapter_number,
+                                                                                "activity",
+                                                                                e
+                                                                                    .target
+                                                                                    .value
+                                                                            )
+                                                                        }
                                                                         placeholder="Describe what this entity does in this chapter..."
-                                                                        className="min-h-[80px] text-xs"
+                                                                        className="min-h-20 text-xs"
                                                                     />
                                                                 </div>
 
                                                                 {/* Key Moments */}
                                                                 <div>
-                                                                    <Label className="text-xs text-gray-600 mb-1 block">Key Moments</Label>
+                                                                    <Label className="text-xs text-gray-600 mb-1 block">
+                                                                        Key
+                                                                        Moments
+                                                                    </Label>
                                                                     <Textarea
                                                                         value={
-                                                                            Array.isArray(summary.key_moments)
-                                                                                ? summary.key_moments.join('\n')
-                                                                                : (summary.key_moments || '')
+                                                                            Array.isArray(
+                                                                                summary.key_moments
+                                                                            )
+                                                                                ? summary.key_moments.join(
+                                                                                      "\n"
+                                                                                  )
+                                                                                : summary.key_moments ||
+                                                                                  ""
                                                                         }
-                                                                        onChange={(e) => {
-                                                                            const moments = e.target.value.split('\n');
-                                                                            handleSummaryChange(summary.chapter_number, 'key_moments', moments);
+                                                                        onChange={(
+                                                                            e
+                                                                        ) => {
+                                                                            const moments =
+                                                                                e.target.value.split(
+                                                                                    "\n"
+                                                                                );
+                                                                            handleSummaryChange(
+                                                                                summary.chapter_number,
+                                                                                "key_moments",
+                                                                                moments
+                                                                            );
                                                                         }}
                                                                         placeholder="Enter key moments, one per line..."
                                                                         className="min-h-[60px] text-xs font-mono"
                                                                     />
-                                                                    <p className="text-xs text-gray-400 mt-0.5">One moment per line</p>
+                                                                    <p className="text-xs text-gray-400 mt-0.5">
+                                                                        One
+                                                                        moment
+                                                                        per line
+                                                                    </p>
                                                                 </div>
                                                             </div>
                                                         )}
@@ -567,7 +754,9 @@ export default function EntityDetailSidebar({
                                     onClick={() => {
                                         setIsEditing(false);
                                         setEditedName(entity.name);
-                                        setEditedProperties(entity.properties || {});
+                                        setEditedProperties(
+                                            entity.properties || {}
+                                        );
                                     }}
                                 >
                                     Cancel
@@ -581,7 +770,9 @@ export default function EntityDetailSidebar({
                         <>
                             <div>
                                 <Label>Name</Label>
-                                <p className="text-sm text-gray-700 mt-1">{entity.name}</p>
+                                <p className="text-sm text-gray-700 mt-1">
+                                    {entity.name}
+                                </p>
                             </div>
 
                             <div>
@@ -591,37 +782,58 @@ export default function EntityDetailSidebar({
                                 </p>
                             </div>
 
-                            {Object.keys(entity.properties || {}).filter(k => !k.startsWith('_')).length > 0 && (
+                            {Object.keys(entity.properties || {}).filter(
+                                (k) => !k.startsWith("_")
+                            ).length > 0 && (
                                 <div>
                                     <Label>Properties</Label>
                                     <p className="text-xs text-gray-500 mb-2">
-                                        Fields with a lock icon are protected and cannot be deleted (required by deconstructor).
+                                        Fields with a lock icon are protected
+                                        and cannot be deleted (required by
+                                        deconstructor).
                                     </p>
                                     <div className="space-y-2 mt-2">
                                         {Object.entries(entity.properties || {})
-                                            .filter(([key]) => !key.startsWith('_'))
+                                            .filter(
+                                                ([key]) => !key.startsWith("_")
+                                            )
                                             .map(([key, value]) => {
-                                                const isProtected = isFieldProtected(key);
+                                                const isProtected =
+                                                    isFieldProtected(key);
                                                 return (
                                                     <div
                                                         key={key}
                                                         className={`p-2 rounded text-sm flex items-start gap-2 ${
-                                                            isProtected ? 'bg-blue-50 border border-blue-200' : 'bg-gray-50'
+                                                            isProtected
+                                                                ? "bg-blue-50 border border-blue-200"
+                                                                : "bg-gray-50"
                                                         }`}
                                                     >
                                                         {isProtected && (
-                                                            <Lock className="h-3 w-3 text-blue-600 mt-0.5 flex-shrink-0" title="Protected field (required by deconstructor)" />
+                                                            <Lock
+                                                                className="h-3 w-3 text-blue-600 mt-0.5 shrink-0"
+                                                                title="Protected field (required by deconstructor)"
+                                                            />
                                                         )}
                                                         <div className="flex-1">
-                                                            <span className="font-medium">{key}:</span>{" "}
+                                                            <span className="font-medium">
+                                                                {key}:
+                                                            </span>{" "}
                                                             <span className="text-gray-600">
-                                                                {Array.isArray(value) ? JSON.stringify(value) : String(value)}
+                                                                {Array.isArray(
+                                                                    value
+                                                                )
+                                                                    ? JSON.stringify(
+                                                                          value
+                                                                      )
+                                                                    : String(
+                                                                          value
+                                                                      )}
                                                             </span>
                                                         </div>
                                                     </div>
                                                 );
-                                            }
-                                        )}
+                                            })}
                                     </div>
                                 </div>
                             )}
@@ -639,7 +851,10 @@ export default function EntityDetailSidebar({
                 </TabsContent>
 
                 {/* Settings Tab */}
-                <TabsContent value="settings" className="flex-1 overflow-y-auto">
+                <TabsContent
+                    value="settings"
+                    className="flex-1 overflow-y-auto"
+                >
                     <SettingsTab
                         entity={entity}
                         workspaceId={workspaceId}
@@ -650,7 +865,10 @@ export default function EntityDetailSidebar({
 
                 {/* Relationships Tab (only for characters) */}
                 {supportsRelationships && (
-                    <TabsContent value="relationships" className="flex-1 overflow-y-auto p-4">
+                    <TabsContent
+                        value="relationships"
+                        className="flex-1 overflow-y-auto p-4"
+                    >
                         <RelationshipsTab
                             entity={entity}
                             entityRelationships={entityRelationships}
@@ -668,4 +886,3 @@ export default function EntityDetailSidebar({
         </div>
     );
 }
-

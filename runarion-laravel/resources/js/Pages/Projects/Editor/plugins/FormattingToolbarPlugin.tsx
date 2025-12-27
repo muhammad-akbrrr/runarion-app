@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback, useRef } from 'react';
-import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
+import { useEffect, useState, useCallback, useRef } from "react";
+import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext";
 import {
     $getSelection,
     $isRangeSelection,
@@ -8,11 +8,11 @@ import {
     COMMAND_PRIORITY_LOW,
     SELECTION_CHANGE_COMMAND,
     RangeSelection,
-} from 'lexical';
-import { $setBlocksType } from '@lexical/selection';
-import { $createHeadingNode, HeadingTagType } from '@lexical/rich-text';
-import { createPortal } from 'react-dom';
-import { Button } from '@/Components/ui/button';
+} from "lexical";
+import { $setBlocksType } from "@lexical/selection";
+import { $createHeadingNode, HeadingTagType } from "@lexical/rich-text";
+import { createPortal } from "react-dom";
+import { Button } from "@/Components/ui/button";
 import {
     Bold,
     Italic,
@@ -22,7 +22,7 @@ import {
     Heading2,
     Heading3,
     Pilcrow,
-} from 'lucide-react';
+} from "lucide-react";
 
 interface ToolbarPosition {
     top: number;
@@ -32,7 +32,10 @@ interface ToolbarPosition {
 export function FormattingToolbarPlugin() {
     const [editor] = useLexicalComposerContext();
     const [isVisible, setIsVisible] = useState(false);
-    const [position, setPosition] = useState<ToolbarPosition>({ top: 0, left: 0 });
+    const [position, setPosition] = useState<ToolbarPosition>({
+        top: 0,
+        left: 0,
+    });
     const [isBold, setIsBold] = useState(false);
     const [isItalic, setIsItalic] = useState(false);
     const [isUnderline, setIsUnderline] = useState(false);
@@ -45,10 +48,10 @@ export function FormattingToolbarPlugin() {
         editor.getEditorState().read(() => {
             const selection = $getSelection();
             if ($isRangeSelection(selection)) {
-                setIsBold(selection.hasFormat('bold'));
-                setIsItalic(selection.hasFormat('italic'));
-                setIsUnderline(selection.hasFormat('underline'));
-                setIsStrikethrough(selection.hasFormat('strikethrough'));
+                setIsBold(selection.hasFormat("bold"));
+                setIsItalic(selection.hasFormat("italic"));
+                setIsUnderline(selection.hasFormat("underline"));
+                setIsStrikethrough(selection.hasFormat("strikethrough"));
             }
         });
     }, [editor]);
@@ -61,14 +64,18 @@ export function FormattingToolbarPlugin() {
         }
 
         const nativeSelection = window.getSelection();
-        
-        if (!nativeSelection || nativeSelection.rangeCount === 0 || nativeSelection.isCollapsed) {
+
+        if (
+            !nativeSelection ||
+            nativeSelection.rangeCount === 0 ||
+            nativeSelection.isCollapsed
+        ) {
             setIsVisible(false);
             return;
         }
 
         const selectedTextContent = nativeSelection.toString().trim();
-        
+
         // Require at least 1 character to show toolbar
         if (selectedTextContent.length < 1) {
             setIsVisible(false);
@@ -90,7 +97,7 @@ export function FormattingToolbarPlugin() {
         }
 
         const rect = range.getBoundingClientRect();
-        
+
         // Update formatting state
         updateFormattingState();
 
@@ -98,18 +105,21 @@ export function FormattingToolbarPlugin() {
         const toolbarWidth = 320;
         const selectionMidX = rect.left + rect.width / 2;
         let left = selectionMidX - toolbarWidth / 2;
-        
+
         // Keep toolbar within viewport
-        left = Math.max(10, Math.min(left, window.innerWidth - toolbarWidth - 10));
-        
+        left = Math.max(
+            10,
+            Math.min(left, window.innerWidth - toolbarWidth - 10)
+        );
+
         // Position above selection with some padding
         let top = rect.top + window.scrollY - 50;
-        
+
         // If too close to top, show below selection
         if (top < 10) {
             top = rect.bottom + window.scrollY + 10;
         }
-        
+
         setPosition({ top, left });
         setIsVisible(true);
     }, [editor, updateFormattingState]);
@@ -117,11 +127,11 @@ export function FormattingToolbarPlugin() {
     // Listen for selection changes with debounce
     useEffect(() => {
         let timeoutId: NodeJS.Timeout | null = null;
-        
+
         const handleSelectionChange = () => {
             // Don't update if interacting with toolbar
             if (isInteractingRef.current) return;
-            
+
             // Debounce the update
             if (timeoutId) clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
@@ -144,7 +154,7 @@ export function FormattingToolbarPlugin() {
             if (toolbarRef.current?.contains(e.target as Node)) {
                 return;
             }
-            
+
             // Delay to let selection settle
             setTimeout(() => {
                 if (!isInteractingRef.current) {
@@ -153,11 +163,11 @@ export function FormattingToolbarPlugin() {
             }, 50);
         };
 
-        document.addEventListener('mouseup', handleMouseUp);
+        document.addEventListener("mouseup", handleMouseUp);
 
         return () => {
             removeListener();
-            document.removeEventListener('mouseup', handleMouseUp);
+            document.removeEventListener("mouseup", handleMouseUp);
             if (timeoutId) clearTimeout(timeoutId);
         };
     }, [editor, updateToolbar]);
@@ -183,68 +193,71 @@ export function FormattingToolbarPlugin() {
             if (toolbarRef.current?.contains(e.target as Node)) {
                 return;
             }
-            
+
             isInteractingRef.current = false;
-            
+
             const editorElement = editor.getRootElement();
             if (editorElement?.contains(e.target as Node)) {
                 return;
             }
-            
+
             setIsVisible(false);
         };
 
-        document.addEventListener('mousedown', handleClickOutside);
-        
+        document.addEventListener("mousedown", handleClickOutside);
+
         return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener("mousedown", handleClickOutside);
         };
     }, [editor]);
 
     // Handle escape key
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isVisible) {
+            if (e.key === "Escape" && isVisible) {
                 setIsVisible(false);
                 isInteractingRef.current = false;
             }
         };
 
-        document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener("keydown", handleKeyDown);
         return () => {
-            document.removeEventListener('keydown', handleKeyDown);
+            document.removeEventListener("keydown", handleKeyDown);
         };
     }, [isVisible]);
 
     // Format handlers
     const formatBold = useCallback(() => {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'bold');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
         setIsBold(!isBold);
     }, [editor, isBold]);
 
     const formatItalic = useCallback(() => {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'italic');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
         setIsItalic(!isItalic);
     }, [editor, isItalic]);
 
     const formatUnderline = useCallback(() => {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'underline');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "underline");
         setIsUnderline(!isUnderline);
     }, [editor, isUnderline]);
 
     const formatStrikethrough = useCallback(() => {
-        editor.dispatchCommand(FORMAT_TEXT_COMMAND, 'strikethrough');
+        editor.dispatchCommand(FORMAT_TEXT_COMMAND, "strikethrough");
         setIsStrikethrough(!isStrikethrough);
     }, [editor, isStrikethrough]);
 
-    const formatHeading = useCallback((level: HeadingTagType) => {
-        editor.update(() => {
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-                $setBlocksType(selection, () => $createHeadingNode(level));
-            }
-        });
-    }, [editor]);
+    const formatHeading = useCallback(
+        (level: HeadingTagType) => {
+            editor.update(() => {
+                const selection = $getSelection();
+                if ($isRangeSelection(selection)) {
+                    $setBlocksType(selection, () => $createHeadingNode(level));
+                }
+            });
+        },
+        [editor]
+    );
 
     const formatParagraph = useCallback(() => {
         editor.update(() => {
@@ -269,22 +282,25 @@ export function FormattingToolbarPlugin() {
     }, [editor]);
 
     // Apply heading with saved selection
-    const applyHeading = useCallback((level: HeadingTagType) => {
-        editor.update(() => {
-            // Restore selection if needed
-            if (savedSelectionRef.current) {
-                savedSelectionRef.current.dirty = true;
-            }
-            const selection = $getSelection();
-            if ($isRangeSelection(selection)) {
-                $setBlocksType(selection, () => $createHeadingNode(level));
-            }
-        });
-        // Keep toolbar visible briefly
-        setTimeout(() => {
-            isInteractingRef.current = false;
-        }, 200);
-    }, [editor]);
+    const applyHeading = useCallback(
+        (level: HeadingTagType) => {
+            editor.update(() => {
+                // Restore selection if needed
+                if (savedSelectionRef.current) {
+                    savedSelectionRef.current.dirty = true;
+                }
+                const selection = $getSelection();
+                if ($isRangeSelection(selection)) {
+                    $setBlocksType(selection, () => $createHeadingNode(level));
+                }
+            });
+            // Keep toolbar visible briefly
+            setTimeout(() => {
+                isInteractingRef.current = false;
+            }, 200);
+        },
+        [editor]
+    );
 
     // Apply paragraph with saved selection
     const applyParagraph = useCallback(() => {
@@ -303,7 +319,7 @@ export function FormattingToolbarPlugin() {
     const toolbar = isVisible ? (
         <div
             ref={toolbarRef}
-            className="fixed z-[9999] animate-in fade-in-0 zoom-in-95 duration-100"
+            className="fixed z-9999 animate-in fade-in-0 zoom-in-95 duration-100"
             style={{
                 top: `${position.top}px`,
                 left: `${position.left}px`,
@@ -335,7 +351,7 @@ export function FormattingToolbarPlugin() {
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-white hover:bg-zinc-800"
-                        onClick={() => applyHeading('h1')}
+                        onClick={() => applyHeading("h1")}
                         title="Heading 1"
                     >
                         <Heading1 className="h-4 w-4" />
@@ -346,7 +362,7 @@ export function FormattingToolbarPlugin() {
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-white hover:bg-zinc-800"
-                        onClick={() => applyHeading('h2')}
+                        onClick={() => applyHeading("h2")}
                         title="Heading 2"
                     >
                         <Heading2 className="h-4 w-4" />
@@ -357,7 +373,7 @@ export function FormattingToolbarPlugin() {
                         variant="ghost"
                         size="sm"
                         className="h-8 w-8 p-0 text-white hover:bg-zinc-800"
-                        onClick={() => applyHeading('h3')}
+                        onClick={() => applyHeading("h3")}
                         title="Heading 3"
                     >
                         <Heading3 className="h-4 w-4" />
@@ -369,7 +385,9 @@ export function FormattingToolbarPlugin() {
                     <Button
                         variant="ghost"
                         size="sm"
-                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${isBold ? 'bg-zinc-700 text-white' : 'text-white'}`}
+                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${
+                            isBold ? "bg-zinc-700 text-white" : "text-white"
+                        }`}
                         onClick={formatBold}
                         title="Bold"
                     >
@@ -380,7 +398,9 @@ export function FormattingToolbarPlugin() {
                     <Button
                         variant="ghost"
                         size="sm"
-                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${isItalic ? 'bg-zinc-700 text-white' : 'text-white'}`}
+                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${
+                            isItalic ? "bg-zinc-700 text-white" : "text-white"
+                        }`}
                         onClick={formatItalic}
                         title="Italic"
                     >
@@ -391,7 +411,11 @@ export function FormattingToolbarPlugin() {
                     <Button
                         variant="ghost"
                         size="sm"
-                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${isUnderline ? 'bg-zinc-700 text-white' : 'text-white'}`}
+                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${
+                            isUnderline
+                                ? "bg-zinc-700 text-white"
+                                : "text-white"
+                        }`}
                         onClick={formatUnderline}
                         title="Underline"
                     >
@@ -402,7 +426,11 @@ export function FormattingToolbarPlugin() {
                     <Button
                         variant="ghost"
                         size="sm"
-                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${isStrikethrough ? 'bg-zinc-700 text-white' : 'text-white'}`}
+                        className={`h-8 w-8 p-0 hover:bg-zinc-800 ${
+                            isStrikethrough
+                                ? "bg-zinc-700 text-white"
+                                : "text-white"
+                        }`}
                         onClick={formatStrikethrough}
                         title="Strikethrough"
                     >
@@ -418,4 +446,3 @@ export function FormattingToolbarPlugin() {
 }
 
 export default FormattingToolbarPlugin;
-

@@ -1516,7 +1516,7 @@ export default function RelationshipsTab({
                                             value={context}
                                             onChange={(e) => setContext(e.target.value)}
                                             placeholder="Describe the context of this relationship..."
-                                            className="min-h-[80px]"
+                                            className="min-h-20"
                                         />
                                     </div>
 
@@ -1808,7 +1808,7 @@ export default function RelationshipsTab({
                                             if (chapters.length > 0) {
                                                 return (
                                                     <div className="border rounded-lg overflow-hidden">
-                                                        <div className="p-3 bg-gradient-to-r from-indigo-50 to-purple-50 border-b">
+                                                        <div className="p-3 bg-linear-to-r from-indigo-50 to-purple-50 border-b">
                                                             <div className="flex items-center justify-between">
                                                                 <div>
                                                                     <Label className="text-sm font-semibold text-indigo-900">
@@ -1861,7 +1861,7 @@ export default function RelationshipsTab({
                                                                                     }
                                                                                     setExpandedChapters(newExpanded);
                                                                                 }}
-                                                                                    className="mt-1 flex-shrink-0"
+                                                                                    className="mt-1 shrink-0"
                                                                             >
                                                                                         {isExpanded ? (
                                                                                             <ChevronDown className="h-4 w-4 text-gray-400" />
@@ -1905,7 +1905,7 @@ export default function RelationshipsTab({
                                                                                 </div>
                                                                             
                                                                                 {/* Edit/Delete Buttons - Always visible */}
-                                                                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                                                                <div className="flex items-center gap-0.5 shrink-0">
                                                                                 <button
                                                                                     onClick={() => setEditingChapter(ch)}
                                                                                     className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -2173,7 +2173,7 @@ export default function RelationshipsTab({
                                     {selectedRelationship.properties?.sentiment_score !== undefined && 
                                      selectedRelationship.properties?.analysis_version !== 'v2' &&
                                      interactionsViewMode === "all" && (
-                                        <div className="border rounded-lg p-3 bg-gradient-to-r from-red-50 via-gray-50 to-green-50">
+                                        <div className="border rounded-lg p-3 bg-linear-to-r from-red-50 via-gray-50 to-green-50">
                                             <div className="flex items-center justify-between mb-3">
                                                 <div>
                                                     <Label className="text-sm font-semibold">Sentiment Breakdown</Label>
@@ -2206,8 +2206,8 @@ export default function RelationshipsTab({
                                                 <div 
                                                     className={`h-full transition-all duration-300 ${
                                                         clampedTotalSentiment < 0 
-                                                            ? "bg-gradient-to-r from-red-600 to-red-400" 
-                                                            : "bg-gradient-to-r from-green-400 to-green-600"
+                                                            ? "bg-linear-to-r from-red-600 to-red-400" 
+                                                            : "bg-linear-to-r from-green-400 to-green-600"
                                                     }`}
                                                     style={{
                                                         width: `${Math.min(100, Math.abs(clampedTotalSentiment) / 2)}%`,
@@ -2227,7 +2227,7 @@ export default function RelationshipsTab({
                                                     {sentimentBreakdown.slice(0, interactionsExpanded ? undefined : 5).map((item, idx) => (
                                                         <div key={idx} className="text-xs py-1.5 border-b border-gray-100 last:border-0">
                                                             <div className="flex items-center gap-2">
-                                                                <span className={`font-bold min-w-[40px] ${
+                                                                <span className={`font-bold min-w-10 ${
                                                                     item.value < 0 ? "text-red-600" : 
                                                                     item.value > 0 ? "text-green-600" : 
                                                                     "text-gray-500"
@@ -2241,7 +2241,7 @@ export default function RelationshipsTab({
                                                             </div>
                                                             {/* Show AI reasoning if available */}
                                                             {item.reasoning && (
-                                                                <p className="text-gray-500 mt-1 pl-[48px] italic text-[11px]">
+                                                                <p className="text-gray-500 mt-1 pl-12 italic text-[11px]">
                                                                     "{item.reasoning}"
                                                                 </p>
                                                             )}

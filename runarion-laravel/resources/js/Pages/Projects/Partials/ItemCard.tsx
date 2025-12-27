@@ -60,9 +60,7 @@ export default function ItemCard(props: ItemCardProps) {
     if (props.variant === "folder") {
         const { item, projectCount, onDelete, workspaceId } = props;
         return (
-            <div
-                className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer relative"
-            >
+            <div className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition cursor-pointer relative">
                 <Link
                     href={route("workspace.folders.open", {
                         workspace_id: workspaceId,
@@ -87,7 +85,7 @@ export default function ItemCard(props: ItemCardProps) {
                     </div>
                     <DropdownMenu>
                         <DropdownMenuTrigger>
-                            <div className="cursor-pointer relative z-20 p-2 m-[-8px]">
+                            <div className="cursor-pointer relative z-20 p-2 -m-2">
                                 <Ellipsis className="h-4 w-4" />
                             </div>
                         </DropdownMenuTrigger>
@@ -112,13 +110,10 @@ export default function ItemCard(props: ItemCardProps) {
             workspace_id: workspaceId,
             project_id: item.id,
         });
-        
+
         return (
             <div className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition relative group">
-                <Link
-                    href={editorUrl}
-                    className="absolute inset-0 z-0"
-                />
+                <Link href={editorUrl} className="absolute inset-0 z-0" />
                 <div className="flex flex-row gap-2 justify-between items-start relative z-10">
                     <div className="flex flex-col justify-start items-start gap-1 flex-1">
                         <Link
@@ -133,7 +128,7 @@ export default function ItemCard(props: ItemCardProps) {
                     </div>
                     <DropdownMenu>
                         <DropdownMenuTrigger
-                            className="cursor-pointer relative z-20 p-2 m-[-8px] rounded hover:bg-gray-100 flex items-center justify-center"
+                            className="cursor-pointer relative z-20 p-2 -m-2 rounded hover:bg-gray-100 flex items-center justify-center"
                             onClick={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
@@ -141,19 +136,26 @@ export default function ItemCard(props: ItemCardProps) {
                         >
                             <Ellipsis className="h-4 w-4" />
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                            <DropdownMenuItem onClick={(e) => { 
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onDelete(item.id, item.name); 
-                            }}>
+                        <DropdownMenuContent
+                            align="end"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onDelete(item.id, item.name);
+                                }}
+                            >
                                 <span>Delete project</span>
                             </DropdownMenuItem>
-                            <DropdownMenuItem onClick={(e) => { 
-                                e.preventDefault();
-                                e.stopPropagation();
-                                onSettings(item.id); 
-                            }}>
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onSettings(item.id);
+                                }}
+                            >
                                 <span>Project settings</span>
                             </DropdownMenuItem>
                         </DropdownMenuContent>

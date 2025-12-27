@@ -606,7 +606,7 @@ export default function EntityForm({
                                                 value={String(value)}
                                                 onChange={(e) => handlePropertyChange(field.key, e.target.value)}
                                                 placeholder={field.placeholder}
-                                                className="min-h-[80px] text-sm flex-1"
+                                                className="min-h-20 text-sm flex-1"
                                             />
                                             <MagicWandButton
                                                 text={String(value)}
@@ -743,7 +743,7 @@ export default function EntityForm({
                                         <button
                                             type="button"
                                             onClick={() => toggleSummaryExpansion(summary.chapter_number)}
-                                            className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors"
+                                            className="w-full flex items-center justify-between p-3 bg-linear-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors"
                                         >
                                             <div className="flex items-center gap-2">
                                                 {isExpanded ? (
@@ -799,7 +799,7 @@ export default function EntityForm({
                                                             handleSummaryChange(summary.chapter_number, 'key_moments', moments.length > 0 ? moments : e.target.value.split('\n'));
                                                         }}
                                                         placeholder="Enter key moments, one per line..."
-                                                        className="min-h-[80px] text-sm font-mono"
+                                                        className="min-h-20 text-sm font-mono"
                                                     />
                                                     <p className="text-xs text-gray-500 mt-1">One key moment per line</p>
                                                 </div>

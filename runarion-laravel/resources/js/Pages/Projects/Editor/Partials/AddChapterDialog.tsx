@@ -40,7 +40,7 @@ const AddChapterDialog: React.FC<AddChapterDialogProps> = ({
     // Check for duplicate name (case-insensitive, trimmed)
     const normalizedInput = chapterName.trim().toLowerCase();
     const isDuplicate = existingChapterNames.some(
-        name => name.trim().toLowerCase() === normalizedInput
+        (name) => name.trim().toLowerCase() === normalizedInput
     );
     const showDuplicateError = isDuplicate && chapterName.trim().length > 0;
 
@@ -62,12 +62,18 @@ const AddChapterDialog: React.FC<AddChapterDialogProps> = ({
                                 value={chapterName}
                                 onChange={(e) => setChapterName(e.target.value)}
                                 autoFocus
-                                className={`flex-1 ${showDuplicateError || error ? "border-red-500" : ""}`}
+                                className={`flex-1 ${
+                                    showDuplicateError || error
+                                        ? "border-red-500"
+                                        : ""
+                                }`}
                             />
                             {workspaceId && projectId && (
                                 <MagicWandButton
                                     text={chapterName}
-                                    onEnhanced={(enhanced) => setChapterName(enhanced)}
+                                    onEnhanced={(enhanced) =>
+                                        setChapterName(enhanced)
+                                    }
                                     enhancementMode="chapter_name"
                                     workspaceId={workspaceId}
                                     projectId={projectId}
@@ -79,17 +85,21 @@ const AddChapterDialog: React.FC<AddChapterDialogProps> = ({
                         </div>
                         {showDuplicateError && (
                             <div className="flex items-start gap-2 text-sm text-red-600">
-                                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                                 <span>
-                                    A chapter named "{existingChapterNames.find(
-                                        name => name.trim().toLowerCase() === normalizedInput
-                                    )}" already exists.
+                                    A chapter named "
+                                    {existingChapterNames.find(
+                                        (name) =>
+                                            name.trim().toLowerCase() ===
+                                            normalizedInput
+                                    )}
+                                    " already exists.
                                 </span>
                             </div>
                         )}
                         {error && !showDuplicateError && (
                             <div className="flex items-start gap-2 text-sm text-red-600">
-                                <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                <AlertCircle className="h-4 w-4 mt-0.5 shrink-0" />
                                 <span>{error}</span>
                             </div>
                         )}
@@ -127,7 +137,11 @@ const AddChapterDialog: React.FC<AddChapterDialogProps> = ({
                         <Button
                             variant="default"
                             type="button"
-                            disabled={!chapterName.trim() || loading || showDuplicateError}
+                            disabled={
+                                !chapterName.trim() ||
+                                loading ||
+                                showDuplicateError
+                            }
                             onClick={handleAddChapter}
                         >
                             Add

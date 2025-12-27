@@ -216,6 +216,7 @@ services:
       - LANG=${LANG:-en_US.utf8}
       - AGE_ENABLED=${AGE_ENABLED:-true}
       - AGE_GRAPH_NAME=${AGE_GRAPH_NAME:-novel_pipeline_graph}
+      - POSTGRES_SHARED_PRELOAD_LIBRARIES=age
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:

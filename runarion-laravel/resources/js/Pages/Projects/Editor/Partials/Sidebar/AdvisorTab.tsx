@@ -47,7 +47,10 @@ import {
     Wand2,
     MessageCircle,
 } from "lucide-react";
-import { usePendingEdits, AdvisorMode } from "../../contexts/PendingEditsContext";
+import {
+    usePendingEdits,
+    AdvisorMode,
+} from "../../contexts/PendingEditsContext";
 import { MagicWandButton } from "@/Components/MagicWandButton";
 
 interface AdvisorChat {
@@ -76,7 +79,11 @@ interface AdvisorTabProps {
 
 // Helper to get CSRF token
 const getCsrfToken = () => {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute("content") || "";
+    return (
+        document
+            .querySelector('meta[name="csrf-token"]')
+            ?.getAttribute("content") || ""
+    );
 };
 
 // Helper for fetch with CSRF token
@@ -85,7 +92,7 @@ const fetchWithCsrf = async (url: string, options: RequestInit = {}) => {
         ...options,
         headers: {
             "Content-Type": "application/json",
-            "Accept": "application/json",
+            Accept: "application/json",
             "X-CSRF-TOKEN": getCsrfToken(),
             ...options.headers,
         },
@@ -95,10 +102,26 @@ const fetchWithCsrf = async (url: string, options: RequestInit = {}) => {
 
 // Available models
 const AVAILABLE_MODELS = [
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Stable)", thinking: false },
-    { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Thinking)", thinking: true },
-    { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Thinking)", thinking: true },
-    { value: "gemini-3-pro-preview", label: "Gemini 3.0 Pro (Paid)", thinking: true },
+    {
+        value: "gemini-2.0-flash",
+        label: "Gemini 2.0 Flash (Stable)",
+        thinking: false,
+    },
+    {
+        value: "gemini-2.5-flash",
+        label: "Gemini 2.5 Flash (Thinking)",
+        thinking: true,
+    },
+    {
+        value: "gemini-2.5-pro",
+        label: "Gemini 2.5 Pro (Thinking)",
+        thinking: true,
+    },
+    {
+        value: "gemini-3-pro-preview",
+        label: "Gemini 3.0 Pro (Paid)",
+        thinking: true,
+    },
 ];
 
 const DEFAULT_SYSTEM_INSTRUCTIONS = `You are an expert writing advisor and creative assistant. You have access to the full story context and can help with:
@@ -124,16 +147,20 @@ IMPORTANT RULES:
 - Reference specific parts of the story when relevant.
 - Chapters are numbered starting from 1 (Chapter 1, Chapter 2, etc.). There is NO Chapter 0.`;
 
-export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: AdvisorTabProps) {
+export default function AdvisorTab({
+    workspaceId,
+    projectId,
+    onApplyEdit,
+}: AdvisorTabProps) {
     // Pending edits context for agent mode
-    const { 
-        advisorMode, 
-        setAdvisorMode, 
-        addPendingEdits, 
+    const {
+        advisorMode,
+        setAdvisorMode,
+        addPendingEdits,
         pendingEdits,
         clearAllEdits,
     } = usePendingEdits();
-    
+
     // Chat state
     const [chats, setChats] = useState<AdvisorChat[]>([]);
     const [activeChat, setActiveChat] = useState<AdvisorChat | null>(null);
@@ -149,9 +176,11 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
     // Settings state
     const [showSettings, setShowSettings] = useState(false);
     const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
-    const [systemInstructions, setSystemInstructions] = useState(DEFAULT_SYSTEM_INSTRUCTIONS);
+    const [systemInstructions, setSystemInstructions] = useState(
+        DEFAULT_SYSTEM_INSTRUCTIONS
+    );
     const [thinkingBudget, setThinkingBudget] = useState(4096);
-    const [outputLength, setOutputLength] = useState(4000);  // Increased default for more detailed responses
+    const [outputLength, setOutputLength] = useState(4000); // Increased default for more detailed responses
     const [temperature, setTemperature] = useState(0.8);
 
     // UI state
@@ -159,10 +188,13 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
     const [showActions, setShowActions] = useState(false);
     const [editingTitle, setEditingTitle] = useState(false);
     const [titleValue, setTitleValue] = useState("");
-    const [deleteConfirmChat, setDeleteConfirmChat] = useState<AdvisorChat | null>(null);
-    
+    const [deleteConfirmChat, setDeleteConfirmChat] =
+        useState<AdvisorChat | null>(null);
+
     // Message editing state
-    const [editingMessageIndex, setEditingMessageIndex] = useState<number | null>(null);
+    const [editingMessageIndex, setEditingMessageIndex] = useState<
+        number | null
+    >(null);
     const [editingMessageContent, setEditingMessageContent] = useState("");
 
     // Refs
@@ -170,16 +202,16 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
     const abortControllerRef = useRef<AbortController | null>(null);
     const chatListRef = useRef<HTMLDivElement>(null);
     const actionsRef = useRef<HTMLDivElement>(null);
-    const pendingAfterMessagesRef = useRef<AdvisorMessage[]>([]);  // Messages to append after edit completes
-    const sentEditsRef = useRef<Set<string>>(new Set());  // Track sent edits to avoid duplicates
-    const prevModeRef = useRef<'chat' | 'agent'>(advisorMode);
-    
+    const pendingAfterMessagesRef = useRef<AdvisorMessage[]>([]); // Messages to append after edit completes
+    const sentEditsRef = useRef<Set<string>>(new Set()); // Track sent edits to avoid duplicates
+    const prevModeRef = useRef<"chat" | "agent">(advisorMode);
+
     // Re-queue edits when switching to Agent mode
     useEffect(() => {
-        if (advisorMode === 'agent' && prevModeRef.current === 'chat') {
+        if (advisorMode === "agent" && prevModeRef.current === "chat") {
             // Switching to Agent mode - clear sent edits cache and re-queue from ALL assistant messages
             sentEditsRef.current.clear();
-            
+
             // Collect edits from ALL assistant messages (not just the latest)
             const allEditSuggestions: Array<{
                 chapter: string;
@@ -187,40 +219,55 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                 newText: string;
                 reason: string;
             }> = [];
-            
+
             const editRegex = /<<<EDIT>>>([\s\S]*?)<<<END_EDIT>>>/g;
-            
+
             // Process all assistant messages
-            messages.filter(m => m.role === 'assistant').forEach(msg => {
-                const matches = [...msg.content.matchAll(editRegex)];
-                matches.forEach((match) => {
-                    const editContent = match[1];
-                    const oldMatch = editContent.match(/OLD:\s*([\s\S]*?)(?=NEW:|$)/);
-                    const newMatch = editContent.match(/NEW:\s*([\s\S]*?)(?=REASON:|$)/);
-                    const reasonMatch = editContent.match(/REASON:\s*([\s\S]*?)$/);
-                    const chapterMatch = editContent.match(/CHAPTER:\s*(.*?)(?=\n|$)/);
-                    
-                    const oldText = oldMatch?.[1]?.trim() || "";
-                    const newText = newMatch?.[1]?.trim() || "";
-                    
-                    // Only add if we have both old and new text, and it's not a duplicate
-                    if (oldText && newText) {
-                        // Check for duplicates (same oldText)
-                        const isDuplicate = allEditSuggestions.some(e => e.oldText === oldText);
-                        if (!isDuplicate) {
-                            allEditSuggestions.push({
-                                chapter: chapterMatch?.[1]?.trim() || "",
-                                oldText,
-                                newText,
-                                reason: reasonMatch?.[1]?.trim() || "",
-                            });
+            messages
+                .filter((m) => m.role === "assistant")
+                .forEach((msg) => {
+                    const matches = [...msg.content.matchAll(editRegex)];
+                    matches.forEach((match) => {
+                        const editContent = match[1];
+                        const oldMatch = editContent.match(
+                            /OLD:\s*([\s\S]*?)(?=NEW:|$)/
+                        );
+                        const newMatch = editContent.match(
+                            /NEW:\s*([\s\S]*?)(?=REASON:|$)/
+                        );
+                        const reasonMatch = editContent.match(
+                            /REASON:\s*([\s\S]*?)$/
+                        );
+                        const chapterMatch = editContent.match(
+                            /CHAPTER:\s*(.*?)(?=\n|$)/
+                        );
+
+                        const oldText = oldMatch?.[1]?.trim() || "";
+                        const newText = newMatch?.[1]?.trim() || "";
+
+                        // Only add if we have both old and new text, and it's not a duplicate
+                        if (oldText && newText) {
+                            // Check for duplicates (same oldText)
+                            const isDuplicate = allEditSuggestions.some(
+                                (e) => e.oldText === oldText
+                            );
+                            if (!isDuplicate) {
+                                allEditSuggestions.push({
+                                    chapter: chapterMatch?.[1]?.trim() || "",
+                                    oldText,
+                                    newText,
+                                    reason: reasonMatch?.[1]?.trim() || "",
+                                });
+                            }
                         }
-                    }
+                    });
                 });
-            });
-            
+
             if (allEditSuggestions.length > 0) {
-                console.log('[AdvisorTab] Re-queueing edits from all messages for Agent mode:', allEditSuggestions.length);
+                console.log(
+                    "[AdvisorTab] Re-queueing edits from all messages for Agent mode:",
+                    allEditSuggestions.length
+                );
                 // Clear old edits and add fresh ones
                 clearAllEdits();
                 addPendingEdits(allEditSuggestions);
@@ -232,15 +279,22 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
     // Close dropdowns when clicking outside
     useEffect(() => {
         const handleClickOutside = (e: MouseEvent) => {
-            if (chatListRef.current && !chatListRef.current.contains(e.target as Node)) {
+            if (
+                chatListRef.current &&
+                !chatListRef.current.contains(e.target as Node)
+            ) {
                 setShowChatList(false);
             }
-            if (actionsRef.current && !actionsRef.current.contains(e.target as Node)) {
+            if (
+                actionsRef.current &&
+                !actionsRef.current.contains(e.target as Node)
+            ) {
                 setShowActions(false);
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
+        return () =>
+            document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
     // Scroll to bottom when messages change
@@ -258,7 +312,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
         if (activeChat) {
             loadMessages(activeChat.id);
             setSelectedModel(activeChat.model);
-            setSystemInstructions(activeChat.system_instructions || DEFAULT_SYSTEM_INSTRUCTIONS);
+            setSystemInstructions(
+                activeChat.system_instructions || DEFAULT_SYSTEM_INSTRUCTIONS
+            );
             setTitleValue(activeChat.title);
         } else {
             setMessages([]);
@@ -266,7 +322,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
         }
     }, [activeChat?.id]);
 
-    const isThinkingModel = AVAILABLE_MODELS.find(m => m.value === selectedModel)?.thinking ?? false;
+    const isThinkingModel =
+        AVAILABLE_MODELS.find((m) => m.value === selectedModel)?.thinking ??
+        false;
 
     const loadChats = async () => {
         setIsLoadingChats(true);
@@ -403,7 +461,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
     const clearChat = async () => {
         if (!activeChat) return;
         setShowActions(false);
-        
+
         try {
             const response = await fetchWithCsrf(
                 `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages`,
@@ -420,12 +478,16 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
         }
     };
 
-    const sendMessage = async (messageText?: string, isRetry = false, messagesOverride?: AdvisorMessage[]) => {
+    const sendMessage = async (
+        messageText?: string,
+        isRetry = false,
+        messagesOverride?: AdvisorMessage[]
+    ) => {
         const textToSend = messageText || inputMessage.trim();
         if (!textToSend || isStreaming || !activeChat) return;
 
         const chatId = activeChat.id;
-        
+
         if (!isRetry) {
             setInputMessage("");
         }
@@ -434,18 +496,24 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
 
         // Determine the base messages to work with
         let baseMessages: AdvisorMessage[];
-        
+
         if (isRetry && messagesOverride) {
             // Retry with override: use the provided messages (includes user message)
             // Remove any trailing assistant messages after the last user message
             baseMessages = [...messagesOverride];
-            while (baseMessages.length > 0 && baseMessages[baseMessages.length - 1].role === "assistant") {
+            while (
+                baseMessages.length > 0 &&
+                baseMessages[baseMessages.length - 1].role === "assistant"
+            ) {
                 baseMessages.pop();
             }
         } else if (isRetry) {
             // Regenerate last response: keep all messages except the last assistant
             baseMessages = [...messages];
-            if (baseMessages.length > 0 && baseMessages[baseMessages.length - 1].role === "assistant") {
+            if (
+                baseMessages.length > 0 &&
+                baseMessages[baseMessages.length - 1].role === "assistant"
+            ) {
                 baseMessages.pop();
             }
         } else {
@@ -460,7 +528,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
             const baseForNewMsg = messagesOverride ?? messages;
             baseMessages = [...baseForNewMsg, pendingUserMsg];
         }
-        
+
         // Update UI with the base messages (without the streaming response yet)
         setMessages(baseMessages);
 
@@ -473,7 +541,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Accept": "text/event-stream",
+                        Accept: "text/event-stream",
                         "X-CSRF-TOKEN": getCsrfToken(),
                     },
                     body: JSON.stringify({
@@ -519,7 +587,10 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                 if (parsed.chunk) {
                                     fullContent += parsed.chunk;
                                     setStreamingContent(fullContent);
-                                } else if (parsed.type === "done" && parsed.message_id) {
+                                } else if (
+                                    parsed.type === "done" &&
+                                    parsed.message_id
+                                ) {
                                     // Stream complete - add the assistant message with real ID
                                     const assistantMsg: AdvisorMessage = {
                                         id: parsed.message_id,
@@ -527,24 +598,38 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                         content: fullContent,
                                         created_at: new Date().toISOString(),
                                     };
-                                    
+
                                     // Get any pending after messages (from edit operation)
-                                    const afterMsgs = pendingAfterMessagesRef.current;
-                                    pendingAfterMessagesRef.current = [];  // Clear the ref
-                                    
+                                    const afterMsgs =
+                                        pendingAfterMessagesRef.current;
+                                    pendingAfterMessagesRef.current = []; // Clear the ref
+
                                     // Get the real user message ID from the backend (if provided)
-                                    const realUserMsgId = parsed.user_message_id;
-                                    
+                                    const realUserMsgId =
+                                        parsed.user_message_id;
+
                                     // Update messages: replace pending user msg with real ID, add assistant, append after messages
                                     setMessages((prev) => {
                                         // Replace any pending user message with the real ID from backend
                                         const updated = prev.map((msg) => {
-                                            if (msg.id.startsWith("pending-user-") && realUserMsgId) {
-                                                return { ...msg, id: realUserMsgId };
+                                            if (
+                                                msg.id.startsWith(
+                                                    "pending-user-"
+                                                ) &&
+                                                realUserMsgId
+                                            ) {
+                                                return {
+                                                    ...msg,
+                                                    id: realUserMsgId,
+                                                };
                                             }
                                             return msg;
                                         });
-                                        return [...updated, assistantMsg, ...afterMsgs];
+                                        return [
+                                            ...updated,
+                                            assistantMsg,
+                                            ...afterMsgs,
+                                        ];
                                     });
                                 } else if (parsed.error) {
                                     throw new Error(parsed.error);
@@ -559,14 +644,23 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
 
             // If we got content but didn't receive a done signal with message_id,
             // still add the assistant message to UI
-            if (fullContent && !messages.some(m => m.content === fullContent)) {
+            if (
+                fullContent &&
+                !messages.some((m) => m.content === fullContent)
+            ) {
                 // Get any pending after messages (from edit operation)
                 const afterMsgs = pendingAfterMessagesRef.current;
-                pendingAfterMessagesRef.current = [];  // Clear the ref
-                
+                pendingAfterMessagesRef.current = []; // Clear the ref
+
                 setMessages((prev) => {
                     // Check if we already added it via the done signal
-                    if (prev.some(m => m.role === "assistant" && m.content === fullContent)) {
+                    if (
+                        prev.some(
+                            (m) =>
+                                m.role === "assistant" &&
+                                m.content === fullContent
+                        )
+                    ) {
                         return prev;
                     }
                     const assistantMsg: AdvisorMessage = {
@@ -606,21 +700,26 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
 
     const retryLastMessage = async () => {
         if (!activeChat) return;
-        
+
         // For regenerate: find the last user message and resend it
-        const lastUserIdx = messages.map((m, i) => ({ m, i }))
+        const lastUserIdx = messages
+            .map((m, i) => ({ m, i }))
             .filter(({ m }) => m.role === "user")
             .pop()?.i;
-        
+
         if (lastUserIdx !== undefined) {
             const lastUserMsg = messages[lastUserIdx];
             // Get messages after the user message (AI responses to delete)
             const messagesToDelete = messages.slice(lastUserIdx + 1);
-            
+
             // Delete old AI responses from database
             for (const msg of messagesToDelete) {
-                if (!msg.id.startsWith('pending-') && !msg.id.startsWith('user-') && 
-                    !msg.id.startsWith('assistant-') && !msg.id.startsWith('error-')) {
+                if (
+                    !msg.id.startsWith("pending-") &&
+                    !msg.id.startsWith("user-") &&
+                    !msg.id.startsWith("assistant-") &&
+                    !msg.id.startsWith("error-")
+                ) {
                     try {
                         await fetchWithCsrf(
                             `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${msg.id}`,
@@ -631,7 +730,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     }
                 }
             }
-            
+
             // Pass messages up to and including the user message
             const messagesUpToUser = messages.slice(0, lastUserIdx + 1);
             sendMessage(lastUserMsg.content, true, messagesUpToUser);
@@ -641,16 +740,20 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
     // Retry a specific user message (removes all messages after it and resends)
     const retryMessage = async (index: number) => {
         if (!activeChat) return;
-        
+
         const messageToRetry = messages[index];
         if (messageToRetry && messageToRetry.role === "user") {
             // Get messages after this one to delete
             const messagesToDelete = messages.slice(index + 1);
-            
+
             // Delete messages from database
             for (const msg of messagesToDelete) {
-                if (!msg.id.startsWith('pending-') && !msg.id.startsWith('user-') && 
-                    !msg.id.startsWith('assistant-') && !msg.id.startsWith('error-')) {
+                if (
+                    !msg.id.startsWith("pending-") &&
+                    !msg.id.startsWith("user-") &&
+                    !msg.id.startsWith("assistant-") &&
+                    !msg.id.startsWith("error-")
+                ) {
                     try {
                         await fetchWithCsrf(
                             `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${msg.id}`,
@@ -661,7 +764,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     }
                 }
             }
-            
+
             // Get messages up to and including this user message
             const messagesUpToUser = messages.slice(0, index + 1);
             // Call sendMessage with the message override - keeps the user message, gets fresh response
@@ -677,33 +780,41 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
 
     // Submit edited message - replaces the message and its AI response only
     const submitEditedMessage = async () => {
-        if (editingMessageIndex === null || !editingMessageContent.trim() || !activeChat) return;
-        
+        if (
+            editingMessageIndex === null ||
+            !editingMessageContent.trim() ||
+            !activeChat
+        )
+            return;
+
         const editedMessage = messages[editingMessageIndex];
         const editedContent = editingMessageContent.trim();
-        
+
         // Clear editing state first
         setEditingMessageIndex(null);
         setEditingMessageContent("");
-        
+
         // Find the AI response directly after this message (if any)
         const nextMessage = messages[editingMessageIndex + 1];
         const hasAIResponse = nextMessage && nextMessage.role === "assistant";
-        
+
         // Messages before the edited one (these stay as-is)
         const messagesBefore = messages.slice(0, editingMessageIndex);
-        
+
         // Messages after the edit pair (skip edited msg + its AI response if exists)
         const skipCount = hasAIResponse ? 2 : 1;
         const messagesAfter = messages.slice(editingMessageIndex + skipCount);
-        
+
         // Store messages to append after AI response completes
         pendingAfterMessagesRef.current = messagesAfter;
-        
+
         // Delete the old user message from database
-        const isRealMessage = (id: string) => !id.startsWith('pending-') && !id.startsWith('user-') && 
-            !id.startsWith('assistant-') && !id.startsWith('error-');
-            
+        const isRealMessage = (id: string) =>
+            !id.startsWith("pending-") &&
+            !id.startsWith("user-") &&
+            !id.startsWith("assistant-") &&
+            !id.startsWith("error-");
+
         if (isRealMessage(editedMessage.id)) {
             try {
                 await fetchWithCsrf(
@@ -714,7 +825,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                 console.error("Error deleting old message:", error);
             }
         }
-        
+
         // Delete the AI response to this message (if any)
         if (hasAIResponse && isRealMessage(nextMessage.id)) {
             try {
@@ -726,7 +837,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                 console.error("Error deleting AI response:", error);
             }
         }
-        
+
         // Send the edited content as a new message, using messagesBefore as the base
         // This ensures the edited message appears in the correct position, not at the bottom
         sendMessage(editedContent, false, messagesBefore);
@@ -750,14 +861,20 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
 
     const deleteMessage = async (index: number) => {
         if (!activeChat) return;
-        
+
         const messageToDelete = messages[index];
-        
+
         // Optimistically remove from UI
         setMessages((prev) => prev.filter((_, i) => i !== index));
-        
+
         // If it's a real message (not a temp one), delete from backend
-        if (messageToDelete && !messageToDelete.id.startsWith('temp-') && !messageToDelete.id.startsWith('user-') && !messageToDelete.id.startsWith('assistant-') && !messageToDelete.id.startsWith('error-')) {
+        if (
+            messageToDelete &&
+            !messageToDelete.id.startsWith("temp-") &&
+            !messageToDelete.id.startsWith("user-") &&
+            !messageToDelete.id.startsWith("assistant-") &&
+            !messageToDelete.id.startsWith("error-")
+        ) {
             try {
                 await fetchWithCsrf(
                     `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${messageToDelete.id}`,
@@ -775,7 +892,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
         return matches.map((match) => {
             const editContent = match[1];
             const oldMatch = editContent.match(/OLD:\s*([\s\S]*?)(?=NEW:|$)/);
-            const newMatch = editContent.match(/NEW:\s*([\s\S]*?)(?=REASON:|$)/);
+            const newMatch = editContent.match(
+                /NEW:\s*([\s\S]*?)(?=REASON:|$)/
+            );
             const reasonMatch = editContent.match(/REASON:\s*([\s\S]*?)$/);
             const chapterMatch = editContent.match(/CHAPTER:\s*(.*?)(?=\n|$)/);
 
@@ -789,90 +908,149 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
     };
 
     // Send edits to the editor for inline preview (Agent mode)
-    const sendEditsToEditor = (edits: typeof parseEditSuggestions extends (c: string) => infer R ? R : never, clearExisting: boolean = false) => {
+    const sendEditsToEditor = (
+        edits: typeof parseEditSuggestions extends (c: string) => infer R
+            ? R
+            : never,
+        clearExisting: boolean = false
+    ) => {
         if (edits.length === 0) return;
-        
+
         // Clear existing pending edits if requested (when getting fresh suggestions)
         if (clearExisting) {
             clearAllEdits();
         }
-        
-        const pendingEditData = edits.map(edit => ({
+
+        const pendingEditData = edits.map((edit) => ({
             chapter: edit.chapter,
             oldText: edit.oldText,
             newText: edit.newText,
             reason: edit.reason,
         }));
-        
+
         addPendingEdits(pendingEditData);
     };
-    
-    const renderMessageContent = (content: string, isLatestAssistant: boolean = false) => {
+
+    const renderMessageContent = (
+        content: string,
+        isLatestAssistant: boolean = false
+    ) => {
         const editSuggestions = parseEditSuggestions(content);
-        
+
         if (editSuggestions.length > 0) {
             const parts = content.split(/<<<EDIT>>>[\s\S]*?<<<END_EDIT>>>/);
-            
+
             // In Agent mode and this is the latest response, auto-send edits to editor
-            if (advisorMode === 'agent' && isLatestAssistant && editSuggestions.length > 0) {
+            if (
+                advisorMode === "agent" &&
+                isLatestAssistant &&
+                editSuggestions.length > 0
+            ) {
                 // Use a ref to track if we've already sent these edits
-                const editKey = editSuggestions.map(e => e.oldText.substring(0, 50)).join('|');
+                const editKey = editSuggestions
+                    .map((e) => e.oldText.substring(0, 50))
+                    .join("|");
                 if (!sentEditsRef.current.has(editKey)) {
                     sentEditsRef.current.add(editKey);
                     // Append to existing edits (don't clear - user might have edits from previous messages)
-                    setTimeout(() => sendEditsToEditor(editSuggestions, false), 100);
+                    setTimeout(
+                        () => sendEditsToEditor(editSuggestions, false),
+                        100
+                    );
                 }
             }
-            
+
             return (
                 <div className="space-y-3">
                     {parts.map((part, idx) => (
                         <div key={idx}>
-                            {part.trim() && <p className="whitespace-pre-wrap">{part.trim()}</p>}
+                            {part.trim() && (
+                                <p className="whitespace-pre-wrap">
+                                    {part.trim()}
+                                </p>
+                            )}
                             {editSuggestions[idx] && (
                                 <div className="my-3 rounded-lg border border-purple-200 bg-purple-50 p-3">
                                     <div className="flex items-center gap-2 mb-2">
                                         <Sparkles className="h-4 w-4 text-purple-600" />
                                         <span className="text-sm font-medium text-purple-700">
-                                            Suggested Edit {editSuggestions[idx].chapter && `- ${editSuggestions[idx].chapter}`}
+                                            Suggested Edit{" "}
+                                            {editSuggestions[idx].chapter &&
+                                                `- ${editSuggestions[idx].chapter}`}
                                         </span>
                                     </div>
                                     <div className="space-y-2">
                                         <div className="rounded bg-red-100 p-2 text-sm">
-                                            <span className="text-red-600 font-medium">Remove:</span>
-                                            <p className="text-red-800 line-through mt-1">{editSuggestions[idx].oldText}</p>
+                                            <span className="text-red-600 font-medium">
+                                                Remove:
+                                            </span>
+                                            <p className="text-red-800 line-through mt-1">
+                                                {editSuggestions[idx].oldText}
+                                            </p>
                                         </div>
                                         <div className="rounded bg-green-100 p-2 text-sm">
-                                            <span className="text-green-600 font-medium">Add:</span>
-                                            <p className="text-green-800 mt-1">{editSuggestions[idx].newText}</p>
+                                            <span className="text-green-600 font-medium">
+                                                Add:
+                                            </span>
+                                            <p className="text-green-800 mt-1">
+                                                {editSuggestions[idx].newText}
+                                            </p>
                                         </div>
                                     </div>
                                     {editSuggestions[idx].reason && (
-                                        <p className="text-xs text-gray-600 mt-2 italic">💡 {editSuggestions[idx].reason}</p>
+                                        <p className="text-xs text-gray-600 mt-2 italic">
+                                            💡 {editSuggestions[idx].reason}
+                                        </p>
                                     )}
                                     {/* Show different UI based on mode */}
-                                    {advisorMode === 'chat' ? (
+                                    {advisorMode === "chat" ? (
                                         <div className="flex gap-2 mt-3">
                                             <Button
                                                 size="sm"
                                                 className="bg-green-600 hover:bg-green-700"
                                                 onClick={() => {
                                                     if (onApplyEdit) {
-                                                        const success = onApplyEdit(editSuggestions[idx].oldText, editSuggestions[idx].newText);
-                                                        alert(success ? "Edit applied!" : "Could not find text to replace.");
+                                                        const success =
+                                                            onApplyEdit(
+                                                                editSuggestions[
+                                                                    idx
+                                                                ].oldText,
+                                                                editSuggestions[
+                                                                    idx
+                                                                ].newText
+                                                            );
+                                                        alert(
+                                                            success
+                                                                ? "Edit applied!"
+                                                                : "Could not find text to replace."
+                                                        );
                                                     }
                                                 }}
                                             >
-                                                <Check className="h-3 w-3 mr-1" /> Apply
+                                                <Check className="h-3 w-3 mr-1" />{" "}
+                                                Apply
                                             </Button>
-                                            <Button size="sm" variant="outline" onClick={() => copyToClipboard(editSuggestions[idx].newText)}>
-                                                <Copy className="h-3 w-3 mr-1" /> Copy
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                onClick={() =>
+                                                    copyToClipboard(
+                                                        editSuggestions[idx]
+                                                            .newText
+                                                    )
+                                                }
+                                            >
+                                                <Copy className="h-3 w-3 mr-1" />{" "}
+                                                Copy
                                             </Button>
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-2 mt-3 text-xs text-purple-600">
                                             <Wand2 className="h-3 w-3" />
-                                            <span>Edit queued for inline preview in editor</span>
+                                            <span>
+                                                Edit queued for inline preview
+                                                in editor
+                                            </span>
                                         </div>
                                     )}
                                 </div>
@@ -882,23 +1060,23 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                 </div>
             );
         }
-        
+
         return <p className="whitespace-pre-wrap">{content}</p>;
     };
 
     return (
         <div className="flex flex-col h-full bg-white">
             {/* Mode Toggle - Agent vs Chat */}
-            <div className="p-2 border-b bg-gradient-to-r from-purple-50 to-blue-50">
-                <div className="flex items-center justify-center gap-1 p-1 bg-white rounded-lg border shadow-sm">
+            <div className="p-2 border-b bg-linear-to-r from-purple-50 to-blue-50">
+                <div className="grid grid-cols-2 gap-1 p-1 bg-white rounded-lg border shadow-sm">
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <button
-                                onClick={() => setAdvisorMode('chat')}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                                    advisorMode === 'chat'
-                                        ? 'bg-blue-600 text-white shadow-sm'
-                                        : 'text-gray-600 hover:bg-gray-100'
+                                onClick={() => setAdvisorMode("chat")}
+                                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                                    advisorMode === "chat"
+                                        ? "bg-blue-600 text-white shadow-sm"
+                                        : "text-gray-600 hover:bg-gray-100"
                                 }`}
                             >
                                 <MessageCircle className="h-3.5 w-3.5" />
@@ -906,17 +1084,19 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                             </button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                            <p className="text-xs">Chat mode: Apply edits manually from sidebar</p>
+                            <p className="text-xs">
+                                Chat mode: Apply edits manually from sidebar
+                            </p>
                         </TooltipContent>
                     </Tooltip>
                     <Tooltip>
                         <TooltipTrigger asChild>
                             <button
-                                onClick={() => setAdvisorMode('agent')}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                                    advisorMode === 'agent'
-                                        ? 'bg-purple-600 text-white shadow-sm'
-                                        : 'text-gray-600 hover:bg-gray-100'
+                                onClick={() => setAdvisorMode("agent")}
+                                className={`flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
+                                    advisorMode === "agent"
+                                        ? "bg-purple-600 text-white shadow-sm"
+                                        : "text-gray-600 hover:bg-gray-100"
                                 }`}
                             >
                                 <Wand2 className="h-3.5 w-3.5" />
@@ -924,18 +1104,33 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                             </button>
                         </TooltipTrigger>
                         <TooltipContent side="bottom">
-                            <p className="text-xs">Agent mode: Preview edits inline in editor with ✓/✗</p>
+                            <p className="text-xs">
+                                Agent mode: Preview edits inline in editor with
+                                ✓/✗
+                            </p>
                         </TooltipContent>
                     </Tooltip>
                 </div>
                 {/* Pending edits indicator for Agent mode */}
-                {advisorMode === 'agent' && pendingEdits.length > 0 && (
+                {advisorMode === "agent" && pendingEdits.length > 0 && (
                     <div className="flex items-center justify-between mt-2 px-1">
                         <span className="text-xs text-purple-600">
-                            {pendingEdits.filter(e => e.status === 'pending').length} pending
-                            {pendingEdits.filter(e => e.status === 'stale').length > 0 && (
+                            {
+                                pendingEdits.filter(
+                                    (e) => e.status === "pending"
+                                ).length
+                            }{" "}
+                            pending
+                            {pendingEdits.filter((e) => e.status === "stale")
+                                .length > 0 && (
                                 <span className="text-gray-400 ml-1">
-                                    ({pendingEdits.filter(e => e.status === 'stale').length} stale)
+                                    (
+                                    {
+                                        pendingEdits.filter(
+                                            (e) => e.status === "stale"
+                                        ).length
+                                    }{" "}
+                                    stale)
                                 </span>
                             )}
                         </span>
@@ -950,7 +1145,7 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     </div>
                 )}
             </div>
-            
+
             {/* Title Block - Always visible */}
             <div className="p-3 border-b">
                 {editingTitle ? (
@@ -994,11 +1189,17 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     >
                         <div className="flex items-center gap-2 truncate">
                             <MessageSquare className="h-4 w-4" />
-                            <span className="truncate">{chats.length} chats</span>
+                            <span className="truncate">
+                                {chats.length} chats
+                            </span>
                         </div>
-                        <ChevronDown className={`h-4 w-4 transition-transform ${showChatList ? "rotate-180" : ""}`} />
+                        <ChevronDown
+                            className={`h-4 w-4 transition-transform ${
+                                showChatList ? "rotate-180" : ""
+                            }`}
+                        />
                     </Button>
-                    
+
                     {showChatList && (
                         <div className="absolute top-full left-0 right-0 mt-1 bg-white border rounded-md shadow-lg z-50 max-h-64 overflow-y-auto">
                             <div
@@ -1006,7 +1207,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                 onClick={createNewChat}
                             >
                                 <Plus className="h-4 w-4" />
-                                <span className="text-sm font-medium">New Chat</span>
+                                <span className="text-sm font-medium">
+                                    New Chat
+                                </span>
                             </div>
                             {chats.length === 0 ? (
                                 <div className="px-3 py-4 text-sm text-gray-500 text-center">
@@ -1017,7 +1220,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                     <div
                                         key={chat.id}
                                         className={`px-3 py-2 hover:bg-gray-50 cursor-pointer flex items-center justify-between group ${
-                                            activeChat?.id === chat.id ? "bg-blue-50" : ""
+                                            activeChat?.id === chat.id
+                                                ? "bg-blue-50"
+                                                : ""
                                         }`}
                                         onClick={() => {
                                             setActiveChat(chat);
@@ -1026,7 +1231,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                     >
                                         <div className="flex items-center gap-2 min-w-0 flex-1">
                                             <MessageSquare className="h-4 w-4 text-gray-400 shrink-0" />
-                                            <span className="text-sm truncate">{chat.title}</span>
+                                            <span className="text-sm truncate">
+                                                {chat.title}
+                                            </span>
                                         </div>
                                         <button
                                             className="p-1 hover:bg-red-100 rounded opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1047,7 +1254,11 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                 {/* Settings Button */}
                 <Tooltip>
                     <TooltipTrigger asChild>
-                        <Button variant="ghost" size="sm" onClick={() => setShowSettings(!showSettings)}>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setShowSettings(!showSettings)}
+                        >
                             <Settings2 className="h-4 w-4" />
                         </Button>
                     </TooltipTrigger>
@@ -1056,10 +1267,14 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
 
                 {/* Actions Menu */}
                 <div className="relative" ref={actionsRef}>
-                    <Button variant="ghost" size="sm" onClick={() => setShowActions(!showActions)}>
+                    <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowActions(!showActions)}
+                    >
                         <MoreHorizontal className="h-4 w-4" />
                     </Button>
-                    
+
                     {showActions && (
                         <div className="absolute top-full right-0 mt-1 bg-white border rounded-md shadow-lg z-50 min-w-[140px]">
                             <div
@@ -1099,13 +1314,19 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     {/* Model Selection */}
                     <div className="space-y-1">
                         <Label className="text-xs font-medium">AI Model</Label>
-                        <Select value={selectedModel} onValueChange={setSelectedModel}>
+                        <Select
+                            value={selectedModel}
+                            onValueChange={setSelectedModel}
+                        >
                             <SelectTrigger className="h-8">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                                 {AVAILABLE_MODELS.map((model) => (
-                                    <SelectItem key={model.value} value={model.value}>
+                                    <SelectItem
+                                        key={model.value}
+                                        value={model.value}
+                                    >
                                         {model.label}
                                     </SelectItem>
                                 ))}
@@ -1114,11 +1335,19 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     </div>
 
                     {/* Thinking Budget - Greyed out for non-thinking models */}
-                    <div className={`space-y-1 ${!isThinkingModel ? 'opacity-50' : ''}`}>
+                    <div
+                        className={`space-y-1 ${
+                            !isThinkingModel ? "opacity-50" : ""
+                        }`}
+                    >
                         <div className="flex justify-between">
-                            <Label className="text-xs font-medium">Thinking Budget</Label>
+                            <Label className="text-xs font-medium">
+                                Thinking Budget
+                            </Label>
                             <span className="text-xs text-gray-500">
-                                {isThinkingModel ? `${thinkingBudget} tokens` : 'N/A'}
+                                {isThinkingModel
+                                    ? `${thinkingBudget} tokens`
+                                    : "N/A"}
                             </span>
                         </div>
                         <Slider
@@ -1131,15 +1360,21 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                             disabled={!isThinkingModel}
                         />
                         {!isThinkingModel && (
-                            <p className="text-xs text-gray-400">Only available for thinking models</p>
+                            <p className="text-xs text-gray-400">
+                                Only available for thinking models
+                            </p>
                         )}
                     </div>
 
                     {/* Output Length */}
                     <div className="space-y-1">
                         <div className="flex justify-between">
-                            <Label className="text-xs font-medium">Max Output</Label>
-                            <span className="text-xs text-gray-500">{outputLength} tokens</span>
+                            <Label className="text-xs font-medium">
+                                Max Output
+                            </Label>
+                            <span className="text-xs text-gray-500">
+                                {outputLength} tokens
+                            </span>
                         </div>
                         <Slider
                             value={[outputLength]}
@@ -1154,8 +1389,12 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     {/* Temperature */}
                     <div className="space-y-1">
                         <div className="flex justify-between">
-                            <Label className="text-xs font-medium">Temperature</Label>
-                            <span className="text-xs text-gray-500">{temperature}</span>
+                            <Label className="text-xs font-medium">
+                                Temperature
+                            </Label>
+                            <span className="text-xs text-gray-500">
+                                {temperature}
+                            </span>
                         </div>
                         <Slider
                             value={[temperature]}
@@ -1170,7 +1409,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     {/* System Instructions */}
                     <div className="space-y-1">
                         <div className="flex items-center gap-1">
-                            <Label className="text-xs font-medium">System Instructions</Label>
+                            <Label className="text-xs font-medium">
+                                System Instructions
+                            </Label>
                             <Tooltip>
                                 <TooltipTrigger>
                                     <HelpCircle className="h-3 w-3 text-gray-400" />
@@ -1182,13 +1423,19 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                         </div>
                         <Textarea
                             value={systemInstructions}
-                            onChange={(e) => setSystemInstructions(e.target.value)}
-                            className="text-xs min-h-[80px] max-h-[150px]"
+                            onChange={(e) =>
+                                setSystemInstructions(e.target.value)
+                            }
+                            className="text-xs min-h-20 max-h-[150px]"
                         />
                     </div>
 
                     <div className="flex justify-end gap-2">
-                        <Button size="sm" variant="outline" onClick={() => setShowSettings(false)}>
+                        <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => setShowSettings(false)}
+                        >
                             Cancel
                         </Button>
                         <Button size="sm" onClick={saveSettings}>
@@ -1208,7 +1455,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     ) : !activeChat ? (
                         <div className="flex flex-col items-center justify-center h-48 text-center">
                             <Bot className="h-12 w-12 text-gray-300 mb-3" />
-                            <p className="text-sm text-gray-500 mb-3">Create a new chat to start</p>
+                            <p className="text-sm text-gray-500 mb-3">
+                                Create a new chat to start
+                            </p>
                             <Button size="sm" onClick={createNewChat}>
                                 <Plus className="h-4 w-4 mr-1" /> New Chat
                             </Button>
@@ -1216,15 +1465,23 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                     ) : messages.length === 0 && !streamingContent ? (
                         <div className="flex flex-col items-center justify-center h-48 text-center">
                             <Sparkles className="h-12 w-12 text-purple-300 mb-3" />
-                            <p className="text-sm text-gray-600">Ask anything about your story</p>
-                            <p className="text-xs text-gray-400 mt-1">The AI has full context</p>
+                            <p className="text-sm text-gray-600">
+                                Ask anything about your story
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                                The AI has full context
+                            </p>
                         </div>
                     ) : (
                         <div className="space-y-4">
                             {messages.map((message, idx) => (
                                 <div
                                     key={message.id}
-                                    className={`flex gap-2 group ${message.role === "user" ? "justify-end" : "justify-start"}`}
+                                    className={`flex gap-2 group ${
+                                        message.role === "user"
+                                            ? "justify-end"
+                                            : "justify-start"
+                                    }`}
                                 >
                                     {message.role === "assistant" && (
                                         <div className="w-7 h-7 rounded-full bg-purple-100 flex items-center justify-center shrink-0 mt-1">
@@ -1236,16 +1493,34 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                         {editingMessageIndex === idx ? (
                                             <div className="space-y-2">
                                                 <Textarea
-                                                    value={editingMessageContent}
-                                                    onChange={(e) => setEditingMessageContent(e.target.value)}
-                                                    className="min-h-[80px] text-sm"
+                                                    value={
+                                                        editingMessageContent
+                                                    }
+                                                    onChange={(e) =>
+                                                        setEditingMessageContent(
+                                                            e.target.value
+                                                        )
+                                                    }
+                                                    className="min-h-20 text-sm"
                                                     autoFocus
                                                 />
                                                 <div className="flex gap-2">
-                                                    <Button size="sm" onClick={submitEditedMessage}>
-                                                        <Send className="h-3 w-3 mr-1" /> Send
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={
+                                                            submitEditedMessage
+                                                        }
+                                                    >
+                                                        <Send className="h-3 w-3 mr-1" />{" "}
+                                                        Send
                                                     </Button>
-                                                    <Button size="sm" variant="outline" onClick={cancelEditingMessage}>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={
+                                                            cancelEditingMessage
+                                                        }
+                                                    >
                                                         Cancel
                                                     </Button>
                                                 </div>
@@ -1259,51 +1534,87 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                                 }`}
                                             >
                                                 <div className="text-sm">
-                                                    {message.role === "assistant"
-                                                        ? renderMessageContent(message.content, idx === messages.length - 1)
-                                                        : <p className="whitespace-pre-wrap">{message.content}</p>}
+                                                    {message.role ===
+                                                    "assistant" ? (
+                                                        renderMessageContent(
+                                                            message.content,
+                                                            idx ===
+                                                                messages.length -
+                                                                    1
+                                                        )
+                                                    ) : (
+                                                        <p className="whitespace-pre-wrap">
+                                                            {message.content}
+                                                        </p>
+                                                    )}
                                                 </div>
                                             </div>
                                         )}
-                                        
+
                                         {/* Message Actions - Always visible */}
-                                        <div className={`flex gap-1 mt-1 ${message.role === "user" ? "justify-end" : "justify-start"}`}>
+                                        <div
+                                            className={`flex gap-1 mt-1 ${
+                                                message.role === "user"
+                                                    ? "justify-end"
+                                                    : "justify-start"
+                                            }`}
+                                        >
                                             {message.role === "assistant" && (
                                                 <>
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
-                                                                onClick={() => copyToClipboard(message.content)}
+                                                                onClick={() =>
+                                                                    copyToClipboard(
+                                                                        message.content
+                                                                    )
+                                                                }
                                                             >
                                                                 <Copy className="h-3 w-3" />
                                                             </button>
                                                         </TooltipTrigger>
-                                                        <TooltipContent>Copy</TooltipContent>
+                                                        <TooltipContent>
+                                                            Copy
+                                                        </TooltipContent>
                                                     </Tooltip>
-                                                    {idx === messages.length - 1 && !isStreaming && (
-                                                        <Tooltip>
-                                                            <TooltipTrigger asChild>
-                                                                <button
-                                                                    className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
-                                                                    onClick={retryLastMessage}
+                                                    {idx ===
+                                                        messages.length - 1 &&
+                                                        !isStreaming && (
+                                                            <Tooltip>
+                                                                <TooltipTrigger
+                                                                    asChild
                                                                 >
-                                                                    <RefreshCw className="h-3 w-3" />
-                                                                </button>
-                                                            </TooltipTrigger>
-                                                            <TooltipContent>Regenerate</TooltipContent>
-                                                        </Tooltip>
-                                                    )}
+                                                                    <button
+                                                                        className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
+                                                                        onClick={
+                                                                            retryLastMessage
+                                                                        }
+                                                                    >
+                                                                        <RefreshCw className="h-3 w-3" />
+                                                                    </button>
+                                                                </TooltipTrigger>
+                                                                <TooltipContent>
+                                                                    Regenerate
+                                                                </TooltipContent>
+                                                            </Tooltip>
+                                                        )}
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
-                                                                onClick={() => deleteMessage(idx)}
+                                                                onClick={() =>
+                                                                    deleteMessage(
+                                                                        idx
+                                                                    )
+                                                                }
                                                             >
                                                                 <Trash2 className="h-3 w-3" />
                                                             </button>
                                                         </TooltipTrigger>
-                                                        <TooltipContent>Delete</TooltipContent>
+                                                        <TooltipContent>
+                                                            Delete
+                                                        </TooltipContent>
                                                     </Tooltip>
                                                 </>
                                             )}
@@ -1313,35 +1624,56 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 className="p-1 rounded hover:bg-blue-200 text-gray-400 hover:text-blue-600"
-                                                                onClick={() => startEditingMessage(idx, message.content)}
+                                                                onClick={() =>
+                                                                    startEditingMessage(
+                                                                        idx,
+                                                                        message.content
+                                                                    )
+                                                                }
                                                             >
                                                                 <Edit3 className="h-3 w-3" />
                                                             </button>
                                                         </TooltipTrigger>
-                                                        <TooltipContent>Edit & Resend</TooltipContent>
+                                                        <TooltipContent>
+                                                            Edit & Resend
+                                                        </TooltipContent>
                                                     </Tooltip>
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 className="p-1 rounded hover:bg-blue-200 text-gray-400 hover:text-blue-600"
-                                                                onClick={() => retryMessage(idx)}
-                                                                disabled={isStreaming}
+                                                                onClick={() =>
+                                                                    retryMessage(
+                                                                        idx
+                                                                    )
+                                                                }
+                                                                disabled={
+                                                                    isStreaming
+                                                                }
                                                             >
                                                                 <RefreshCw className="h-3 w-3" />
                                                             </button>
                                                         </TooltipTrigger>
-                                                        <TooltipContent>Retry</TooltipContent>
+                                                        <TooltipContent>
+                                                            Retry
+                                                        </TooltipContent>
                                                     </Tooltip>
                                                     <Tooltip>
                                                         <TooltipTrigger asChild>
                                                             <button
                                                                 className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
-                                                                onClick={() => deleteMessage(idx)}
+                                                                onClick={() =>
+                                                                    deleteMessage(
+                                                                        idx
+                                                                    )
+                                                                }
                                                             >
                                                                 <Trash2 className="h-3 w-3" />
                                                             </button>
                                                         </TooltipTrigger>
-                                                        <TooltipContent>Delete</TooltipContent>
+                                                        <TooltipContent>
+                                                            Delete
+                                                        </TooltipContent>
                                                     </Tooltip>
                                                 </>
                                             )}
@@ -1362,7 +1694,11 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                         <Bot className="h-4 w-4 text-purple-600" />
                                     </div>
                                     <div className="rounded-lg p-3 max-w-[85%] bg-gray-100">
-                                        <div className="text-sm">{renderMessageContent(streamingContent)}</div>
+                                        <div className="text-sm">
+                                            {renderMessageContent(
+                                                streamingContent
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             )}
@@ -1396,7 +1732,11 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                                 sendMessage();
                             }
                         }}
-                        placeholder={activeChat ? "Ask about your story..." : "Create a chat first"}
+                        placeholder={
+                            activeChat
+                                ? "Ask about your story..."
+                                : "Create a chat first"
+                        }
                         className="min-h-[50px] max-h-[100px] resize-none text-sm"
                         disabled={!activeChat || isStreaming}
                     />
@@ -1404,7 +1744,9 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                         {!isStreaming && (
                             <MagicWandButton
                                 text={inputMessage}
-                                onEnhanced={(enhanced) => setInputMessage(enhanced)}
+                                onEnhanced={(enhanced) =>
+                                    setInputMessage(enhanced)
+                                }
                                 enhancementMode="chat_message"
                                 workspaceId={workspaceId}
                                 projectId={projectId}
@@ -1416,7 +1758,12 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
                             />
                         )}
                         {isStreaming ? (
-                            <Button variant="destructive" size="icon" onClick={cancelStreaming} className="h-[50px] w-10">
+                            <Button
+                                variant="destructive"
+                                size="icon"
+                                onClick={cancelStreaming}
+                                className="h-[50px] w-10"
+                            >
                                 <X className="h-2.5 w-2.5" />
                             </Button>
                         ) : (
@@ -1433,17 +1780,32 @@ export default function AdvisorTab({ workspaceId, projectId, onApplyEdit }: Advi
             </div>
 
             {/* Delete Confirmation */}
-            <Dialog open={!!deleteConfirmChat} onOpenChange={() => setDeleteConfirmChat(null)}>
+            <Dialog
+                open={!!deleteConfirmChat}
+                onOpenChange={() => setDeleteConfirmChat(null)}
+            >
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>Delete Chat</DialogTitle>
                         <DialogDescription>
-                            Delete "{deleteConfirmChat?.title}"? This cannot be undone.
+                            Delete "{deleteConfirmChat?.title}"? This cannot be
+                            undone.
                         </DialogDescription>
                     </DialogHeader>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setDeleteConfirmChat(null)}>Cancel</Button>
-                        <Button variant="destructive" onClick={() => deleteConfirmChat && deleteChat(deleteConfirmChat.id)}>
+                        <Button
+                            variant="outline"
+                            onClick={() => setDeleteConfirmChat(null)}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            onClick={() =>
+                                deleteConfirmChat &&
+                                deleteChat(deleteConfirmChat.id)
+                            }
+                        >
                             Delete
                         </Button>
                     </DialogFooter>

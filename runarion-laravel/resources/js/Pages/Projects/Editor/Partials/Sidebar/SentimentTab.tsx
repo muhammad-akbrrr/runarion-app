@@ -799,7 +799,7 @@ export default function SentimentTab({
             {(interactions.length > 0 || aggregatedRelationships.length > 0) && (
                 <div className="border rounded-lg overflow-hidden w-full">
                     {/* Summary Header */}
-                    <div className="p-3 bg-gradient-to-r from-rose-50 to-pink-50 border-b">
+                    <div className="p-3 bg-linear-to-r from-rose-50 to-pink-50 border-b">
                         <div className="flex items-center justify-between mb-2">
                             <h4 className="text-sm font-semibold text-rose-900">
                                 {isV2Results ? 'V2 Analysis Results' : 'Analysis Results'}
@@ -889,12 +889,12 @@ export default function SentimentTab({
                                                             <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                                                                 <div className="flex items-center gap-1.5 min-w-0">
                                                                     {isExpanded ? (
-                                                                        <ChevronDown className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                                                                        <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
                                                                     ) : (
-                                                                        <ChevronRight className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                                                                        <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
                                                                     )}
                                                                     <span className="font-medium text-sm">{rel.source}</span>
-                                                                    <ArrowRight className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                                                    <ArrowRight className="h-3 w-3 text-gray-400 shrink-0" />
                                                                     <span className="font-medium text-sm">{rel.target}</span>
                                                                 </div>
                                                                 <div className="flex items-center gap-1.5 ml-auto">
@@ -956,9 +956,9 @@ export default function SentimentTab({
                                                                         {rel.text_evidence.map((evidence, i) => (
                                                                             <div key={i} className="bg-white border rounded p-2 overflow-hidden">
                                                                                 <div className="flex items-start gap-2">
-                                                                                    <Quote className="h-3 w-3 text-gray-400 mt-0.5 flex-shrink-0" />
+                                                                                    <Quote className="h-3 w-3 text-gray-400 mt-0.5 shrink-0" />
                                                                                     <div className="flex-1 min-w-0 overflow-hidden">
-                                                                                        <p className="text-xs italic text-gray-700 break-words" style={{ wordBreak: 'break-word' }}>"{evidence.quote}"</p>
+                                                                                        <p className="text-xs italic text-gray-700 wrap-break-word" style={{ wordBreak: 'break-word' }}>"{evidence.quote}"</p>
                                                                                         <div className="flex items-center gap-2 mt-1">
                                                                                             <span className="text-xs text-gray-500">
                                                                                                 {evidence.chapter || evidence.location || `Ch${(evidence.chapter_number || 0) + 1}`}
@@ -1014,15 +1014,15 @@ export default function SentimentTab({
                                                         <div className="p-2 flex items-center justify-between hover:bg-gray-50 cursor-pointer">
                                                             <div className="flex items-center gap-2 flex-1 min-w-0">
                                                                 {isExpanded ? (
-                                                                    <ChevronDown className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                                                    <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
                                                                 ) : (
-                                                                    <ChevronRight className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                                                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
                                                                 )}
                                                                 <Badge variant="secondary" className="text-xs h-5">
                                                                     Ch{interaction.chapter_number + 1}
                                                                 </Badge>
                                                                 <span className="text-xs truncate">{interaction.source_character}</span>
-                                                                <ArrowRight className="h-3 w-3 text-gray-400 flex-shrink-0" />
+                                                                <ArrowRight className="h-3 w-3 text-gray-400 shrink-0" />
                                                                 <span className="text-xs truncate">{interaction.target_character}</span>
                                                             </div>
                                                             <div className="flex items-center gap-1">
@@ -1050,7 +1050,7 @@ export default function SentimentTab({
                                                             {interaction.text_evidence && (
                                                                 <div className="bg-white border rounded p-2">
                                                                     <div className="flex items-start gap-2">
-                                                                        <Quote className="h-3 w-3 text-gray-400 mt-0.5 flex-shrink-0" />
+                                                                        <Quote className="h-3 w-3 text-gray-400 mt-0.5 shrink-0" />
                                                                         <p className="text-xs italic text-gray-700">"{interaction.text_evidence}"</p>
                                                                     </div>
                                                                 </div>
@@ -1098,7 +1098,7 @@ export default function SentimentTab({
                                                 <Collapsible key={chapterKey} open={isExpanded} onOpenChange={() => toggleExpanded(chapterKey)}>
                                                     <div className="border rounded-lg overflow-hidden">
                                                         <CollapsibleTrigger className="w-full">
-                                                            <div className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer bg-gradient-to-r from-blue-50/50 to-transparent">
+                                                            <div className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer bg-linear-to-r from-blue-50/50 to-transparent">
                                                                 <div className="flex items-center gap-2">
                                                                     {isExpanded ? (
                                                                         <ChevronDown className="h-4 w-4 text-gray-400" />
