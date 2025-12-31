@@ -21,20 +21,20 @@ import {
     ITALIC_UNDERSCORE,
     STRIKETHROUGH,
     INLINE_CODE,
-    $convertToMarkdownString,
 } from "@lexical/markdown";
-import { TextNode } from "lexical";
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
+import { TextNode } from "lexical";
+import { OriginTextNode } from "../nodes/OriginTextNode";
 import {
     ContentUpdatePlugin,
     EditorRefPlugin,
     StreamingPlugin,
     ColorCodingPlugin,
-    SelectionToolbarPlugin,
-    FormattingToolbarPlugin,
     InlineDiffPlugin,
+    OriginTrackingPlugin,
 } from "../plugins";
+import { UnifiedSelectionToolbarPlugin } from "../plugins/UnifiedSelectionToolbarPlugin";
 
 // Define supported transformers using the correct exports
 const SUPPORTED_TRANSFORMERS = [
@@ -61,7 +61,16 @@ console.log(
 
 const editorConfig: InitialConfigType = {
     namespace: "MyEditor",
-    nodes: [HeadingNode, ListNode, ListItemNode, QuoteNode, TextNode],
+    nodes: [
+        HeadingNode,
+        ListNode,
+        ListItemNode,
+        QuoteNode,
+        OriginTextNode,
+        // CRITICAL: Include TextNode to allow deserialization of legacy "type": "text" nodes
+        // The OriginTrackingPlugin will automatically convert these to OriginTextNode with 'user' origin
+        TextNode,
+    ],
     theme: {
         paragraph: "text-base leading-relaxed text-gray-900",
         heading: {
@@ -110,7 +119,6 @@ interface LexicalEditorProps {
     isStreaming: boolean;
     streamingText: string;
     baseContent: string;
-    aiRanges: number[][]; // Array of [start, end] positions for AI text
     isColorCoded: boolean;
     selectedChapter: any;
     isInteracting: boolean;
@@ -122,9 +130,11 @@ interface LexicalEditorProps {
     workspaceId?: string;
     projectId?: string;
     aiModel?: string;
-    selectionToolbarMode?: "formatting" | "ai-rewrite";
+    selectionToolbarMode?: string;
     // Props for inline diff (Agent mode)
     onApplyEdit?: (oldText: string, newText: string) => boolean;
+    // External ref for migration support
+    editorRef?: React.MutableRefObject<any>;
 }
 
 export function LexicalEditor({
@@ -133,7 +143,6 @@ export function LexicalEditor({
     isStreaming,
     streamingText,
     baseContent,
-    aiRanges,
     isColorCoded,
     selectedChapter,
     isInteracting,
@@ -144,30 +153,24 @@ export function LexicalEditor({
     workspaceId,
     projectId,
     aiModel,
-    selectionToolbarMode = "formatting",
     onApplyEdit,
+    editorRef,
 }: LexicalEditorProps) {
-    // Store editor instance for context menu
-    const editorRef = useRef<any>(null);
+    // Internal editor ref (used when external ref not provided)
+    const internalEditorRef = useRef<any>(null);
 
-    // Debug: Log aiRanges when they change
-    useEffect(() => {
-        console.log("🎨 LexicalEditor received aiRanges:", aiRanges);
-    }, [aiRanges]);
+    // Use external ref if provided, otherwise use internal
+    const effectiveEditorRef = editorRef || internalEditorRef;
 
-    // Expose function to get current editor content
+    // Expose function to get current editor content as Lexical JSON
     useEffect(() => {
         if (onGetCurrentContent) {
             onGetCurrentContent(() => {
-                if (!editorRef.current) return "";
+                if (!effectiveEditorRef.current) return "";
 
-                let currentContent = "";
-                editorRef.current.getEditorState().read(() => {
-                    currentContent = $convertToMarkdownString(
-                        SUPPORTED_TRANSFORMERS
-                    );
-                });
-                return currentContent;
+                // Serialize as Lexical JSON for proper whitespace preservation
+                const editorState = effectiveEditorRef.current.getEditorState();
+                return JSON.stringify(editorState.toJSON());
             });
         }
     }, [onGetCurrentContent]);
@@ -229,21 +232,18 @@ export function LexicalEditor({
                                 !isInteracting &&
                                 !isRegenerating
                             ) {
-                                editorState.read(() => {
-                                    const newContent = $convertToMarkdownString(
-                                        SUPPORTED_TRANSFORMERS
-                                    );
-                                    console.log(
-                                        "OnChangePlugin: Content changed",
-                                        {
-                                            newContentLength: newContent.length,
-                                            isStreaming,
-                                            isInteracting,
-                                            isRegenerating,
-                                        }
-                                    );
-                                    setContent(newContent);
-                                });
+                                // Serialize as Lexical JSON for proper whitespace preservation
+                                const json = JSON.stringify(editorState.toJSON());
+                                console.log(
+                                    "OnChangePlugin: Content changed",
+                                    {
+                                        newContentLength: json.length,
+                                        isStreaming,
+                                        isInteracting,
+                                        isRegenerating,
+                                    }
+                                );
+                                setContent(json);
                             } else {
                                 console.log(
                                     "OnChangePlugin: Skipping content update",
@@ -267,42 +267,33 @@ export function LexicalEditor({
                         isRegenerating={isRegenerating}
                         onStreamingUpdate={handleStreamingUpdate}
                     />
+                    <OriginTrackingPlugin />
                     <ColorCodingPlugin
-                        aiRanges={aiRanges || []}
                         isColorCoded={isColorCoded}
                     />
-                    <EditorRefPlugin editorRef={editorRef} />
+                    <EditorRefPlugin editorRef={effectiveEditorRef} />
 
-                    {/* Formatting Toolbar - shown when mode is 'formatting' */}
-                    {selectionToolbarMode === "formatting" && (
-                        <FormattingToolbarPlugin />
+                    {/* Unified Selection Toolbar - combines formatting + AI features */}
+                    {workspaceId && projectId && selectedChapter && (
+                        <UnifiedSelectionToolbarPlugin
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                            chapterOrder={selectedChapter.order}
+                            aiModel={aiModel}
+                            onRewriteComplete={(oldText, newText) => {
+                                console.log("Selection rewritten:", {
+                                    oldText: oldText.substring(0, 50),
+                                    newText: newText.substring(0, 50),
+                                });
+                            }}
+                        />
                     )}
-
-                    {/* AI Rewrite Toolbar - shown when mode is 'ai-rewrite' */}
-                    {selectionToolbarMode === "ai-rewrite" &&
-                        workspaceId &&
-                        projectId &&
-                        selectedChapter && (
-                            <SelectionToolbarPlugin
-                                workspaceId={workspaceId}
-                                projectId={projectId}
-                                chapterOrder={selectedChapter.order}
-                                aiModel={aiModel}
-                                onRewriteComplete={(oldText, newText) => {
-                                    console.log("Selection rewritten:", {
-                                        oldText: oldText.substring(0, 50),
-                                        newText: newText.substring(0, 50),
-                                    });
-                                }}
-                            />
-                        )}
 
                     {/* Inline Diff Plugin - for Agent mode edits */}
                     {onApplyEdit && (
                         <InlineDiffPlugin
                             content={content}
                             onApplyEdit={onApplyEdit}
-                            onContentChange={setContent}
                         />
                     )}
                 </LexicalComposer>

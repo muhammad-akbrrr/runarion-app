@@ -70,7 +70,7 @@ export function MagicWandButton({
 
         try {
             const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-            const url = `/${workspaceId}/projects/${projectId}/editor/enhance-text`;
+            const url = route('editor.project.enhance-text', { workspace_id: workspaceId, project_id: projectId });
             
             console.log('Magic Wand API call:', { url, enhancementMode, model: aiModel });
             

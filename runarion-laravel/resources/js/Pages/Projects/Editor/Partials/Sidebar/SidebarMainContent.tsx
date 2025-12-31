@@ -79,34 +79,6 @@ export function SidebarContent({
                 px-3 pt-3 pb-6
             "
         >
-            {/* Selection Toolbar Mode */}
-            <div className="space-y-2">
-                <Label>Text Selection Mode</Label>
-                <p className="text-xs text-gray-500">
-                    What toolbar appears when you select text
-                </p>
-                <div className="flex items-center justify-between bg-gray-50 rounded-lg p-3 border">
-                    <div className="flex items-center gap-2">
-                        <Type className={`h-4 w-4 ${selectionToolbarMode === 'formatting' ? 'text-blue-600' : 'text-gray-400'}`} />
-                        <span className={`text-sm ${selectionToolbarMode === 'formatting' ? 'font-medium' : 'text-gray-400'}`}>
-                            Formatting
-                        </span>
-                    </div>
-                    <Switch
-                        checked={selectionToolbarMode === 'ai-rewrite'}
-                        onCheckedChange={(checked) => 
-                            onSettingChange?.('selectionToolbarMode', checked ? 'ai-rewrite' : 'formatting')
-                        }
-                    />
-                    <div className="flex items-center gap-2">
-                        <span className={`text-sm ${selectionToolbarMode === 'ai-rewrite' ? 'font-medium' : 'text-gray-400'}`}>
-                            AI Rewrite
-                        </span>
-                        <Sparkles className={`h-4 w-4 ${selectionToolbarMode === 'ai-rewrite' ? 'text-violet-600' : 'text-gray-400'}`} />
-                    </div>
-                </div>
-            </div>
-
             {/* Current Preset */}
             <div className="space-y-2">
                 <Label htmlFor="preset">Current Preset</Label>

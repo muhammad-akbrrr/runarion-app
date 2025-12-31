@@ -51,6 +51,9 @@ export default function ProjectEditorPage({
         status: style.status,
     })) ?? [];
 
+    // Ref to store Lexical editor instance for migration (must be declared before useProjectEditor)
+    const editorRef = useRef<any>(null);
+
     // Use custom hook for all editor logic
     const {
         isSaving,
@@ -66,8 +69,6 @@ export default function ProjectEditorPage({
         streamError,
         isRegenerating,
         baseContent,
-        aiRanges,
-        setAiRanges,
         isColorCoded,
         setIsColorCoded,
         versionControl,
@@ -84,6 +85,7 @@ export default function ProjectEditorPage({
         projectId,
         project,
         initialChapters: chapters,
+        editorRef,
     });
 
     // State to prevent saves during UI interactions
@@ -138,47 +140,15 @@ export default function ProjectEditorPage({
                         
                         // Only append if we have new content to add
                         if (cleanResult) {
-                            const separator = currentContent && !currentContent.endsWith('\n') && !currentContent.endsWith(' ') 
-                                ? '\n\n' 
+                            const separator = currentContent && !currentContent.endsWith('\n') && !currentContent.endsWith(' ')
+                                ? '\n\n'
                                 : '';
                             const appendedText = separator + cleanResult;
                             const newContent = currentContent + appendedText;
-                        
-                        // Calculate AI range for the appended content
-                        // Get plain text length of current content (without markdown)
-                        // Use the same function as useProjectEditor for consistency
-                        const getPlainTextLength = (text: string): number => {
-                            if (!text) return 0;
-                            // Simple approach: just get the text length
-                            // The editor uses markdown, but for range tracking we use plain text
-                            // Remove markdown formatting for accurate length calculation
-                            return text.replace(/#{1,6}\s+/g, '') // headers
-                                       .replace(/\*\*(.*?)\*\*/g, '$1') // bold
-                                       .replace(/\*(.*?)\*/g, '$1') // italic
-                                       .replace(/`(.*?)`/g, '$1') // inline code
-                                       .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // links
-                                       .replace(/\n+/g, '\n') // normalize newlines
-                                       .length;
-                        };
-                        
-                            const currentPlainLength = getPlainTextLength(currentContent);
-                            const appendedPlainLength = getPlainTextLength(appendedText);
-                            const aiRangeStart = currentPlainLength;
-                            const aiRangeEnd = currentPlainLength + appendedPlainLength;
-                            
-                            // Update content and AI ranges
+
+                            // Update content - AI origin is now tracked via OriginTextNode metadata
                             setContent(newContent);
-                            
-                            // Add AI range for the appended content
-                            setAiRanges((prev: number[][]) => {
-                                // Remove any overlapping ranges and add new one
-                                const filtered = prev.filter(range => 
-                                    range[1] <= aiRangeStart || range[0] >= aiRangeEnd
-                                );
-                                return [...filtered, [aiRangeStart, aiRangeEnd]].sort((a, b) => a[0] - b[0]);
-                            });
-                            
-                            // Save with AI ranges
+
                             if (selectedChapter) {
                                 smartSave(selectedChapter.order, newContent, 'manual');
                             }
@@ -187,24 +157,12 @@ export default function ProjectEditorPage({
                     } else {
                         // If chapter is empty, just set the content (no append needed)
                         setContent(cleanResult);
-                        
-                            // Mark entire result as AI-generated
-                            const getPlainTextLength = (text: string): number => {
-                                return text.replace(/#{1,6}\s+/g, '')
-                                           .replace(/\*\*(.*?)\*\*/g, '$1')
-                                           .replace(/\*(.*?)\*/g, '$1')
-                                           .replace(/`(.*?)`/g, '$1')
-                                           .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1')
-                                           .length;
-                            };
-                            const resultPlainLength = getPlainTextLength(cleanResult);
-                            setAiRanges([[0, resultPlainLength]]);
-                            
-                            if (selectedChapter) {
-                                smartSave(selectedChapter.order, cleanResult, 'manual');
-                            }
+
+                        if (selectedChapter) {
+                            smartSave(selectedChapter.order, cleanResult, 'manual');
+                        }
                     }
-                
+
                 // Clear the stored result
                 localStorage.removeItem(resultKey);
                 localStorage.removeItem(timestampKey);
@@ -215,12 +173,7 @@ export default function ProjectEditorPage({
                 localStorage.removeItem(timestampKey);
             }
         }
-    }, [projectId, content, setContent, selectedChapter, smartSave, setAiRanges]);
-    
-    // Debug: Log when aiRanges changes
-    useEffect(() => {
-        console.log('🎨 Main.tsx aiRanges updated:', aiRanges);
-    }, [aiRanges]);
+    }, [projectId, content, setContent, selectedChapter, smartSave]);
 
     // Handle focus out save - only save if content has changed
     const handleEditorBlur = useCallback(() => {
@@ -774,7 +727,6 @@ export default function ProjectEditorPage({
                         isStreaming={isStreaming}
                         streamingText={streamingText}
                         baseContent={baseContent}
-                        aiRanges={aiRanges}
                         isColorCoded={isColorCoded}
                         selectedChapter={selectedChapter}
                         isInteracting={isInteracting}
@@ -789,6 +741,7 @@ export default function ProjectEditorPage({
                         aiModel={settings.aiModel}
                         selectionToolbarMode={settings.selectionToolbarMode}
                         onApplyEdit={handleApplyStoryFix}
+                        editorRef={editorRef}
                     />
 
                     <div className="absolute left-0 bottom-0 w-full p-4">

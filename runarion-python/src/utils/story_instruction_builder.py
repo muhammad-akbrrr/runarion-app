@@ -147,7 +147,7 @@ class InstructionBuilder:
             "6. DO NOT start with ellipsis (...) or other continuation markers\n"
             "7. Format your response using Markdown for rich presentation where appropriate"
         )
-        
+
         # Add preset-specific focus
         parts.append(f"WRITING FOCUS:\n{preset['focus']}")
         
@@ -156,6 +156,14 @@ class InstructionBuilder:
             guidance_text = "\n".join(f"- {g.strip()}" for g in writing_guidance)
             parts.append(
                 f"WRITING GUIDANCE (follow these instructions but do not include them in your output):\n{guidance_text}"
+            )
+
+        # Chapter context (if provided)
+        if self.config.chapter_name and self.config.chapter_name.strip():
+            parts.append(
+                f"**CHAPTER CONTEXT:**\n"
+                f"You are currently writing: **{self.config.chapter_name.strip()}**\n"
+                f"Maintain narrative continuity and thematic focus appropriate for this chapter's title and purpose."
             )
 
         # Memory / Story context from sidebar

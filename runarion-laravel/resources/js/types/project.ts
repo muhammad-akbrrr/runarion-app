@@ -54,6 +54,7 @@ export interface NavigationInfo {
     canRedo: boolean;
     canRegenerate: boolean;
     versionDisplayText: string;
+    currentNodeId?: string; // ID of the current node in the version tree
 }
 
 export interface ProjectChapter {
@@ -64,6 +65,7 @@ export interface ProjectChapter {
     plot_points: Array<string>;
     generation_history?: GenerationHistory;
     navigation_info?: NavigationInfo;
+    ai_ranges?: number[][]; // Legacy: position-based AI text markers (migrated to OriginTextNode metadata)
 }
 
 export interface ProjectContent {
@@ -118,7 +120,7 @@ export interface ProjectSettings {
     currentPreset: string;
     authorProfile: string;
     aiModel: string;
-    selectionToolbarMode: 'formatting' | 'ai-rewrite';  // What toolbar to show on text selection
+    selectionToolbarMode: 'formatting' | 'ai-rewrite';  // DEPRECATED - unified toolbar now shows both formatting and AI features
     memory: string;
     storyGenre: string;
     storyTone: string;
@@ -170,7 +172,7 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
     currentPreset: "story-telling",
     authorProfile: "",  // Empty - user must select from available workspace author styles
     aiModel: "gemini-2.0-flash",
-    selectionToolbarMode: "formatting",  // Default to formatting toolbar on text selection
+    selectionToolbarMode: "formatting",  // DEPRECATED - no longer used, kept for backward compatibility
     memory: "",
     storyGenre: "",
     storyTone: "",

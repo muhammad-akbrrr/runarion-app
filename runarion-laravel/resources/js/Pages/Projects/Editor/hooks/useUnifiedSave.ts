@@ -11,7 +11,6 @@ interface SaveOperation {
             order: number;
             content: string | null;
             trigger?: string;
-            ai_ranges?: number[][];
         };
         settings?: any;
     };
@@ -57,7 +56,7 @@ export function useUnifiedSave({
     const isProcessing = useRef<boolean>(false);
     const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
     const lastSaveData = useRef<{
-        content?: { order: number; content: string; ai_ranges?: number[][] };
+        content?: { order: number; content: string };
         settings?: any;
     }>({});
 
@@ -103,9 +102,7 @@ export function useUnifiedSave({
             const contentChanged = latestContent && (
                 !lastSaveData.current.content ||
                 lastSaveData.current.content.order !== latestContent.order ||
-                (lastSaveData.current.content.content ?? '') !== (latestContent.content ?? '') || // Compare with null handling
-                // Also check if ai_ranges changed (for color coding persistence)
-                JSON.stringify(lastSaveData.current.content.ai_ranges ?? []) !== JSON.stringify(latestContent.ai_ranges ?? [])
+                (lastSaveData.current.content.content ?? '') !== (latestContent.content ?? '')
             );
 
             const settingsChanged = latestSettings && (
@@ -133,7 +130,6 @@ export function useUnifiedSave({
                     order: latestContent.order,
                     content: latestContent.content ?? '',
                     trigger: latestContent.trigger || 'manual',
-                    ai_ranges: latestContent.ai_ranges,
                 };
             }
 
@@ -169,7 +165,6 @@ export function useUnifiedSave({
                     lastSaveData.current.content = {
                         order: latestContent.order,
                         content: latestContent.content ?? '',
-                        ai_ranges: latestContent.ai_ranges
                     };
                 }
                 if (latestSettings) {
@@ -356,11 +351,9 @@ export function useUnifiedSave({
                 reject,
             };
 
-            console.log('📥 Queueing save operation:', {
+            console.log('Queueing save operation:', {
                 id: operation.id,
                 hasContent: !!data.content,
-                hasAiRanges: !!data.content?.ai_ranges,
-                aiRangesLength: data.content?.ai_ranges?.length,
                 queueLength: saveQueue.current.length,
                 isProcessing: isProcessing.current
             });
@@ -393,9 +386,9 @@ export function useUnifiedSave({
     }, [queueSave]);
 
     // Save content only
-    const saveContent = useCallback(async (order: number, content: string | null, trigger: string = 'manual', aiRanges?: number[][]): Promise<any> => {
+    const saveContent = useCallback(async (order: number, content: string | null, trigger: string = 'manual'): Promise<any> => {
         return queueSave({
-            content: { order, content: content ?? '', trigger, ai_ranges: aiRanges }
+            content: { order, content: content ?? '', trigger }
         });
     }, [queueSave]);
 
@@ -415,9 +408,9 @@ export function useUnifiedSave({
     }, [queueSave]);
 
     // Debounced content save
-    const debouncedSaveContent = useCallback(async (order: number, content: string | null, trigger: string = 'auto', delay: number = 1000, aiRanges?: number[][]): Promise<any> => {
+    const debouncedSaveContent = useCallback(async (order: number, content: string | null, trigger: string = 'auto', delay: number = 1000): Promise<any> => {
         return debouncedSave({
-            content: { order, content: content ?? '', trigger, ai_ranges: aiRanges }
+            content: { order, content: content ?? '', trigger }
         }, delay);
     }, [debouncedSave]);
 

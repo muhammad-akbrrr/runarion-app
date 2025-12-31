@@ -330,7 +330,10 @@ export default function AdvisorTab({
         setIsLoadingChats(true);
         try {
             const response = await fetchWithCsrf(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats`
+                route("advisor.chats.list", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                })
             );
             const data = await response.json();
             if (data.success) {
@@ -350,7 +353,11 @@ export default function AdvisorTab({
         setIsLoadingMessages(true);
         try {
             const response = await fetchWithCsrf(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${chatId}/messages`
+                route("advisor.messages.get", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                    chat_id: chatId,
+                })
             );
             const data = await response.json();
             if (data.success) {
@@ -368,7 +375,10 @@ export default function AdvisorTab({
         setShowActions(false);
         try {
             const response = await fetchWithCsrf(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats`,
+                route("advisor.chats.create", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                }),
                 {
                     method: "POST",
                     body: JSON.stringify({
@@ -394,7 +404,11 @@ export default function AdvisorTab({
         setEditingTitle(false);
         try {
             const response = await fetchWithCsrf(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}`,
+                route("advisor.chats.update", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                    chat_id: activeChat.id,
+                }),
                 {
                     method: "PUT",
                     body: JSON.stringify({ title: titleValue.trim() }),
@@ -417,7 +431,11 @@ export default function AdvisorTab({
         setShowSettings(false);
         try {
             const response = await fetchWithCsrf(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}`,
+                route("advisor.chats.update", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                    chat_id: activeChat.id,
+                }),
                 {
                     method: "PUT",
                     body: JSON.stringify({
@@ -441,7 +459,11 @@ export default function AdvisorTab({
     const deleteChat = async (chatId: string) => {
         try {
             const response = await fetchWithCsrf(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${chatId}`,
+                route("advisor.chats.delete", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                    chat_id: chatId,
+                }),
                 { method: "DELETE" }
             );
             const data = await response.json();
@@ -464,7 +486,11 @@ export default function AdvisorTab({
 
         try {
             const response = await fetchWithCsrf(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages`,
+                route("advisor.messages.clear", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                    chat_id: activeChat.id,
+                }),
                 { method: "DELETE" }
             );
             const data = await response.json();
@@ -536,7 +562,11 @@ export default function AdvisorTab({
 
         try {
             const response = await fetch(
-                `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${chatId}/messages`,
+                route("advisor.messages.send", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                    chat_id: chatId,
+                }),
                 {
                     method: "POST",
                     headers: {
@@ -722,7 +752,12 @@ export default function AdvisorTab({
                 ) {
                     try {
                         await fetchWithCsrf(
-                            `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${msg.id}`,
+                            route("advisor.messages.delete", {
+                                workspace_id: workspaceId,
+                                project_id: projectId,
+                                chat_id: activeChat.id,
+                                message_id: msg.id,
+                            }),
                             { method: "DELETE" }
                         );
                     } catch (error) {
@@ -756,7 +791,12 @@ export default function AdvisorTab({
                 ) {
                     try {
                         await fetchWithCsrf(
-                            `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${msg.id}`,
+                            route("advisor.messages.delete", {
+                                workspace_id: workspaceId,
+                                project_id: projectId,
+                                chat_id: activeChat.id,
+                                message_id: msg.id,
+                            }),
                             { method: "DELETE" }
                         );
                     } catch (error) {
@@ -818,7 +858,12 @@ export default function AdvisorTab({
         if (isRealMessage(editedMessage.id)) {
             try {
                 await fetchWithCsrf(
-                    `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${editedMessage.id}`,
+                    route("advisor.messages.delete", {
+                        workspace_id: workspaceId,
+                        project_id: projectId,
+                        chat_id: activeChat.id,
+                        message_id: editedMessage.id,
+                    }),
                     { method: "DELETE" }
                 );
             } catch (error) {
@@ -830,7 +875,12 @@ export default function AdvisorTab({
         if (hasAIResponse && isRealMessage(nextMessage.id)) {
             try {
                 await fetchWithCsrf(
-                    `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${nextMessage.id}`,
+                    route("advisor.messages.delete", {
+                        workspace_id: workspaceId,
+                        project_id: projectId,
+                        chat_id: activeChat.id,
+                        message_id: nextMessage.id,
+                    }),
                     { method: "DELETE" }
                 );
             } catch (error) {
@@ -877,7 +927,12 @@ export default function AdvisorTab({
         ) {
             try {
                 await fetchWithCsrf(
-                    `/${workspaceId}/projects/${projectId}/editor/advisor/chats/${activeChat.id}/messages/${messageToDelete.id}`,
+                    route("advisor.messages.delete", {
+                        workspace_id: workspaceId,
+                        project_id: projectId,
+                        chat_id: activeChat.id,
+                        message_id: messageToDelete.id,
+                    }),
                     { method: "DELETE" }
                 );
             } catch (error) {
@@ -1318,7 +1373,7 @@ export default function AdvisorTab({
                             value={selectedModel}
                             onValueChange={setSelectedModel}
                         >
-                            <SelectTrigger className="h-8">
+                            <SelectTrigger className="w-full">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
@@ -1737,7 +1792,7 @@ export default function AdvisorTab({
                                 ? "Ask about your story..."
                                 : "Create a chat first"
                         }
-                        className="min-h-[50px] max-h-[100px] resize-none text-sm"
+                        className="min-h-[50px] max-h-full grow resize-none text-sm"
                         disabled={!activeChat || isStreaming}
                     />
                     <div className="flex flex-col gap-2">

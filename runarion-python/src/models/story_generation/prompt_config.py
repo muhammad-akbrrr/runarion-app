@@ -11,3 +11,4 @@ class PromptConfig(BaseModel):
     genre: Optional[str] = ""
     tone: Optional[str] = ""
     pov: Optional[str] = ""  # point of view
+    chapter_name: Optional[str] = ""  # chapter title/name for context

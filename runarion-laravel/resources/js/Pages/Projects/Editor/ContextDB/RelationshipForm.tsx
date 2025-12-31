@@ -11,7 +11,7 @@ import {
 import { Input } from "@/Components/ui/input";
 
 interface Entity {
-    vertex_id: string;  // String to avoid JS precision loss with large Apache AGE IDs
+    vertex_id: string; // String to avoid JS precision loss with large Apache AGE IDs
     name: string;
     type: string;
 }
@@ -47,21 +47,22 @@ export default function RelationshipForm({
     onCancel,
 }: RelationshipFormProps) {
     console.log("RelationshipForm received entities:", entities);
-    
+
     // Filter to only character entities (relationships are only for characters)
     // If type is missing, we'll include it (entities might not have type field yet)
-    const characterEntities = entities.filter(
-        (entity) => {
-            // If type is missing, include it (might be a character that hasn't been updated yet)
-            if (!entity?.type) {
-                return true; // Include entities without type for now
-            }
-            return entity.type.toLowerCase() === "character";
+    const characterEntities = entities.filter((entity) => {
+        // If type is missing, include it (might be a character that hasn't been updated yet)
+        if (!entity?.type) {
+            return true; // Include entities without type for now
         }
-    );
-    
+        return entity.type.toLowerCase() === "character";
+    });
+
     console.log("RelationshipForm - Total entities:", entities.length);
-    console.log("RelationshipForm - Character entities:", characterEntities.length);
+    console.log(
+        "RelationshipForm - Character entities:",
+        characterEntities.length
+    );
     const [source, setSource] = useState(defaultSource || "");
     const [target, setTarget] = useState("");
     const [relationshipType, setRelationshipType] = useState("INTERACTS_WITH");
@@ -107,10 +108,11 @@ export default function RelationshipForm({
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Accept": "application/json",
-                        "X-CSRF-TOKEN": document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute("content") || "",
+                        Accept: "application/json",
+                        "X-CSRF-TOKEN":
+                            document
+                                .querySelector('meta[name="csrf-token"]')
+                                ?.getAttribute("content") || "",
                     },
                     body: JSON.stringify({
                         source: parseInt(source), // Convert string to integer
@@ -131,7 +133,11 @@ export default function RelationshipForm({
                     console.error("Relationship creation error:", error);
                     errorMessage = error.error || error.message || errorMessage;
                     if (error.details) {
-                        errorMessage += `\n\nDetails: ${typeof error.details === 'string' ? error.details : JSON.stringify(error.details)}`;
+                        errorMessage += `\n\nDetails: ${
+                            typeof error.details === "string"
+                                ? error.details
+                                : JSON.stringify(error.details)
+                        }`;
                     }
                 } catch (e) {
                     console.error("Error parsing response:", e);
@@ -140,7 +146,11 @@ export default function RelationshipForm({
             }
         } catch (error: any) {
             console.error("Error creating relationship:", error);
-            alert(`Failed to create relationship: ${error?.message || String(error)}`);
+            alert(
+                `Failed to create relationship: ${
+                    error?.message || String(error)
+                }`
+            );
         } finally {
             setSaving(false);
         }
@@ -148,21 +158,26 @@ export default function RelationshipForm({
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
+            <div className="space-y-2">
                 <Label htmlFor="source">Source Entity *</Label>
                 <Select value={source} onValueChange={setSource} required>
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select source entity" />
                     </SelectTrigger>
                     <SelectContent>
                         {characterEntities.length === 0 ? (
                             <div className="p-2 text-sm text-gray-500">
-                                No character entities found. Create a character entity first.
+                                No character entities found. Create a character
+                                entity first.
                             </div>
                         ) : (
                             characterEntities.map((entity) => (
-                                <SelectItem key={entity.vertex_id} value={entity.vertex_id.toString()}>
-                                    {entity.name || `Entity ${entity.vertex_id}`}
+                                <SelectItem
+                                    key={entity.vertex_id}
+                                    value={entity.vertex_id.toString()}
+                                >
+                                    {entity.name ||
+                                        `Entity ${entity.vertex_id}`}
                                 </SelectItem>
                             ))
                         )}
@@ -170,7 +185,7 @@ export default function RelationshipForm({
                 </Select>
             </div>
 
-            <div>
+            <div className="space-y-2">
                 <Label htmlFor="relationshipType">Relationship Type *</Label>
                 <div className="space-y-2">
                     <div className="flex items-center gap-2">
@@ -181,13 +196,17 @@ export default function RelationshipForm({
                             onChange={(e) => setUseCustomType(e.target.checked)}
                             className="rounded"
                         />
-                        <Label htmlFor="useCustom" className="text-sm font-normal">
+                        <Label
+                            htmlFor="useCustom"
+                            className="text-sm font-normal"
+                        >
                             Use custom relationship type
                         </Label>
                     </div>
 
                     {useCustomType ? (
                         <Input
+                            className="w-full"
                             value={customType}
                             onChange={(e) => setCustomType(e.target.value)}
                             placeholder="e.g., ALLIED_WITH, RIVAL_OF"
@@ -198,12 +217,15 @@ export default function RelationshipForm({
                             value={relationshipType}
                             onValueChange={setRelationshipType}
                         >
-                            <SelectTrigger>
+                            <SelectTrigger className="w-full">
                                 <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
                                 {RELATIONSHIP_TYPES.map((type) => (
-                                    <SelectItem key={type.value} value={type.value}>
+                                    <SelectItem
+                                        key={type.value}
+                                        value={type.value}
+                                    >
                                         {type.label}
                                     </SelectItem>
                                 ))}
@@ -213,10 +235,10 @@ export default function RelationshipForm({
                 </div>
             </div>
 
-            <div>
+            <div className="space-y-2">
                 <Label htmlFor="target">Target Entity *</Label>
                 <Select value={target} onValueChange={setTarget} required>
-                    <SelectTrigger>
+                    <SelectTrigger className="w-full">
                         <SelectValue placeholder="Select target entity" />
                     </SelectTrigger>
                     <SelectContent>
@@ -226,10 +248,17 @@ export default function RelationshipForm({
                             </div>
                         ) : (
                             characterEntities
-                                .filter((entity) => entity.vertex_id.toString() !== source)
+                                .filter(
+                                    (entity) =>
+                                        entity.vertex_id.toString() !== source
+                                )
                                 .map((entity) => (
-                                    <SelectItem key={entity.vertex_id} value={entity.vertex_id.toString()}>
-                                        {entity.name || `Entity ${entity.vertex_id}`}
+                                    <SelectItem
+                                        key={entity.vertex_id}
+                                        value={entity.vertex_id.toString()}
+                                    >
+                                        {entity.name ||
+                                            `Entity ${entity.vertex_id}`}
                                     </SelectItem>
                                 ))
                         )}
@@ -248,4 +277,3 @@ export default function RelationshipForm({
         </form>
     );
 }
-

@@ -19,6 +19,8 @@ class ProjectContentUpdated implements ShouldBroadcast
     public int $chapterOrder;
     public string $content;
     public string $trigger;
+    public ?int $versionIndex;
+    public ?array $navigationInfo;
 
     /**
      * Create a new event instance.
@@ -28,13 +30,17 @@ class ProjectContentUpdated implements ShouldBroadcast
         string $projectId,
         int $chapterOrder,
         ?string $content,
-        string $trigger = 'manual'
+        string $trigger = 'manual',
+        ?int $versionIndex = null,
+        ?array $navigationInfo = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
         $this->chapterOrder = $chapterOrder;
         $this->content = $content ?? '';
         $this->trigger = $trigger;
+        $this->versionIndex = $versionIndex;
+        $this->navigationInfo = $navigationInfo;
     }
 
     /**
@@ -68,6 +74,8 @@ class ProjectContentUpdated implements ShouldBroadcast
             'chapter_order' => $this->chapterOrder,
             'content' => $this->content,
             'trigger' => $this->trigger,
+            'version_index' => $this->versionIndex,
+            'navigation_info' => $this->navigationInfo,
             'timestamp' => now()->toISOString(),
         ];
     }

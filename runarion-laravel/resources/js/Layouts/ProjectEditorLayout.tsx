@@ -21,6 +21,7 @@ import {
     HelpCircle,
     Keyboard,
     X,
+    History,
 } from "lucide-react";
 import { Link, router, usePage } from "@inertiajs/react";
 import {
@@ -196,7 +197,7 @@ function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
                             <h3 className="mb-2 text-sm font-medium text-muted-foreground">
                                 Actions
                             </h3>
-                            <div className="space-y-1 mx-[-0.5rem]">
+                            <div className="space-y-1 -mx-2">
                                 {commandActions.map((action) => (
                                     <Button
                                         key={action.label}
@@ -214,7 +215,7 @@ function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
                             <h3 className="mb-2 text-sm font-medium text-muted-foreground">
                                 Quick Links
                             </h3>
-                            <div className="space-y-1 mx-[-0.5rem]">
+                            <div className="space-y-1 -mx-2">
                                 {quickLinks.map((link) => (
                                     <Button
                                         key={link.label}
@@ -331,7 +332,7 @@ export default function ProjectEditorLayout({
                 onSuccess: () => {
                     setIsSaving(false);
                     setIsSaved(true);
-                    router.reload({ only: ['project'] });
+                    router.reload({ only: ["project"] });
                 },
                 onError: () => {
                     setIsSaving(false);
@@ -363,6 +364,12 @@ export default function ProjectEditorLayout({
             icon: Paintbrush,
             label: "Image Editor",
             path: "workspace.projects.editor.image",
+            param: { workspace_id: workspaceId, project_id: projectId },
+        },
+        {
+            icon: History,
+            label: "Version History",
+            path: "workspace.projects.editor.version-history",
             param: { workspace_id: workspaceId, project_id: projectId },
         },
     ];
@@ -542,7 +549,7 @@ export default function ProjectEditorLayout({
                             onOpenChange={setCommandOpen}
                         />
                         {/* Main content area */}
-                        <main className="flex-1 min-h-0 flex-col flex-grow overflow-hidden w-full bg-gray-100">
+                        <main className="flex-1 min-h-0 flex-col grow overflow-hidden w-full bg-gray-100">
                             {children}
                         </main>
                     </SidebarInset>

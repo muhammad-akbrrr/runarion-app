@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { router } from '@inertiajs/react';
-import { Project, ProjectChapter } from '@/types';
+import { Project, ProjectChapter } from '@/types/project';
+import { THINKING_MODELS } from '@/types/project';
 import { useUnifiedSave } from './useUnifiedSave';
 import { useStreamingLLM } from './useStreamingLLM';
 import { useOptimizedVersionControl } from './useOptimizedVersionControl';
+import { migrateAiRangesToMetadata, needsMigration } from '../utils/migrateAiRanges';
 import Echo from '@/echo';
 
 interface UseProjectEditorProps {
@@ -11,35 +13,88 @@ interface UseProjectEditorProps {
     projectId: string;
     project: Project;
     initialChapters: ProjectChapter[];
+    editorRef?: React.MutableRefObject<any>;
 }
 
 /**
- * Calculate plain text length from markdown string
+ * Check if content is valid Lexical JSON format
+ */
+function isLexicalJSON(content: string): boolean {
+    if (!content?.trim().startsWith('{')) return false;
+    try {
+        const parsed = JSON.parse(content);
+        return parsed.root?.type === 'root';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Extract plain text from a Lexical JSON node recursively
+ */
+function extractTextFromLexicalNode(node: any): string {
+    if (!node) return '';
+
+    // Text node - return its text content
+    if (node.type === 'text') {
+        return node.text || '';
+    }
+
+    // For paragraph nodes, add newline after (except for the last one)
+    if (node.type === 'paragraph' && node.children) {
+        const text = node.children.map((child: any) => extractTextFromLexicalNode(child)).join('');
+        return text;
+    }
+
+    // For root and other container nodes, process children
+    if (node.children && Array.isArray(node.children)) {
+        return node.children.map((child: any, index: number) => {
+            const text = extractTextFromLexicalNode(child);
+            // Add newline between paragraphs
+            if (child.type === 'paragraph' && index < node.children.length - 1) {
+                return text + '\n\n';
+            }
+            return text;
+        }).join('');
+    }
+
+    return '';
+}
+
+/**
+ * Extract plain text from Lexical JSON
+ */
+function getPlainTextFromJSON(jsonContent: string): string {
+    try {
+        const parsed = JSON.parse(jsonContent);
+        return extractTextFromLexicalNode(parsed.root);
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Calculate plain text length from content (Lexical JSON or plain text)
  * This matches what textContent returns from DOM elements
  */
-function getPlainTextLength(markdown: string): number {
-    if (!markdown) return 0;
-    // Remove markdown formatting to get plain text length
-    // This matches what textContent returns from DOM
-    let plainText = markdown
-        .replace(/\*\*([^*]+)\*\*/g, '$1')      // **bold** - remove first
-        .replace(/\*([^*]+)\*/g, '$1')         // *italic* - after bold is removed
-        .replace(/`([^`]+)`/g, '$1')           // `code`
-        .replace(/#{1,6}\s+/g, '')             // headings (# Header)
-        .replace(/^\s*[-*+]\s+/gm, '')         // unordered list markers
-        .replace(/^\s*\d+\.\s+/gm, '')         // ordered list markers
-        .replace(/^>\s+/gm, '')                // blockquote markers
-        .replace(/~~([^~]+)~~/g, '$1');        // ~~strikethrough~~
-    
-    return plainText.length;
+function getPlainTextLength(content: string): number {
+    if (!content) return 0;
+    return getPlainText(content).length;
 }
 
 /**
- * Get plain text from markdown (for segment calculations)
+ * Get plain text from content (handles both Lexical JSON and plain text)
  */
-function getPlainText(markdown: string): string {
-    if (!markdown) return '';
-    return markdown
+function getPlainText(content: string): string {
+    if (!content) return '';
+
+    // Check if it's Lexical JSON
+    if (isLexicalJSON(content)) {
+        return getPlainTextFromJSON(content);
+    }
+
+    // Otherwise treat as plain text (or legacy markdown)
+    return content
         .replace(/\*\*([^*]+)\*\*/g, '$1')
         .replace(/\*([^*]+)\*/g, '$1')
         .replace(/`([^`]+)`/g, '$1')
@@ -51,47 +106,37 @@ function getPlainText(markdown: string): string {
 }
 
 /**
- * Adjust AI ranges when user inserts or deletes text
- * This handles the "edit in between AI text" use case
+ * Build generation settings object with consistent defaults
+ * This ensures generate and regenerate use the EXACT SAME settings
  */
-function adjustAiRanges(ranges: number[][], changePos: number, changeDelta: number): number[][] {
-    const newRanges: number[][] = [];
-    
-    for (const [start, end] of ranges) {
-        // Case 1: Edit is AFTER this range - no change needed
-        if (changePos >= end) {
-            newRanges.push([start, end]);
-            continue;
-        }
-        
-        // Case 2: Edit is BEFORE this range - shift entire range
-        if (changePos <= start) {
-            const newStart = start + changeDelta;
-            const newEnd = end + changeDelta;
-            if (newStart >= 0 && newEnd > newStart) {
-                newRanges.push([newStart, newEnd]);
-            }
-            continue;
-        }
-        
-        // Case 3: Edit is INSIDE this range
-        if (changeDelta > 0) {
-            // INSERTION: Split the range into two, leaving a gap for user text
-            // Example: Range [100, 200], insert 5 chars at position 150
-            // Result: [100, 150] (AI) ... gap of 5 (User) ... [155, 205] (AI)
-            newRanges.push([start, changePos]); 
-            newRanges.push([changePos + changeDelta, end + changeDelta]);
-        } else {
-            // DELETION: Shrink the range
-            const newEnd = end + changeDelta;
-            if (newEnd > start) {
-                newRanges.push([start, newEnd]);
-            }
-        }
-    }
-    
-    // Filter out invalid ranges (where start >= end)
-    return newRanges.filter(([s, e]) => s < e);
+function buildGenerationSettings(settings: any) {
+    const aiModel = settings.aiModel || 'gemini-2.0-flash';
+    const isThinkingModel = THINKING_MODELS.includes(aiModel);
+
+    return {
+        currentPreset: settings.currentPreset || "story-telling",
+        authorProfile: settings.authorProfile || '',
+        aiModel: aiModel,
+        memory: settings.memory || '',
+        storyGenre: settings.storyGenre || '',
+        storyTone: settings.storyTone || '',
+        storyPov: settings.storyPov || '',
+        temperature: settings.temperature || 1.0,
+        repetitionPenalty: settings.repetitionPenalty || 0.0,
+        outputLength: settings.outputLength || 300,
+        minOutputToken: settings.minOutputToken || 50,
+        topP: settings.topP || 0.85,
+        tailFree: settings.tailFree || 0.85,
+        topA: settings.topA || 0.85,
+        topK: settings.topK || 0.85,
+        phraseBias: settings.phraseBias || [],
+        bannedPhrases: settings.bannedPhrases || [],
+        stopSequences: settings.stopSequences || [],
+        // Only include thinkingBudget for thinking models
+        ...(isThinkingModel && {
+            thinkingBudget: settings.thinkingBudget || 4096,
+        }),
+    };
 }
 
 export function useProjectEditor({
@@ -99,6 +144,7 @@ export function useProjectEditor({
     projectId,
     project,
     initialChapters,
+    editorRef,
 }: UseProjectEditorProps) {
     // Core state
     const [isGenerating, setIsGenerating] = useState(false);
@@ -120,27 +166,12 @@ export function useProjectEditor({
     const [baseContent, setBaseContent] = useState<string>('');
     const baseContentRef = useRef<string>('');
     
-    // AI RANGES COLOR CODING: Track [start, end] positions of AI-generated text
-    // Everything defaults to BLUE (user text)
-    // Only text inside an aiRange is GRAY (AI text)
-    // When user types inside AI text, the range splits, creating a blue gap
-    const [aiRanges, setAiRanges] = useState<number[][]>([]);
-    
-    // Track previous plain text for diff detection
-    const prevPlainTextRef = useRef<string>('');
-    
-    // Track where generation started (to calculate AI range end)
-    const generationStartPos = useRef<number>(0);
-    
-    // Flag to skip diff detection immediately after generation
-    const justCompletedGeneration = useRef<boolean>(false);
-    
     // Color coding toggle (default: enabled)
+    // Color coding now uses OriginTextNode metadata instead of position-based aiRanges
     const [isColorCoded, setIsColorCoded] = useState<boolean>(true);
     
     // Refs to access current values inside callbacks (avoid stale closure)
     const selectedChapterRef = useRef<ProjectChapter | null>(null);
-    const saveContentRef = useRef<((order: number, content: string | null, trigger: string, aiRanges?: number[][]) => Promise<any>) | null>(null);
 
     // Unified save hook
     const {
@@ -177,7 +208,6 @@ export function useProjectEditor({
 
     // Keep refs updated for use inside callbacks
     selectedChapterRef.current = selectedChapter;
-    saveContentRef.current = saveContent;
 
     // Streaming LLM hook
     const {
@@ -191,92 +221,62 @@ export function useProjectEditor({
         projectId,
         chapterOrder: selectedChapter?.order ?? 0,
         onStreamComplete: (generatedText) => {
-            console.log('🎯 Stream completed', {
+            console.log('Stream completed', {
                 isRegenerating,
                 generatedTextLength: generatedText.length,
-                generationStartPos: generationStartPos.current,
                 baseContentRefLength: baseContentRef.current?.length || 0,
                 baseContentPreview: baseContentRef.current?.substring(0, 50) || '(empty)'
             });
             setIsGenerating(false);
-            
+
             // CRITICAL: Use baseContentRef which was frozen BEFORE generation started
-            const userText = baseContentRef.current || '';
+            // baseContent might be Lexical JSON, so extract plain text for composition
+            const baseContentRaw = baseContentRef.current || '';
+            const userPlainText = getPlainText(baseContentRaw);
+
+            // Calculate separator based on plain text
             let separator = '';
-            
-            if (userText && !userText.endsWith('\n') && !userText.endsWith(' ') && 
+            if (userPlainText && !userPlainText.endsWith('\n') && !userPlainText.endsWith(' ') &&
                 !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
                 separator = ' ';
             }
-            
-            const finalContent = userText + separator + generatedText;
-            
-            console.log('🎯 Final content composed:', {
-                userTextLength: userText.length,
+
+            // Compose final content as plain text (will be converted to JSON by OnChangePlugin)
+            const finalContent = userPlainText + separator + generatedText;
+
+            console.log('Final content composed:', {
+                userPlainTextLength: userPlainText.length,
                 separatorLength: separator.length,
                 generatedTextLength: generatedText.length,
                 finalContentLength: finalContent.length
             });
-            
-            // Calculate the AI text range
-            // Start = where user text ended (in plain text chars)
-            // End = start + length of generated text (in plain text chars)
-            const aiStart = generationStartPos.current;
-            const generatedPlainText = getPlainText(generatedText);
-            const separatorLength = separator.length;
-            const aiEnd = aiStart + separatorLength + generatedPlainText.length;
-            
-            console.log('🎨 Calculating AI range:', { aiStart, aiEnd, generatedPlainTextLength: generatedPlainText.length });
-            
-            // Add this AI range to our tracking and save immediately
-            // NOTE: We compute the new ranges synchronously to use in the save
-            const newRange: [number, number] = aiEnd > aiStart ? [aiStart, aiEnd] : [0, 0];
-            let updatedRanges: number[][] = [];
-            
-            if (aiEnd > aiStart) {
-                // Use a ref to capture the computed ranges for the save
-                setAiRanges((prev: number[][]) => {
-                    updatedRanges = [...prev, newRange];
-                    console.log('🎨 setAiRanges called:', { prev, newRange, updated: updatedRanges });
-                    
-                    // Trigger save INSIDE the setState callback where we have the correct ranges
-                    // Use refs to avoid stale closure issues
-                    const currentChapter = selectedChapterRef.current;
-                    const currentSaveContent = saveContentRef.current;
-                    if (currentChapter && currentSaveContent) {
-                        console.log('🎨 Saving content with aiRanges after generation:', { 
-                            order: currentChapter.order, 
-                            aiRangesCount: updatedRanges.length,
-                            updatedRanges
-                        });
-                        currentSaveContent(currentChapter.order, finalContent, 'llm_generation', updatedRanges);
-                    } else {
-                        console.log('🎨 Cannot save - missing refs:', { hasChapter: !!currentChapter, hasSave: !!currentSaveContent });
-                    }
-                    
-                    return updatedRanges;
-                });
-            } else {
-                console.log('🎨 Skipping AI range - aiEnd <= aiStart');
+
+            // Save content after generation
+            // Origin metadata (user vs ai) is now embedded in OriginTextNode in Lexical JSON
+            const currentChapter = selectedChapterRef.current;
+            if (currentChapter) {
+                saveContent(currentChapter.order, finalContent, 'llm_generation');
             }
-            
-            // CRITICAL: Set flag to skip diff detection for the next content update
-            justCompletedGeneration.current = true;
-            
-            // Update content state
+
+            // Update content state (plain text - will be converted to JSON by ContentUpdatePlugin → OnChangePlugin)
             setContent(finalContent);
             originalContent.current = finalContent;
-            
-            // Update prevPlainTextRef so diff detection works correctly
-            prevPlainTextRef.current = getPlainText(finalContent);
+
+            // Cache the newly generated version for instant switching
+            // Note: Navigation info will be updated via websocket, cache with current info
+            if (currentChapter?.navigation_info) {
+                // Cache with incremented version index (new generation = new version)
+                const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
+                versionControl.cacheVersion(newVersionIndex, finalContent);
+            }
         },
         onStreamError: (error) => {
             console.error('Stream error:', error);
             setIsGenerating(false);
-            
+
             // Show error alert
             alert(error);
-            
+
             // On error during regeneration, restore the original chapter content
             if (isRegenerating && selectedChapter) {
                 setContent(selectedChapter.content || '');
@@ -290,6 +290,7 @@ export function useProjectEditor({
         workspaceId,
         projectId,
         chapterOrder: selectedChapter?.order ?? 0,
+        currentNodeId: selectedChapter?.navigation_info?.currentNodeId, // Pass currentNodeId for cache context
         initialNavigationInfo: selectedChapter?.navigation_info,
         onContentUpdate: (newContent) => {
             setContent(newContent);
@@ -301,7 +302,7 @@ export function useProjectEditor({
     // Update local chapters when prop changes
     useEffect(() => {
         setLocalChapters(initialChapters);
-        
+
         // Restore preserved chapter after generation
         if (preservedChapterOrder !== null) {
             const chapterToRestore = initialChapters.find(ch => ch.order === preservedChapterOrder);
@@ -312,14 +313,24 @@ export function useProjectEditor({
                 return;
             }
         }
-        
+
         // Update or reset selected chapter based on whether it still exists
         if (selectedChapter) {
             const updatedChapter = initialChapters.find(ch => ch.order === selectedChapter.order);
             if (updatedChapter) {
-                // Chapter still exists - update if content changed
-                if (updatedChapter.content !== selectedChapter.content) {
-                    console.log('Chapter content updated from server');
+                // Check if navigation_info changed (compare JSON to handle object equality)
+                const navigationChanged = JSON.stringify(updatedChapter.navigation_info) !==
+                                          JSON.stringify(selectedChapter.navigation_info);
+
+                // Chapter still exists - update if content, name, or navigation_info changed
+                if (updatedChapter.content !== selectedChapter.content ||
+                    updatedChapter.chapter_name !== selectedChapter.chapter_name ||
+                    navigationChanged) {
+                    console.log('Chapter updated from server:', {
+                        contentChanged: updatedChapter.content !== selectedChapter.content,
+                        nameChanged: updatedChapter.chapter_name !== selectedChapter.chapter_name,
+                        navigationChanged
+                    });
                     setSelectedChapter(updatedChapter);
                 }
             } else {
@@ -344,7 +355,6 @@ export function useProjectEditor({
                     // Only clear content if there are no chapters at all
                     setContent("");
                     originalContent.current = "";
-                    setAiRanges([]);
                 }
             }
         }
@@ -355,63 +365,62 @@ export function useProjectEditor({
         if (selectedChapter) {
             const chapterContent = selectedChapter.content || "";
             const isChapterSwitch = lastChapterOrderRef.current !== selectedChapter.order;
-            
+
             console.log('Chapter useEffect triggered:', {
                 chapterName: selectedChapter.chapter_name,
                 isChapterSwitch,
-                justCompletedGeneration: justCompletedGeneration.current,
                 lastOrder: lastChapterOrderRef.current,
                 currentOrder: selectedChapter.order
             });
-            
+
             // Update the last chapter order
             lastChapterOrderRef.current = selectedChapter.order;
-            
-            // If generation just completed, DON'T reset anything
-            // The server pushed an update with the new content, but we already have it
-            if (justCompletedGeneration.current) {
-                console.log('Skipping chapter init - generation just completed, preserving aiRanges');
-                // Keep the flag set for a bit longer to handle multiple updates
-                setTimeout(() => {
-                    justCompletedGeneration.current = false;
-                }, 1000);
-                return;
-            }
-            
+
             // Only reset everything on actual chapter switch
             if (isChapterSwitch) {
                 console.log('Initializing content for chapter:', selectedChapter.chapter_name);
                 setContent(chapterContent);
                 originalContent.current = chapterContent;
-                
+
+                // Cache current version for instant switching
+                if (selectedChapter.navigation_info) {
+                    versionControl.cacheVersion(
+                        selectedChapter.navigation_info.currentVersionIndex,
+                        chapterContent,
+                        selectedChapter.navigation_info
+                    );
+                }
+
                 // Reset baseContent when switching chapters
                 setBaseContent("");
-                
-                // Load AI ranges from chapter data (persisted to server)
-                // If no ai_ranges saved, start fresh with empty array
-                const savedAiRanges = (selectedChapter as any).ai_ranges || [];
-                console.log('🎨 Loading ai_ranges from chapter:', savedAiRanges);
-                setAiRanges(savedAiRanges);
-                prevPlainTextRef.current = getPlainText(chapterContent);
-                
+
+                // Migrate legacy aiRanges if present (one-time migration to OriginTextNode)
+                if (needsMigration(selectedChapter.ai_ranges) && editorRef?.current) {
+                    console.log('Migrating legacy aiRanges to OriginTextNode metadata');
+                    // Small delay to ensure editor is fully loaded with content
+                    setTimeout(() => {
+                        if (editorRef?.current) {
+                            migrateAiRangesToMetadata(editorRef.current, selectedChapter.ai_ranges!);
+                        }
+                    }, 100);
+                }
+
                 // Save last viewed chapter to localStorage
                 const storageKey = `lastChapter_${projectId}`;
                 localStorage.setItem(storageKey, selectedChapter.order.toString());
-                
+
                 // Initialize version control if needed
                 if (!selectedChapter.navigation_info) {
                     initializeChapterHistory(selectedChapter.order, chapterContent);
                 }
             } else {
-                // Same chapter, content updated from server - don't reset aiRanges
-                console.log('Content updated from server for same chapter, preserving aiRanges');
+                // Same chapter, content updated from server
+                console.log('Content updated from server for same chapter');
             }
         } else {
             setContent("");
             originalContent.current = "";
             setBaseContent("");
-            setAiRanges([]);
-            prevPlainTextRef.current = '';
             lastChapterOrderRef.current = null;
         }
     }, [selectedChapter?.order, selectedChapter?.content, projectId]);
@@ -538,29 +547,49 @@ export function useProjectEditor({
             
             channel.listen('.project.content.updated', (data: any) => {
                 console.log('Project content updated via websocket:', data);
-                
+
                 // Security: Only process events for current workspace/project
                 if (data.workspace_id !== workspaceId || data.project_id !== projectId) {
                     return;
                 }
-                
+
                 // Only handle updates for the current chapter
                 if (selectedChapter && data.chapter_order === selectedChapter.order) {
-                    
+
                     // Handle different types of updates
                     if (['undo_step', 'redo_step', 'version_switch'].includes(data.trigger)) {
                         // Full content replacement for navigation operations
                         console.log('Updating content from navigation operation:', data.content);
                         setContent(data.content || '');
                         originalContent.current = data.content || '';
-                        
+
+                        // Cache the received version for instant switching
+                        if (data.version_index !== undefined) {
+                            versionControl.cacheVersion(
+                                data.version_index,
+                                data.content || '',
+                                data.navigation_info
+                            );
+                        }
+
                         // Refresh the page data to get updated navigation info
                         router.reload({ only: ['chapters'] });
                     } else if (data.trigger === 'regenerate_switch_to_parent') {
                         // Switch to parent content during regeneration
-                        console.log('Switching to parent content for regeneration:', data.content);
-                        setContent(data.content || '');
-                        originalContent.current = data.content || '';
+                        const parentContent = data.content || '';
+
+                        // Update content state
+                        setContent(parentContent);
+                        originalContent.current = parentContent;
+
+                        // CRITICAL: Update base content for StreamingPlugin
+                        // This ensures the streaming plugin composes: PARENT + NEW_AI_TEXT
+                        setBaseContent(parentContent);
+                        baseContentRef.current = parentContent;
+
+                        console.log('Switched to parent content for regeneration:', {
+                            parentContentLength: parentContent.length
+                        });
                     } else if (['llm_generation', 'llm_regeneration'].includes(data.trigger)) {
                         // Generation completed - refresh navigation info
                         console.log('Generation completed, refreshing navigation info');
@@ -570,7 +599,28 @@ export function useProjectEditor({
                     }
                 }
             });
-            
+
+            // Listen for operation state changes to update navigation info directly
+            // This provides a direct path for navigation updates without relying on router.reload
+            channel.listen('.operation.state.changed', (data: any) => {
+                console.log('Operation state changed via websocket:', data);
+
+                // Only process unlocked state with navigation info for current chapter
+                if (data.locked === false &&
+                    data.navigationInfo &&
+                    selectedChapter &&
+                    data.chapter_order === selectedChapter.order) {
+
+                    console.log('Updating navigation info directly from websocket:', data.navigationInfo);
+
+                    // Update selectedChapter with new navigation_info directly
+                    setSelectedChapter(prev => prev ? {
+                        ...prev,
+                        navigation_info: data.navigationInfo
+                    } : null);
+                }
+            });
+
         } catch (error) {
             console.error('Error setting up content update listener:', error);
         }
@@ -579,6 +629,7 @@ export function useProjectEditor({
             if (channel) {
                 try {
                     channel.stopListening('.project.content.updated');
+                    channel.stopListening('.operation.state.changed');
                     Echo.leave(channelName);
                 } catch (error) {
                     console.error('Error cleaning up content update listener:', error);
@@ -760,34 +811,21 @@ export function useProjectEditor({
         
         // CRITICAL: Update originalContent to current content before generation
         originalContent.current = currentContent;
-        
+
         // CRITICAL: Freeze baseContent BEFORE generation starts
         // baseContent = the user's text that was in the editor before AI generates
         setBaseContent(currentContent);
         baseContentRef.current = currentContent;
-        
-        // CRITICAL: Record where AI text will start (for aiRanges tracking)
-        // This is the plain text length of current content
-        const plainTextLength = getPlainText(currentContent).length;
-        generationStartPos.current = plainTextLength;
-        
-        console.log('🎯 handleGenerateText - frozen state:', {
+
+        console.log('handleGenerateText - frozen state:', {
             baseContentRefLength: baseContentRef.current.length,
-            baseContentPreview: baseContentRef.current.substring(0, 50),
-            generationStartPos: generationStartPos.current,
-            plainTextLength
+            baseContentPreview: baseContentRef.current.substring(0, 50)
         });
-        prevPlainTextRef.current = getPlainText(currentContent);
-        
-        console.log('🎨 Generation starting at position:', plainTextLength);
-        
-        console.log('🎨 Generation will start at position:', plainTextLength);
-        
+
         setContent(currentContent);
 
         console.log("Starting text generation with content:", {
             contentLength: currentContent.length,
-            aiStartPosition: plainTextLength,
             contentPreview: currentContent.substring(0, 50) + '...'
         });
         
@@ -797,26 +835,8 @@ export function useProjectEditor({
         const generationSettings = {
             prompt: currentContent || "",
             order: selectedChapter.order,
-            settings: {
-                currentPreset: settings.currentPreset || "story-telling",
-                authorProfile: settings.authorProfile || '',  // FIX: Was missing - needed for style DNA
-                aiModel: settings.aiModel || 'gemini-2.0-flash',
-                memory: settings.memory || '',
-                storyGenre: settings.storyGenre || '',
-                storyTone: settings.storyTone || '',
-                storyPov: settings.storyPov || '',
-                temperature: settings.temperature || 1.0,
-                repetitionPenalty: settings.repetitionPenalty || 0.0,
-                outputLength: settings.outputLength || 300,
-                minOutputToken: settings.minOutputToken || 50,
-                topP: settings.topP || 0.85,
-                tailFree: settings.tailFree || 0.85,
-                topA: settings.topA || 0.85,
-                topK: settings.topK || 0.85,
-                phraseBias: settings.phraseBias || [],
-                bannedPhrases: settings.bannedPhrases || [],
-                stopSequences: settings.stopSequences || [],
-            }
+            chapter_name: selectedChapter.chapter_name || 'Untitled',
+            settings: buildGenerationSettings(settings),
         };
 
         router.post(
@@ -871,25 +891,8 @@ export function useProjectEditor({
 
         const regenerationSettings = {
             order: selectedChapter.order,
-            settings: {
-                currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || 'gemini-2.0-flash',
-                memory: settings.memory || '',
-                storyGenre: settings.storyGenre || '',
-                storyTone: settings.storyTone || '',
-                storyPov: settings.storyPov || '',
-                temperature: settings.temperature || 1.0,
-                repetitionPenalty: settings.repetitionPenalty || 0.0,
-                outputLength: settings.outputLength || 300,
-                minOutputToken: settings.minOutputToken || 50,
-                topP: settings.topP || 0.85,
-                tailFree: settings.tailFree || 0.85,
-                topA: settings.topA || 0.85,
-                topK: settings.topK || 0.85,
-                phraseBias: settings.phraseBias || [],
-                bannedPhrases: settings.bannedPhrases || [],
-                stopSequences: settings.stopSequences || [],
-            }
+            chapter_name: selectedChapter.chapter_name || 'Untitled',
+            settings: buildGenerationSettings(settings),
         };
 
         router.post(
@@ -940,28 +943,26 @@ export function useProjectEditor({
     const smartSave = useCallback((order: number, content: string | null, trigger: string) => {
         const normalizedContent = content ?? ''; // Treat null as empty string
         const normalizedOriginal = originalContent.current ?? ''; // Treat null as empty string
-        
+
         if (selectedChapter && normalizedContent !== normalizedOriginal) {
-            console.log('Content changed, saving:', { 
-                originalLength: normalizedOriginal.length, 
+            console.log('Content changed, saving:', {
+                originalLength: normalizedOriginal.length,
                 currentLength: normalizedContent.length,
-                trigger,
-                aiRangesCount: aiRanges.length
+                trigger
             });
-            
+
             // Update the original content reference immediately to prevent duplicate saves
             originalContent.current = normalizedContent;
-            
+
             if (trigger === 'auto') {
-                // Pass aiRanges to persist them to the server
-                debouncedSaveContent(order, normalizedContent, trigger, 1000, aiRanges);
+                debouncedSaveContent(order, normalizedContent, trigger, 1000);
             } else {
-                saveContent(order, normalizedContent, trigger, aiRanges);
+                saveContent(order, normalizedContent, trigger);
             }
         } else {
             console.log('No content change detected, skipping save');
         }
-    }, [selectedChapter, saveContent, debouncedSaveContent, aiRanges]);
+    }, [selectedChapter, saveContent, debouncedSaveContent]);
 
     // Cleanup on unmount
     useEffect(() => {
@@ -975,54 +976,6 @@ export function useProjectEditor({
         baseContentRef.current = baseContent;
     }, [baseContent]);
 
-    // Track user edits and adjust AI ranges accordingly
-    // This enables "writing in between" AI text - the ranges split to accommodate user text
-    useEffect(() => {
-        // Don't track changes during AI generation/streaming
-        if (isStreaming || isGenerating) return;
-        if (content === undefined || content === null) return;
-        
-        // Skip if generation just completed - the AI ranges are already set correctly
-        if (justCompletedGeneration.current) {
-            console.log('🔍 Skipping diff detection - generation just completed');
-            justCompletedGeneration.current = false;
-            return;
-        }
-        
-        const currentPlainText = getPlainText(content);
-        const prevPlainText = prevPlainTextRef.current;
-        
-        // Only process if content actually changed AND there's a real diff
-        if (currentPlainText !== prevPlainText) {
-            const diff = currentPlainText.length - prevPlainText.length;
-            
-            // Skip if no actual length change (just formatting)
-            if (diff === 0) {
-                prevPlainTextRef.current = currentPlainText;
-                return;
-            }
-            
-            // Find where the change happened (first index that differs)
-            let changePos = 0;
-            const len = Math.min(prevPlainText.length, currentPlainText.length);
-            while (changePos < len && prevPlainText[changePos] === currentPlainText[changePos]) {
-                changePos++;
-            }
-            
-            console.log('🔍 User edit detected:', { changePos, diff, prevLength: prevPlainText.length, currentLength: currentPlainText.length });
-            
-            // Adjust AI ranges based on the edit
-            setAiRanges(prev => {
-                const adjusted = adjustAiRanges(prev, changePos, diff);
-                console.log('🔍 Adjusted AI ranges:', { before: prev, after: adjusted });
-                return adjusted;
-            });
-            
-            // Update ref for next comparison
-            prevPlainTextRef.current = currentPlainText;
-        }
-    }, [content, isStreaming, isGenerating]);
-
     return {
         // State
         isSaving: false, // Always false since saves are async
@@ -1032,24 +985,23 @@ export function useProjectEditor({
         settings,
         localChapters,
         selectedChapter,
-        
+
         // Streaming state
         isStreaming,
         streamingText,
         streamError,
         isRegenerating,
         baseContent, // User text before generation (for StreamingPlugin)
-        aiRanges, // Array of [start, end] positions for AI text (for color coding)
-        setAiRanges, // Update AI ranges (for external content appends)
+        // Color coding now uses OriginTextNode metadata instead of aiRanges
         isColorCoded, // Color coding toggle state
         setIsColorCoded, // Toggle color coding
-        
+
         // Version control state
         versionControl,
-        
+
         // Computed values
         selectedChapterOrder: selectedChapter?.order ?? 0,
-        
+
         // Actions
         handleChapterSelect,
         handleAddChapter,
@@ -1057,9 +1009,9 @@ export function useProjectEditor({
         handleGenerateText,
         handleRegenerateText,
         handleCancelGeneration,
-        
+
         // Save functions
-        saveContent: (order: number, content: string | null, trigger: string) => saveContent(order, content ?? '', trigger, aiRanges),
+        saveContent: (order: number, content: string | null, trigger: string) => saveContent(order, content ?? '', trigger),
         smartSave,
     };
 }

@@ -53,7 +53,7 @@ export const executeNode = async (
     projectId: string
 ): Promise<string> => {
     const response = await fetch(
-        `/${workspaceId}/projects/${projectId}/editor/chain-builder/execute-node`,
+        route('chain-builder.execute-node', { workspace_id: workspaceId, project_id: projectId }),
         {
             method: 'POST',
             headers: {
@@ -85,7 +85,7 @@ export const generateGraphLayout = async (
     projectId: string
 ): Promise<{ nodes: GraphNode[]; edges: Array<{ source: string; target: string }> }> => {
     const response = await fetch(
-        `/${workspaceId}/projects/${projectId}/editor/chain-builder/generate-layout`,
+        route('chain-builder.generate-layout', { workspace_id: workspaceId, project_id: projectId }),
         {
             method: 'POST',
             headers: {
@@ -120,7 +120,7 @@ export const generateInstruction = async (
     projectId: string
 ): Promise<string> => {
     const response = await fetch(
-        `/${workspaceId}/projects/${projectId}/editor/chain-builder/generate-instruction`,
+        route('chain-builder.generate-instruction', { workspace_id: workspaceId, project_id: projectId }),
         {
             method: 'POST',
             headers: {
@@ -152,7 +152,7 @@ export const refineSelection = async (
     projectId: string
 ): Promise<{ nodes: GraphNode[]; edges: Array<{ source: string; target: string }> }> => {
     const response = await fetch(
-        `/${workspaceId}/projects/${projectId}/editor/chain-builder/refine-selection`,
+        route('chain-builder.refine-selection', { workspace_id: workspaceId, project_id: projectId }),
         {
             method: 'POST',
             headers: {

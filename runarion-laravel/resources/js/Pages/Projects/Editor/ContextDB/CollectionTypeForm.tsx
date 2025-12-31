@@ -30,10 +30,11 @@ export default function CollectionTypeForm({
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
-                        "Accept": "application/json",
-                        "X-CSRF-TOKEN": document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute("content") || "",
+                        Accept: "application/json",
+                        "X-CSRF-TOKEN":
+                            document
+                                .querySelector('meta[name="csrf-token"]')
+                                ?.getAttribute("content") || "",
                     },
                     body: JSON.stringify({
                         name,
@@ -51,7 +52,11 @@ export default function CollectionTypeForm({
                     console.error("Collection type creation error:", error);
                     errorMessage = error.error || error.message || errorMessage;
                     if (error.details) {
-                        errorMessage += `\n\nDetails: ${typeof error.details === 'string' ? error.details : JSON.stringify(error.details)}`;
+                        errorMessage += `\n\nDetails: ${
+                            typeof error.details === "string"
+                                ? error.details
+                                : JSON.stringify(error.details)
+                        }`;
                     }
                 } catch (e) {
                     console.error("Error parsing response:", e);
@@ -60,7 +65,11 @@ export default function CollectionTypeForm({
             }
         } catch (error: any) {
             console.error("Error creating collection type:", error);
-            alert(`Failed to create collection type: ${error?.message || String(error)}`);
+            alert(
+                `Failed to create collection type: ${
+                    error?.message || String(error)
+                }`
+            );
         } finally {
             setSaving(false);
         }
@@ -68,7 +77,7 @@ export default function CollectionTypeForm({
 
     return (
         <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
+            <div className="space-y-2">
                 <Label htmlFor="name">Collection Type Name *</Label>
                 <Input
                     id="name"
@@ -78,7 +87,8 @@ export default function CollectionTypeForm({
                     placeholder="e.g., Faction, Organization, Magic System"
                 />
                 <p className="text-sm text-gray-500 mt-1">
-                    This will create a new category for entities (e.g., "Faction" for managing factions in your story).
+                    This will create a new category for entities (e.g.,
+                    "Faction" for managing factions in your story).
                 </p>
             </div>
 
@@ -93,4 +103,3 @@ export default function CollectionTypeForm({
         </form>
     );
 }
-

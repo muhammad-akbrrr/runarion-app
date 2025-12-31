@@ -35,6 +35,7 @@ class StreamLLMJob implements ShouldQueue
     public int $userId;
     public bool $isRegenerate;
     public ?string $regenerateNodeId;
+    public ?string $chapterName;
     public int $timeout = 180;
     public int $tries = 1;
     
@@ -52,7 +53,8 @@ class StreamLLMJob implements ShouldQueue
         int $userId,
         ?string $sessionId = null,
         bool $isRegenerate = false,
-        ?string $regenerateNodeId = null
+        ?string $regenerateNodeId = null,
+        ?string $chapterName = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
@@ -63,6 +65,7 @@ class StreamLLMJob implements ShouldQueue
         $this->userId = $userId;
         $this->isRegenerate = $isRegenerate;
         $this->regenerateNodeId = $regenerateNodeId;
+        $this->chapterName = $chapterName ?? 'Untitled';
     }
 
     /**
@@ -220,9 +223,11 @@ class StreamLLMJob implements ShouldQueue
                 'phrase_bias' => $this->settings['phraseBias'] ?? [],
                 'banned_tokens' => $this->settings['bannedPhrases'] ?? [],
                 'stop_sequences' => $this->settings['stopSequences'] ?? [],
-                // Gemini thinking config - null uses model-specific defaults
-                // Set to 0 to disable thinking, or a positive value for custom budget
-                'thinking_budget' => $this->settings['thinkingBudget'] ?? null,
+                // Gemini thinking config - only for thinking models
+                // null uses model-specific defaults, 0 to disable, positive value for custom budget
+                'thinking_budget' => $this->shouldIncludeThinkingBudget()
+                    ? ($this->settings['thinkingBudget'] ?? null)
+                    : null,
                 'include_thinking' => $this->settings['includeThinking'] ?? false,
             ],
             'prompt_config' => $this->buildPromptConfig(),
@@ -310,8 +315,25 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
+     * Check if the current model supports thinking (internal reasoning).
+     *
+     * @return bool
+     */
+    private function shouldIncludeThinkingBudget(): bool
+    {
+        $thinkingModels = [
+            'gemini-2.5-pro',
+            'gemini-2.5-flash',
+            'gemini-3-pro-preview'
+        ];
+
+        $model = $this->settings['aiModel'] ?? 'gemini-2.0-flash';
+        return in_array($model, $thinkingModels);
+    }
+
+    /**
      * Build the prompt configuration with logging.
-     * 
+     *
      * @return array
      */
     private function buildPromptConfig(): array
@@ -337,6 +359,7 @@ class StreamLLMJob implements ShouldQueue
             'tone' => $this->settings['storyTone'] ?? '',
             'pov' => $this->settings['storyPov'] ?? '',
             'author_profile' => $authorStyleDna,
+            'chapter_name' => $this->chapterName,
         ];
     }
 
@@ -616,6 +639,50 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
+     * Split text into individual words for smooth streaming.
+     * Each chunk is a word + its trailing whitespace.
+     * This creates a typewriter effect for real-time generation.
+     *
+     * @param string $text The text to split
+     * @return array Array of text chunks (one word + whitespace each)
+     */
+    private function chunkTextByWords(string $text): array
+    {
+        // Split on whitespace while preserving it
+        $tokens = preg_split('/(\s+)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+
+        $chunks = [];
+        $currentWord = '';
+
+        foreach ($tokens as $token) {
+            if (preg_match('/^\s+$/', $token)) {
+                // Whitespace: attach to current word and flush
+                if (!empty($currentWord)) {
+                    $chunks[] = $currentWord . $token;
+                    $currentWord = '';
+                } else {
+                    // Standalone whitespace (edge case)
+                    $chunks[] = $token;
+                }
+            } else {
+                // Word token: start new word
+                if (!empty($currentWord)) {
+                    // Previous word had no trailing space
+                    $chunks[] = $currentWord;
+                }
+                $currentWord = $token;
+            }
+        }
+
+        // Flush remaining word
+        if (!empty($currentWord)) {
+            $chunks[] = $currentWord;
+        }
+
+        return array_filter($chunks); // Remove empty strings
+    }
+
+    /**
      * Process individual stream line
      */
     private function processStreamLine(string $line, string &$fullText, int &$chunkIndex): void
@@ -655,35 +722,26 @@ class StreamLLMJob implements ShouldQueue
             
             if (!empty($textChunk)) {
                 $fullText .= $textChunk;
-                
-                // Split large chunks to avoid Reverb's message size limit
-                // Split at 4KB to be extra safe (leaves room for metadata and JSON encoding overhead)
-                $maxChunkSize = 4096; // 4KB in bytes - conservative to handle JSON encoding overhead
-                $chunkSize = strlen($textChunk);
-                
-                if ($chunkSize > $maxChunkSize) {
-                    Log::info('Splitting large chunk', [
-                        'session_id' => $this->sessionId,
-                        'original_size' => $chunkSize,
-                        'max_size' => $maxChunkSize,
-                        'will_split_into' => ceil($chunkSize / $maxChunkSize) . ' chunks'
-                    ]);
-                }
-                
-                $chunks = str_split($textChunk, $maxChunkSize);
-                
-                foreach ($chunks as $subChunk) {
-                    $subChunkSize = strlen($subChunk);
-                broadcast(new LLMStreamChunk(
-                    $this->workspaceId,
-                    $this->projectId,
-                    $this->chapterOrder,
-                    $this->sessionId,
-                        $subChunk,
-                    $chunkIndex
-                ));
-                
-                $chunkIndex++;
+
+                // Split into word-level chunks for smoother frontend streaming display
+                $wordChunks = $this->chunkTextByWords($textChunk);
+
+                foreach ($wordChunks as $wordChunk) {
+                    // Broadcast each word chunk
+                    broadcast(new LLMStreamChunk(
+                        $this->workspaceId,
+                        $this->projectId,
+                        $this->chapterOrder,
+                        $this->sessionId,
+                        $wordChunk,
+                        $chunkIndex
+                    ));
+
+                    $chunkIndex++;
+
+                    // Small delay for visual smoothness (10ms between word chunks)
+                    // This prevents overwhelming the frontend with rapid updates
+                    usleep(10000);
                 }
             }
         } catch (\Exception $e) {
@@ -731,7 +789,7 @@ class StreamLLMJob implements ShouldQueue
                 if ($this->isRegenerate && $this->regenerateNodeId) {
                     // Add new version to the specified node (not current state)
                     $versionIndex = $versionControlService->addVersion($this->regenerateNodeId, $finalContent);
-                    
+
                     Log::info('Added new version to regenerate node', [
                         'session_id' => $this->sessionId,
                         'chapter_order' => $this->chapterOrder,

@@ -77,20 +77,32 @@ export function EditorToolbar({
     };
 
     const handleRegenerateClick = () => {
-        if (versionControl?.onRegenerate && !isButtonDisabled && versionControl.canRegenerate) {
+        if (
+            versionControl?.onRegenerate &&
+            !isButtonDisabled &&
+            versionControl.canRegenerate
+        ) {
             setIsButtonDisabled(true);
             versionControl.onRegenerate();
         }
     };
 
     const handleUndoClick = () => {
-        if (versionControl?.onUndo && versionControl.canUndo && !versionControl.isLoading) {
+        if (
+            versionControl?.onUndo &&
+            versionControl.canUndo &&
+            !versionControl.isLoading
+        ) {
             versionControl.onUndo();
         }
     };
 
     const handleRedoClick = () => {
-        if (versionControl?.onRedo && versionControl.canRedo && !versionControl.isLoading) {
+        if (
+            versionControl?.onRedo &&
+            versionControl.canRedo &&
+            !versionControl.isLoading
+        ) {
             versionControl.onRedo();
         }
     };
@@ -132,20 +144,26 @@ export function EditorToolbar({
                     <span className="text-sm text-gray-500">
                         {displayWordCount} Words
                     </span>
-                    
+
                     {/* Color Coding Toggle */}
                     {onToggleColorCoding && (
                         <Button
                             variant="ghost"
                             size="sm"
-                            className={`h-8 ${isColorCoded ? 'bg-blue-50 text-blue-700' : ''}`}
+                            className={`h-8 ${
+                                isColorCoded ? "bg-blue-50 text-blue-700" : ""
+                            }`}
                             onClick={onToggleColorCoding}
-                            title={isColorCoded ? 'Disable color coding' : 'Enable color coding'}
+                            title={
+                                isColorCoded
+                                    ? "Disable color coding"
+                                    : "Enable color coding"
+                            }
                         >
                             <Palette className="h-4 w-4" />
                         </Button>
                     )}
-                    
+
                     {/* Auto dropdown - opens upward */}
                     <DropdownMenu>
                         <DropdownMenuTrigger>
@@ -157,7 +175,19 @@ export function EditorToolbar({
                         <DropdownMenuContent align="start" side="top">
                             <DropdownMenuItem>Auto Mode On</DropdownMenuItem>
                             <DropdownMenuItem>Auto Mode Off</DropdownMenuItem>
-                            <DropdownMenuItem>Custom Settings</DropdownMenuItem>
+                            <DropdownMenuItem>
+                                <Link
+                                    href={route(
+                                        "workspace.projects.editor.multiprompt",
+                                        {
+                                            workspace_id: workspaceId,
+                                            project_id: projectId,
+                                        }
+                                    )}
+                                >
+                                    Multi-Prompt
+                                </Link>
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
@@ -165,12 +195,16 @@ export function EditorToolbar({
                 {/* Right side - Action buttons */}
                 <div className="flex items-center space-x-2">
                     {/* Undo Button */}
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0"
                         onClick={handleUndoClick}
-                        disabled={!versionControl?.canUndo || versionControl?.isLoading || isGenerating}
+                        disabled={
+                            !versionControl?.canUndo ||
+                            versionControl?.isLoading ||
+                            isGenerating
+                        }
                         title="Undo to previous step"
                     >
                         {versionControl?.isLoading ? (
@@ -181,15 +215,19 @@ export function EditorToolbar({
                     </Button>
 
                     {/* Redo Button */}
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0"
                         onClick={handleRedoClick}
-                        disabled={!versionControl?.canRedo || versionControl?.isLoading || isGenerating}
+                        disabled={
+                            !versionControl?.canRedo ||
+                            versionControl?.isLoading ||
+                            isGenerating
+                        }
                         title={
-                            !versionControl?.canRedo 
-                                ? "No valid redo steps available for current version" 
+                            !versionControl?.canRedo
+                                ? "No valid redo steps available for current version"
                                 : "Redo to next step"
                         }
                     >
@@ -202,16 +240,22 @@ export function EditorToolbar({
 
                     {/* Version Dropdown */}
                     <DropdownMenu>
-                        <DropdownMenuTrigger disabled={versionControl?.isLoading || isGenerating}>
-                            <span 
+                        <DropdownMenuTrigger
+                            disabled={versionControl?.isLoading || isGenerating}
+                        >
+                            <span
                                 className={`
                                     text-lg h-8 w-8 flex items-center justify-center rounded-md 
-                                    ${versionControl?.isLoading || isGenerating 
-                                        ? 'text-gray-400 cursor-not-allowed' 
-                                        : 'hover:bg-gray-100 cursor-pointer'
+                                    ${
+                                        versionControl?.isLoading ||
+                                        isGenerating
+                                            ? "text-gray-400 cursor-not-allowed"
+                                            : "hover:bg-gray-100 cursor-pointer"
                                     }
                                 `}
-                                title={`Current version: ${versionControl?.versionDisplayText || '0'} of ${versionControl?.totalVersions || 1}`}
+                                title={`Current version: ${
+                                    versionControl?.versionDisplayText || "0"
+                                } of ${versionControl?.totalVersions || 1}`}
                             >
                                 {versionControl?.isLoading ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -225,8 +269,14 @@ export function EditorToolbar({
                                 versionOptions.map((option) => (
                                     <DropdownMenuItem
                                         key={option.index}
-                                        onClick={() => handleVersionSwitch(option.index)}
-                                        className={option.isSelected ? "bg-blue-50 text-blue-700" : ""}
+                                        onClick={() =>
+                                            handleVersionSwitch(option.index)
+                                        }
+                                        className={
+                                            option.isSelected
+                                                ? "bg-blue-50 text-blue-700"
+                                                : ""
+                                        }
                                     >
                                         {option.label}
                                         {option.isSelected && " (Current)"}
@@ -241,12 +291,16 @@ export function EditorToolbar({
                     </DropdownMenu>
 
                     {/* Regenerate Button */}
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0"
                         onClick={handleRegenerateClick}
-                        disabled={!versionControl?.canRegenerate || isButtonDisabled || versionControl?.isLoading}
+                        disabled={
+                            !versionControl?.canRegenerate ||
+                            isButtonDisabled ||
+                            versionControl?.isLoading
+                        }
                         title="Regenerate current step"
                     >
                         {isGenerating || versionControl?.isLoading ? (
@@ -255,26 +309,6 @@ export function EditorToolbar({
                             <RefreshCw className="h-4 w-4" />
                         )}
                     </Button>
-
-                    {/* Multi-Prompt Button */}
-                    {workspaceId && projectId && (
-                        <Link
-                            href={route('workspace.projects.editor.multiprompt', {
-                                workspace_id: workspaceId,
-                                project_id: projectId,
-                            })}
-                        >
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="h-8"
-                                title="Open Multi-Node Prompt Builder"
-                            >
-                                <Network className="h-4 w-4 mr-2" />
-                                Multi-Prompt
-                            </Button>
-                        </Link>
-                    )}
 
                     {/* Send Button */}
                     <Button
