@@ -1240,7 +1240,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                 </div>
 
                 {/* Undo/Redo & Zoom Controls */}
-                <div className="absolute bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-auto">
+                <div className="absolute bottom-4 right-4 z-50 flex flex-col items-end gap-2 pointer-events-auto">
                     {/* Undo/Redo Controls */}
                     <div className="bg-white p-1.5 rounded-lg border border-gray-300 shadow-lg flex flex-row gap-1">
                         <Button
@@ -1340,7 +1340,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                                     <label className="text-sm font-medium text-gray-700">
                                         {editingTemplateId ? 'Edit Template' : 'Save Current Graph as Template'}
                                     </label>
-                                    <div className="flex gap-2">
+                                    <div className="flex gap-2 items-stretch">
                                         <Input
                                             value={templateName}
                                             onChange={(e) => setTemplateName(e.target.value)}
@@ -1356,7 +1356,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                                             onClick={handleSaveTemplate}
                                             disabled={!templateName.trim()}
                                             size="sm"
-                                            className="bg-blue-600 hover:bg-blue-700"
+                                            className="bg-blue-600 hover:bg-blue-700 h-[36px]"
                                         >
                                             <Save className="w-4 h-4" />
                                         </Button>
@@ -1365,6 +1365,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                                                 onClick={handleStartNewTemplate}
                                                 variant="outline"
                                                 size="sm"
+                                                className="h-[36px]"
                                             >
                                                 Cancel
                                             </Button>

@@ -102,20 +102,11 @@ export default function AuditorTab({
 
             {/* Main Tabs - 2x2 Grid Layout */}
             <Tabs
-                defaultValue="summarizer"
+                defaultValue="extractor"
                 className="flex-1 flex flex-col overflow-hidden"
             >
                 <div className="border-b bg-gray-50">
                     <TabsList className="w-full h-auto p-1 grid grid-cols-2 grid-rows-2 gap-1 bg-transparent">
-                        <TabsTrigger
-                            value="summarizer"
-                            className="flex items-center justify-center data-[state=active]:bg-foreground data-[state=active]:text-background"
-                        >
-                            <FileText className="h-4 w-4" />
-                            <span className="text-sm font-medium">
-                                Summarizer
-                            </span>
-                        </TabsTrigger>
                         <TabsTrigger
                             value="extractor"
                             className="flex items-center justify-center data-[state=active]:bg-foreground data-[state=active]:text-background"
@@ -126,11 +117,13 @@ export default function AuditorTab({
                             </span>
                         </TabsTrigger>
                         <TabsTrigger
-                            value="tools"
+                            value="summarizer"
                             className="flex items-center justify-center data-[state=active]:bg-foreground data-[state=active]:text-background"
                         >
-                            <Wrench className="h-4 w-4" />
-                            <span className="text-sm font-medium">Tools</span>
+                            <FileText className="h-4 w-4" />
+                            <span className="text-sm font-medium">
+                                Summarizer
+                            </span>
                         </TabsTrigger>
                         <TabsTrigger
                             value="sentiment"
@@ -141,8 +134,27 @@ export default function AuditorTab({
                                 Sentiment
                             </span>
                         </TabsTrigger>
+                        <TabsTrigger
+                            value="tools"
+                            className="flex items-center justify-center data-[state=active]:bg-foreground data-[state=active]:text-background"
+                        >
+                            <Wrench className="h-4 w-4" />
+                            <span className="text-sm font-medium">Tools</span>
+                        </TabsTrigger>
                     </TabsList>
                 </div>
+
+                {/* Entity Extractor Tab */}
+                <TabsContent
+                    value="extractor"
+                    className="flex-1 overflow-y-auto p-4"
+                >
+                    <EntityExtractorTab
+                        workspaceId={workspaceId}
+                        projectId={projectId}
+                        selectedModel={selectedModel}
+                    />
+                </TabsContent>
 
                 {/* Summarizer Tab */}
                 <TabsContent
@@ -156,12 +168,12 @@ export default function AuditorTab({
                     />
                 </TabsContent>
 
-                {/* Entity Extractor Tab */}
+                {/* Sentiment Analyzer Tab */}
                 <TabsContent
-                    value="extractor"
+                    value="sentiment"
                     className="flex-1 overflow-y-auto p-4"
                 >
-                    <EntityExtractorTab
+                    <SentimentTab
                         workspaceId={workspaceId}
                         projectId={projectId}
                         selectedModel={selectedModel}
@@ -178,18 +190,6 @@ export default function AuditorTab({
                         projectId={projectId}
                         selectedModel={selectedModel}
                         onApplyStoryFix={onApplyStoryFix}
-                    />
-                </TabsContent>
-
-                {/* Sentiment Analyzer Tab */}
-                <TabsContent
-                    value="sentiment"
-                    className="flex-1 overflow-y-auto p-4"
-                >
-                    <SentimentTab
-                        workspaceId={workspaceId}
-                        projectId={projectId}
-                        selectedModel={selectedModel}
                     />
                 </TabsContent>
             </Tabs>

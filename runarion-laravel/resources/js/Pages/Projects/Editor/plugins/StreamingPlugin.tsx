@@ -216,7 +216,6 @@ export function StreamingPlugin({
 
                     for (let i = 0; i < textToProcess.length; i++) {
                         const char = textToProcess[i];
-                        const nextChar = textToProcess[i + 1];
 
                         if (char === '\n') {
                             // Flush current text to current paragraph
@@ -229,20 +228,9 @@ export function StreamingPlugin({
                                 currentText = '';
                             }
 
-                            // Check if this is a paragraph break (double newline) or single newline
-                            if (nextChar === '\n') {
-                                // Double newline: start new paragraph
-                                currentParagraphRef.current = $createParagraphNode();
-                                root.append(currentParagraphRef.current);
-                                i++; // Skip the next newline
-                            } else {
-                                // Single newline: add line break within paragraph
-                                if (!currentParagraphRef.current) {
-                                    currentParagraphRef.current = $createParagraphNode();
-                                    root.append(currentParagraphRef.current);
-                                }
-                                currentParagraphRef.current.append($createOriginTextNode('\n', 'ai'));
-                            }
+                            // ANY newline = new paragraph (simplified behavior)
+                            currentParagraphRef.current = $createParagraphNode();
+                            root.append(currentParagraphRef.current);
                         } else {
                             currentText += char;
                         }

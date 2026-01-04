@@ -214,11 +214,29 @@ export const RecordsDrawer: React.FC<RecordsDrawerProps> = ({
                                     {entity.type}
                                 </span>
                             </div>
-                            {entity.properties && Object.keys(entity.properties).length > 0 && (
-                                <p className="text-[10px] text-gray-600 mt-1 line-clamp-2">
-                                    {Object.values(entity.properties)[0] as string}
-                                </p>
-                            )}
+                            {entity.properties && Object.keys(entity.properties).length > 0 && (() => {
+                                // For Record Keeper, use summary; for others, find first string property
+                                const summary = entity.properties.summary;
+                                if (typeof summary === 'string') {
+                                    return (
+                                        <p className="text-[10px] text-gray-600 mt-1 line-clamp-2">
+                                            {summary}
+                                        </p>
+                                    );
+                                }
+                                // Find first string property
+                                const firstStringValue = Object.values(entity.properties).find(
+                                    (v) => typeof v === 'string' && v.length > 0
+                                );
+                                if (firstStringValue) {
+                                    return (
+                                        <p className="text-[10px] text-gray-600 mt-1 line-clamp-2">
+                                            {firstStringValue as string}
+                                        </p>
+                                    );
+                                }
+                                return null;
+                            })()}
                         </div>
                     ))
                 )}

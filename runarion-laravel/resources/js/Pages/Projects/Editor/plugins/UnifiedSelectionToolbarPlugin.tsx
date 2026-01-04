@@ -14,6 +14,7 @@ import {
 } from "lexical";
 import { $setBlocksType } from "@lexical/selection";
 import { $createHeadingNode, HeadingTagType } from "@lexical/rich-text";
+import { $createOriginTextNode, $isOriginTextNode, OriginTextNode } from "../nodes/OriginTextNode";
 import { createPortal } from "react-dom";
 import { Button } from "@/Components/ui/button";
 import { Textarea } from "@/Components/ui/textarea";
@@ -564,17 +565,63 @@ export function UnifiedSelectionToolbarPlugin({
                         // Case 1: Start and end are in the same node
                         if (startNode === endNode) {
                             const nodeText = startNode.getTextContent();
-                            const newText =
-                                nodeText.substring(0, startOffset) +
-                                data.new_text +
-                                nodeText.substring(endOffset);
-                            startNode.setTextContent(newText);
+                            const beforeText = nodeText.substring(0, startOffset);
+                            const afterText = nodeText.substring(endOffset);
+
+                            // Determine the original node's origin (default to 'user' for non-origin nodes)
+                            const originalOrigin = $isOriginTextNode(startNode)
+                                ? startNode.getOrigin()
+                                : 'user';
+
+                            // Preserve formatting
+                            const format = startNode.getFormat();
+                            const detail = startNode.getDetail?.() ?? 0;
+                            const style = startNode.getStyle();
+
+                            // Build new nodes with proper origins
+                            const nodesToInsert: OriginTextNode[] = [];
+
+                            // Text before selection keeps original origin
+                            if (beforeText) {
+                                const beforeNode = $createOriginTextNode(beforeText, originalOrigin);
+                                beforeNode.setFormat(format);
+                                beforeNode.setStyle(style);
+                                nodesToInsert.push(beforeNode);
+                            }
+
+                            // AI-rewritten text gets 'ai' origin
+                            const aiNode = $createOriginTextNode(data.new_text, 'ai');
+                            aiNode.setFormat(format);
+                            aiNode.setStyle(style);
+                            nodesToInsert.push(aiNode);
+
+                            // Text after selection keeps original origin
+                            if (afterText) {
+                                const afterNode = $createOriginTextNode(afterText, originalOrigin);
+                                afterNode.setFormat(format);
+                                afterNode.setStyle(style);
+                                nodesToInsert.push(afterNode);
+                            }
+
+                            // Replace the original node with the new nodes
+                            if (nodesToInsert.length > 0) {
+                                const firstNew = nodesToInsert[0];
+                                startNode.replace(firstNew);
+
+                                let current = firstNew;
+                                for (let i = 1; i < nodesToInsert.length; i++) {
+                                    current.insertAfter(nodesToInsert[i]);
+                                    current = nodesToInsert[i];
+                                }
+                            }
                         } else {
                             // Case 2: Text spans multiple nodes
-                            let inRange = false;
+                            // Strategy: Replace startNode with [before + AI text], remove middle nodes, update endNode
                             const nodesToRemove: TextNode[] = [];
                             let foundEnd = false;
+                            let inRange = false;
 
+                            // Collect nodes to remove (middle nodes between start and end)
                             for (
                                 let pIdx = 0;
                                 pIdx < allParagraphs.length && !foundEnd;
@@ -587,27 +634,8 @@ export function UnifiedSelectionToolbarPlugin({
                                 for (const child of children) {
                                     if (child instanceof TextNode) {
                                         if (child === startNode) {
-                                            const nodeText =
-                                                child.getTextContent();
-                                            child.setTextContent(
-                                                nodeText.substring(
-                                                    0,
-                                                    startOffset
-                                                ) + data.new_text
-                                            );
                                             inRange = true;
                                         } else if (child === endNode) {
-                                            const nodeText =
-                                                child.getTextContent();
-                                            const remainingText =
-                                                nodeText.substring(endOffset);
-                                            if (remainingText) {
-                                                child.setTextContent(
-                                                    remainingText
-                                                );
-                                            } else {
-                                                nodesToRemove.push(child);
-                                            }
                                             foundEnd = true;
                                             break;
                                         } else if (inRange) {
@@ -615,6 +643,60 @@ export function UnifiedSelectionToolbarPlugin({
                                         }
                                     }
                                 }
+                            }
+
+                            // Get origin and formatting from startNode
+                            const startOrigin = $isOriginTextNode(startNode)
+                                ? startNode.getOrigin()
+                                : 'user';
+                            const endOrigin = $isOriginTextNode(endNode)
+                                ? endNode.getOrigin()
+                                : 'user';
+                            const format = startNode.getFormat();
+                            const style = startNode.getStyle();
+
+                            // Handle startNode: keep text before selection, add AI text
+                            const startText = startNode.getTextContent();
+                            const beforeText = startText.substring(0, startOffset);
+
+                            const startNodesToInsert: OriginTextNode[] = [];
+
+                            if (beforeText) {
+                                const beforeNode = $createOriginTextNode(beforeText, startOrigin);
+                                beforeNode.setFormat(format);
+                                beforeNode.setStyle(style);
+                                startNodesToInsert.push(beforeNode);
+                            }
+
+                            // AI-rewritten text
+                            const aiNode = $createOriginTextNode(data.new_text, 'ai');
+                            aiNode.setFormat(format);
+                            aiNode.setStyle(style);
+                            startNodesToInsert.push(aiNode);
+
+                            // Replace startNode
+                            if (startNodesToInsert.length > 0) {
+                                const firstNew = startNodesToInsert[0];
+                                startNode.replace(firstNew);
+
+                                let current = firstNew;
+                                for (let i = 1; i < startNodesToInsert.length; i++) {
+                                    current.insertAfter(startNodesToInsert[i]);
+                                    current = startNodesToInsert[i];
+                                }
+                            }
+
+                            // Handle endNode: keep text after selection
+                            const endText = endNode.getTextContent();
+                            const afterText = endText.substring(endOffset);
+
+                            if (afterText) {
+                                const afterNode = $createOriginTextNode(afterText, endOrigin);
+                                afterNode.setFormat(endNode.getFormat());
+                                afterNode.setStyle(endNode.getStyle());
+                                endNode.replace(afterNode);
+                            } else {
+                                endNode.remove();
                             }
 
                             // Remove middle nodes

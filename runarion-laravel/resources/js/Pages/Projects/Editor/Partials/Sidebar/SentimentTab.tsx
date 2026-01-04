@@ -149,6 +149,7 @@ export default function SentimentTab({
     const [useAllChapters, setUseAllChapters] = useState<boolean>(true);
     const [chapters, setChapters] = useState<Chapter[]>([]);
     const [characters, setCharacters] = useState<Character[]>([]);
+    const [loadingCharacters, setLoadingCharacters] = useState(false);
     const [loading, setLoading] = useState(false);
     const [scanningChanges, setScanningChanges] = useState(false);
     const [deletingInteractions, setDeletingInteractions] = useState(false);
@@ -187,9 +188,10 @@ export default function SentimentTab({
 
     // Load chapters and characters on mount
     useEffect(() => {
+        console.log("[SentimentTab] Component mounted, loading data...", { workspaceId, projectId });
         loadChapters();
         loadCharacters();
-    }, []);
+    }, [workspaceId, projectId]);
 
     const loadChapters = async () => {
         try {
@@ -217,20 +219,34 @@ export default function SentimentTab({
     };
 
     const loadCharacters = async () => {
+        setLoadingCharacters(true);
         try {
-            const response = await fetch(
-                route("records.entities.list", {
-                    workspace_id: workspaceId,
-                    project_id: projectId,
-                }) + "?category=character",
-                { headers: { Accept: "application/json" } }
-            );
+            const url = route("records.entities", {
+                workspace_id: workspaceId,
+                project_id: projectId,
+            }) + "?category=character";
+            console.log("[SentimentTab] Loading characters from:", url);
+
+            const response = await fetch(url, {
+                headers: {
+                    Accept: "application/json",
+                    "X-Requested-With": "XMLHttpRequest",
+                }
+            });
+
+            console.log("[SentimentTab] Response status:", response.status);
+
             if (response.ok) {
                 const data = await response.json();
+                console.log("[SentimentTab] Loaded characters:", data);
                 setCharacters(data.entities || []);
+            } else {
+                console.error("[SentimentTab] Failed to load characters:", response.status, await response.text());
             }
         } catch (error) {
-            console.error("Error loading characters:", error);
+            console.error("[SentimentTab] Error loading characters:", error);
+        } finally {
+            setLoadingCharacters(false);
         }
     };
 
@@ -647,7 +663,11 @@ export default function SentimentTab({
 
                 {focusMode === "selected" && (
                     <div className="max-h-32 overflow-y-auto border rounded p-2 space-y-2">
-                        {characters.length === 0 ? (
+                        {loadingCharacters ? (
+                            <p className="text-sm text-gray-500 italic">
+                                Loading characters...
+                            </p>
+                        ) : characters.length === 0 ? (
                             <p className="text-sm text-gray-500 italic">
                                 No characters found. Run Entity Extractor first.
                             </p>
@@ -696,6 +716,14 @@ export default function SentimentTab({
                         <p className="text-xs text-gray-500">
                             Select exactly 2 characters for focused analysis:
                         </p>
+                        {loadingCharacters && (
+                            <p className="text-xs text-blue-500 italic">Loading characters...</p>
+                        )}
+                        {!loadingCharacters && characters.length === 0 && (
+                            <p className="text-xs text-amber-600 italic">
+                                No characters found. Run Entity Extractor first.
+                            </p>
+                        )}
                         {characters.length > 10 && (
                             <input
                                 type="text"
@@ -767,7 +795,6 @@ export default function SentimentTab({
                         </div>
                         {selectedCharacters.length === 2 && (
                             <div className="p-2 bg-rose-50 rounded text-xs text-rose-700 flex items-center gap-2">
-                                <Heart className="h-3 w-3" />
                                 Analyzing:{" "}
                                 {
                                     characters.find(

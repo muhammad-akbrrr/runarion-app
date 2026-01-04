@@ -140,9 +140,9 @@ class InstructionBuilder:
         parts.append(
             "CRITICAL INSTRUCTIONS:\n"
             "1. Continue generating until you reach the maximum token limit - do not stop early\n"
-            "2. DO NOT rewrite, repeat, or paraphrase the provided context text\n"
-            "3. Begin your generation immediately after the last word of the context\n"
-            "4. Ensure seamless narrative flow from the context to your generation\n"
+            "2. DO NOT rewrite, repeat, or paraphrase ANY part of the provided context text\n"
+            "3. ZERO OVERLAP RULE: Your output must have ZERO word overlap with the end of the context. If the context ends with '...walked into the room.', do NOT start with 'walked', 'into', 'the', or 'room' - start with completely new words.\n"
+            "4. Ensure seamless narrative flow by starting with a logical next action, thought, or description\n"
             "5. DO NOT write titles, summaries, synopses, taglines, or meta-commentary\n"
             "6. DO NOT start with ellipsis (...) or other continuation markers\n"
             "7. Format your response using Markdown for rich presentation where appropriate"

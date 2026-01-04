@@ -177,8 +177,8 @@ export function SidebarContent({
                 </div>
                 <p className="text-xs text-gray-500">
                     {isThinkingModel 
-                        ? "Tokens for AI reasoning before responding (higher = better quality, slower)"
-                        : "Only available for thinking models (2.5 Flash, 2.5 Pro, 3.0 Pro)"
+                        ? "Tokens for AI reasoning (higher = better quality, slower)"
+                        : "Only available for thinking models"
                     }
                 </p>
                 <Slider

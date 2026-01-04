@@ -30,6 +30,73 @@ import { MagicWandButton } from "@/Components/MagicWandButton";
 // Import Echo for WebSocket connection
 import "@/echo";
 
+/**
+ * Check if content is valid Lexical JSON format
+ */
+function isLexicalJSON(content: string): boolean {
+    if (!content?.trim().startsWith('{')) return false;
+    try {
+        const parsed = JSON.parse(content);
+        return parsed.root?.type === 'root';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Extract plain text from Lexical JSON node recursively
+ */
+function extractTextFromNode(node: any): string {
+    if (!node) return '';
+
+    // Text node - return its text content
+    if (node.type === 'text' || node.type === 'origin-text') {
+        return node.text || '';
+    }
+
+    // For container nodes, process children
+    if (node.children && Array.isArray(node.children)) {
+        return node.children.map((child: any, index: number) => {
+            const text = extractTextFromNode(child);
+            // Add paragraph breaks between paragraphs
+            if (child.type === 'paragraph' && index < node.children.length - 1) {
+                return text + '\n\n';
+            }
+            return text;
+        }).join('');
+    }
+
+    return '';
+}
+
+/**
+ * Calculate word count from content (handles both Lexical JSON and plain text)
+ */
+function getWordCount(content: string | null | undefined): number {
+    if (!content) return 0;
+
+    let plainText: string;
+
+    if (isLexicalJSON(content)) {
+        try {
+            const parsed = JSON.parse(content);
+            plainText = extractTextFromNode(parsed.root);
+        } catch {
+            return 0;
+        }
+    } else {
+        // Plain text - just use as-is (with markdown cleanup)
+        plainText = content
+            .replace(/[#*_`~\[\]()]/g, '') // Remove markdown syntax
+            .replace(/\n+/g, ' ');
+    }
+
+    const cleaned = plainText.replace(/\n+/g, ' ').trim();
+    if (!cleaned) return 0;
+
+    return cleaned.split(/\s+/).filter(Boolean).length;
+}
+
 export default function ProjectEditorPage({
     workspaceId,
     projectId,
@@ -761,19 +828,7 @@ export default function ProjectEditorPage({
                             }}
                             workspaceId={workspaceId}
                             projectId={projectId}
-                            wordCount={
-                                content
-                                    ? (() => {
-                                        // Count words from markdown content directly
-                                        const plainText = (content ?? '') // Handle null content
-                                            .replace(/[#*_`~\[\]()]/g, '') // Remove markdown syntax
-                                            .replace(/\n+/g, ' ') // Replace newlines with spaces
-                                            .trim();
-                                        const wordCount = plainText.split(/\s+/).filter(Boolean).length;
-                                        return wordCount;
-                                    })()
-                                    : 0
-                            }
+                            wordCount={getWordCount(content)}
                         />
                     </div>
                 </div>

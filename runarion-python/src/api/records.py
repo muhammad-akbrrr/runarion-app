@@ -84,7 +84,7 @@ def list_categories():
         categories = set()
         for entity in entities:
             entity_type = entity.get('type', '')
-            if entity_type and not entity_type.startswith('_') and entity_type.lower() != 'record_keeper':
+            if entity_type and not entity_type.startswith('_'):
                 categories.add(entity_type)
         
         return jsonify({
@@ -115,9 +115,8 @@ def list_entities_query():
         )
         
         # Filter out internal types
-        filtered = [e for e in entities 
-                   if not e.get('type', '').startswith('_') 
-                   and e.get('type', '').lower() != 'record_keeper']
+        filtered = [e for e in entities
+                   if not e.get('type', '').startswith('_')]
         
         return jsonify({
             'success': True,

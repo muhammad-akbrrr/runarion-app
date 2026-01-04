@@ -100,8 +100,9 @@ class RecordsController extends Controller
         }
 
         try {
-            $type = $request->query('type');
-            
+            // Accept both 'type' and 'category' query params for backward compatibility
+            $type = $request->query('type') ?? $request->query('category');
+
             $url = $this->getPythonServiceUrl() . '/api/records/entities/' . $project_id;
             if ($type) {
                 $url .= '?type=' . urlencode($type);
@@ -1121,9 +1122,10 @@ class RecordsController extends Controller
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
+                $pythonResponse = $response->json();
                 return response()->json([
-                    'error' => 'Failed to merge entities',
-                    'details' => $response->json()
+                    'error' => $pythonResponse['error'] ?? 'Failed to merge entities',
+                    'details' => $pythonResponse
                 ], $response->status());
             }
         } catch (\Exception $e) {

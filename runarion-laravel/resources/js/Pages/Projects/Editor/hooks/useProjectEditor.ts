@@ -36,7 +36,8 @@ function extractTextFromLexicalNode(node: any): string {
     if (!node) return '';
 
     // Text node - return its text content
-    if (node.type === 'text') {
+    // Handle both regular TextNode ('text') and OriginTextNode ('origin-text')
+    if (node.type === 'text' || node.type === 'origin-text') {
         return node.text || '';
     }
 
@@ -229,46 +230,74 @@ export function useProjectEditor({
             });
             setIsGenerating(false);
 
-            // CRITICAL: Use baseContentRef which was frozen BEFORE generation started
-            // baseContent might be Lexical JSON, so extract plain text for composition
-            const baseContentRaw = baseContentRef.current || '';
-            const userPlainText = getPlainText(baseContentRaw);
+            // CRITICAL: Wait for editor to finalize streaming content, then get Lexical JSON
+            // The editor has the correct OriginTextNode metadata (user vs ai origin)
+            // We MUST save the Lexical JSON, not plain text, to preserve this metadata
+            setTimeout(() => {
+                const currentChapter = selectedChapterRef.current;
 
-            // Calculate separator based on plain text
-            let separator = '';
-            if (userPlainText && !userPlainText.endsWith('\n') && !userPlainText.endsWith(' ') &&
-                !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
-                separator = ' ';
-            }
+                // Try to get Lexical JSON from editor (preserves origin metadata)
+                if (editorRef?.current) {
+                    try {
+                        const editorState = editorRef.current.getEditorState();
+                        const lexicalJSON = JSON.stringify(editorState.toJSON());
 
-            // Compose final content as plain text (will be converted to JSON by OnChangePlugin)
-            const finalContent = userPlainText + separator + generatedText;
+                        console.log('Stream complete - saving Lexical JSON with origin metadata:', {
+                            lexicalJSONLength: lexicalJSON.length,
+                            preview: lexicalJSON.substring(0, 100)
+                        });
 
-            console.log('Final content composed:', {
-                userPlainTextLength: userPlainText.length,
-                separatorLength: separator.length,
-                generatedTextLength: generatedText.length,
-                finalContentLength: finalContent.length
-            });
+                        // Save Lexical JSON (preserves OriginTextNode metadata)
+                        if (currentChapter) {
+                            saveContent(currentChapter.order, lexicalJSON, 'llm_generation');
+                        }
 
-            // Save content after generation
-            // Origin metadata (user vs ai) is now embedded in OriginTextNode in Lexical JSON
-            const currentChapter = selectedChapterRef.current;
-            if (currentChapter) {
-                saveContent(currentChapter.order, finalContent, 'llm_generation');
-            }
+                        // Update content state with Lexical JSON
+                        setContent(lexicalJSON);
+                        originalContent.current = lexicalJSON;
 
-            // Update content state (plain text - will be converted to JSON by ContentUpdatePlugin → OnChangePlugin)
-            setContent(finalContent);
-            originalContent.current = finalContent;
+                        // Cache the newly generated version for instant switching
+                        if (currentChapter?.navigation_info) {
+                            const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
+                            versionControl.cacheVersion(newVersionIndex, lexicalJSON);
+                        }
 
-            // Cache the newly generated version for instant switching
-            // Note: Navigation info will be updated via websocket, cache with current info
-            if (currentChapter?.navigation_info) {
-                // Cache with incremented version index (new generation = new version)
-                const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
-                versionControl.cacheVersion(newVersionIndex, finalContent);
-            }
+                        return;
+                    } catch (error) {
+                        console.error('Failed to get Lexical JSON from editor, falling back to plain text:', error);
+                    }
+                }
+
+                // FALLBACK: If editor ref not available, compose plain text (origin metadata will be lost)
+                // This should rarely happen, but we keep it for safety
+                const baseContentRaw = baseContentRef.current || '';
+                const userPlainText = getPlainText(baseContentRaw);
+
+                let separator = '';
+                if (userPlainText && !userPlainText.endsWith('\n') && !userPlainText.endsWith(' ') &&
+                    !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
+                    separator = ' ';
+                }
+
+                const finalContent = userPlainText + separator + generatedText;
+
+                console.log('FALLBACK: Final content composed as plain text (origin metadata lost):', {
+                    userPlainTextLength: userPlainText.length,
+                    finalContentLength: finalContent.length
+                });
+
+                if (currentChapter) {
+                    saveContent(currentChapter.order, finalContent, 'llm_generation');
+                }
+
+                setContent(finalContent);
+                originalContent.current = finalContent;
+
+                if (currentChapter?.navigation_info) {
+                    const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
+                    versionControl.cacheVersion(newVersionIndex, finalContent);
+                }
+            }, 150); // Wait for StreamingPlugin to finalize content rendering
         },
         onStreamError: (error) => {
             console.error('Stream error:', error);
@@ -832,8 +861,12 @@ export function useProjectEditor({
         // NOW trigger generation - baseContent is already set
         setIsGenerating(true);
 
+        // Extract plain text from Lexical JSON before sending to LLM
+        // The LLM needs plain text, not JSON structure
+        const plainTextPrompt = getPlainText(currentContent || "");
+
         const generationSettings = {
-            prompt: currentContent || "",
+            prompt: plainTextPrompt,
             order: selectedChapter.order,
             chapter_name: selectedChapter.chapter_name || 'Untitled',
             settings: buildGenerationSettings(settings),

@@ -1792,7 +1792,7 @@ export default function AdvisorTab({
                                 ? "Ask about your story..."
                                 : "Create a chat first"
                         }
-                        className="min-h-[50px] max-h-full grow resize-none text-sm"
+                        className="max-h-full grow resize-none text-sm"
                         disabled={!activeChat || isStreaming}
                     />
                     <div className="flex flex-col gap-2">
@@ -1809,7 +1809,7 @@ export default function AdvisorTab({
                                 disabled={isStreaming || !inputMessage.trim()}
                                 size="icon"
                                 variant="outline"
-                                className="h-[50px] w-10 border-green-600 bg-green-600 hover:bg-green-500 text-white"
+                                className="h-[40px] w-10 border-green-600 bg-green-600 hover:bg-green-500 text-white"
                             />
                         )}
                         {isStreaming ? (
@@ -1817,7 +1817,7 @@ export default function AdvisorTab({
                                 variant="destructive"
                                 size="icon"
                                 onClick={cancelStreaming}
-                                className="h-[50px] w-10"
+                                className="h-16 w-10"
                             >
                                 <X className="h-2.5 w-2.5" />
                             </Button>
@@ -1825,7 +1825,7 @@ export default function AdvisorTab({
                             <Button
                                 onClick={() => sendMessage()}
                                 disabled={!activeChat || !inputMessage.trim()}
-                                className="h-[50px] w-10"
+                                className="h-[40px] w-10"
                             >
                                 <Send className="h-2.5 w-2.5" />
                             </Button>
