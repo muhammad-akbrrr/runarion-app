@@ -228,6 +228,10 @@ export default function EntityDetailSidebar({
     // Check if this entity type supports relationships (only characters)
     const supportsRelationships = entity?.type?.toLowerCase() === "character";
 
+    // Check if this entity type supports the Summary tab
+    // Record Keeper entries don't have _summaries - they store data directly in properties
+    const supportsSummaryTab = entity?.type?.toLowerCase() !== "record_keeper";
+
     // Get protected fields for this entity type
     const entityTypeKey = entity?.type?.toLowerCase() || "";
     const protectedFields = PROTECTED_FIELDS[entityTypeKey] || [];
@@ -399,7 +403,9 @@ export default function EntityDetailSidebar({
             >
                 <TabsList className="mx-4 mt-4">
                     <TabsTrigger value="details">Details</TabsTrigger>
-                    <TabsTrigger value="summary">Summary</TabsTrigger>
+                    {supportsSummaryTab && (
+                        <TabsTrigger value="summary">Summary</TabsTrigger>
+                    )}
                     <TabsTrigger value="settings">Settings</TabsTrigger>
                     {supportsRelationships && (
                         <TabsTrigger value="relationships">
@@ -841,14 +847,16 @@ export default function EntityDetailSidebar({
                     )}
                 </TabsContent>
 
-                {/* Summary Tab */}
-                <TabsContent value="summary" className="flex-1 overflow-y-auto">
-                    <SummaryTab
-                        entity={entity}
-                        workspaceId={workspaceId}
-                        projectId={projectId}
-                    />
-                </TabsContent>
+                {/* Summary Tab (not shown for Record Keeper entries) */}
+                {supportsSummaryTab && (
+                    <TabsContent value="summary" className="flex-1 overflow-y-auto">
+                        <SummaryTab
+                            entity={entity}
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                        />
+                    </TabsContent>
+                )}
 
                 {/* Settings Tab */}
                 <TabsContent

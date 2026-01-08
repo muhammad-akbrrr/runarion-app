@@ -17,7 +17,7 @@ interface MatchResult {
  * - Converting smart quotes to straight quotes
  * - Normalizing dashes
  * - Normalizing ellipsis
- * - Normalizing whitespace
+ * - Normalizing whitespace (PRESERVING paragraph breaks)
  */
 export function normalizeText(text: string): string {
     return text
@@ -31,8 +31,12 @@ export function normalizeText(text: string): string {
         .replace(/\u2026/g, '...')
         // Non-breaking space
         .replace(/\u00A0/g, ' ')
-        // Multiple spaces to single
-        .replace(/\s+/g, ' ')
+        // PRESERVE paragraph breaks: normalize multiple newlines to double newline
+        .replace(/\n\s*\n/g, '\n\n')
+        // Normalize spaces WITHIN lines only (not newlines) - [^\S\n] matches whitespace except newlines
+        .replace(/[^\S\n]+/g, ' ')
+        // Trim each line while preserving structure
+        .split('\n').map(line => line.trim()).join('\n')
         .trim();
 }
 
@@ -46,6 +50,89 @@ export function simplifyText(text: string): string {
         .replace(/[^\w\s]/g, '')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+/**
+ * Split content into paragraphs (separated by blank lines)
+ * Returns array with text and position info for each paragraph
+ */
+function splitIntoParagraphs(content: string): Array<{text: string; start: number; end: number}> {
+    const paragraphs: Array<{text: string; start: number; end: number}> = [];
+    let currentPos = 0;
+
+    // Split by double newlines (paragraph breaks)
+    const parts = content.split(/\n\n+/);
+
+    for (const part of parts) {
+        if (part.trim()) {
+            const start = content.indexOf(part, currentPos);
+            if (start !== -1) {
+                paragraphs.push({
+                    text: part,
+                    start: start,
+                    end: start + part.length
+                });
+                currentPos = start + part.length;
+            }
+        }
+    }
+
+    return paragraphs;
+}
+
+/**
+ * Find match constrained to paragraph boundaries
+ * Prevents matches from spilling over into adjacent paragraphs
+ */
+function paragraphConstrainedMatch(
+    content: string,
+    searchText: string,
+    threshold: number
+): MatchResult {
+    const paragraphs = splitIntoParagraphs(content);
+    const normalizedSearch = normalizeText(searchText);
+
+    let bestMatch: MatchResult = {
+        found: false,
+        start: -1,
+        end: -1,
+        confidence: 0,
+        matchedText: '',
+    };
+
+    for (const para of paragraphs) {
+        const normalizedPara = normalizeText(para.text);
+
+        // Skip if paragraph is too short to contain search text
+        if (normalizedPara.length < normalizedSearch.length * 0.7) continue;
+
+        // Try normalized match within paragraph
+        const idx = normalizedPara.indexOf(normalizedSearch);
+        if (idx !== -1) {
+            const result = findOriginalPosition(para.text, normalizedPara, idx, normalizedSearch.length);
+            return {
+                found: true,
+                start: para.start + result.start,
+                end: para.start + result.end,
+                confidence: 0.95,
+                matchedText: result.matchedText,
+            };
+        }
+
+        // Try similarity match within paragraph bounds
+        const similarity = calculateSimilarity(normalizedPara, normalizedSearch);
+        if (similarity > bestMatch.confidence && similarity >= threshold) {
+            bestMatch = {
+                found: true,
+                start: para.start,
+                end: para.end,
+                confidence: similarity,
+                matchedText: para.text,
+            };
+        }
+    }
+
+    return bestMatch;
 }
 
 /**
@@ -127,7 +214,7 @@ export function findBestMatch(content: string, searchText: string): MatchResult 
     // Strategy 2: Normalized match
     const normalizedContent = normalizeText(content);
     const normalizedSearch = normalizeText(searchText);
-    
+
     index = normalizedContent.indexOf(normalizedSearch);
     if (index !== -1) {
         // Find the actual position in original content
@@ -138,21 +225,28 @@ export function findBestMatch(content: string, searchText: string): MatchResult 
             confidence: 0.95,
         };
     }
-    
-    // Strategy 3: Sliding window with similarity threshold
+
+    // Strategy 3: Paragraph-constrained matching (PREVENTS BOUNDARY OVERFLOW)
+    // This is the primary fuzzy matching strategy - respects paragraph boundaries
+    const paraMatch = paragraphConstrainedMatch(content, searchText, 0.80);
+    if (paraMatch.found) {
+        return paraMatch;
+    }
+
+    // Strategy 4: Sliding window with similarity threshold (fallback)
     const windowResult = slidingWindowMatch(content, searchText, 0.85);
     if (windowResult.found) {
         return windowResult;
     }
-    
-    // Strategy 4: Word-based matching (for longer text)
+
+    // Strategy 5: Word-based matching (for longer text)
     if (searchText.length > 50) {
         const wordResult = wordBasedMatch(content, searchText, 0.75);
         if (wordResult.found) {
             return wordResult;
         }
     }
-    
+
     // No match found
     return {
         found: false,
@@ -254,23 +348,34 @@ function slidingWindowMatch(
         if (similarity > bestMatch.confidence && similarity >= threshold) {
             // Refine the exact boundaries
             const refinedEnd = Math.min(i + windowSize, content.length);
+
+            // Find the BEST end boundary, not first improvement
             let actualEnd = refinedEnd;
-            
-            // Try to find better end boundary
-            for (let e = refinedEnd; e >= i + searchLen * 0.8; e--) {
+            let bestBoundarySimilarity = similarity;
+
+            // First, check if there's a paragraph boundary we should respect
+            const paragraphEnd = content.indexOf('\n\n', i);
+            const maxEnd = (paragraphEnd !== -1 && paragraphEnd < refinedEnd)
+                ? paragraphEnd
+                : refinedEnd;
+
+            // Search for best boundary, tracking the highest similarity
+            for (let e = maxEnd; e >= i + searchLen * 0.8; e--) {
                 const testWindow = content.substring(i, e);
                 const testSimilarity = calculateSimilarity(normalizeText(testWindow), normalizedSearch);
-                if (testSimilarity > similarity) {
+
+                // Track the best similarity, don't break early
+                if (testSimilarity > bestBoundarySimilarity) {
+                    bestBoundarySimilarity = testSimilarity;
                     actualEnd = e;
-                    break;
                 }
             }
-            
+
             bestMatch = {
                 found: true,
                 start: i,
                 end: actualEnd,
-                confidence: similarity,
+                confidence: bestBoundarySimilarity,
                 matchedText: content.substring(i, actualEnd),
             };
         }

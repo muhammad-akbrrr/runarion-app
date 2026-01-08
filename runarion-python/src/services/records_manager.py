@@ -311,41 +311,45 @@ class RecordsManager:
         properties: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
-        Update an entity in the graph database.
-        
+        Update an entity in the graph database with atomic transaction.
+
+        Both graph and metadata updates happen in the same transaction.
+        If either fails, the entire operation is rolled back.
+
         Args:
             project_id: Project UUID
             vertex_id: AGE vertex ID
             entity_name: New entity name (optional)
             properties: Updated properties (optional)
-            
+
         Returns:
             True if successful, False otherwise
         """
         graph_draft_id = self._project_id_to_draft_id(project_id)
-        
+
         try:
-            # First: Update the AGE graph (release connection before metadata update)
+            # Single connection for BOTH graph and metadata updates (atomic transaction)
             with self.graph_service.get_age_connection() as conn:
                 with conn.cursor() as cursor:
                     # Escape for Cypher
                     safe_draft_id = self.graph_service._escape_cypher_string(graph_draft_id)
-                    
-                    # Build SET clause
+
+                    # Build SET clause for graph update
                     set_clauses = []
                     if entity_name is not None:
                         safe_name = self.graph_service._escape_cypher_string(entity_name)
                         set_clauses.append(f"n.name = '{safe_name}'")
-                    
+
                     if properties is not None:
                         safe_props = self.graph_service._prepare_agtype_properties(properties)
                         set_clauses.append(f"n.properties = {safe_props}")
-                    
+
                     if not set_clauses:
                         return True  # Nothing to update
-                    
+
                     set_clause = ", ".join(set_clauses)
-                    
+
+                    # 1. Execute Cypher query for graph update (DO NOT COMMIT YET)
                     sql_query = f"""
                         SELECT result FROM ag_catalog.cypher('{self.graph_name}', $$
                         MATCH (n {{draft_id: '{safe_draft_id}'}})
@@ -354,19 +358,40 @@ class RecordsManager:
                         RETURN n
                         $$) AS (result agtype)
                     """
-                    
                     cursor.execute(sql_query)
+
+                    # 2. Execute SQL for metadata update on SAME connection
+                    # (AGE search_path includes 'public' so this works)
+                    if entity_name or properties:
+                        meta_updates = []
+                        meta_params = {'vertex_id': vertex_id, 'project_id': project_id}
+
+                        if entity_name is not None:
+                            meta_updates.append("entity_name = %(name)s")
+                            meta_params['name'] = entity_name
+
+                        if properties is not None:
+                            meta_updates.append("properties = %(properties)s")
+                            meta_params['properties'] = json.dumps(properties)
+
+                        if meta_updates:
+                            meta_updates.append("updated_at = NOW()")
+                            meta_query = f"""
+                                UPDATE novel_graph_vertices
+                                SET {', '.join(meta_updates)}
+                                WHERE project_id = %(project_id)s AND vertex_id = %(vertex_id)s
+                            """
+                            cursor.execute(meta_query, meta_params)
+
+                    # 3. BOTH succeeded - now commit (single transaction)
                     conn.commit()
-            
-            # Second: Update metadata record AFTER releasing AGE connection
-            # This prevents nested connection acquisition which exhausts the pool
-            if entity_name or properties:
-                self._update_vertex_metadata(vertex_id, entity_name, properties)
-            
+
+            # Connection returned to pool by context manager
             logger.info(f"Updated entity vertex_id: {vertex_id}")
             return True
-                    
+
         except Exception as e:
+            # Transaction auto-rolled back on exception, connection returned to pool
             logger.error(f"Failed to update entity vertex_id {vertex_id}: {e}")
             return False
     

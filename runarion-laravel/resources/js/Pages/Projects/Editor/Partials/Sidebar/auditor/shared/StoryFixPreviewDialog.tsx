@@ -28,7 +28,10 @@ export default function StoryFixPreviewDialog({
     onClose,
 }: StoryFixPreviewDialogProps) {
     return (
-        <Dialog open={previewData !== null} onOpenChange={(open) => !open && onClose()}>
+        <Dialog
+            open={previewData !== null}
+            onOpenChange={(open) => !open && onClose()}
+        >
             <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
@@ -54,10 +57,9 @@ export default function StoryFixPreviewDialog({
                             )}
                         </div>
 
-                        <div>
-                            <Label className="text-xs text-gray-500 flex items-center gap-1">
-                                <span className="text-red-500">●</span> Original Text
-                                (will be replaced)
+                        <div className="space-y-2">
+                            <Label className="text-xs text-gray-500">
+                                Text (will be replaced)
                             </Label>
                             <div className="p-3 bg-red-50 rounded text-sm font-mono border border-red-200 max-h-32 overflow-y-auto whitespace-pre-wrap">
                                 {previewData.oldText || (
@@ -68,21 +70,22 @@ export default function StoryFixPreviewDialog({
                             </div>
                         </div>
 
-                        <div>
-                            <Label className="text-xs text-gray-500 flex items-center gap-1">
-                                <span className="text-green-500">●</span> Revised Text
-                                (editable)
+                        <div className="space-y-2">
+                            <Label className="text-xs text-gray-500">
+                                Revised Text (editable)
                             </Label>
                             <Textarea
                                 value={editedText}
-                                onChange={(e) => onEditedTextChange(e.target.value)}
+                                onChange={(e) =>
+                                    onEditedTextChange(e.target.value)
+                                }
                                 className="min-h-[120px] font-mono text-sm bg-green-50 border-green-200"
                                 placeholder="Enter the revised text..."
                             />
                         </div>
 
                         {previewData.explanation && (
-                            <div>
+                            <div className="space-y-2">
                                 <Label className="text-xs text-gray-500">
                                     AI Explanation
                                 </Label>
@@ -93,9 +96,9 @@ export default function StoryFixPreviewDialog({
                         )}
 
                         <div className="p-2 bg-yellow-50 rounded border border-yellow-200 text-xs text-yellow-700">
-                            <strong>Tip:</strong> The revised text will replace the
-                            original text in your chapter. You can edit it before
-                            applying.
+                            <strong>Tip:</strong> The revised text will replace
+                            the original text in your chapter. You can edit it
+                            before applying.
                         </div>
                     </div>
                 )}

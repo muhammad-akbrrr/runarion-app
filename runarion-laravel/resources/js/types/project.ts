@@ -145,13 +145,26 @@ export interface ProjectSettings {
     stopSequences: string[];
 }
 
+// Type for story fix confirmation request (when confidence is 50-90%)
+export interface StoryFixConfirmationRequest {
+    needsConfirmation: true;
+    matchedText: string;
+    confidence: number;
+    start: number;
+    end: number;
+    newText: string;
+}
+
+// Return type for story fix callbacks
+export type StoryFixResult = boolean | StoryFixConfirmationRequest;
+
 export interface SidebarSettingsProps {
     settings: Partial<ProjectSettings>;
     onSettingChange: (key: keyof ProjectSettings, value: any) => void;
     workspaceId?: string;
     projectId?: string;
     authorStyles?: Array<{ id: string; name: string; status?: string }>;  // Available author styles from workspace
-    onApplyStoryFix?: (oldText: string, newText: string) => boolean;  // Callback to apply story fixes to editor, returns true if successful
+    onApplyStoryFix?: (oldText: string, newText: string) => boolean;  // Callback to apply story fixes, returns success/failure
 }
 
 // Models that support thinking (internal reasoning before responding)

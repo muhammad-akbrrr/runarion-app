@@ -44,8 +44,8 @@ export default function ScanStatusSection({
                 <div className="space-y-3 pt-2">
                     <div className="flex items-center justify-between">
                         <p className="text-xs text-gray-500">
-                            Shows which chapters have been scanned and which have
-                            changes.
+                            Shows which chapters have been scanned and which
+                            have changes.
                         </p>
                         <Button
                             size="sm"
@@ -64,7 +64,7 @@ export default function ScanStatusSection({
                     {scanStatus && (
                         <>
                             {/* Summary Stats */}
-                            <div className="grid grid-cols-4 gap-2 text-center">
+                            <div className="grid grid-cols-3 gap-2 text-center">
                                 <div className="p-2 bg-gray-50 rounded">
                                     <div className="text-lg font-bold">
                                         {scanStatus.total_chapters}
@@ -107,7 +107,8 @@ export default function ScanStatusSection({
                             <div className="max-h-64 overflow-y-auto space-y-2">
                                 {Object.values(scanStatus.chapters)
                                     .sort(
-                                        (a, b) => a.chapter_order - b.chapter_order
+                                        (a, b) =>
+                                            a.chapter_order - b.chapter_order
                                     )
                                     .map((ch) => (
                                         <div
@@ -140,7 +141,8 @@ export default function ScanStatusSection({
                                                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${
                                                         ch.extraction?.warning
                                                             ? "bg-red-100 text-red-700"
-                                                            : ch.extraction?.done
+                                                            : ch.extraction
+                                                                  ?.done
                                                             ? "bg-green-100 text-green-700"
                                                             : "bg-gray-100 text-gray-500"
                                                     }`}
@@ -153,7 +155,8 @@ export default function ScanStatusSection({
                                                         <Clock className="h-3 w-3" />
                                                     )}
                                                     <span>Extract</span>
-                                                    {ch.extraction?.categories_extracted
+                                                    {ch.extraction
+                                                        ?.categories_extracted
                                                         ?.length > 0 && (
                                                         <span className="text-[10px]">
                                                             (
@@ -170,16 +173,20 @@ export default function ScanStatusSection({
                                                 {/* Record Keeper Status */}
                                                 <div
                                                     className={`flex items-center gap-1 px-1.5 py-0.5 rounded ${
-                                                        ch.record_keeper?.warning
+                                                        ch.record_keeper
+                                                            ?.warning
                                                             ? "bg-red-100 text-red-700"
-                                                            : ch.record_keeper?.done
+                                                            : ch.record_keeper
+                                                                  ?.done
                                                             ? "bg-green-100 text-green-700"
                                                             : "bg-gray-100 text-gray-500"
                                                     }`}
                                                 >
-                                                    {ch.record_keeper?.warning ? (
+                                                    {ch.record_keeper
+                                                        ?.warning ? (
                                                         <AlertTriangle className="h-3 w-3" />
-                                                    ) : ch.record_keeper?.done ? (
+                                                    ) : ch.record_keeper
+                                                          ?.done ? (
                                                         <CheckCircle className="h-3 w-3" />
                                                     ) : (
                                                         <Clock className="h-3 w-3" />
@@ -194,12 +201,19 @@ export default function ScanStatusSection({
                                                 <div className="mt-1 text-[10px] text-red-600 bg-red-50 p-1 rounded">
                                                     {ch.extraction?.warning && (
                                                         <div>
-                                                            {ch.extraction.warning}
+                                                            {
+                                                                ch.extraction
+                                                                    .warning
+                                                            }
                                                         </div>
                                                     )}
-                                                    {ch.record_keeper?.warning && (
+                                                    {ch.record_keeper
+                                                        ?.warning && (
                                                         <div>
-                                                            {ch.record_keeper.warning}
+                                                            {
+                                                                ch.record_keeper
+                                                                    .warning
+                                                            }
                                                         </div>
                                                     )}
                                                 </div>
@@ -220,8 +234,8 @@ export default function ScanStatusSection({
                             </div>
 
                             <p className="text-xs text-gray-500 italic">
-                                Use Extractor for entities, Summarizer for Record
-                                Keeper entries.
+                                Use Extractor for entities, Summarizer for
+                                Record Keeper entries.
                             </p>
                         </>
                     )}

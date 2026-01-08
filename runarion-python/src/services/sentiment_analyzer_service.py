@@ -1224,36 +1224,16 @@ Return JSON only:
     
     def get_chapters(self, project_id: str, workspace_id: str = None) -> List[Dict[str, Any]]:
         """
-        Get chapters for a project using Laravel API (primary) or direct DB (fallback).
-        Uses the same pattern as AuditorService for consistency.
+        Get chapters for a project using direct database access.
+
+        Args:
+            project_id: Project UUID
+            workspace_id: Optional workspace ID (kept for API compatibility, not used)
+
+        Returns:
+            List of chapter dictionaries with order, chapter_name, content
         """
-        import requests
-        import os
-        
-        # Primary method: Use Laravel API when workspace_id is available
-        if workspace_id:
-            try:
-                laravel_url = os.getenv('LARAVEL_SERVICE_URL', 'http://laravel-app:8000')
-                url = f"{laravel_url}/{workspace_id}/projects/{project_id}/editor/chapters"
-                
-                logger.info(f"Fetching chapters from Laravel endpoint: {url}")
-                response = requests.get(url, timeout=30)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    chapters = data.get('chapters', [])
-                    chapters_with_content = sum(1 for ch in chapters if ch.get('content') and len(ch.get('content', '').strip()) > 0)
-                    logger.info(f"Retrieved {len(chapters)} chapters from Laravel, {chapters_with_content} have content")
-                    if chapters_with_content > 0:
-                        return chapters
-                    else:
-                        logger.warning(f"Laravel returned chapters but none have content, trying DB fallback")
-                else:
-                    logger.warning(f"Laravel API returned {response.status_code}, trying direct DB")
-            except Exception as e:
-                logger.warning(f"Laravel API request failed: {e}, trying direct DB")
-        
-        # Fallback: Direct database query (uses project_content table like AuditorService)
+        # Direct database query - fetches chapters from project_content table
         conn = None
         try:
             conn = self.db_pool.getconn()

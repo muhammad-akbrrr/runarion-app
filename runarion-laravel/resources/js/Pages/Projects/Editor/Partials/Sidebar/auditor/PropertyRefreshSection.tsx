@@ -6,10 +6,12 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from "@/Components/ui/accordion";
-import { Sparkles, Loader2 } from "lucide-react";
+import { Sparkles, Loader2, ArrowRightIcon } from "lucide-react";
 import type { RefreshResults, SharedSectionProps } from "./types";
 import { getPostOptions } from "./utils";
-import CategoryEntityPicker, { type PickerMode } from "./shared/CategoryEntityPicker";
+import CategoryEntityPicker, {
+    type PickerMode,
+} from "./shared/CategoryEntityPicker";
 
 interface PropertyRefreshSectionProps extends SharedSectionProps {
     // Persisted state from parent
@@ -39,7 +41,9 @@ export default function PropertyRefreshSection({
     const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
         new Set()
     );
-    const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+    const [expandedCategory, setExpandedCategory] = useState<string | null>(
+        null
+    );
 
     const handleRefreshAllProperties = async () => {
         const targetCategories =
@@ -138,10 +142,11 @@ export default function PropertyRefreshSection({
             <AccordionContent>
                 <div className="space-y-3 pt-2">
                     <p className="text-xs text-gray-500">
-                        <strong>Arc-Aware Updates:</strong> Updates entity properties
-                        to reflect their <em>current state</em> in the story.
-                        Characters who have changed (brave → cowardly, determined →
-                        broken) will be updated. Previous values are backed up.
+                        <strong>Arc-Aware Updates:</strong> Updates entity
+                        properties to reflect their <em>current state</em> in
+                        the story. Characters who have changed (brave →
+                        cowardly, determined → broken) will be updated. Previous
+                        values are backed up.
                     </p>
 
                     <div className="p-2 bg-indigo-50 rounded text-xs space-y-1">
@@ -151,12 +156,19 @@ export default function PropertyRefreshSection({
                             </span>
                         </div>
                         <ul className="list-disc list-inside text-indigo-700 space-y-0.5 ml-1">
-                            <li>Reads all chapters to understand story progression</li>
+                            <li>
+                                Reads all chapters to understand story
+                                progression
+                            </li>
                             <li>
                                 Determines each entity's <em>current</em> state
                             </li>
-                            <li>Updates properties to match where story is NOW</li>
-                            <li>Logs changes with chapter references & reasons</li>
+                            <li>
+                                Updates properties to match where story is NOW
+                            </li>
+                            <li>
+                                Logs changes with chapter references & reasons
+                            </li>
                         </ul>
                     </div>
 
@@ -192,14 +204,21 @@ export default function PropertyRefreshSection({
                         ) : (
                             <>
                                 <Sparkles className="h-4 w-4 mr-2" />
-                                {refreshMode === "all" && "Refresh All Entities"}
+                                {refreshMode === "all" &&
+                                    "Refresh All Entities"}
                                 {refreshMode === "category" &&
-                                    `Refresh ${selectedCategories.size} Categor${
-                                        selectedCategories.size === 1 ? "y" : "ies"
+                                    `Refresh ${
+                                        selectedCategories.size
+                                    } Categor${
+                                        selectedCategories.size === 1
+                                            ? "y"
+                                            : "ies"
                                     }`}
                                 {refreshMode === "entity" &&
                                     `Refresh ${selectedEntities.size} Entit${
-                                        selectedEntities.size === 1 ? "y" : "ies"
+                                        selectedEntities.size === 1
+                                            ? "y"
+                                            : "ies"
                                     }`}
                             </>
                         )}
@@ -207,9 +226,10 @@ export default function PropertyRefreshSection({
 
                     {loadingRefresh && (
                         <div className="p-2 bg-amber-50 border border-amber-200 rounded text-xs text-amber-700">
-                            <strong>Processing in batches...</strong> Each entity is
-                            analyzed against your story. For large databases, this can
-                            take 2-5 minutes. Please don't close this tab.
+                            <strong>Processing in batches...</strong> Each
+                            entity is analyzed against your story. For large
+                            databases, this can take 2-5 minutes. Please don't
+                            close this tab.
                         </div>
                     )}
 
@@ -256,25 +276,25 @@ export default function PropertyRefreshSection({
                                 </div>
                             </div>
 
-                            {Object.keys(refreshResults.changes_by_entity).length >
-                                0 && (
-                                <div className="max-h-48 overflow-y-auto space-y-2">
+                            {Object.keys(refreshResults.changes_by_entity)
+                                .length > 0 && (
+                                <div className="max-h-64 overflow-y-auto space-y-2">
                                     {Object.entries(
                                         refreshResults.changes_by_entity
                                     ).map(([entityName, changes]) => (
                                         <div
                                             key={entityName}
-                                            className="p-2 rounded border bg-white"
+                                            className="p-2 flex flex-col gap-1.5 rounded border bg-white"
                                         >
-                                            <div className="font-medium text-sm mb-1">
+                                            <div className="font-medium text-sm">
                                                 {entityName}
                                             </div>
                                             {changes.map((change, idx) => (
                                                 <div
                                                     key={idx}
-                                                    className="text-xs bg-gray-50 p-1.5 rounded mt-1"
+                                                    className="flex flex-col gap-2 text-xs bg-gray-50 p-1.5 rounded mt-1"
                                                 >
-                                                    <div className="flex items-center gap-1">
+                                                    <div className="flex items-center gap-x-2 gap-y-1 flex-wrap">
                                                         <span className="font-medium">
                                                             {change.field}:
                                                         </span>
@@ -283,9 +303,7 @@ export default function PropertyRefreshSection({
                                                                 change.old_value
                                                             ).slice(0, 30)}
                                                         </span>
-                                                        <span className="text-gray-400">
-                                                            →
-                                                        </span>
+                                                        <ArrowRightIcon className="h-3 w-3 text-gray-400" />
                                                         <span className="text-green-600">
                                                             {String(
                                                                 change.new_value
@@ -293,7 +311,7 @@ export default function PropertyRefreshSection({
                                                         </span>
                                                     </div>
                                                     {change.reason && (
-                                                        <div className="text-gray-500 mt-0.5 italic">
+                                                        <div className="text-gray-500 italic">
                                                             {change.chapter_reference &&
                                                                 `Ch. ${change.chapter_reference}: `}
                                                             {change.reason}
@@ -310,9 +328,11 @@ export default function PropertyRefreshSection({
                                 <div className="text-xs text-red-600 bg-red-50 p-2 rounded">
                                     <strong>Errors:</strong>
                                     <ul className="list-disc list-inside">
-                                        {refreshResults.errors.map((err, idx) => (
-                                            <li key={idx}>{err}</li>
-                                        ))}
+                                        {refreshResults.errors.map(
+                                            (err, idx) => (
+                                                <li key={idx}>{err}</li>
+                                            )
+                                        )}
                                     </ul>
                                 </div>
                             )}
@@ -321,8 +341,8 @@ export default function PropertyRefreshSection({
 
                     {!refreshResults && !loadingRefresh && (
                         <p className="text-xs text-gray-500 italic text-center">
-                            Run refresh to update entity properties to current story
-                            state
+                            Run refresh to update entity properties to current
+                            story state
                         </p>
                     )}
                 </div>

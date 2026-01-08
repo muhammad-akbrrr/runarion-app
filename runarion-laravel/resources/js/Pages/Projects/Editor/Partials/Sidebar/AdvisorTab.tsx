@@ -71,10 +71,12 @@ interface AdvisorMessage {
     created_at: string;
 }
 
+import type { StoryFixResult } from "@/types/project";
+
 interface AdvisorTabProps {
     workspaceId: string;
     projectId: string;
-    onApplyEdit?: (oldText: string, newText: string) => boolean;
+    onApplyEdit?: (oldText: string, newText: string) => StoryFixResult;
 }
 
 // Helper to get CSRF token
@@ -1065,7 +1067,7 @@ export default function AdvisorTab({
                                                 className="bg-green-600 hover:bg-green-700"
                                                 onClick={() => {
                                                     if (onApplyEdit) {
-                                                        const success =
+                                                        const result =
                                                             onApplyEdit(
                                                                 editSuggestions[
                                                                     idx
@@ -1074,11 +1076,14 @@ export default function AdvisorTab({
                                                                     idx
                                                                 ].newText
                                                             );
-                                                        alert(
-                                                            success
-                                                                ? "Edit applied!"
-                                                                : "Could not find text to replace."
-                                                        );
+                                                        // Handle StoryFixResult: true = success, false = failed, object = needs confirmation
+                                                        if (result === true) {
+                                                            alert("Edit applied!");
+                                                        } else if (typeof result === 'object' && result.needsConfirmation) {
+                                                            alert(`Found a ${(result.confidence * 100).toFixed(0)}% match. Please use the Auditor tab to confirm this edit.`);
+                                                        } else {
+                                                            alert("Could not find text to replace. The text may have changed.");
+                                                        }
                                                     }
                                                 }}
                                             >

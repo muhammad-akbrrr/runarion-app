@@ -6,13 +6,13 @@ import { SidebarSettingsProps } from "@/types/project";
 import AuditorTab from "@/Pages/Projects/Editor/Partials/Sidebar/AuditorTab";
 import AdvisorTab from "@/Pages/Projects/Editor/Partials/Sidebar/AdvisorTab";
 
-export function SidebarTabs({ 
+export function SidebarTabs({
     settings,
     onSettingChange,
-    workspaceId, 
+    workspaceId,
     projectId,
     authorStyles,
-    onApplyStoryFix
+    onApplyStoryFix,
 }: SidebarSettingsProps) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
@@ -91,7 +91,7 @@ export function SidebarTabs({
 
                     {/* Auditor tab content */}
                     <TabsContent value="auditor" className="mt-0">
-                        <AuditorTab 
+                        <AuditorTab
                             workspaceId={workspaceId}
                             projectId={projectId}
                             onApplyStoryFix={onApplyStoryFix}

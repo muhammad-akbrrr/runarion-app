@@ -14,7 +14,6 @@ This service handles:
 import logging
 import json
 import os
-import requests
 import uuid
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
@@ -62,22 +61,26 @@ class AuditorService:
         
         # Try to get user_id from project if workspace_id is available
         if workspace_id:
+            conn = None
             try:
-                with self.db_pool.getconn() as conn:
-                    with conn.cursor() as cursor:
-                        # Try to get user_id from workspace_members for this workspace
-                        cursor.execute("""
-                            SELECT wm.user_id 
-                            FROM workspace_members wm
-                            WHERE wm.workspace_id = %s
-                            ORDER BY wm.role = 'owner' DESC, wm.created_at ASC
-                            LIMIT 1
-                        """, (workspace_id,))
-                        result = cursor.fetchone()
-                        if result:
-                            user_id = result[0]
+                conn = self.db_pool.getconn()
+                with conn.cursor() as cursor:
+                    # Try to get user_id from workspace_members for this workspace
+                    cursor.execute("""
+                        SELECT wm.user_id
+                        FROM workspace_members wm
+                        WHERE wm.workspace_id = %s
+                        ORDER BY wm.role = 'owner' DESC, wm.created_at ASC
+                        LIMIT 1
+                    """, (workspace_id,))
+                    result = cursor.fetchone()
+                    if result:
+                        user_id = result[0]
             except Exception as e:
                 logger.debug(f"Could not get user_id from workspace: {e}, using default")
+            finally:
+                if conn:
+                    self.db_pool.putconn(conn)
         
         return QuotaCaller.from_request_data(
             user_id=user_id,
@@ -86,7 +89,165 @@ class AuditorService:
             session_id=str(uuid.uuid4()),
             api_keys=api_keys
         )
-    
+
+    def _save_entity_properties_with_retry(
+        self,
+        project_id: str,
+        vertex_id: int,
+        properties: Dict[str, Any],
+        operation_name: str = "save_entity_properties",
+        max_retries: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Save entity properties with retry for transient failures.
+
+        This helper wraps records_manager.update_entity() with retry logic
+        and error classification. Only DB operations are retried, not LLM calls.
+
+        Args:
+            project_id: Project UUID
+            vertex_id: Entity vertex ID
+            properties: Properties to save
+            operation_name: Name for logging
+            max_retries: Maximum retry attempts
+
+        Returns:
+            {'success': True} or {'error': '...', 'retry_possible': bool}
+        """
+        import time
+        from utils.database_utils import classify_db_error
+
+        initial_delay = 0.5
+        delay = initial_delay
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                success = self.records_manager.update_entity(
+                    project_id=project_id,
+                    vertex_id=vertex_id,
+                    properties=properties
+                )
+
+                if success:
+                    if attempt > 1:
+                        logger.info(f"[{operation_name}] Succeeded on attempt {attempt}")
+                    return {'success': True}
+                else:
+                    # update_entity returned False without exception
+                    # This could be a permanent issue (entity not found)
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"[{operation_name}] update_entity returned False "
+                            f"(attempt {attempt}/{max_retries}), retrying..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * 2, 4.0)
+                    else:
+                        return {
+                            'error': 'Failed to save entity properties after retries',
+                            'retry_possible': True
+                        }
+
+            except Exception as e:
+                error_type = classify_db_error(e)
+
+                if error_type == 'permanent':
+                    logger.error(f"[{operation_name}] Permanent error: {e}")
+                    return {
+                        'error': str(e),
+                        'retry_possible': False
+                    }
+
+                # Transient error - maybe retry
+                if attempt < max_retries:
+                    logger.warning(
+                        f"[{operation_name}] Transient error (attempt {attempt}/{max_retries}): "
+                        f"{e}. Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, 4.0)
+                else:
+                    logger.error(f"[{operation_name}] All {max_retries} attempts exhausted: {e}")
+                    return {
+                        'error': f'Database operation failed after {max_retries} attempts: {e}',
+                        'retry_possible': True
+                    }
+
+        return {'error': 'Unexpected error in save operation', 'retry_possible': True}
+
+    def _create_entity_with_retry(
+        self,
+        project_id: str,
+        name: str,
+        entity_type: str,
+        properties: Dict[str, Any],
+        max_retries: int = 3
+    ) -> Dict[str, Any]:
+        """
+        Create a new entity with retry for transient failures.
+
+        Args:
+            project_id: Project UUID
+            name: Entity name
+            entity_type: Entity type
+            properties: Entity properties
+            max_retries: Maximum retry attempts
+
+        Returns:
+            {'success': True, 'vertex_id': ...} or {'error': '...'}
+        """
+        import time
+        from utils.database_utils import classify_db_error
+
+        initial_delay = 0.5
+        delay = initial_delay
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                result = self.records_manager.create_entity(
+                    project_id=project_id,
+                    name=name,
+                    entity_type=entity_type,
+                    properties=properties
+                )
+
+                if result:
+                    if attempt > 1:
+                        logger.info(f"[create_entity] Succeeded on attempt {attempt}")
+                    return {'success': True, 'vertex_id': result.get('vertex_id')}
+                else:
+                    # create_entity returned None/False without exception
+                    if attempt < max_retries:
+                        logger.warning(
+                            f"[create_entity] Returned falsy value "
+                            f"(attempt {attempt}/{max_retries}), retrying..."
+                        )
+                        time.sleep(delay)
+                        delay = min(delay * 2, 4.0)
+                    else:
+                        return {'error': 'Failed to create entity after retries'}
+
+            except Exception as e:
+                error_type = classify_db_error(e)
+
+                if error_type == 'permanent':
+                    logger.error(f"[create_entity] Permanent error: {e}")
+                    return {'error': str(e)}
+
+                # Transient error - maybe retry
+                if attempt < max_retries:
+                    logger.warning(
+                        f"[create_entity] Transient error (attempt {attempt}/{max_retries}): "
+                        f"{e}. Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, 4.0)
+                else:
+                    logger.error(f"[create_entity] All {max_retries} attempts exhausted: {e}")
+                    return {'error': f'Failed to create entity after {max_retries} attempts: {e}'}
+
+        return {'error': 'Unexpected error in create operation'}
+
     # =========================================================================
     # SCAN STATUS TRACKING
     # =========================================================================
@@ -1245,15 +1406,16 @@ ANALYSIS:"""
                         new_props[field] = new_value
                         properties_changed.append(field)
                 
-                # Save updated entity
+                # Save updated entity with retry
                 vid = int(vertex_id) if isinstance(vertex_id, str) else vertex_id
-                success = self.records_manager.update_entity(
+                save_result = self._save_entity_properties_with_retry(
                     project_id=project_id,
                     vertex_id=vid,
-                    properties=new_props
+                    properties=new_props,
+                    operation_name="refresh_entity_properties"
                 )
-                
-                if success:
+
+                if save_result.get('success'):
                     return {
                         'success': True,
                         'entity_name': entity_name,
@@ -1262,7 +1424,7 @@ ANALYSIS:"""
                         'current_chapter': analysis.get('current_chapter')
                     }
                 else:
-                    return {'error': 'Failed to save updated properties'}
+                    return {'error': save_result.get('error', 'Failed to save updated properties')}
                     
             except Exception as e:
                 logger.error(f"Error parsing property refresh response: {e}")
@@ -1517,19 +1679,19 @@ OUTPUT (JSON only):"""
             
             # Check if it's a create action
             if analysis.get('action') == 'create_entity':
-                # Create new entity
+                # Create new entity with retry
                 new_entity_name = analysis.get('entity_name')
                 new_entity_type = analysis.get('entity_type', 'item')
                 new_props = analysis.get('properties', {})
-                
-                result = self.records_manager.create_entity(
+
+                create_result = self._create_entity_with_retry(
                     project_id=project_id,
                     name=new_entity_name,
                     entity_type=new_entity_type,
                     properties=new_props
                 )
-                
-                if result:
+
+                if create_result.get('success'):
                     return {
                         'success': True,
                         'action': 'created',
@@ -1538,12 +1700,24 @@ OUTPUT (JSON only):"""
                         'explanation': analysis.get('explanation', 'New entity created')
                     }
                 else:
-                    return {'error': 'Failed to create new entity'}
+                    return {'error': create_result.get('error', 'Failed to create new entity')}
             
             # Update existing entity
             field_to_update = analysis.get('field', field)
             new_value = analysis.get('new_value')
-            
+
+            # Check for sentinel values indicating LLM determined no update needed
+            invalid_sentinel_values = {'N/A', 'n/a', 'NA', 'na', 'None', 'none', 'null', ''}
+            if field_to_update in invalid_sentinel_values or new_value in invalid_sentinel_values:
+                return {
+                    'success': True,
+                    'action': 'skipped',
+                    'entity_name': entity_name,
+                    'message': 'No update needed - LLM determined the issue does not require a fix',
+                    'explanation': analysis.get('explanation', 'No changes required'),
+                    'skipped': True
+                }
+
             if not field_to_update or new_value is None:
                 return {'error': 'Could not determine field or value to update'}
             
@@ -1587,15 +1761,16 @@ OUTPUT (JSON only):"""
             })
             current_props['_property_changes'] = property_changes
             
-            # Save the entity
+            # Save the entity with retry
             vid = int(vertex_id) if isinstance(vertex_id, str) else vertex_id
-            success = self.records_manager.update_entity(
+            save_result = self._save_entity_properties_with_retry(
                 project_id=project_id,
                 vertex_id=vid,
-                properties=current_props
+                properties=current_props,
+                operation_name="apply_consistency_fix"
             )
-            
-            if success:
+
+            if save_result.get('success'):
                 return {
                     'success': True,
                     'action': 'updated',
@@ -1606,7 +1781,7 @@ OUTPUT (JSON only):"""
                     'explanation': analysis.get('explanation', 'Property updated')
                 }
             else:
-                return {'error': 'Failed to save updated entity'}
+                return {'error': save_result.get('error', 'Failed to save updated entity')}
                 
         except Exception as e:
             logger.error(f"Error in apply_consistency_fix: {e}", exc_info=True)
@@ -1679,7 +1854,7 @@ EVIDENCE FROM TEXT: {evidence}
 SUGGESTED FIX: {suggestion}
 
 CHAPTER CONTENT:
-{content[:15000]}  
+{content[:15000]}
 
 TASK:
 1. Locate the problematic text segment that causes this consistency issue
@@ -1688,7 +1863,7 @@ TASK:
 
 OUTPUT FORMAT (JSON):
 {{
-    "old_text": "The exact text segment that contains the problem (copy verbatim from the chapter)",
+    "old_text": "The exact text segment that contains the problem (copy VERBATIM from the chapter)",
     "new_text": "The revised text segment that fixes the issue",
     "explanation": "Brief explanation of what was changed and why"
 }}
@@ -1699,9 +1874,15 @@ CRITICAL JSON FORMATTING RULES:
 - Newlines in text should be: \\n
 - This is REQUIRED for valid JSON
 
+CRITICAL VERBATIM REQUIREMENT:
+- You MUST copy the old_text EXACTLY character-by-character from the chapter content above
+- Do NOT paraphrase, summarize, or rephrase any part of old_text
+- The old_text must match byte-for-byte with the original chapter text
+- Include all punctuation, quotes, spaces, and whitespace EXACTLY as they appear
+- Before responding, verify your old_text exists in the chapter by searching for it
+
 IMPORTANT:
-- The old_text must be an EXACT match of text from the chapter
-- Keep the same writing style and voice
+- Keep the same writing style and voice in new_text
 - Make the minimum necessary changes
 - Preserve paragraph breaks and formatting
 """
@@ -1748,15 +1929,20 @@ IMPORTANT:
             
             # Verify old_text exists in chapter
             if old_text not in content:
-                # Try to find a close match (fuzzy matching)
-                logger.warning(f"Exact old_text not found in chapter, will use as-is")
-            
+                # Log warning - frontend will use fuzzy matching
+                logger.warning(f"LLM returned old_text not found verbatim in chapter. Frontend will use fuzzy matching. old_text preview: {old_text[:100]}...")
+
+            # Generate content hash for change detection
+            import hashlib
+            content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+
             return {
                 'old_text': old_text,
                 'new_text': new_text,
                 'explanation': explanation,
                 'chapter_name': chapter_name,
-                'chapter_order': chapter_order
+                'chapter_order': chapter_order,
+                'content_hash': content_hash  # For detecting if chapter changed since fix was generated
             }
             
         except Exception as e:
@@ -1970,14 +2156,17 @@ ANALYSIS:"""
         merge_strategy: str = "combine"  # "combine", "prefer_source", "prefer_target"
     ) -> Dict[str, Any]:
         """
-        Merge two entities into one.
-        
+        Merge two entities into one atomically.
+
+        Both the property update and source deletion happen in a single transaction.
+        If either fails, the entire operation is rolled back.
+
         Args:
             project_id: Project UUID
             source_vertex_id: Entity to merge FROM (will be deleted)
             target_vertex_id: Entity to merge INTO (will be kept)
             merge_strategy: How to handle conflicting properties
-        
+
         Returns:
             {
                 'success': True,
@@ -1985,31 +2174,33 @@ ANALYSIS:"""
                 'deleted_entity_id': '...'
             }
         """
+        from utils.database_utils import TransientDatabaseError, PermanentDatabaseError
+
         try:
-            # Get both entities
+            # Get both entities (read-only)
             all_entities = self.records_manager.get_project_entities(project_id)
-            
+
             source_entity = None
             target_entity = None
-            
+
             for entity in all_entities:
                 vid = str(entity.get('vertex_id'))
                 if vid == str(source_vertex_id):
                     source_entity = entity
                 elif vid == str(target_vertex_id):
                     target_entity = entity
-            
+
             if not source_entity:
                 return {'error': f'Source entity {source_vertex_id} not found'}
             if not target_entity:
                 return {'error': f'Target entity {target_vertex_id} not found'}
-            
-            # Merge properties based on strategy
+
+            # Merge properties based on strategy (pure computation)
             source_props = source_entity.get('properties', {})
             target_props = target_entity.get('properties', {})
-            
+
             merged_props = {}
-            
+
             if merge_strategy == "prefer_target":
                 merged_props = {**source_props, **target_props}
             elif merge_strategy == "prefer_source":
@@ -2020,7 +2211,7 @@ ANALYSIS:"""
                 for key in all_keys:
                     source_val = source_props.get(key)
                     target_val = target_props.get(key)
-                    
+
                     if source_val is None:
                         merged_props[key] = target_val
                     elif target_val is None:
@@ -2038,7 +2229,7 @@ ANALYSIS:"""
                     else:
                         # Default to target
                         merged_props[key] = target_val
-            
+
             # Merge _summaries specially
             source_summaries = source_props.get('_summaries', [])
             target_summaries = target_props.get('_summaries', [])
@@ -2052,66 +2243,184 @@ ANALYSIS:"""
                     if s and s.get('chapter_number') and s['chapter_number'] not in all_summaries:
                         all_summaries[s['chapter_number']] = s
                 merged_props['_summaries'] = list(all_summaries.values())
-            
-            # Update target entity with merged properties
-            success = self.records_manager.update_entity(
+
+            # Execute atomic merge with retry
+            return self._merge_entities_atomic(
                 project_id=project_id,
-                vertex_id=int(target_vertex_id) if isinstance(target_vertex_id, str) else target_vertex_id,
-                properties=merged_props
+                source_vertex_id=source_vertex_id,
+                target_vertex_id=target_vertex_id,
+                merged_props=merged_props
             )
-            
-            if not success:
-                return {'error': 'Failed to update target entity with merged properties'}
-            
-            # Delete source entity
-            delete_success = self.records_manager.delete_entity(
-                project_id=project_id,
-                vertex_id=int(source_vertex_id) if isinstance(source_vertex_id, str) else source_vertex_id
-            )
-            
-            if not delete_success:
-                logger.warning(f"Merged properties but failed to delete source entity {source_vertex_id}")
-            
-            return {
-                'success': True,
-                'merged_into': target_vertex_id,
-                'deleted': source_vertex_id if delete_success else None,
-                'merged_properties': merged_props
-            }
-            
+
+        except TransientDatabaseError as e:
+            logger.error(f"Merge failed after retries (transient): {e}")
+            return {'error': f'Database temporarily unavailable: {e}', 'retry_possible': True}
+        except PermanentDatabaseError as e:
+            logger.error(f"Merge failed permanently: {e}")
+            return {'error': str(e), 'retry_possible': False}
         except Exception as e:
             logger.error(f"Error merging entities: {e}", exc_info=True)
             return {'error': str(e)}
+
+    def _merge_entities_atomic(
+        self,
+        project_id: str,
+        source_vertex_id: str,
+        target_vertex_id: str,
+        merged_props: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Atomic merge operation - update target and delete source in single transaction.
+
+        Includes retry with exponential backoff for transient failures.
+        If any operation fails, entire transaction is rolled back.
+
+        Args:
+            project_id: Project UUID
+            source_vertex_id: Entity to merge FROM (will be deleted)
+            target_vertex_id: Entity to merge INTO (will be kept)
+            merged_props: Pre-computed merged properties
+
+        Returns:
+            Success dict or raises exception
+        """
+        import time
+        from utils.database_utils import classify_db_error, TransientDatabaseError, PermanentDatabaseError
+
+        max_retries = 3
+        initial_delay = 0.5
+        delay = initial_delay
+
+        source_vid = int(source_vertex_id) if isinstance(source_vertex_id, str) else source_vertex_id
+        target_vid = int(target_vertex_id) if isinstance(target_vertex_id, str) else target_vertex_id
+
+        graph_draft_id = self.records_manager._project_id_to_draft_id(project_id)
+        graph_name = self.records_manager.graph_service.graph_name
+        graph_service = self.records_manager.graph_service
+
+        last_error = None
+
+        for attempt in range(1, max_retries + 1):
+            try:
+                # Single connection for both operations (atomic transaction)
+                with graph_service.get_age_connection() as conn:
+                    with conn.cursor() as cursor:
+                        # Idempotency check: Is source already deleted?
+                        cursor.execute("""
+                            SELECT vertex_id FROM novel_graph_vertices
+                            WHERE project_id = %s AND vertex_id = %s
+                        """, (project_id, source_vid))
+
+                        if cursor.fetchone() is None:
+                            # Source already deleted - merge was already done
+                            logger.info(f"Merge already completed (idempotent): {source_vid} -> {target_vid}")
+                            return {
+                                'success': True,
+                                'merged_into': str(target_vertex_id),
+                                'deleted': str(source_vertex_id),
+                                'already_merged': True
+                            }
+
+                        safe_draft_id = graph_service._escape_cypher_string(graph_draft_id)
+                        safe_props = graph_service._prepare_agtype_properties(merged_props)
+
+                        # 1. Update target entity in graph
+                        update_query = f"""
+                            SELECT result FROM ag_catalog.cypher('{graph_name}', $$
+                            MATCH (n {{draft_id: '{safe_draft_id}'}})
+                            WHERE id(n) = {target_vid}
+                            SET n.properties = {safe_props}
+                            RETURN n
+                            $$) AS (result agtype)
+                        """
+                        cursor.execute(update_query)
+
+                        # 2. Update target entity in metadata
+                        cursor.execute("""
+                            UPDATE novel_graph_vertices
+                            SET properties = %s, updated_at = NOW()
+                            WHERE project_id = %s AND vertex_id = %s
+                        """, (json.dumps(merged_props), project_id, target_vid))
+
+                        if cursor.rowcount == 0:
+                            raise PermanentDatabaseError(f"Target entity {target_vid} not found in metadata")
+
+                        # 3. Delete source entity from graph
+                        delete_query = f"""
+                            SELECT result FROM ag_catalog.cypher('{graph_name}', $$
+                            MATCH (n)
+                            WHERE id(n) = {source_vid}
+                            DETACH DELETE n
+                            RETURN count(n) AS deleted_count
+                            $$) AS (result agtype)
+                        """
+                        cursor.execute(delete_query)
+
+                        # 4. Delete source entity from metadata
+                        cursor.execute("""
+                            DELETE FROM novel_graph_vertices
+                            WHERE project_id = %s AND vertex_id = %s
+                        """, (project_id, source_vid))
+
+                    # All operations succeeded - commit
+                    conn.commit()
+
+                logger.info(f"Atomic merge completed: {source_vid} -> {target_vid}")
+
+                return {
+                    'success': True,
+                    'merged_into': str(target_vertex_id),
+                    'deleted': str(source_vertex_id),
+                    'merged_properties': merged_props
+                }
+
+            except (TransientDatabaseError, PermanentDatabaseError):
+                raise  # Re-raise our custom errors
+
+            except Exception as e:
+                last_error = e
+                error_type = classify_db_error(e)
+
+                if error_type == 'permanent':
+                    logger.error(f"[merge_entities_atomic] Permanent error: {e}")
+                    raise PermanentDatabaseError(f"Merge failed: {e}") from e
+
+                # Transient error - maybe retry
+                if attempt < max_retries:
+                    logger.warning(
+                        f"[merge_entities_atomic] Transient error (attempt {attempt}/{max_retries}): "
+                        f"{e}. Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, 4.0)
+                else:
+                    logger.error(f"[merge_entities_atomic] All {max_retries} attempts exhausted: {e}")
+                    raise TransientDatabaseError(
+                        f"Merge failed after {max_retries} attempts: {e}"
+                    ) from e
+
+        # Should not reach here
+        if last_error:
+            raise TransientDatabaseError(f"Merge failed: {last_error}") from last_error
     
     def get_chapters(self, project_id: str, workspace_id: str = None) -> List[Dict[str, Any]]:
         """
         Fetch all chapters for a project with current content from version control.
-        
+
+        Uses direct database access to query project_content and version control tables.
+
         Args:
             project_id: Project UUID
-            workspace_id: Optional workspace ID (for Laravel endpoint - preferred when available)
-            
+            workspace_id: Optional workspace ID (kept for API compatibility, not used)
+
         Returns:
             List of chapter dictionaries with order, chapter_name, content
         """
-        # PRIORITY: Use Laravel endpoint first when workspace_id is available
-        # Laravel endpoint properly handles version control and returns current content
-        if workspace_id:
-            logger.info(f"Using Laravel endpoint to fetch chapters (workspace_id available)")
-            chapters = self._get_chapters_via_laravel(project_id, workspace_id)
-            if chapters and len(chapters) > 0:
-                chapters_with_content = sum(1 for ch in chapters if ch.get('content') and len(ch.get('content', '').strip()) > 0)
-                logger.info(f"Retrieved {len(chapters)} chapters from Laravel, {chapters_with_content} have content")
-                if chapters_with_content > 0:
-                    return chapters
-                else:
-                    logger.warning(f"Laravel endpoint returned chapters but none have content, trying database fallback")
-            else:
-                logger.warning(f"Laravel endpoint returned no chapters, trying database fallback")
-        
-        # Fallback: Try direct database query if Laravel endpoint unavailable or failed
+        from utils.database_utils import utf8_database_connection
+
+        # Direct database query - fetches chapters with version control content
         try:
-            with self.db_pool.getconn() as conn:
+            with utf8_database_connection(self.db_pool, operation_name="get_chapters") as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         SELECT content FROM project_content 
@@ -2175,54 +2484,7 @@ ANALYSIS:"""
         except Exception as e:
             logger.error(f"Failed to fetch chapters from database for project {project_id}: {e}", exc_info=True)
             return []
-    
-    def _get_chapters_via_laravel(self, project_id: str, workspace_id: str) -> List[Dict[str, Any]]:
-        """
-        Fallback: Get chapters via Laravel API endpoint (which includes version control content).
-        
-        Args:
-            project_id: Project UUID
-            workspace_id: Workspace UUID
-            
-        Returns:
-            List of chapter dictionaries with content
-        """
-        try:
-            laravel_url = os.getenv('LARAVEL_SERVICE_URL', 'http://laravel-app:8000')
-            url = f"{laravel_url}/{workspace_id}/projects/{project_id}/editor/chapters"
-            
-            logger.info(f"Fetching chapters from Laravel endpoint: {url}")
-            
-            # Try with retries and longer timeout
-            max_retries = 2
-            timeout_seconds = 30  # Increased from 10
-            
-            for attempt in range(max_retries + 1):
-                try:
-                    response = requests.get(url, timeout=timeout_seconds)
-                    
-                    if response.status_code == 200:
-                        data = response.json()
-                        chapters = data.get('chapters', [])
-                        chapters_with_content = sum(1 for ch in chapters if ch.get('content') and len(ch.get('content', '').strip()) > 0)
-                        logger.info(f"Retrieved {len(chapters)} chapters from Laravel, {chapters_with_content} have content")
-                        return chapters
-                    else:
-                        logger.error(f"Laravel endpoint returned {response.status_code}: {response.text}")
-                        return []
-                        
-                except requests.exceptions.Timeout:
-                    if attempt < max_retries:
-                        logger.warning(f"Timeout fetching chapters (attempt {attempt + 1}/{max_retries + 1}), retrying...")
-                        continue
-                    else:
-                        logger.error(f"Timeout fetching chapters after {max_retries + 1} attempts")
-                        return []
-                
-        except Exception as e:
-            logger.error(f"Failed to fetch chapters from Laravel endpoint: {e}")
-            return []
-    
+
     def _get_current_chapter_content(self, conn, project_id: str, chapter_order: int) -> Optional[str]:
         """
         Get current chapter content from version control.
@@ -2887,15 +3149,17 @@ OUTPUT (JSON only):"""
     def get_collection_types(self, project_id: str) -> Dict[str, Any]:
         """
         Get all collection types (system + custom) with field schemas.
-        
+
         Args:
             project_id: Project UUID
-            
+
         Returns:
             Dictionary with system and custom collection types
         """
+        from utils.database_utils import utf8_database_connection
+
         try:
-            with self.db_pool.getconn() as conn:
+            with utf8_database_connection(self.db_pool, operation_name="get_collection_types") as conn:
                 with conn.cursor() as cursor:
                     # Get custom types from database
                     logger.debug(f"Querying custom types for project_id: {project_id}")

@@ -1,15 +1,85 @@
 """
 Database utilities for standardizing UTF-8 encoding and safe database operations.
 Provides helper functions for consistent text handling across the pipeline.
+Includes transaction management with retry capabilities.
 """
 
 import json
 import logging
-from typing import Any, Optional, Dict, List, Union
+import time
+from typing import Any, Optional, Dict, List, Union, Callable
+from functools import wraps
 import psycopg2
 from contextlib import contextmanager
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Error Classification for Transaction Retry
+# =============================================================================
+
+class TransientDatabaseError(Exception):
+    """
+    Database error that may succeed on retry.
+    Examples: pool exhaustion, connection timeout, deadlock, network issues.
+    """
+    pass
+
+
+class PermanentDatabaseError(Exception):
+    """
+    Database error that will NOT succeed on retry.
+    Examples: constraint violation, syntax error, entity not found.
+    """
+    pass
+
+
+# Indicators of transient (retryable) errors
+TRANSIENT_ERROR_INDICATORS = [
+    'connection pool exhausted',
+    'pool exhausted',
+    'connection timed out',
+    'connection refused',
+    'network error',
+    'deadlock',
+    'could not connect',
+    'server closed the connection',
+    'connection reset',
+    'too many connections',
+    'serialization failure',
+    'lock wait timeout',
+    'timeout expired',
+    'connection lost',
+]
+
+
+def classify_db_error(error: Exception) -> str:
+    """
+    Classify database errors as transient (retryable) or permanent.
+
+    Args:
+        error: The exception to classify
+
+    Returns:
+        'transient' or 'permanent'
+    """
+    error_str = str(error).lower()
+
+    # Check for known transient indicators
+    for indicator in TRANSIENT_ERROR_INDICATORS:
+        if indicator in error_str:
+            return 'transient'
+
+    # Check psycopg2 specific error types
+    if isinstance(error, psycopg2.OperationalError):
+        return 'transient'  # Usually connection issues
+
+    if isinstance(error, (psycopg2.IntegrityError, psycopg2.ProgrammingError)):
+        return 'permanent'  # Constraint violations, syntax errors
+
+    # Default to permanent for unknown errors (fail fast for safety)
+    return 'permanent'
 
 
 def ensure_utf8_text(text: Any) -> str:
@@ -220,35 +290,181 @@ def safe_update_text(cursor, table: str, data: Dict[str, Any],
 
 
 @contextmanager
-def utf8_database_connection(connection_pool):
+def utf8_database_connection(
+    connection_pool,
+    max_retries: int = 1,
+    initial_delay: float = 0.5,
+    max_delay: float = 4.0,
+    operation_name: str = "database_operation"
+):
     """
     Context manager that ensures UTF-8 encoding for database connection.
-    
+    Supports automatic retry with exponential backoff for transient errors.
+
     Args:
         connection_pool: Database connection pool
-        
+        max_retries: Maximum retry attempts (default 1 = no retry, backward compatible)
+        initial_delay: Initial delay between retries in seconds (default 0.5)
+        max_delay: Maximum delay cap for exponential backoff (default 4.0)
+        operation_name: Name for logging purposes
+
     Yields:
         Database connection with UTF-8 encoding set
+
+    Raises:
+        TransientDatabaseError: After all retries exhausted for transient errors
+        PermanentDatabaseError: Immediately for permanent errors
     """
     conn = None
-    try:
-        conn = connection_pool.getconn()
-        
-        # Set connection encoding to UTF-8
-        conn.set_client_encoding('UTF8')
-        
-        # Set connection to autocommit=False for transactions
-        conn.autocommit = False
-        
-        yield conn
-        
-    except Exception as e:
-        if conn:
-            conn.rollback()
-        raise e
-    finally:
-        if conn:
-            connection_pool.putconn(conn)
+    attempt = 0
+    delay = initial_delay
+    last_error = None
+
+    while attempt < max_retries:
+        attempt += 1
+        conn = None  # Reset for each attempt
+
+        try:
+            # Acquire connection
+            try:
+                conn = connection_pool.getconn()
+            except Exception as pool_error:
+                error_type = classify_db_error(pool_error)
+                if error_type == 'transient' and attempt < max_retries:
+                    logger.warning(
+                        f"[{operation_name}] Pool error (attempt {attempt}/{max_retries}): "
+                        f"{pool_error}. Retrying in {delay:.1f}s..."
+                    )
+                    time.sleep(delay)
+                    delay = min(delay * 2, max_delay)
+                    continue
+                else:
+                    raise TransientDatabaseError(
+                        f"Connection pool error after {attempt} attempts: {pool_error}"
+                    ) from pool_error
+
+            # Set connection encoding to UTF-8
+            conn.set_client_encoding('UTF8')
+
+            # Set connection to autocommit=False for transactions
+            conn.autocommit = False
+
+            if max_retries > 1:
+                logger.debug(f"[{operation_name}] Transaction started (attempt {attempt})")
+
+            # Yield connection for use
+            yield conn
+
+            # If we reach here, caller's code succeeded
+            if max_retries > 1:
+                logger.debug(f"[{operation_name}] Transaction completed successfully")
+            return  # Success - exit retry loop
+
+        except (TransientDatabaseError, PermanentDatabaseError):
+            # Re-raise our custom errors without wrapping
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
+            raise
+
+        except Exception as e:
+            last_error = e
+
+            # Rollback the failed transaction
+            if conn:
+                try:
+                    conn.rollback()
+                    if max_retries > 1:
+                        logger.debug(f"[{operation_name}] Transaction rolled back")
+                except Exception as rollback_error:
+                    logger.warning(f"[{operation_name}] Rollback failed: {rollback_error}")
+
+            # Classify error
+            error_type = classify_db_error(e)
+
+            if error_type == 'permanent':
+                logger.error(f"[{operation_name}] Permanent error (no retry): {e}")
+                raise PermanentDatabaseError(
+                    f"Permanent database error in {operation_name}: {e}"
+                ) from e
+
+            # Transient error - maybe retry
+            if attempt < max_retries:
+                logger.warning(
+                    f"[{operation_name}] Transient error (attempt {attempt}/{max_retries}): "
+                    f"{e}. Retrying in {delay:.1f}s..."
+                )
+                time.sleep(delay)
+                delay = min(delay * 2, max_delay)
+            else:
+                logger.error(
+                    f"[{operation_name}] All {max_retries} retry attempts exhausted. "
+                    f"Last error: {e}"
+                )
+                raise TransientDatabaseError(
+                    f"Database operation '{operation_name}' failed after {max_retries} attempts: {e}"
+                ) from e
+
+        finally:
+            # ALWAYS return connection to pool
+            if conn:
+                try:
+                    connection_pool.putconn(conn)
+                    if max_retries > 1:
+                        logger.debug(f"[{operation_name}] Connection returned to pool")
+                except Exception as putconn_error:
+                    logger.error(f"[{operation_name}] Failed to return connection: {putconn_error}")
+                conn = None
+
+    # Safety fallback - should not be reached
+    if last_error:
+        raise TransientDatabaseError(
+            f"Database operation '{operation_name}' failed: {last_error}"
+        ) from last_error
+
+
+def with_db_transaction(
+    operation_name: str = None,
+    max_retries: int = 3,
+    initial_delay: float = 0.5
+) -> Callable:
+    """
+    Decorator that wraps a method in a database transaction with retry.
+
+    The decorated method must be a method of a class that has `self.db_pool`.
+    The method will receive `conn` as its first argument (after self),
+    which is an active database connection with a transaction started.
+
+    Args:
+        operation_name: Name for logging (defaults to method name)
+        max_retries: Maximum retry attempts (default 3)
+        initial_delay: Initial retry delay in seconds (default 0.5)
+
+    Example:
+        @with_db_transaction(operation_name="save_entity")
+        def _save_entity(self, conn, entity_id, data):
+            with conn.cursor() as cursor:
+                cursor.execute(...)
+            conn.commit()
+            return {'success': True}
+    """
+    def decorator(func: Callable) -> Callable:
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            name = operation_name or func.__name__
+
+            with utf8_database_connection(
+                self.db_pool,
+                max_retries=max_retries,
+                initial_delay=initial_delay,
+                operation_name=name
+            ) as conn:
+                return func(self, conn, *args, **kwargs)
+
+        return wrapper
+    return decorator
 
 
 def clean_text_for_database(text: str) -> str:

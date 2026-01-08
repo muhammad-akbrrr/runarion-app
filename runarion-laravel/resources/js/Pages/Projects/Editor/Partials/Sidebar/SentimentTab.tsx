@@ -188,7 +188,10 @@ export default function SentimentTab({
 
     // Load chapters and characters on mount
     useEffect(() => {
-        console.log("[SentimentTab] Component mounted, loading data...", { workspaceId, projectId });
+        console.log("[SentimentTab] Component mounted, loading data...", {
+            workspaceId,
+            projectId,
+        });
         loadChapters();
         loadCharacters();
     }, [workspaceId, projectId]);
@@ -221,17 +224,18 @@ export default function SentimentTab({
     const loadCharacters = async () => {
         setLoadingCharacters(true);
         try {
-            const url = route("records.entities", {
-                workspace_id: workspaceId,
-                project_id: projectId,
-            }) + "?category=character";
+            const url =
+                route("records.entities", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                }) + "?category=character";
             console.log("[SentimentTab] Loading characters from:", url);
 
             const response = await fetch(url, {
                 headers: {
                     Accept: "application/json",
                     "X-Requested-With": "XMLHttpRequest",
-                }
+                },
             });
 
             console.log("[SentimentTab] Response status:", response.status);
@@ -241,7 +245,11 @@ export default function SentimentTab({
                 console.log("[SentimentTab] Loaded characters:", data);
                 setCharacters(data.entities || []);
             } else {
-                console.error("[SentimentTab] Failed to load characters:", response.status, await response.text());
+                console.error(
+                    "[SentimentTab] Failed to load characters:",
+                    response.status,
+                    await response.text()
+                );
             }
         } catch (error) {
             console.error("[SentimentTab] Error loading characters:", error);
@@ -717,7 +725,9 @@ export default function SentimentTab({
                             Select exactly 2 characters for focused analysis:
                         </p>
                         {loadingCharacters && (
-                            <p className="text-xs text-blue-500 italic">Loading characters...</p>
+                            <p className="text-xs text-blue-500 italic">
+                                Loading characters...
+                            </p>
                         )}
                         {!loadingCharacters && characters.length === 0 && (
                             <p className="text-xs text-amber-600 italic">
@@ -925,9 +935,7 @@ export default function SentimentTab({
                         </Button>
                     </TooltipTrigger>
                     <TooltipContent className="max-w-xs">
-                        <p className="font-semibold">
-                            ♻️ Reassess Relationships
-                        </p>
+                        <p className="font-semibold">Reassess Relationships</p>
                         <p className="text-xs text-gray-400 mt-1">
                             Re-run the analysis for the selected mode. Use this
                             when:
@@ -982,22 +990,12 @@ export default function SentimentTab({
                 <div className="border rounded-lg overflow-hidden w-full">
                     {/* Summary Header */}
                     <div className="p-3 bg-linear-to-r from-rose-50 to-pink-50 border-b">
-                        <div className="flex items-center justify-between mb-2">
-                            <h4 className="text-sm font-semibold text-rose-900">
-                                {isV2Results
-                                    ? "V2 Analysis Results"
-                                    : "Analysis Results"}
+                        <div className="flex items-center justify-between mb-2 gap-2">
+                            <h4 className="text-sm font-semibold text-rose-900 shrink-0">
+                                Analysis Results
                             </h4>
-                            <div className="flex gap-2 text-xs">
+                            <div className="flex gap-2 text-xs flex-wrap justify-end">
                                 {/* Only show interactions count for V1 */}
-                                {!isV2Results && (
-                                    <Badge
-                                        variant="secondary"
-                                        className="bg-blue-100 text-blue-700"
-                                    >
-                                        {interactions.length} interactions
-                                    </Badge>
-                                )}
                                 <Badge
                                     variant="secondary"
                                     className="bg-purple-100 text-purple-700"
@@ -1006,686 +1004,287 @@ export default function SentimentTab({
                                     relationships
                                 </Badge>
                                 {/* Show chapter count for V2 */}
-                                {isV2Results &&
-                                    aggregatedRelationships[0]
-                                        ?.chapter_analyses && (
-                                        <Badge
-                                            variant="secondary"
-                                            className="bg-indigo-100 text-indigo-700"
-                                        >
-                                            {
-                                                aggregatedRelationships[0]
-                                                    .chapter_analyses.length
-                                            }{" "}
-                                            chapters
-                                        </Badge>
-                                    )}
+                                {aggregatedRelationships[0]
+                                    ?.chapter_analyses && (
+                                    <Badge
+                                        variant="secondary"
+                                        className="bg-indigo-100 text-indigo-700"
+                                    >
+                                        {
+                                            aggregatedRelationships[0]
+                                                .chapter_analyses.length
+                                        }{" "}
+                                        chapters
+                                    </Badge>
+                                )}
                             </div>
                         </div>
-
-                        {/* Chapter Summary - Only show for V1 */}
-                        {!isV2Results && chapterResults.length > 0 && (
-                            <div className="flex flex-wrap gap-1">
-                                {chapterResults.map((ch) => (
-                                    <Tooltip key={ch.chapter_number}>
-                                        <TooltipTrigger>
-                                            <Badge
-                                                variant="outline"
-                                                className={`text-xs ${
-                                                    ch.status === "success"
-                                                        ? "bg-green-50 text-green-700 border-green-200"
-                                                        : ch.status === "error"
-                                                        ? "bg-red-50 text-red-700 border-red-200"
-                                                        : "bg-gray-50 text-gray-500 border-gray-200"
-                                                }`}
-                                            >
-                                                Ch{ch.chapter_number + 1}:{" "}
-                                                {ch.interactions_found || 0}
-                                            </Badge>
-                                        </TooltipTrigger>
-                                        <TooltipContent>
-                                            <p>{ch.chapter}</p>
-                                            <p className="text-xs">
-                                                {ch.interactions_found || 0}{" "}
-                                                interactions found
-                                            </p>
-                                        </TooltipContent>
-                                    </Tooltip>
-                                ))}
-                            </div>
-                        )}
                     </div>
 
+                    {/* TODO: FIX THE BOTCHED UI */}
+
                     {/* View Mode Tabs - For V2, only show Relationships tab */}
-                    <Tabs
-                        value={resultViewMode}
-                        onValueChange={(v) => setResultViewMode(v as any)}
-                        className="w-full"
-                    >
-                        <TabsList
-                            className={`w-full h-9 p-0.5 bg-gray-100/80 ${
-                                isV2Results
-                                    ? "grid grid-cols-1"
-                                    : "grid grid-cols-3"
-                            }`}
-                        >
-                            <TabsTrigger
-                                value="relationships"
-                                className="text-xs h-8 data-[state=active]:bg-white"
-                            >
-                                <Users className="h-3 w-3 mr-1" />
-                                Relationships
-                            </TabsTrigger>
-                            {/* Only show Interactions and Chapters tabs for V1 */}
-                            {!isV2Results && (
-                                <>
-                                    <TabsTrigger
-                                        value="interactions"
-                                        className="text-xs h-8 data-[state=active]:bg-white"
+                    <ScrollArea className="h-[350px] w-full">
+                        <div className="p-2 space-y-2 w-full max-w-full">
+                            {aggregatedRelationships.map((rel) => {
+                                const key = getRelationshipKey(rel);
+                                const isExpanded = expandedItems.has(key);
+
+                                return (
+                                    <Collapsible
+                                        key={key}
+                                        open={isExpanded}
+                                        onOpenChange={() => toggleExpanded(key)}
+                                        className="w-full"
                                     >
-                                        <MessageSquare className="h-3 w-3 mr-1" />
-                                        Interactions
-                                    </TabsTrigger>
-                                    <TabsTrigger
-                                        value="chapters"
-                                        className="text-xs h-8 data-[state=active]:bg-white"
-                                    >
-                                        <BookOpen className="h-3 w-3 mr-1" />
-                                        By Chapter
-                                    </TabsTrigger>
-                                </>
-                            )}
-                        </TabsList>
-
-                        {/* Aggregated Relationships View */}
-                        <TabsContent value="relationships" className="m-0">
-                            <ScrollArea className="h-[350px] w-full">
-                                <div className="p-2 space-y-2 w-full max-w-full">
-                                    {aggregatedRelationships.map((rel) => {
-                                        const key = getRelationshipKey(rel);
-                                        const isExpanded =
-                                            expandedItems.has(key);
-
-                                        return (
-                                            <Collapsible
-                                                key={key}
-                                                open={isExpanded}
-                                                onOpenChange={() =>
-                                                    toggleExpanded(key)
-                                                }
-                                                className="w-full"
-                                            >
-                                                <div className="border rounded-lg w-full overflow-hidden">
-                                                    <CollapsibleTrigger className="w-full">
-                                                        <div className="p-3 hover:bg-gray-50 cursor-pointer">
-                                                            {/* Responsive header - stacks on small screens */}
-                                                            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                                    {isExpanded ? (
-                                                                        <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
-                                                                    ) : (
-                                                                        <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
-                                                                    )}
-                                                                    <span className="font-medium text-sm">
-                                                                        {
-                                                                            rel.source
-                                                                        }
-                                                                    </span>
-                                                                    <ArrowRight className="h-3 w-3 text-gray-400 shrink-0" />
-                                                                    <span className="font-medium text-sm">
-                                                                        {
-                                                                            rel.target
-                                                                        }
-                                                                    </span>
-                                                                </div>
-                                                                <div className="flex items-center gap-1.5 ml-auto">
-                                                                    <Badge
-                                                                        variant="outline"
-                                                                        className="text-xs whitespace-nowrap"
-                                                                    >
-                                                                        {isV2Results
-                                                                            ? `${
-                                                                                  rel
-                                                                                      .chapter_analyses
-                                                                                      ?.length ||
-                                                                                  rel.interaction_count
-                                                                              } ch`
-                                                                            : `${rel.interaction_count} int`}
-                                                                    </Badge>
-                                                                    <div
-                                                                        className={`px-1.5 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${getSentimentColor(
-                                                                            rel.sentiment_score
-                                                                        )}`}
-                                                                    >
-                                                                        {rel.sentiment_score >
-                                                                        0
-                                                                            ? "+"
-                                                                            : ""}
-                                                                        {
-                                                                            rel.sentiment_score
-                                                                        }
-                                                                    </div>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    </CollapsibleTrigger>
-                                                    <CollapsibleContent className="w-full">
-                                                        <div className="px-3 pb-3 pt-1 border-t bg-gray-50/50 space-y-3 w-full overflow-x-hidden">
-                                                            {/* Relationship Type & Tone */}
-                                                            <div className="flex flex-wrap gap-2 w-full">
-                                                                <Badge className="whitespace-normal text-wrap">
-                                                                    {rel.relationship_type.replace(
-                                                                        /_/g,
-                                                                        " "
-                                                                    )}
-                                                                </Badge>
-                                                                <Badge
-                                                                    variant="outline"
-                                                                    className="capitalize whitespace-normal text-wrap max-w-full"
-                                                                >
-                                                                    {
-                                                                        rel.emotional_tone
-                                                                    }
-                                                                </Badge>
-                                                                {rel.chapter_range && (
-                                                                    <Badge
-                                                                        variant="secondary"
-                                                                        className="text-xs"
-                                                                    >
-                                                                        Ch
-                                                                        {rel
-                                                                            .chapter_range
-                                                                            .first +
-                                                                            1}{" "}
-                                                                        - Ch
-                                                                        {rel
-                                                                            .chapter_range
-                                                                            .last +
-                                                                            1}
-                                                                    </Badge>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Tone Breakdown */}
-                                                            {rel.tone_breakdown &&
-                                                                Object.keys(
-                                                                    rel.tone_breakdown
-                                                                ).length >
-                                                                    1 && (
-                                                                    <div>
-                                                                        <Label className="text-xs font-semibold text-gray-600">
-                                                                            Tone
-                                                                            Distribution:
-                                                                        </Label>
-                                                                        <div className="flex flex-wrap gap-1 mt-1">
-                                                                            {Object.entries(
-                                                                                rel.tone_breakdown
-                                                                            ).map(
-                                                                                ([
-                                                                                    tone,
-                                                                                    count,
-                                                                                ]) => (
-                                                                                    <span
-                                                                                        key={
-                                                                                            tone
-                                                                                        }
-                                                                                        className="text-xs px-2 py-0.5 bg-gray-100 rounded"
-                                                                                    >
-                                                                                        {
-                                                                                            tone
-                                                                                        }
-
-                                                                                        :{" "}
-                                                                                        {
-                                                                                            count
-                                                                                        }
-                                                                                    </span>
-                                                                                )
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                            {/* Context */}
-                                                            {rel.context && (
-                                                                <div className="w-full">
-                                                                    <Label className="text-xs font-semibold text-gray-600">
-                                                                        Context:
-                                                                    </Label>
-                                                                    <p
-                                                                        className="text-xs text-gray-700 mt-1 leading-relaxed w-full"
-                                                                        style={{
-                                                                            wordWrap:
-                                                                                "break-word",
-                                                                            overflowWrap:
-                                                                                "break-word",
-                                                                            whiteSpace:
-                                                                                "pre-wrap",
-                                                                        }}
-                                                                    >
-                                                                        {
-                                                                            rel.context
-                                                                        }
-                                                                    </p>
-                                                                </div>
+                                        <div className="border rounded-lg w-full overflow-hidden">
+                                            <CollapsibleTrigger className="w-full">
+                                                <div className="p-3 hover:bg-gray-50 cursor-pointer">
+                                                    {/* Responsive header - stacks on small screens */}
+                                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                                                        <div className="flex items-center gap-1.5 min-w-0">
+                                                            {isExpanded ? (
+                                                                <ChevronDown className="h-4 w-4 text-gray-400 shrink-0" />
+                                                            ) : (
+                                                                <ChevronRight className="h-4 w-4 text-gray-400 shrink-0" />
                                                             )}
-
-                                                            {/* Evidence Trail */}
-                                                            {rel.text_evidence &&
-                                                                rel
-                                                                    .text_evidence
-                                                                    .length >
-                                                                    0 && (
-                                                                    <div>
-                                                                        <Label className="text-xs font-semibold text-gray-600">
-                                                                            Evidence
-                                                                            Trail
-                                                                            (
-                                                                            {
-                                                                                rel
-                                                                                    .text_evidence
-                                                                                    .length
-                                                                            }
-                                                                            ):
-                                                                        </Label>
-                                                                        <div className="mt-1 space-y-2 max-h-40 overflow-y-auto overflow-x-hidden">
-                                                                            {rel.text_evidence.map(
-                                                                                (
-                                                                                    evidence,
-                                                                                    i
-                                                                                ) => (
-                                                                                    <div
-                                                                                        key={
-                                                                                            i
-                                                                                        }
-                                                                                        className="bg-white border rounded p-2 overflow-hidden"
-                                                                                    >
-                                                                                        <div className="flex items-start gap-2">
-                                                                                            <Quote className="h-3 w-3 text-gray-400 mt-0.5 shrink-0" />
-                                                                                            <div className="flex-1 min-w-0 overflow-hidden">
-                                                                                                <p
-                                                                                                    className="text-xs italic text-gray-700 wrap-break-word"
-                                                                                                    style={{
-                                                                                                        wordBreak:
-                                                                                                            "break-word",
-                                                                                                    }}
-                                                                                                >
-                                                                                                    "
-                                                                                                    {
-                                                                                                        evidence.quote
-                                                                                                    }
-
-                                                                                                    "
-                                                                                                </p>
-                                                                                                <div className="flex items-center gap-2 mt-1">
-                                                                                                    <span className="text-xs text-gray-500">
-                                                                                                        {evidence.chapter ||
-                                                                                                            evidence.location ||
-                                                                                                            `Ch${
-                                                                                                                (evidence.chapter_number ||
-                                                                                                                    0) +
-                                                                                                                1
-                                                                                                            }`}
-                                                                                                    </span>
-                                                                                                    {evidence.interaction_type && (
-                                                                                                        <Badge
-                                                                                                            variant="outline"
-                                                                                                            className="text-xs h-4"
-                                                                                                        >
-                                                                                                            {
-                                                                                                                evidence.interaction_type
-                                                                                                            }
-                                                                                                        </Badge>
-                                                                                                    )}
-                                                                                                    {evidence.sentiment_modifier !==
-                                                                                                        undefined && (
-                                                                                                        <span
-                                                                                                            className={`text-xs font-medium ${
-                                                                                                                evidence.sentiment_modifier >
-                                                                                                                0
-                                                                                                                    ? "text-green-600"
-                                                                                                                    : evidence.sentiment_modifier <
-                                                                                                                      0
-                                                                                                                    ? "text-red-600"
-                                                                                                                    : "text-gray-600"
-                                                                                                            }`}
-                                                                                                        >
-                                                                                                            {evidence.sentiment_modifier >
-                                                                                                            0
-                                                                                                                ? "+"
-                                                                                                                : ""}
-                                                                                                            {
-                                                                                                                evidence.sentiment_modifier
-                                                                                                            }
-                                                                                                        </span>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            </div>
-                                                                                        </div>
-                                                                                    </div>
-                                                                                )
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
+                                                            <span className="font-medium text-sm">
+                                                                {rel.source}
+                                                            </span>
+                                                            <ArrowRight className="h-3 w-3 text-gray-400 shrink-0" />
+                                                            <span className="font-medium text-sm">
+                                                                {rel.target}
+                                                            </span>
                                                         </div>
-                                                    </CollapsibleContent>
+                                                        <div className="flex items-center gap-1.5 ml-auto">
+                                                            <Badge
+                                                                variant="outline"
+                                                                className="text-xs whitespace-nowrap"
+                                                            >
+                                                                {isV2Results
+                                                                    ? `${
+                                                                          rel
+                                                                              .chapter_analyses
+                                                                              ?.length ||
+                                                                          rel.interaction_count
+                                                                      } ch`
+                                                                    : `${rel.interaction_count} int`}
+                                                            </Badge>
+                                                            <div
+                                                                className={`px-1.5 py-0.5 rounded text-xs font-semibold whitespace-nowrap ${getSentimentColor(
+                                                                    rel.sentiment_score
+                                                                )}`}
+                                                            >
+                                                                {rel.sentiment_score >
+                                                                0
+                                                                    ? "+"
+                                                                    : ""}
+                                                                {
+                                                                    rel.sentiment_score
+                                                                }
+                                                            </div>
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </Collapsible>
-                                        );
-                                    })}
-                                </div>
-                            </ScrollArea>
-                        </TabsContent>
-
-                        {/* Individual Interactions View */}
-                        <TabsContent value="interactions" className="m-0">
-                            <ScrollArea className="h-[350px]">
-                                <div className="p-2 space-y-2">
-                                    {interactions.map((interaction, index) => {
-                                        const key = getInteractionKey(
-                                            interaction,
-                                            index
-                                        );
-                                        const isExpanded =
-                                            expandedItems.has(key);
-                                        const isPositive =
-                                            interaction.sentiment_modifier > 0;
-                                        const isNegative =
-                                            interaction.sentiment_modifier < 0;
-
-                                        return (
-                                            <Collapsible
-                                                key={key}
-                                                open={isExpanded}
-                                                onOpenChange={() =>
-                                                    toggleExpanded(key)
-                                                }
-                                            >
-                                                <div
-                                                    className={`border rounded-lg overflow-hidden ${
-                                                        isPositive
-                                                            ? "border-green-200"
-                                                            : isNegative
-                                                            ? "border-red-200"
-                                                            : ""
-                                                    }`}
-                                                >
-                                                    <CollapsibleTrigger className="w-full">
-                                                        <div className="p-2 flex items-center justify-between hover:bg-gray-50 cursor-pointer">
-                                                            <div className="flex items-center gap-2 flex-1 min-w-0">
-                                                                {isExpanded ? (
-                                                                    <ChevronDown className="h-3 w-3 text-gray-400 shrink-0" />
-                                                                ) : (
-                                                                    <ChevronRight className="h-3 w-3 text-gray-400 shrink-0" />
-                                                                )}
-                                                                <Badge
-                                                                    variant="secondary"
-                                                                    className="text-xs h-5"
-                                                                >
-                                                                    Ch
-                                                                    {interaction.chapter_number +
-                                                                        1}
-                                                                </Badge>
-                                                                <span className="text-xs truncate">
-                                                                    {
-                                                                        interaction.source_character
-                                                                    }
-                                                                </span>
-                                                                <ArrowRight className="h-3 w-3 text-gray-400 shrink-0" />
-                                                                <span className="text-xs truncate">
-                                                                    {
-                                                                        interaction.target_character
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                            <div className="flex items-center gap-1">
-                                                                <Badge
-                                                                    variant="outline"
-                                                                    className="text-xs h-5"
-                                                                >
-                                                                    {
-                                                                        interaction.interaction_type
-                                                                    }
-                                                                </Badge>
-                                                                <span
-                                                                    className={`text-xs font-semibold px-1.5 py-0.5 rounded ${
-                                                                        isPositive
-                                                                            ? "bg-green-100 text-green-700"
-                                                                            : isNegative
-                                                                            ? "bg-red-100 text-red-700"
-                                                                            : "bg-gray-100 text-gray-700"
-                                                                    }`}
-                                                                >
-                                                                    {interaction.sentiment_modifier >
-                                                                    0
-                                                                        ? "+"
-                                                                        : ""}
-                                                                    {
-                                                                        interaction.sentiment_modifier
-                                                                    }
-                                                                </span>
-                                                            </div>
-                                                        </div>
-                                                    </CollapsibleTrigger>
-                                                    <CollapsibleContent>
-                                                        <div className="px-3 pb-2 border-t bg-gray-50/50 space-y-2">
-                                                            {/* Context */}
-                                                            {interaction.context && (
-                                                                <p className="text-xs text-gray-700 pt-2">
-                                                                    {
-                                                                        interaction.context
-                                                                    }
-                                                                </p>
+                                            </CollapsibleTrigger>
+                                            <CollapsibleContent className="w-full">
+                                                <div className="p-3 border-t bg-gray-50/50 space-y-3 w-full overflow-x-hidden">
+                                                    {/* Relationship Type & Tone */}
+                                                    <div className="flex flex-wrap gap-2 w-full">
+                                                        <Badge className="whitespace-normal text-wrap">
+                                                            {rel.relationship_type.replace(
+                                                                /_/g,
+                                                                " "
                                                             )}
+                                                        </Badge>
+                                                        <Badge
+                                                            variant="outline"
+                                                            className="capitalize whitespace-normal text-wrap max-w-full"
+                                                        >
+                                                            {rel.emotional_tone}
+                                                        </Badge>
+                                                        {rel.chapter_range && (
+                                                            <Badge
+                                                                variant="secondary"
+                                                                className="text-xs"
+                                                            >
+                                                                Ch
+                                                                {rel
+                                                                    .chapter_range
+                                                                    .first +
+                                                                    1}{" "}
+                                                                - Ch
+                                                                {rel
+                                                                    .chapter_range
+                                                                    .last + 1}
+                                                            </Badge>
+                                                        )}
+                                                    </div>
 
-                                                            {/* Text Evidence */}
-                                                            {interaction.text_evidence && (
-                                                                <div className="bg-white border rounded p-2">
-                                                                    <div className="flex items-start gap-2">
-                                                                        <Quote className="h-3 w-3 text-gray-400 mt-0.5 shrink-0" />
-                                                                        <p className="text-xs italic text-gray-700">
-                                                                            "
-                                                                            {
-                                                                                interaction.text_evidence
-                                                                            }
-                                                                            "
-                                                                        </p>
-                                                                    </div>
-                                                                </div>
-                                                            )}
+                                                    {/* Tone Breakdown */}
+                                                    {rel.tone_breakdown &&
+                                                        Object.keys(
+                                                            rel.tone_breakdown
+                                                        ).length > 1 && (
+                                                            <div>
+                                                                <Label className="text-xs font-semibold text-gray-600">
+                                                                    Tone
+                                                                    Distribution:
+                                                                </Label>
+                                                                <div className="flex flex-wrap gap-1 mt-1">
+                                                                    {Object.entries(
+                                                                        rel.tone_breakdown
+                                                                    ).map(
+                                                                        ([
+                                                                            tone,
+                                                                            count,
+                                                                        ]) => (
+                                                                            <span
+                                                                                key={
+                                                                                    tone
+                                                                                }
+                                                                                className="text-xs px-2 py-0.5 bg-gray-100 rounded"
+                                                                            >
+                                                                                {
+                                                                                    tone
+                                                                                }
 
-                                                            {/* Sentiment Breakdown */}
-                                                            {interaction.sentiment_reasons &&
-                                                                interaction
-                                                                    .sentiment_reasons
-                                                                    .length >
-                                                                    0 && (
-                                                                    <div className="flex flex-wrap gap-1">
-                                                                        {interaction.sentiment_reasons
-                                                                            .slice(
-                                                                                0,
-                                                                                4
-                                                                            )
-                                                                            .map(
-                                                                                (
-                                                                                    reason,
-                                                                                    i
-                                                                                ) => (
-                                                                                    <span
-                                                                                        key={
-                                                                                            i
-                                                                                        }
-                                                                                        className={`text-xs px-1.5 py-0.5 rounded ${
-                                                                                            reason.includes(
-                                                                                                "+"
-                                                                                            )
-                                                                                                ? "bg-green-50 text-green-700"
-                                                                                                : reason.includes(
-                                                                                                      "-"
-                                                                                                  )
-                                                                                                ? "bg-red-50 text-red-700"
-                                                                                                : "bg-gray-100 text-gray-600"
-                                                                                        }`}
-                                                                                    >
-                                                                                        {
-                                                                                            reason
-                                                                                        }
-                                                                                    </span>
-                                                                                )
-                                                                            )}
-                                                                    </div>
-                                                                )}
-                                                        </div>
-                                                    </CollapsibleContent>
-                                                </div>
-                                            </Collapsible>
-                                        );
-                                    })}
-                                </div>
-                            </ScrollArea>
-                        </TabsContent>
-
-                        {/* By Chapter View */}
-                        <TabsContent value="chapters" className="m-0">
-                            <ScrollArea className="h-[350px]">
-                                <div className="p-2 space-y-2">
-                                    {Object.entries(interactionsByChapter)
-                                        .sort(
-                                            ([a], [b]) =>
-                                                parseInt(a) - parseInt(b)
-                                        )
-                                        .map(([chNum, chInteractions]) => {
-                                            const chapterKey = `chapter-${chNum}`;
-                                            const isExpanded =
-                                                expandedItems.has(chapterKey);
-                                            const chapterInfo =
-                                                chapterResults.find(
-                                                    (ch) =>
-                                                        ch.chapter_number ===
-                                                        parseInt(chNum)
-                                                );
-
-                                            return (
-                                                <Collapsible
-                                                    key={chapterKey}
-                                                    open={isExpanded}
-                                                    onOpenChange={() =>
-                                                        toggleExpanded(
-                                                            chapterKey
-                                                        )
-                                                    }
-                                                >
-                                                    <div className="border rounded-lg overflow-hidden">
-                                                        <CollapsibleTrigger className="w-full">
-                                                            <div className="p-3 flex items-center justify-between hover:bg-gray-50 cursor-pointer bg-linear-to-r from-blue-50/50 to-transparent">
-                                                                <div className="flex items-center gap-2">
-                                                                    {isExpanded ? (
-                                                                        <ChevronDown className="h-4 w-4 text-gray-400" />
-                                                                    ) : (
-                                                                        <ChevronRight className="h-4 w-4 text-gray-400" />
+                                                                                :{" "}
+                                                                                {
+                                                                                    count
+                                                                                }
+                                                                            </span>
+                                                                        )
                                                                     )}
-                                                                    <BookOpen className="h-4 w-4 text-blue-600" />
-                                                                    <span className="font-medium text-sm">
-                                                                        {chapterInfo?.chapter ||
-                                                                            `Chapter ${
-                                                                                parseInt(
-                                                                                    chNum
-                                                                                ) +
-                                                                                1
-                                                                            }`}
-                                                                    </span>
                                                                 </div>
-                                                                <Badge variant="secondary">
-                                                                    {
-                                                                        chInteractions.length
-                                                                    }{" "}
-                                                                    interactions
-                                                                </Badge>
                                                             </div>
-                                                        </CollapsibleTrigger>
-                                                        <CollapsibleContent>
-                                                            <div className="border-t divide-y">
-                                                                {chInteractions.map(
-                                                                    (
-                                                                        interaction,
-                                                                        index
-                                                                    ) => {
-                                                                        const isPositive =
-                                                                            interaction.sentiment_modifier >
-                                                                            0;
-                                                                        const isNegative =
-                                                                            interaction.sentiment_modifier <
-                                                                            0;
+                                                        )}
 
-                                                                        return (
+                                                    {/* Context */}
+                                                    {rel.context && (
+                                                        <div className="w-full">
+                                                            <Label className="text-xs font-semibold text-gray-600">
+                                                                Context:
+                                                            </Label>
+                                                            <p
+                                                                className="text-xs text-gray-700 mt-1 leading-relaxed w-full"
+                                                                style={{
+                                                                    wordWrap:
+                                                                        "break-word",
+                                                                    overflowWrap:
+                                                                        "break-word",
+                                                                    whiteSpace:
+                                                                        "pre-wrap",
+                                                                }}
+                                                            >
+                                                                {rel.context}
+                                                            </p>
+                                                        </div>
+                                                    )}
+
+                                                    {/* Evidence Trail */}
+                                                    {rel.text_evidence &&
+                                                        rel.text_evidence
+                                                            .length > 0 && (
+                                                            <div className="space-y-2">
+                                                                <Label className="text-xs font-semibold text-gray-600">
+                                                                    Evidence
+                                                                    Trail (
+                                                                    {
+                                                                        rel
+                                                                            .text_evidence
+                                                                            .length
+                                                                    }
+                                                                    ):
+                                                                </Label>
+                                                                <div className="space-y-2 max-h-40 overflow-y-auto overflow-x-hidden">
+                                                                    {rel.text_evidence.map(
+                                                                        (
+                                                                            evidence,
+                                                                            i
+                                                                        ) => (
                                                                             <div
                                                                                 key={
-                                                                                    index
+                                                                                    i
                                                                                 }
-                                                                                className="p-2 hover:bg-gray-50"
+                                                                                className="bg-white border rounded p-2 overflow-hidden"
                                                                             >
-                                                                                <div className="flex items-center justify-between">
-                                                                                    <div className="flex items-center gap-2">
-                                                                                        <span className="text-xs font-medium">
-                                                                                            {
-                                                                                                interaction.source_character
-                                                                                            }
-                                                                                        </span>
-                                                                                        <ArrowRight className="h-3 w-3 text-gray-400" />
-                                                                                        <span className="text-xs font-medium">
-                                                                                            {
-                                                                                                interaction.target_character
-                                                                                            }
-                                                                                        </span>
-                                                                                        <Badge
-                                                                                            variant="outline"
-                                                                                            className="text-xs h-5"
+                                                                                <div className="flex items-start gap-2">
+                                                                                    <Quote className="h-3 w-3 text-gray-400 mt-0.5 shrink-0" />
+                                                                                    <div className="flex-1 min-w-0 overflow-hidden">
+                                                                                        <p
+                                                                                            className="text-xs italic text-gray-700 wrap-break-word"
+                                                                                            style={{
+                                                                                                wordBreak:
+                                                                                                    "break-word",
+                                                                                            }}
                                                                                         >
+                                                                                            "
                                                                                             {
-                                                                                                interaction.interaction_type
+                                                                                                evidence.quote
                                                                                             }
-                                                                                        </Badge>
+
+                                                                                            "
+                                                                                        </p>
+                                                                                        <div className="flex items-center gap-2 mt-1">
+                                                                                            <span className="text-xs text-gray-500">
+                                                                                                {evidence.chapter ||
+                                                                                                    evidence.location ||
+                                                                                                    `Ch${
+                                                                                                        (evidence.chapter_number ||
+                                                                                                            0) +
+                                                                                                        1
+                                                                                                    }`}
+                                                                                            </span>
+                                                                                            {evidence.interaction_type && (
+                                                                                                <Badge
+                                                                                                    variant="outline"
+                                                                                                    className="text-xs h-4"
+                                                                                                >
+                                                                                                    {
+                                                                                                        evidence.interaction_type
+                                                                                                    }
+                                                                                                </Badge>
+                                                                                            )}
+                                                                                            {evidence.sentiment_modifier !==
+                                                                                                undefined && (
+                                                                                                <span
+                                                                                                    className={`text-xs font-medium ${
+                                                                                                        evidence.sentiment_modifier >
+                                                                                                        0
+                                                                                                            ? "text-green-600"
+                                                                                                            : evidence.sentiment_modifier <
+                                                                                                              0
+                                                                                                            ? "text-red-600"
+                                                                                                            : "text-gray-600"
+                                                                                                    }`}
+                                                                                                >
+                                                                                                    {evidence.sentiment_modifier >
+                                                                                                    0
+                                                                                                        ? "+"
+                                                                                                        : ""}
+                                                                                                    {
+                                                                                                        evidence.sentiment_modifier
+                                                                                                    }
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
                                                                                     </div>
-                                                                                    <span
-                                                                                        className={`text-xs font-semibold ${
-                                                                                            isPositive
-                                                                                                ? "text-green-600"
-                                                                                                : isNegative
-                                                                                                ? "text-red-600"
-                                                                                                : "text-gray-600"
-                                                                                        }`}
-                                                                                    >
-                                                                                        {interaction.sentiment_modifier >
-                                                                                        0
-                                                                                            ? "+"
-                                                                                            : ""}
-                                                                                        {
-                                                                                            interaction.sentiment_modifier
-                                                                                        }
-                                                                                    </span>
                                                                                 </div>
-                                                                                {interaction.context && (
-                                                                                    <p className="text-xs text-gray-600 mt-1 line-clamp-2">
-                                                                                        {
-                                                                                            interaction.context
-                                                                                        }
-                                                                                    </p>
-                                                                                )}
                                                                             </div>
-                                                                        );
-                                                                    }
-                                                                )}
+                                                                        )
+                                                                    )}
+                                                                </div>
                                                             </div>
-                                                        </CollapsibleContent>
-                                                    </div>
-                                                </Collapsible>
-                                            );
-                                        })}
-                                </div>
-                            </ScrollArea>
-                        </TabsContent>
-                    </Tabs>
+                                                        )}
+                                                </div>
+                                            </CollapsibleContent>
+                                        </div>
+                                    </Collapsible>
+                                );
+                            })}
+                        </div>
+                    </ScrollArea>
                 </div>
             )}
 

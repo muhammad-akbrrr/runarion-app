@@ -26,6 +26,8 @@ import AddChapterDialog from "./Partials/AddChapterDialog";
 import { useProjectEditor } from "./hooks";
 import { PendingEditsProvider } from "./contexts/PendingEditsContext";
 import { MagicWandButton } from "@/Components/MagicWandButton";
+import { findBestMatch } from "./utils/fuzzyTextMatch";
+import { getPlainTextFromEditor, replaceTextInLexicalEditor } from "./utils/lexicalTextReplace";
 
 // Import Echo for WebSocket connection
 import "@/echo";
@@ -442,145 +444,70 @@ export default function ProjectEditorPage({
     };
 
     // Callback for applying story fixes from the auditor
-    // Returns true if the fix was successfully applied to the editor
+    // Auto-applies the fix and returns success/failure (no confirmation dialog needed)
     const handleApplyStoryFix = useCallback((oldText: string, newText: string): boolean => {
         console.log('[StoryFix] handleApplyStoryFix called');
         console.log('[StoryFix] oldText:', oldText?.substring(0, 100));
-        
-        if (!content) {
-            console.warn('[StoryFix] No content available in editor');
+
+        const editor = editorRef.current;
+        if (!editor) {
+            console.warn('[StoryFix] No editor reference');
             return false;
         }
-        
-        // Normalize text for comparison - aggressive normalization
-        const normalizeText = (text: string): string => {
-            return text
-                .replace(/[\u2018\u2019\u201A\u201B\u2032\u2035']/g, "'")
-                .replace(/[\u201C\u201D\u201E\u201F\u2033\u2036"]/g, '"')
-                .replace(/[\u2014\u2015\u2012\u2013—–-]/g, '-')
-                .replace(/\u2026/g, '...')
-                .replace(/\u00A0/g, ' ')
-                .replace(/\r\n/g, '\n')
-                .replace(/\r/g, '\n');
+
+        // Get PLAIN TEXT from editor (not Lexical JSON)
+        const plainContent = getPlainTextFromEditor(editor);
+        if (!plainContent) {
+            console.warn('[StoryFix] No content in editor');
+            return false;
+        }
+
+        console.log('[StoryFix] Content length:', plainContent.length);
+
+        // Helper function to apply the replacement
+        const applyReplacement = (textToReplace: string) => {
+            replaceTextInLexicalEditor(editor, textToReplace, newText).then(result => {
+                if (result.success && selectedChapter) {
+                    console.log('[StoryFix] Replacement successful, saving...');
+                    setTimeout(() => {
+                        const updatedJson = JSON.stringify(editor.getEditorState().toJSON());
+                        smartSave(selectedChapter.order, updatedJson, 'manual');
+                    }, 100);
+                } else if (!result.success) {
+                    console.error('[StoryFix] Replacement failed:', result.error);
+                }
+            });
         };
-        
-        // Even more aggressive - collapse whitespace
-        const superNormalize = (text: string): string => {
-            return normalizeText(text)
-                .replace(/\n+/g, ' ')
-                .replace(/\s+/g, ' ')
-                .trim()
-                .toLowerCase();
-        };
-        
-        const normalizedContent = normalizeText(content);
-        const normalizedOldText = normalizeText(oldText);
-        
-        // Strategy 1: Exact match
-        if (content.includes(oldText)) {
-            console.log('[StoryFix] Found exact match!');
-            const newContent = content.replace(oldText, newText);
-            setContent(newContent);
-            if (selectedChapter) {
-                smartSave(selectedChapter.order, newContent, 'manual');
-            }
+
+        // Strategy 1: Exact match - auto-apply
+        if (plainContent.includes(oldText)) {
+            console.log('[StoryFix] Found exact match! Auto-applying...');
+            applyReplacement(oldText);
             return true;
         }
-        
-        // Strategy 2: Normalized match (preserves newlines)
-        if (normalizedContent.includes(normalizedOldText)) {
-            console.log('[StoryFix] Found normalized match!');
-            const idx = normalizedContent.indexOf(normalizedOldText);
-            const newContent = normalizedContent.substring(0, idx) + newText + normalizedContent.substring(idx + normalizedOldText.length);
-            setContent(newContent);
-            if (selectedChapter) {
-                smartSave(selectedChapter.order, newContent, 'manual');
-            }
+
+        // Strategy 2: Fuzzy match - auto-apply
+        console.log('[StoryFix] Trying fuzzy match...');
+        const match = findBestMatch(plainContent, oldText);
+
+        if (match.found && match.confidence >= 0.50) {
+            console.log(`[StoryFix] Found match with ${(match.confidence * 100).toFixed(0)}% confidence. Auto-applying...`);
+            applyReplacement(match.matchedText);
             return true;
         }
-        
-        // Strategy 3: Line-by-line search with fuzzy matching
-        console.log('[StoryFix] Trying line-by-line search...');
-        const contentLines = content.split('\n');
-        const oldTextSuper = superNormalize(oldText);
-        
-        // Find lines that might contain our text
-        for (let i = 0; i < contentLines.length; i++) {
-            const lineSuper = superNormalize(contentLines[i]);
-            
-            // Check if the first part of oldText appears in this line
-            const oldTextFirstWords = oldTextSuper.split(' ').slice(0, 5).join(' ');
-            if (lineSuper.includes(oldTextFirstWords)) {
-                console.log('[StoryFix] Found potential match at line', i);
-                
-                // Try to match from this line onwards
-                let combinedLines = '';
-                let endLineIdx = i;
-                
-                for (let j = i; j < Math.min(i + 10, contentLines.length); j++) {
-                    combinedLines += (j > i ? '\n' : '') + contentLines[j];
-                    const combinedSuper = superNormalize(combinedLines);
-                    
-                    if (combinedSuper.includes(oldTextSuper) || oldTextSuper.includes(combinedSuper.substring(0, oldTextSuper.length))) {
-                        endLineIdx = j;
-                        
-                        // Found a match - replace these lines
-                        const newContentLines = [
-                            ...contentLines.slice(0, i),
-                            newText,
-                            ...contentLines.slice(endLineIdx + 1)
-                        ];
-                        const newContent = newContentLines.join('\n');
-                        console.log('[StoryFix] Applied via line replacement');
-                        setContent(newContent);
-                        if (selectedChapter) {
-                            smartSave(selectedChapter.order, newContent, 'manual');
-                        }
-                        return true;
-                    }
-                }
-            }
-        }
-        
-        // Strategy 4: Substring match (if oldText is long, try first 100 chars)
-        if (oldText.length > 100) {
-            const partialOld = superNormalize(oldText.substring(0, 100));
-            const contentSuper = superNormalize(content);
-            
-            if (contentSuper.includes(partialOld)) {
-                console.log('[StoryFix] Found partial match, doing aggressive replace');
-                // Find the approximate position
-                const idx = contentSuper.indexOf(partialOld);
-                const ratio = content.length / contentSuper.length;
-                const approxStart = Math.max(0, Math.floor(idx * ratio) - 20);
-                
-                // Find the end by looking for newlines or sentence endings
-                let approxEnd = Math.min(content.length, approxStart + oldText.length + 100);
-                
-                // Try to find a clean break point
-                const afterText = content.substring(approxStart + oldText.length - 50, approxEnd + 100);
-                const periodIdx = afterText.indexOf('. ');
-                const newlineIdx = afterText.indexOf('\n');
-                
-                if (periodIdx > 0 && periodIdx < 150) {
-                    approxEnd = approxStart + oldText.length - 50 + periodIdx + 2;
-                } else if (newlineIdx > 0 && newlineIdx < 150) {
-                    approxEnd = approxStart + oldText.length - 50 + newlineIdx;
-                }
-                
-                const newContent = content.substring(0, approxStart) + newText + content.substring(approxEnd);
-                setContent(newContent);
-                if (selectedChapter) {
-                    smartSave(selectedChapter.order, newContent, 'manual');
-                }
-                return true;
-            }
-        }
-        
-        console.warn('[StoryFix] Could not find old text - all strategies failed');
+
+        // Low confidence (<50%) or not found - return false
+        console.warn('[StoryFix] Could not find text - match confidence too low or not found');
+        console.log('[StoryFix] Best match confidence:', match.found ? `${(match.confidence * 100).toFixed(0)}%` : 'No match');
         console.log('[StoryFix] Old text preview:', oldText.substring(0, 200));
         return false;
-    }, [content, setContent, selectedChapter, smartSave]);
+    }, [selectedChapter, smartSave]);
+
+    // Wrapper for LexicalEditor's inline diff - now just forwards to handleApplyStoryFix
+    // For inline editing, auto-apply matches (user can undo via Lexical history)
+    const handleInlineApplyEdit = useCallback((oldText: string, newText: string): boolean => {
+        return handleApplyStoryFix(oldText, newText);
+    }, [handleApplyStoryFix]);
 
     return (
         <PendingEditsProvider>
@@ -807,7 +734,7 @@ export default function ProjectEditorPage({
                         projectId={projectId}
                         aiModel={settings.aiModel}
                         selectionToolbarMode={settings.selectionToolbarMode}
-                        onApplyEdit={handleApplyStoryFix}
+                        onApplyEdit={handleInlineApplyEdit}
                         editorRef={editorRef}
                     />
 

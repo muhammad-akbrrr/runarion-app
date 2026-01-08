@@ -133,4 +133,5 @@ export interface StoryTextPreviewData {
     explanation: string;
     chapterName: string;
     chapterOrder: number;
+    contentHash?: string;  // Hash of chapter content when fix was generated (for change detection)
 }

@@ -21,7 +21,7 @@ interface StoryConsistencySectionProps {
     // Persisted state from parent
     storyIssues: ConsistencyIssue[];
     onStoryIssuesChange: (issues: ConsistencyIssue[]) => void;
-    // External callback for applying fixes to the editor
+    // External callback for applying fixes to the editor (auto-applies, returns success/failure)
     onApplyStoryFix?: (oldText: string, newText: string) => boolean;
 }
 
@@ -58,17 +58,20 @@ export default function StoryConsistencySection({
         setLoadingStoryCheck(true);
         onStoryIssuesChange([]);
 
-        const targetChapters =
-            storyCheckMode === "selected" ? Array.from(selectedChapters) : null;
+        // Build request payload - only include chapter_orders when specific chapters are selected
+        const payload: Record<string, any> = {
+            model: selectedModel,
+            provider: "gemini",
+        };
+
+        if (storyCheckMode === "selected" && selectedChapters.size > 0) {
+            payload.chapter_orders = Array.from(selectedChapters);
+        }
 
         try {
             const response = await fetch(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/check-consistency/story`,
-                getPostOptions({
-                    model: selectedModel,
-                    provider: "gemini",
-                    chapter_orders: targetChapters,
-                })
+                getPostOptions(payload)
             );
             if (response.ok) {
                 const data = await response.json();
@@ -113,6 +116,7 @@ export default function StoryConsistencySection({
                         chapterName:
                             results.chapter_name || issue.location || "Unknown Chapter",
                         chapterOrder: results.chapter_order ?? 0,
+                        contentHash: results.content_hash || undefined,  // Store hash for change detection
                     });
                     setEditedStoryText(results.new_text || "");
                 } else {
@@ -135,6 +139,7 @@ export default function StoryConsistencySection({
 
         try {
             if (onApplyStoryFix) {
+                // Auto-apply the fix (returns success/failure)
                 const success = onApplyStoryFix(
                     storyTextPreview.oldText,
                     editedStoryText
@@ -144,99 +149,112 @@ export default function StoryConsistencySection({
                     alert(
                         `Fix applied to ${storyTextPreview.chapterName}! The editor has been updated.`
                     );
+                    // Remove from list
+                    onStoryIssuesChange(
+                        storyIssues.filter((_, i) => i !== storyTextPreview.index)
+                    );
+                    setSelectedStoryIssues((prev) => {
+                        const next = new Set(prev);
+                        next.delete(storyTextPreview.index);
+                        return next;
+                    });
                 } else {
                     alert(
-                        `Could not find text in the current editor. The text may have changed. Please try refreshing and applying again.`
+                        `Could not find a match for the text. The chapter may have been edited since the fix was generated.`
                     );
                 }
-            } else {
-                // Fallback to direct API save
-                const chapterOrder = storyTextPreview.chapterOrder;
 
-                const chaptersResponse = await fetch(
-                    `/${workspaceId}/projects/${projectId}/editor/chapters`,
-                    { headers: { Accept: "application/json" } }
-                );
+                setStoryTextPreview(null);
+                setEditedStoryText("");
+                return;
+            }
 
-                if (chaptersResponse.ok) {
-                    const chaptersData = await chaptersResponse.json();
-                    const chapters = chaptersData.chapters || [];
-                    const chapter =
-                        chapters.find((c: any) => c.order === chapterOrder) ||
-                        chapters[0];
+            // Fallback to direct API save (when onApplyStoryFix is not provided)
+            const chapterOrder = storyTextPreview.chapterOrder;
 
-                    if (chapter && chapter.content) {
-                        const normalizeText = (text: string): string => {
-                            return text
-                                .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
-                                .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
-                                .replace(/[\u2014\u2015]/g, "--")
-                                .replace(/[\u2013]/g, "-")
-                                .replace(/\u2026/g, "...")
-                                .replace(/\u00A0/g, " ")
-                                .replace(/\s+/g, " ")
-                                .trim();
-                        };
+            const chaptersResponse = await fetch(
+                `/${workspaceId}/projects/${projectId}/editor/chapters`,
+                { headers: { Accept: "application/json" } }
+            );
 
-                        let newContent: string | null = null;
-                        if (chapter.content.includes(storyTextPreview.oldText)) {
-                            newContent = chapter.content.replace(
-                                storyTextPreview.oldText,
-                                editedStoryText
+            if (chaptersResponse.ok) {
+                const chaptersData = await chaptersResponse.json();
+                const chapters = chaptersData.chapters || [];
+                const chapter =
+                    chapters.find((c: any) => c.order === chapterOrder) ||
+                    chapters[0];
+
+                if (chapter && chapter.content) {
+                    const normalizeText = (text: string): string => {
+                        return text
+                            .replace(/[\u2018\u2019\u201A\u201B]/g, "'")
+                            .replace(/[\u201C\u201D\u201E\u201F]/g, '"')
+                            .replace(/[\u2014\u2015]/g, "--")
+                            .replace(/[\u2013]/g, "-")
+                            .replace(/\u2026/g, "...")
+                            .replace(/\u00A0/g, " ")
+                            .replace(/\s+/g, " ")
+                            .trim();
+                    };
+
+                    let newContent: string | null = null;
+                    if (chapter.content.includes(storyTextPreview.oldText)) {
+                        newContent = chapter.content.replace(
+                            storyTextPreview.oldText,
+                            editedStoryText
+                        );
+                    } else {
+                        const normalizedContent = normalizeText(chapter.content);
+                        const normalizedOldText = normalizeText(
+                            storyTextPreview.oldText
+                        );
+
+                        if (normalizedContent.includes(normalizedOldText)) {
+                            const idx = normalizedContent.indexOf(normalizedOldText);
+                            const ratio =
+                                chapter.content.length / normalizedContent.length;
+                            const start = Math.floor(idx * ratio);
+                            const end = Math.ceil(
+                                (idx + normalizedOldText.length) * ratio
                             );
-                        } else {
-                            const normalizedContent = normalizeText(chapter.content);
-                            const normalizedOldText = normalizeText(
-                                storyTextPreview.oldText
-                            );
-
-                            if (normalizedContent.includes(normalizedOldText)) {
-                                const idx = normalizedContent.indexOf(normalizedOldText);
-                                const ratio =
-                                    chapter.content.length / normalizedContent.length;
-                                const start = Math.floor(idx * ratio);
-                                const end = Math.ceil(
-                                    (idx + normalizedOldText.length) * ratio
-                                );
-                                newContent =
-                                    chapter.content.substring(0, start) +
-                                    editedStoryText +
-                                    chapter.content.substring(end);
-                            }
+                            newContent =
+                                chapter.content.substring(0, start) +
+                                editedStoryText +
+                                chapter.content.substring(end);
                         }
+                    }
 
-                        if (newContent && newContent !== chapter.content) {
-                            const updateResponse = await fetch(
-                                `/${workspaceId}/projects/${projectId}/editor/unified`,
-                                {
-                                    method: "PATCH",
-                                    headers: {
-                                        "Content-Type": "application/json",
-                                        Accept: "application/json",
-                                        "X-CSRF-TOKEN": getCsrfToken(),
+                    if (newContent && newContent !== chapter.content) {
+                        const updateResponse = await fetch(
+                            `/${workspaceId}/projects/${projectId}/editor/unified`,
+                            {
+                                method: "PATCH",
+                                headers: {
+                                    "Content-Type": "application/json",
+                                    Accept: "application/json",
+                                    "X-CSRF-TOKEN": getCsrfToken(),
+                                },
+                                body: JSON.stringify({
+                                    content: {
+                                        order: chapterOrder,
+                                        content: newContent,
+                                        trigger: "manual",
                                     },
-                                    body: JSON.stringify({
-                                        content: {
-                                            order: chapterOrder,
-                                            content: newContent,
-                                            trigger: "manual",
-                                        },
-                                    }),
-                                }
-                            );
-
-                            if (!updateResponse.ok) {
-                                throw new Error("Failed to save chapter");
+                                }),
                             }
+                        );
 
-                            alert(
-                                `Fix applied to ${storyTextPreview.chapterName}! Please refresh to see changes.`
-                            );
-                        } else {
-                            alert(
-                                "Text not found in chapter. The fix may have already been applied or the text has changed."
-                            );
+                        if (!updateResponse.ok) {
+                            throw new Error("Failed to save chapter");
                         }
+
+                        alert(
+                            `Fix applied to ${storyTextPreview.chapterName}! Please refresh to see changes.`
+                        );
+                    } else {
+                        alert(
+                            "Text not found in chapter. The fix may have already been applied or the text has changed."
+                        );
                     }
                 }
             }

@@ -84,7 +84,36 @@ class GraphDatabaseService:
         escaped = re.sub(r'[\r\n\t]+', ' ', escaped)
         
         return escaped
-    
+
+    def _sanitize_property_key(self, key: str) -> str:
+        """
+        Sanitize property key for Cypher compatibility.
+
+        Cypher property keys must be valid identifiers:
+        - Only alphanumeric characters and underscores
+        - Must start with a letter or underscore
+        - No special characters like '/', '-', etc.
+
+        Args:
+            key: Raw property key (may contain invalid characters)
+
+        Returns:
+            Sanitized key suitable for Cypher queries
+
+        Examples:
+            "N/A" -> "N_A"
+            "my-field" -> "my_field"
+            "123key" -> "_123key"
+        """
+        import re
+        # Replace invalid characters with underscore
+        sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', str(key))
+        # Ensure it starts with letter or underscore (not digit)
+        if sanitized and sanitized[0].isdigit():
+            sanitized = '_' + sanitized
+        # Return sanitized key or a fallback if empty
+        return sanitized or '_invalid_key'
+
     def _prepare_agtype_properties(self, properties: Dict[str, Any]) -> str:
         """
         Convert a properties dictionary to AGE agtype format for Cypher queries.
@@ -101,18 +130,20 @@ class GraphDatabaseService:
         # Build Cypher object notation: {key: 'value', key2: 'value2'}
         prop_parts = []
         for key, value in properties.items():
+            # Sanitize key to ensure it's a valid Cypher identifier
+            safe_key = self._sanitize_property_key(key)
             if isinstance(value, str):
                 escaped_value = self._escape_cypher_string(value)
-                prop_parts.append(f"{key}: '{escaped_value}'")
+                prop_parts.append(f"{safe_key}: '{escaped_value}'")
             elif isinstance(value, (int, float)):
-                prop_parts.append(f"{key}: {value}")
+                prop_parts.append(f"{safe_key}: {value}")
             elif isinstance(value, bool):
-                prop_parts.append(f"{key}: {str(value).lower()}")
+                prop_parts.append(f"{safe_key}: {str(value).lower()}")
             else:
                 # For complex objects, convert to JSON and escape
                 json_str = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
                 escaped_json = self._escape_cypher_string(json_str)
-                prop_parts.append(f"{key}: '{escaped_json}'")
+                prop_parts.append(f"{safe_key}: '{escaped_json}'")
         
         return "{" + ", ".join(prop_parts) + "}"
 
