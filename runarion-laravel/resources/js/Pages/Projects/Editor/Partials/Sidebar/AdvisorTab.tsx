@@ -71,12 +71,10 @@ interface AdvisorMessage {
     created_at: string;
 }
 
-import type { StoryFixResult } from "@/types/project";
-
 interface AdvisorTabProps {
     workspaceId: string;
     projectId: string;
-    onApplyEdit?: (oldText: string, newText: string) => StoryFixResult;
+    onApplyEdit?: (oldText: string, newText: string) => Promise<boolean>;
 }
 
 // Helper to get CSRF token
@@ -1065,22 +1063,14 @@ export default function AdvisorTab({
                                             <Button
                                                 size="sm"
                                                 className="bg-green-600 hover:bg-green-700"
-                                                onClick={() => {
+                                                onClick={async () => {
                                                     if (onApplyEdit) {
-                                                        const result =
-                                                            onApplyEdit(
-                                                                editSuggestions[
-                                                                    idx
-                                                                ].oldText,
-                                                                editSuggestions[
-                                                                    idx
-                                                                ].newText
-                                                            );
-                                                        // Handle StoryFixResult: true = success, false = failed, object = needs confirmation
-                                                        if (result === true) {
+                                                        const success = await onApplyEdit(
+                                                            editSuggestions[idx].oldText,
+                                                            editSuggestions[idx].newText
+                                                        );
+                                                        if (success) {
                                                             alert("Edit applied!");
-                                                        } else if (typeof result === 'object' && result.needsConfirmation) {
-                                                            alert(`Found a ${(result.confidence * 100).toFixed(0)}% match. Please use the Auditor tab to confirm this edit.`);
                                                         } else {
                                                             alert("Could not find text to replace. The text may have changed.");
                                                         }

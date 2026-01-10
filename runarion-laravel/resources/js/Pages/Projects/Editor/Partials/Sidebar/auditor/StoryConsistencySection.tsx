@@ -9,9 +9,10 @@ import {
     AccordionTrigger,
 } from "@/Components/ui/accordion";
 import { BookOpen, Loader2, Wand2, CheckSquare } from "lucide-react";
-import type { ConsistencyIssue, ScanStatus, StoryTextPreviewData } from "./types";
+import type { ConsistencyIssue, ScanStatus, StoryTextPreviewData, BatchFixItem } from "./types";
 import { getSeverityColor, getIssueTypeColor, getPostOptions, getCsrfToken } from "./utils";
 import StoryFixPreviewDialog from "./shared/StoryFixPreviewDialog";
+import BatchStoryFixPreviewDialog from "./shared/BatchStoryFixPreviewDialog";
 
 interface StoryConsistencySectionProps {
     workspaceId: string;
@@ -22,7 +23,7 @@ interface StoryConsistencySectionProps {
     storyIssues: ConsistencyIssue[];
     onStoryIssuesChange: (issues: ConsistencyIssue[]) => void;
     // External callback for applying fixes to the editor (auto-applies, returns success/failure)
-    onApplyStoryFix?: (oldText: string, newText: string) => boolean;
+    onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>;
 }
 
 export default function StoryConsistencySection({
@@ -49,10 +50,15 @@ export default function StoryConsistencySection({
     const [storyCheckMode, setStoryCheckMode] = useState<"all" | "selected">("all");
     const [selectedChapters, setSelectedChapters] = useState<Set<number>>(new Set());
 
-    // Story text preview
+    // Story text preview (single fix)
     const [storyTextPreview, setStoryTextPreview] =
         useState<StoryTextPreviewData | null>(null);
     const [editedStoryText, setEditedStoryText] = useState("");
+
+    // Batch fix state
+    const [batchFixes, setBatchFixes] = useState<BatchFixItem[]>([]);
+    const [batchDialogOpen, setBatchDialogOpen] = useState(false);
+    const [applyingBatch, setApplyingBatch] = useState(false);
 
     const handleStoryConsistencyCheck = async () => {
         setLoadingStoryCheck(true);
@@ -140,7 +146,7 @@ export default function StoryConsistencySection({
         try {
             if (onApplyStoryFix) {
                 // Auto-apply the fix (returns success/failure)
-                const success = onApplyStoryFix(
+                const success = await onApplyStoryFix(
                     storyTextPreview.oldText,
                     editedStoryText
                 );
@@ -286,21 +292,124 @@ export default function StoryConsistencySection({
             return;
         }
 
-        if (
-            !confirm(
-                `Generate fixes for ${selectedStoryIssues.size} selected issues?\n\nNote: Each fix will be shown for review before applying.`
+        setApplyingAllStory(true);
+
+        try {
+            // Collect all selected issues
+            const selectedIndices = Array.from(selectedStoryIssues);
+            const issuesToFix = selectedIndices.map((idx) => ({
+                ...storyIssues[idx],
+                original_index: idx,
+            }));
+
+            // Call batch API
+            const response = await fetch(
+                `/${workspaceId}/projects/${projectId}/editor/auditor/batch-fix-story-text`,
+                getPostOptions({
+                    issues: issuesToFix,
+                    model: selectedModel,
+                    provider: "gemini",
+                })
+            );
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.results?.fixes) {
+                    // Transform to BatchFixItem array
+                    const fixItems: BatchFixItem[] = data.results.fixes.map(
+                        (fix: any) => ({
+                            issueIndex: selectedIndices[fix.issue_index],
+                            issue: storyIssues[selectedIndices[fix.issue_index]],
+                            oldText: fix.old_text,
+                            newText: fix.new_text,
+                            editedText: fix.new_text,
+                            explanation: fix.explanation,
+                            chapterOrder: fix.chapter_order,
+                            chapterName: fix.chapter_name,
+                            position: fix.position,
+                            enabled: true,
+                        })
+                    );
+
+                    setBatchFixes(fixItems);
+                    setBatchDialogOpen(true);
+                } else if (data.results?.errors?.length > 0) {
+                    alert(
+                        `Some fixes could not be generated:\n${data.results.errors.join("\n")}`
+                    );
+                }
+            } else {
+                const error = await response.json();
+                alert(`Failed to generate fixes: ${error.error || "Unknown error"}`);
+            }
+        } catch (error) {
+            console.error("Error generating batch fixes:", error);
+            alert("Failed to generate fixes");
+        } finally {
+            setApplyingAllStory(false);
+        }
+    };
+
+    // Batch fix handlers
+    const handleBatchFixEdit = (index: number, newText: string) => {
+        setBatchFixes((prev) =>
+            prev.map((fix, i) =>
+                i === index ? { ...fix, editedText: newText } : fix
             )
-        ) {
-            return;
+        );
+    };
+
+    const handleBatchFixToggle = (index: number, enabled: boolean) => {
+        setBatchFixes((prev) =>
+            prev.map((fix, i) => (i === index ? { ...fix, enabled } : fix))
+        );
+    };
+
+    const handleBatchApply = async () => {
+        setApplyingBatch(true);
+
+        // Get enabled fixes, sorted by position DESC (apply bottom-to-top)
+        // This ensures earlier fixes don't shift positions of later fixes
+        const enabledFixes = batchFixes
+            .filter((fix) => fix.enabled)
+            .sort((a, b) => b.position - a.position);
+
+        let successCount = 0;
+        const failedFixes: string[] = [];
+        const appliedIndices: number[] = [];
+
+        // Apply fixes sequentially - each must complete before the next
+        // This ensures the editor state is updated between fixes
+        for (const fix of enabledFixes) {
+            if (onApplyStoryFix) {
+                const success = await onApplyStoryFix(fix.oldText, fix.editedText);
+                if (success) {
+                    successCount++;
+                    appliedIndices.push(fix.issueIndex);
+                } else {
+                    failedFixes.push(fix.issue.title || `Fix ${fix.issueIndex + 1}`);
+                }
+            }
         }
 
-        const indices = Array.from(selectedStoryIssues);
-        if (indices.length > 0) {
-            const firstIdx = indices[0];
-            const issue = storyIssues[firstIdx];
-            if (issue) {
-                await handleApplyStoryTextFix(issue, firstIdx);
-            }
+        // Remove successfully applied issues from list
+        if (successCount > 0) {
+            const appliedSet = new Set(appliedIndices);
+            onStoryIssuesChange(storyIssues.filter((_, i) => !appliedSet.has(i)));
+            setSelectedStoryIssues(new Set());
+        }
+
+        setBatchDialogOpen(false);
+        setBatchFixes([]);
+        setApplyingBatch(false);
+
+        // Show result
+        if (failedFixes.length === 0) {
+            alert(`Successfully applied ${successCount} fixes!`);
+        } else {
+            alert(
+                `Applied ${successCount} fixes. Failed: ${failedFixes.join(", ")}`
+            );
         }
     };
 
@@ -669,6 +778,19 @@ export default function StoryConsistencySection({
                 onEditedTextChange={setEditedStoryText}
                 onConfirm={confirmStoryTextFix}
                 onClose={() => setStoryTextPreview(null)}
+            />
+
+            <BatchStoryFixPreviewDialog
+                open={batchDialogOpen}
+                fixes={batchFixes}
+                onFixEdit={handleBatchFixEdit}
+                onFixToggle={handleBatchFixToggle}
+                onConfirm={handleBatchApply}
+                onClose={() => {
+                    setBatchDialogOpen(false);
+                    setBatchFixes([]);
+                }}
+                isApplying={applyingBatch}
             />
         </>
     );

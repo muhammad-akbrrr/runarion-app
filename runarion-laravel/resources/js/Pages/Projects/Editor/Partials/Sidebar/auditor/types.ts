@@ -4,7 +4,7 @@ export interface AuditorToolsTabProps {
     workspaceId: string;
     projectId: string;
     selectedModel: string;
-    onApplyStoryFix?: (oldText: string, newText: string) => boolean;
+    onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>;
 }
 
 export interface ChapterScanInfo {
@@ -134,4 +134,33 @@ export interface StoryTextPreviewData {
     chapterName: string;
     chapterOrder: number;
     contentHash?: string;  // Hash of chapter content when fix was generated (for change detection)
+}
+
+// Batch fix item for multi-fix preview dialog
+export interface BatchFixItem {
+    issueIndex: number;
+    issue?: ConsistencyIssue;  // Optional - may be undefined if index mapping fails
+    oldText: string;
+    newText: string;
+    editedText: string;  // User can edit before applying
+    explanation: string;
+    chapterOrder: number;
+    chapterName: string;
+    position: number;  // Character offset for ordering
+    enabled: boolean;  // User can toggle off individual fixes
+}
+
+// Response from batch fix API
+export interface BatchFixResponse {
+    fixes: Array<{
+        issue_index: number;
+        old_text: string;
+        new_text: string;
+        explanation: string;
+        chapter_order: number;
+        chapter_name: string;
+        position: number;
+    }>;
+    content_hash: string;
+    errors: string[];
 }

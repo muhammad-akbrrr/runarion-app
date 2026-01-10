@@ -1948,11 +1948,250 @@ IMPORTANT:
         except Exception as e:
             logger.error(f"Error in fix_story_text: {e}", exc_info=True)
             return {'error': str(e)}
-    
+
+    def batch_fix_story_text(
+        self,
+        project_id: str,
+        workspace_id: str = None,
+        issues: List[Dict] = None,
+        model: str = "gemini-2.0-flash",
+        provider: str = "gemini"
+    ) -> Dict[str, Any]:
+        """
+        Generate fixes for multiple story issues against the same content snapshot.
+        This ensures all fixes are compatible and can be applied together without conflicts.
+
+        Args:
+            project_id: The project ID
+            workspace_id: The workspace ID
+            issues: List of issue objects with issue_type, title, description, evidence, location, suggestion
+            model: LLM model to use
+            provider: LLM provider
+
+        Returns:
+            {
+                'fixes': [
+                    {
+                        'issue_index': 0,
+                        'old_text': '...',
+                        'new_text': '...',
+                        'explanation': '...',
+                        'chapter_order': 1,
+                        'chapter_name': 'Chapter 1',
+                        'position': 234,  # Character offset for ordering
+                    },
+                    ...
+                ],
+                'content_hash': 'abc123',
+                'errors': []  # Any issues that couldn't be fixed
+            }
+        """
+        import re
+
+        if not issues:
+            return {'fixes': [], 'content_hash': '', 'errors': ['No issues provided']}
+
+        try:
+            # Get all chapters once
+            chapters = self.get_chapters(project_id, workspace_id)
+            if not chapters:
+                return {'fixes': [], 'content_hash': '', 'errors': ['No chapters found for this project']}
+
+            # Create chapter lookup by order
+            chapter_lookup = {}
+            for ch in chapters:
+                order = ch.get('chapter_order', ch.get('order', 0))
+                chapter_lookup[order] = ch
+
+            # Group issues by chapter
+            issues_by_chapter: Dict[int, List[Tuple[int, Dict]]] = {}
+            for idx, issue in enumerate(issues):
+                location = issue.get('location', '')
+                chapter_order = 0
+
+                if location:
+                    match = re.search(r'chapter\s*(\d+)', location.lower())
+                    if match:
+                        chapter_order = int(match.group(1)) - 1  # Convert to 0-indexed
+
+                if chapter_order not in issues_by_chapter:
+                    issues_by_chapter[chapter_order] = []
+                issues_by_chapter[chapter_order].append((idx, issue))
+
+            all_fixes = []
+            all_errors = []
+            content_hashes = {}
+
+            # Process each chapter's issues together
+            for chapter_order, chapter_issues in issues_by_chapter.items():
+                chapter = chapter_lookup.get(chapter_order)
+                if not chapter:
+                    # Use first chapter if specific one not found
+                    chapter = chapters[0]
+                    chapter_order = chapter.get('chapter_order', chapter.get('order', 0))
+
+                chapter_name = chapter.get('chapter_name', chapter.get('name', f'Chapter {chapter_order + 1}'))
+                content = chapter.get('content', '')
+
+                if not content:
+                    for idx, issue in chapter_issues:
+                        all_errors.append(f"Issue {idx}: No content in {chapter_name}")
+                    continue
+
+                # Store content hash for this chapter
+                content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
+                content_hashes[chapter_order] = content_hash
+
+                # Build prompt for ALL issues in this chapter
+                issues_text = ""
+                for i, (idx, issue) in enumerate(chapter_issues, 1):
+                    issues_text += f"""
+ISSUE {i} (original_index: {idx}):
+- Type: {issue.get('issue_type', 'unknown')}
+- Title: {issue.get('title', 'Unknown issue')}
+- Description: {issue.get('description', '')}
+- Evidence: {issue.get('evidence', '')}
+- Suggestion: {issue.get('suggestion', '')}
+"""
+
+                prompt = f"""You are a professional story editor. Multiple consistency issues have been identified in the following manuscript chapter.
+Fix ALL issues while maintaining grammatical flow and the author's writing style.
+
+CHAPTER: {chapter_name}
+CHAPTER CONTENT:
+{content[:15000]}
+
+ISSUES TO FIX:
+{issues_text}
+
+TASK:
+For EACH issue listed above:
+1. Locate the EXACT problematic text segment in the chapter
+2. Generate a minimal revision that fixes the issue
+3. Ensure the fix reads naturally within the surrounding paragraph
+4. Maintain the author's style, tone, and narrative voice
+
+OUTPUT FORMAT (JSON array):
+[
+    {{
+        "original_index": <the original_index from the issue>,
+        "old_text": "EXACT text segment from chapter (copy VERBATIM)",
+        "new_text": "The revised text that fixes the issue",
+        "explanation": "Brief explanation of what was changed"
+    }},
+    ...
+]
+
+CRITICAL JSON FORMATTING RULES:
+- ALL quotes inside string values MUST be escaped with backslash: use \\" not "
+- Example: "old_text": "He said \\"Hello\\" to her"
+- Newlines in text should be: \\n
+- Return a valid JSON array with one object per issue
+
+CRITICAL VERBATIM REQUIREMENT:
+- old_text MUST be copied EXACTLY character-by-character from the chapter
+- Do NOT paraphrase or rephrase - the frontend needs exact matches
+- Include all punctuation, quotes, and whitespace exactly as they appear
+
+CRITICAL GRAMMATICAL FLOW:
+- new_text must read naturally within its paragraph
+- Transitions to/from adjacent sentences must be smooth
+- Preserve the narrative voice (first/third person, past/present tense)
+- Make MINIMAL changes - only fix the specific issue
+
+Return fixes for ALL {len(chapter_issues)} issues.
+"""
+
+                # Use LLM to generate all fixes for this chapter
+                caller = self._create_caller(project_id, workspace_id)
+
+                request = BaseGenerationRequest(
+                    usecase="novel_pipeline",
+                    provider=provider,
+                    model=model,
+                    prompt=prompt,
+                    generation_config=GenerationConfig(
+                        max_output_tokens=8000,  # More tokens for multiple fixes
+                        temperature=0.3
+                    ),
+                    caller=caller
+                )
+
+                engine = GenerationEngine(request)
+                response = engine.generate(skip_quota=True)
+
+                if not response or not response.text:
+                    for idx, issue in chapter_issues:
+                        all_errors.append(f"Issue {idx}: Failed to generate fix")
+                    continue
+
+                # Parse response - expecting JSON array
+                fixes_data, _ = JSONResponseParser.parse_response(response.text, expected_type="list", fallback_value=[])
+
+                if not fixes_data:
+                    # Try parsing as dict with fixes key
+                    dict_data, _ = JSONResponseParser.parse_response(response.text, expected_type="dict", fallback_value={})
+                    fixes_data = dict_data.get('fixes', [])
+
+                if not fixes_data:
+                    for idx, issue in chapter_issues:
+                        all_errors.append(f"Issue {idx}: Failed to parse LLM response")
+                    continue
+
+                # Process each fix
+                for fix_data in fixes_data:
+                    original_index = fix_data.get('original_index', fix_data.get('issue_index', -1))
+                    old_text = fix_data.get('old_text', '')
+                    new_text = fix_data.get('new_text', '')
+                    explanation = fix_data.get('explanation', '')
+
+                    if not old_text or not new_text:
+                        all_errors.append(f"Issue {original_index}: Empty old_text or new_text")
+                        continue
+
+                    # Find position in content for ordering
+                    position = content.find(old_text)
+                    if position == -1:
+                        # Try case-insensitive search
+                        position = content.lower().find(old_text.lower())
+                        if position == -1:
+                            # Log warning - frontend will use fuzzy matching
+                            logger.warning(f"Batch fix: old_text not found verbatim for issue {original_index}")
+                            position = 0  # Default to start if not found
+
+                    all_fixes.append({
+                        'issue_index': original_index,
+                        'old_text': old_text,
+                        'new_text': new_text,
+                        'explanation': explanation,
+                        'chapter_order': chapter_order,
+                        'chapter_name': chapter_name,
+                        'position': position,
+                        'content_hash': content_hash
+                    })
+
+            # Sort fixes by chapter then by position (descending - for bottom-to-top application)
+            all_fixes.sort(key=lambda f: (f['chapter_order'], -f['position']))
+
+            # Combine content hashes
+            combined_hash = hashlib.md5(
+                '|'.join(f"{k}:{v}" for k, v in sorted(content_hashes.items())).encode()
+            ).hexdigest()[:8]
+
+            return {
+                'fixes': all_fixes,
+                'content_hash': combined_hash,
+                'errors': all_errors
+            }
+
+        except Exception as e:
+            logger.error(f"Error in batch_fix_story_text: {e}", exc_info=True)
+            return {'fixes': [], 'content_hash': '', 'errors': [str(e)]}
+
     # =========================================================================
     # RECORD OPTIMIZATION
     # =========================================================================
-    
+
     def find_duplicate_entities(
         self,
         project_id: str,

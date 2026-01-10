@@ -132,7 +132,7 @@ interface LexicalEditorProps {
     aiModel?: string;
     selectionToolbarMode?: string;
     // Props for inline diff (Agent mode)
-    onApplyEdit?: (oldText: string, newText: string) => boolean;
+    onApplyEdit?: (oldText: string, newText: string) => Promise<boolean>;
     // External ref for migration support
     editorRef?: React.MutableRefObject<any>;
 }

@@ -1333,6 +1333,57 @@ class RecordsController extends Controller
         }
     }
 
+    /**
+     * Generate batch story text fixes for multiple consistency issues.
+     * All fixes are generated against the same content snapshot.
+     */
+    public function batchFixStoryText(Request $request, string $workspace_id, string $project_id)
+    {
+        // Verify project belongs to workspace
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (!$project) {
+            return response()->json(['error' => 'Project not found'], 404);
+        }
+
+        $validated = $request->validate([
+            'issues' => 'required|array|min:1',
+            'issues.*.issue_type' => 'required|string',
+            'issues.*.title' => 'nullable|string',
+            'issues.*.description' => 'nullable|string',
+            'issues.*.evidence' => 'nullable|string',
+            'issues.*.location' => 'nullable|string',
+            'issues.*.suggestion' => 'nullable|string',
+            'model' => 'nullable|string',
+            'provider' => 'nullable|string',
+        ]);
+
+        try {
+            $response = Http::timeout(180) // 3 minutes for batch processing
+                ->post($this->getPythonServiceUrl() . '/api/auditor/batch-fix-story-text', [
+                    'project_id' => $project_id,
+                    'workspace_id' => $workspace_id,
+                    'issues' => $validated['issues'],
+                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'provider' => $validated['provider'] ?? 'gemini',
+                ]);
+
+            if ($response->successful()) {
+                return response()->json($response->json(), 200);
+            } else {
+                return response()->json([
+                    'error' => 'Failed to generate batch story fixes',
+                    'details' => $response->json()
+                ], $response->status());
+            }
+        } catch (\Exception $e) {
+            Log::error('Exception generating batch story fixes', ['error' => $e->getMessage()]);
+            return response()->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
     // =========================================================================
     // SENTIMENT ANALYZER ENDPOINTS
     // =========================================================================

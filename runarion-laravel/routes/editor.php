@@ -108,6 +108,7 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     // Apply fixes from consistency checks
     Route::post('/{workspace_id}/projects/{project_id}/editor/auditor/apply-fix', [RecordsController::class, 'applyConsistencyFix'])->name('auditor.apply-fix');
     Route::post('/{workspace_id}/projects/{project_id}/editor/auditor/fix-story-text', [RecordsController::class, 'fixStoryText'])->name('auditor.fix-story-text');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/auditor/batch-fix-story-text', [RecordsController::class, 'batchFixStoryText'])->name('auditor.batch-fix-story-text');
 
     // Sentiment Analyzer
     Route::post('/{workspace_id}/projects/{project_id}/editor/auditor/extract-relationships', [RecordsController::class, 'extractRelationships'])->name('auditor.extract-relationships');

@@ -9,7 +9,7 @@ import { SUPPORTED_TRANSFORMERS } from "./ContentUpdatePlugin";
 
 interface InlineDiffPluginProps {
     content: string;
-    onApplyEdit: (oldText: string, newText: string) => boolean;
+    onApplyEdit: (oldText: string, newText: string) => Promise<boolean>;
 }
 
 // Normalize text for matching
@@ -390,7 +390,7 @@ export function InlineDiffPlugin({
     }, []);
 
     // Handle accept - apply the edit directly
-    const handleAccept = useCallback(() => {
+    const handleAccept = useCallback(async () => {
         if (!activeEdit) return;
 
         // Save scroll position before applying
@@ -401,8 +401,8 @@ export function InlineDiffPlugin({
         const savedScrollTop = scrollContainer?.scrollTop || 0;
         const savedWindowScroll = window.scrollY;
 
-        // Try to apply via the content state
-        const success = onApplyEdit(activeEdit.oldText, activeEdit.newText);
+        // Try to apply via the content state - now properly awaited
+        const success = await onApplyEdit(activeEdit.oldText, activeEdit.newText);
 
         // Restore scroll position after a brief delay
         setTimeout(() => {

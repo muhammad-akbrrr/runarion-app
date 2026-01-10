@@ -445,7 +445,8 @@ export default function ProjectEditorPage({
 
     // Callback for applying story fixes from the auditor
     // Auto-applies the fix and returns success/failure (no confirmation dialog needed)
-    const handleApplyStoryFix = useCallback((oldText: string, newText: string): boolean => {
+    // NOTE: This is async to ensure sequential application of batch fixes
+    const handleApplyStoryFix = useCallback(async (oldText: string, newText: string): Promise<boolean> => {
         console.log('[StoryFix] handleApplyStoryFix called');
         console.log('[StoryFix] oldText:', oldText?.substring(0, 100));
 
@@ -464,26 +465,26 @@ export default function ProjectEditorPage({
 
         console.log('[StoryFix] Content length:', plainContent.length);
 
-        // Helper function to apply the replacement
-        const applyReplacement = (textToReplace: string) => {
-            replaceTextInLexicalEditor(editor, textToReplace, newText).then(result => {
-                if (result.success && selectedChapter) {
-                    console.log('[StoryFix] Replacement successful, saving...');
-                    setTimeout(() => {
-                        const updatedJson = JSON.stringify(editor.getEditorState().toJSON());
-                        smartSave(selectedChapter.order, updatedJson, 'manual');
-                    }, 100);
-                } else if (!result.success) {
-                    console.error('[StoryFix] Replacement failed:', result.error);
-                }
-            });
+        // Helper function to apply the replacement - now properly async
+        const applyReplacement = async (textToReplace: string): Promise<boolean> => {
+            const result = await replaceTextInLexicalEditor(editor, textToReplace, newText);
+            if (result.success && selectedChapter) {
+                console.log('[StoryFix] Replacement successful, saving...');
+                // Small delay for Lexical to process the update
+                await new Promise(resolve => setTimeout(resolve, 100));
+                const updatedJson = JSON.stringify(editor.getEditorState().toJSON());
+                smartSave(selectedChapter.order, updatedJson, 'manual');
+                return true;
+            } else if (!result.success) {
+                console.error('[StoryFix] Replacement failed:', result.error);
+            }
+            return false;
         };
 
         // Strategy 1: Exact match - auto-apply
         if (plainContent.includes(oldText)) {
             console.log('[StoryFix] Found exact match! Auto-applying...');
-            applyReplacement(oldText);
-            return true;
+            return await applyReplacement(oldText);
         }
 
         // Strategy 2: Fuzzy match - auto-apply
@@ -492,8 +493,7 @@ export default function ProjectEditorPage({
 
         if (match.found && match.confidence >= 0.50) {
             console.log(`[StoryFix] Found match with ${(match.confidence * 100).toFixed(0)}% confidence. Auto-applying...`);
-            applyReplacement(match.matchedText);
-            return true;
+            return await applyReplacement(match.matchedText);
         }
 
         // Low confidence (<50%) or not found - return false
@@ -505,8 +505,8 @@ export default function ProjectEditorPage({
 
     // Wrapper for LexicalEditor's inline diff - now just forwards to handleApplyStoryFix
     // For inline editing, auto-apply matches (user can undo via Lexical history)
-    const handleInlineApplyEdit = useCallback((oldText: string, newText: string): boolean => {
-        return handleApplyStoryFix(oldText, newText);
+    const handleInlineApplyEdit = useCallback(async (oldText: string, newText: string): Promise<boolean> => {
+        return await handleApplyStoryFix(oldText, newText);
     }, [handleApplyStoryFix]);
 
     return (

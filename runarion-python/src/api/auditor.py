@@ -840,6 +840,92 @@ def fix_story_text():
         return jsonify({'error': str(e)}), 500
 
 
+@auditor.route('/auditor/batch-fix-story-text', methods=['POST'])
+def batch_fix_story_text():
+    """
+    Generate fixes for multiple story issues against the same content snapshot.
+    This ensures all fixes are compatible and can be applied together without conflicts.
+
+    Request body:
+    {
+        "project_id": "project_uuid",
+        "workspace_id": "workspace_uuid",
+        "issues": [
+            {
+                "issue_type": "timeline",
+                "title": "Issue title",
+                "description": "Description",
+                "evidence": "Quote from text",
+                "location": "Chapter 1",
+                "suggestion": "How to fix"
+            },
+            ...
+        ],
+        "model": "gemini-2.0-flash",
+        "provider": "gemini"
+    }
+
+    Response:
+    {
+        "success": true,
+        "results": {
+            "fixes": [
+                {
+                    "issue_index": 0,
+                    "old_text": "...",
+                    "new_text": "...",
+                    "explanation": "...",
+                    "chapter_order": 1,
+                    "chapter_name": "Chapter 1",
+                    "position": 234
+                },
+                ...
+            ],
+            "content_hash": "abc123",
+            "errors": []
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+
+        if not data:
+            return jsonify({'error': 'No data provided'}), 400
+
+        project_id = data.get('project_id')
+        workspace_id = data.get('workspace_id')
+        issues = data.get('issues', [])
+        model = data.get('model', 'gemini-2.0-flash')
+        provider = data.get('provider', 'gemini')
+
+        if not project_id:
+            return jsonify({'error': 'project_id is required'}), 400
+
+        if not issues:
+            return jsonify({'error': 'issues array is required'}), 400
+
+        auditor_service = get_auditor_service()
+        results = auditor_service.batch_fix_story_text(
+            project_id=project_id,
+            workspace_id=workspace_id,
+            issues=issues,
+            model=model,
+            provider=provider
+        )
+
+        if 'error' in results and not results.get('fixes'):
+            return jsonify({'success': False, 'error': results['error']}), 400
+
+        return jsonify({
+            'success': True,
+            'results': results
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error in batch-fix-story-text endpoint: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+
 # =============================================================================
 # SENTIMENT ANALYZER ENDPOINTS
 # =============================================================================

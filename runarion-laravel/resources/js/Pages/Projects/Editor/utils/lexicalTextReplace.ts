@@ -1,5 +1,11 @@
-import { LexicalEditor, $getRoot, TextNode } from 'lexical';
-import { $isOriginTextNode, $createOriginTextNode, OriginTextNode } from '../nodes/OriginTextNode';
+import {
+    LexicalEditor,
+    $getRoot,
+    $createRangeSelection,
+    $setSelection,
+    TextNode,
+    $isElementNode,
+} from 'lexical';
 
 interface ReplaceResult {
     success: boolean;
@@ -18,8 +24,9 @@ export function getPlainTextFromEditor(editor: LexicalEditor): string {
 }
 
 /**
- * Replace text in Lexical editor using the editor API
- * Preserves JSON structure and node types
+ * Replace text in Lexical editor using Selection API
+ * Uses $createRangeSelection + setTextNodeRange + insertText pattern
+ * This is the proper Lexical way to programmatically replace text
  */
 export function replaceTextInLexicalEditor(
     editor: LexicalEditor,
@@ -32,91 +39,109 @@ export function replaceTextInLexicalEditor(
                 const root = $getRoot();
                 const textContent = root.getTextContent();
 
+                // Find the position of oldText
                 const startIndex = textContent.indexOf(oldText);
                 if (startIndex === -1) {
                     resolve({ success: false, error: 'Text not found in editor' });
                     return;
                 }
+                const endIndex = startIndex + oldText.length;
 
-                // Walk through all text nodes
-                let currentPos = 0;
-                type NodeInfo = { node: TextNode | OriginTextNode; startOffset: number; endOffset: number };
-                const nodesToProcess: NodeInfo[] = [];
+                // Walk through nodes using paragraph-aware position tracking
+                // This matches how getTextContent() counts characters (including \n paragraph separators)
+                let charPos = 0;
+                let startNode: TextNode | null = null;
+                let startOffset = 0;
+                let endNode: TextNode | null = null;
+                let endOffset = 0;
 
-                const processNode = (node: any) => {
-                    if (node.__type === 'text' || node.__type === 'origin-text') {
-                        const nodeText = node.getTextContent();
-                        const nodeStart = currentPos;
-                        const nodeEnd = currentPos + nodeText.length;
-                        const targetEnd = startIndex + oldText.length;
+                const allParagraphs = root.getChildren();
 
-                        if (nodeEnd > startIndex && nodeStart < targetEnd) {
-                            nodesToProcess.push({
-                                node,
-                                startOffset: Math.max(0, startIndex - nodeStart),
-                                endOffset: Math.min(nodeText.length, targetEnd - nodeStart)
-                            });
+                for (let pIdx = 0; pIdx < allParagraphs.length; pIdx++) {
+                    // Early exit if both nodes found
+                    if (startNode && endNode) break;
+
+                    const para = allParagraphs[pIdx];
+
+                    // Skip non-element nodes (safety check)
+                    if (!$isElementNode(para)) continue;
+
+                    const children = para.getChildren();
+
+                    for (const child of children) {
+                        // Early exit if both nodes found
+                        if (startNode && endNode) break;
+
+                        // Process both TextNode and OriginTextNode (which extends TextNode)
+                        if (child instanceof TextNode) {
+                            const nodeText = child.getTextContent();
+                            const nodeStart = charPos;
+                            const nodeEnd = charPos + nodeText.length;
+
+                            // Check if this node contains the start position
+                            // Condition: startIndex is within [nodeStart, nodeEnd)
+                            if (!startNode && startIndex >= nodeStart && startIndex < nodeEnd) {
+                                startNode = child;
+                                startOffset = startIndex - nodeStart;
+                            }
+
+                            // Check if this node contains the end position
+                            // Condition: endIndex is within (nodeStart, nodeEnd]
+                            if (!endNode && endIndex > nodeStart && endIndex <= nodeEnd) {
+                                endNode = child;
+                                endOffset = endIndex - nodeStart;
+                            }
+
+                            charPos += nodeText.length;
                         }
-                        currentPos = nodeEnd;
                     }
 
-                    if (typeof node.getChildren === 'function') {
-                        for (const child of node.getChildren()) {
-                            processNode(child);
-                        }
+                    // CRITICAL FIX: Account for paragraph separator character (\n)
+                    // getTextContent() includes \n between paragraphs
+                    if (pIdx < allParagraphs.length - 1) {
+                        charPos += 1;
                     }
-                };
+                }
 
-                processNode(root);
-
-                if (nodesToProcess.length === 0) {
+                // Validate we found both nodes
+                if (!startNode || !endNode) {
+                    console.error('[LexicalReplace] Could not locate text nodes', {
+                        textContentPreview: textContent.substring(0, 200),
+                        searchText: oldText.substring(0, 100),
+                        startIndex,
+                        endIndex,
+                        charPosReached: charPos,
+                        paragraphCount: allParagraphs.length,
+                    });
                     resolve({ success: false, error: 'Could not locate text nodes' });
                     return;
                 }
 
-                // Single node case (most common)
-                if (nodesToProcess.length === 1) {
-                    const { node, startOffset, endOffset } = nodesToProcess[0];
-                    const nodeText = node.getTextContent();
-                    const newNodeText = nodeText.slice(0, startOffset) + newText + nodeText.slice(endOffset);
+                // Validate offsets are within bounds
+                const startNodeLength = startNode.getTextContent().length;
+                const endNodeLength = endNode.getTextContent().length;
 
-                    if ($isOriginTextNode(node)) {
-                        const newNode = $createOriginTextNode(newNodeText, 'user');
-                        newNode.setFormat(node.getFormat());
-                        newNode.setStyle(node.getStyle());
-                        node.replace(newNode);
-                    } else {
-                        node.setTextContent(newNodeText);
-                    }
-                } else {
-                    // Multi-node case: update first, remove middle, trim last
-                    const first = nodesToProcess[0];
-                    const firstText = first.node.getTextContent();
-                    const newFirstText = firstText.slice(0, first.startOffset) + newText;
+                startOffset = Math.max(0, Math.min(startOffset, startNodeLength));
+                endOffset = Math.max(0, Math.min(endOffset, endNodeLength));
 
-                    if ($isOriginTextNode(first.node)) {
-                        const newNode = $createOriginTextNode(newFirstText, 'user');
-                        newNode.setFormat(first.node.getFormat());
-                        first.node.replace(newNode);
-                    } else {
-                        first.node.setTextContent(newFirstText);
-                    }
+                // Create a range selection spanning the old text
+                const rangeSelection = $createRangeSelection();
 
-                    for (let i = 1; i < nodesToProcess.length; i++) {
-                        const { node, endOffset } = nodesToProcess[i];
-                        if (i === nodesToProcess.length - 1) {
-                            const lastText = node.getTextContent();
-                            const remainingText = lastText.slice(endOffset);
-                            if (remainingText) {
-                                node.setTextContent(remainingText);
-                            } else {
-                                node.remove();
-                            }
-                        } else {
-                            node.remove();
-                        }
-                    }
-                }
+                // Set the selection range using setTextNodeRange
+                // This sets both anchor and focus to span the old text
+                rangeSelection.setTextNodeRange(
+                    startNode as TextNode,
+                    startOffset,
+                    endNode as TextNode,
+                    endOffset
+                );
+
+                // Apply the selection to the editor
+                $setSelection(rangeSelection);
+
+                // Replace the selected text
+                // insertText() automatically DELETES the selection first, then inserts
+                rangeSelection.insertText(newText);
 
                 resolve({ success: true });
             } catch (error) {

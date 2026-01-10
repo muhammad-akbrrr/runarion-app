@@ -164,7 +164,7 @@ export interface SidebarSettingsProps {
     workspaceId?: string;
     projectId?: string;
     authorStyles?: Array<{ id: string; name: string; status?: string }>;  // Available author styles from workspace
-    onApplyStoryFix?: (oldText: string, newText: string) => boolean;  // Callback to apply story fixes, returns success/failure
+    onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>;  // Callback to apply story fixes, returns success/failure
 }
 
 // Models that support thinking (internal reasoning before responding)

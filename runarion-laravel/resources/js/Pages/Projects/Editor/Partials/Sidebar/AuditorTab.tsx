@@ -23,7 +23,7 @@ import SentimentTab from "./SentimentTab";
 interface AuditorTabProps {
     workspaceId: string;
     projectId: string;
-    onApplyStoryFix?: (oldText: string, newText: string) => boolean;
+    onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>;
 }
 
 export default function AuditorTab({
