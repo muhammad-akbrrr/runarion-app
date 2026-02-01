@@ -160,5 +160,6 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/generate-layout', [ChainBuilderController::class, 'generateGraphLayout'])->name('chain-builder.generate-layout');
     Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/generate-instruction', [ChainBuilderController::class, 'generateInstruction'])->name('chain-builder.generate-instruction');
     Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/refine-selection', [ChainBuilderController::class, 'refineSelection'])->name('chain-builder.refine-selection');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/chain-builder/apply-to-story', [ChainBuilderController::class, 'applyToStory'])->name('chain-builder.apply-to-story');
     Route::post('/{workspace_id}/projects/{project_id}/editor/enhance-auto-build-prompt', [ChainBuilderController::class, 'enhanceAutoBuildPrompt'])->name('chain-builder.enhance-auto-build-prompt');
 });

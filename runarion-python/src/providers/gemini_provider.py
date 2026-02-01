@@ -33,17 +33,6 @@ SUPPORTED_GEMINI_MODELS = {
         "default_thinking_budget": 2048,
         "description": "Gemini 2.5 Flash - Fast with thinking"
     },
-    # Gemini 2.0 Flash - Most stable, no thinking support
-    "gemini-2.0-flash": {
-        "supports_thinking": False,
-        "default_thinking_budget": 0,
-        "description": "Gemini 2.0 Flash - Fast and stable"
-    },
-    "gemini-2.0-flash-exp": {
-        "supports_thinking": False,
-        "default_thinking_budget": 0,
-        "description": "Gemini 2.0 Flash Experimental"
-    },
     # Gemini 1.5 Pro/Flash - Legacy models
     "gemini-1.5-pro": {
         "supports_thinking": False,

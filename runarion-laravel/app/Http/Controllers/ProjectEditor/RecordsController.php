@@ -739,7 +739,7 @@ class RecordsController extends Controller
                     'mode' => $validated['mode'] ?? 'all',
                     'entity_ids' => $validated['entity_ids'] ?? null,
                     'chapter_orders' => $validated['chapter_orders'] ?? null,
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -805,7 +805,7 @@ class RecordsController extends Controller
                     'categories' => $validated['categories'],
                     'chapter_orders' => $validated['chapter_orders'] ?? null,
                     'scan_mode' => $validated['scan_mode'] ?? 'incremental',
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -974,7 +974,7 @@ class RecordsController extends Controller
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'categories' => $validated['categories'] ?? null,
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1022,7 +1022,7 @@ class RecordsController extends Controller
                     'workspace_id' => $workspace_id,
                     'check_types' => $validated['check_types'] ?? null,
                     'chapter_orders' => $validated['chapter_orders'] ?? null,
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1072,7 +1072,7 @@ class RecordsController extends Controller
                     'scope' => $validated['scope'] ?? 'all',
                     'categories' => $validated['categories'] ?? null,
                     'entity_ids' => $validated['entity_ids'] ?? null,
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1160,7 +1160,7 @@ class RecordsController extends Controller
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'vertex_id' => $validated['vertex_id'],
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1208,7 +1208,7 @@ class RecordsController extends Controller
                     'workspace_id' => $workspace_id,
                     'categories' => $validated['categories'] ?? null,
                     'entity_ids' => $validated['entity_ids'] ?? null,
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1260,7 +1260,7 @@ class RecordsController extends Controller
                     'issue_type' => $validated['issue_type'],
                     'field' => $validated['field'] ?? null,
                     'suggestion' => $validated['suggestion'],
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1315,7 +1315,7 @@ class RecordsController extends Controller
                     'evidence' => $validated['evidence'] ?? '',
                     'location' => $validated['location'] ?? '',
                     'suggestion' => $validated['suggestion'] ?? '',
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1366,7 +1366,7 @@ class RecordsController extends Controller
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'issues' => $validated['issues'],
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1427,7 +1427,7 @@ class RecordsController extends Controller
                     'workspace_id' => $workspace_id,
                     'character_ids' => $validated['character_ids'] ?? null,
                     'chapter_orders' => $validated['chapter_orders'] ?? null,
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                     'focus_mode' => $validated['focus_mode'] ?? 'all',
                 ]);
@@ -1474,7 +1474,7 @@ class RecordsController extends Controller
                 ->post($this->getPythonServiceUrl() . '/api/auditor/scan-relationship-changes', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 
@@ -1833,7 +1833,7 @@ class RecordsController extends Controller
                     'workspace_id' => $workspace_id,
                     'source_character' => $validated['source_character'],
                     'target_character' => $validated['target_character'],
-                    'model' => $validated['model'] ?? 'gemini-2.0-flash',
+                    'model' => $validated['model'] ?? 'gemini-2.5-flash',
                     'provider' => $validated['provider'] ?? 'gemini',
                 ]);
 

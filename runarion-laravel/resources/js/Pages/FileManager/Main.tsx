@@ -29,7 +29,7 @@ export default function FileManager() {
     if (hasProcessingStyles) {
       // Poll every 10 seconds while styles are processing
       const interval = setInterval(() => {
-        router.reload({ only: ['authorStyles'], preserveScroll: true });
+        router.reload({ only: ['authorStyles'] });
       }, 10000);
 
       return () => clearInterval(interval);

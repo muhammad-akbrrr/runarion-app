@@ -152,7 +152,7 @@ class ChainBuilderController extends Controller
             }
 
             // Call Python service with proper format
-            $model = $validated['ai_model'] ?? 'gemini-2.0-flash';
+            $model = $validated['ai_model'] ?? 'gemini-2.5-flash';
             $provider = str_starts_with($model, 'gemini') ? 'gemini' : 'openai';
             
             // Build prompt_config for StoryHandler - includes author profile for style benefits
@@ -240,6 +240,8 @@ class ChainBuilderController extends Controller
             'entities' => 'array',
             'mode' => 'required|in:final-only,sequence',
             'ai_model' => 'required|string',
+            'existing_nodes' => 'nullable|array',  // Current nodes on canvas
+            'existing_edges' => 'nullable|array',  // Current edges on canvas
         ]);
 
         $project = Projects::where('id', $project_id)
@@ -279,6 +281,19 @@ class ChainBuilderController extends Controller
             $prompt .= "Create a Logic Graph (Workflow) for a story writing app based on the user's goal.\n\n";
             $prompt .= "STORY CONTEXT (The story so far):\n\"\"\"\n{$storyContext}\n\"\"\"\n\n";
             $prompt .= "AVAILABLE RECORDS/ENTITIES:\n\"\"\"\n{$entitiesText}\n\"\"\"\n\n";
+
+            // Include existing graph state if present (for building upon existing nodes)
+            $existingNodes = $validated['existing_nodes'] ?? [];
+            $existingEdges = $validated['existing_edges'] ?? [];
+
+            if (!empty($existingNodes)) {
+                $prompt .= "EXISTING GRAPH (build upon this):\n";
+                $prompt .= "Current Nodes: " . json_encode($existingNodes, JSON_PRETTY_PRINT) . "\n";
+                $prompt .= "Current Edges: " . json_encode($existingEdges, JSON_PRETTY_PRINT) . "\n";
+                $prompt .= "Generate NEW nodes that connect to these existing nodes where appropriate.\n";
+                $prompt .= "Do NOT recreate the existing nodes - only add new ones based on the user's goal.\n\n";
+            }
+
             $prompt .= "USER GOAL: \"{$validated['user_goal']}\"\n\n";
             $prompt .= "OPTIMIZATION STRATEGY:\n{$modeInstruction}\n\n";
             $prompt .= "Available Node Types:\n";
@@ -350,7 +365,7 @@ class ChainBuilderController extends Controller
             
             $response = Http::timeout(120)
                 ->post($this->getPythonServiceUrl() . '/api/generate', [
-                    'usecase' => 'story',
+                    'usecase' => 'graph-layout',  // Use graph-layout usecase to bypass conversation history
                     'provider' => $provider,
                     'model' => $model,
                     'prompt' => $prompt . "\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or explanations. Ensure the JSON is complete and properly closed.",
@@ -809,6 +824,236 @@ class ChainBuilderController extends Controller
     }
 
     /**
+     * Apply chain builder result to story
+     * Saves content server-side before redirect to avoid URL parameter limitations
+     */
+    public function applyToStory(Request $request, string $workspace_id, string $project_id)
+    {
+        $validated = $request->validate([
+            'result_text' => 'required|string',
+            'chapter_order' => 'nullable|integer',
+        ]);
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        try {
+            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+            $chapters = $projectContent->content ?? [];
+
+            if (empty($chapters)) {
+                return response()->json(['error' => 'No chapters found'], 400);
+            }
+
+            // Find target chapter (default to last by order)
+            $targetOrder = $validated['chapter_order'] ?? null;
+            if ($targetOrder === null) {
+                $maxOrder = 0;
+                foreach ($chapters as $chapter) {
+                    if (($chapter['order'] ?? 0) > $maxOrder) {
+                        $maxOrder = $chapter['order'];
+                    }
+                }
+                $targetOrder = $maxOrder;
+            }
+
+            // Update target chapter
+            $chapterFound = false;
+            $updatedContent = '';
+
+            foreach ($chapters as &$chapter) {
+                if (($chapter['order'] ?? null) === $targetOrder) {
+                    $existingContent = $chapter['content'] ?? '';
+
+                    // Handle based on content format
+                    if ($this->isLexicalJson($existingContent)) {
+                        // Append to Lexical JSON structure properly
+                        $chapter['content'] = $this->appendToLexicalJson(
+                            $existingContent,
+                            $validated['result_text'],
+                            'ai'  // Mark as AI-generated for color coding
+                        );
+                    } else {
+                        // Plain text: simple concatenation
+                        $separator = $this->determineSeparator($existingContent, $validated['result_text']);
+                        $chapter['content'] = $existingContent . $separator . $validated['result_text'];
+                    }
+
+                    $updatedContent = $chapter['content'];
+                    $chapterFound = true;
+                    break;
+                }
+            }
+            unset($chapter);
+
+            if (!$chapterFound) {
+                return response()->json(['error' => 'Chapter not found'], 404);
+            }
+
+            // Save to database
+            $projectContent->content = $chapters;
+            $projectContent->save();
+
+            // Create version control node
+            try {
+                $this->versionControl->createNode(
+                    $project_id,
+                    $targetOrder,
+                    $updatedContent,
+                    [],
+                    null,
+                    null
+                );
+            } catch (\Exception $e) {
+                Log::warning('Version node creation failed', ['error' => $e->getMessage()]);
+            }
+
+            Log::info('Applied chain builder result', [
+                'project_id' => $project_id,
+                'chapter_order' => $targetOrder,
+                'content_length' => strlen($updatedContent),
+                'format' => $this->isLexicalJson($updatedContent) ? 'lexical' : 'plain',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'chapter_order' => $targetOrder,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Apply to story failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'error' => 'Failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Determine the appropriate separator between existing content and new content
+     */
+    private function determineSeparator(string $existingContent, string $newContent): string
+    {
+        // If existing content is empty, no separator needed
+        if (empty(trim($existingContent))) {
+            return '';
+        }
+
+        // If existing content ends with newlines, just add one more
+        if (preg_match('/\n{2,}$/', $existingContent)) {
+            return '';
+        }
+        if (preg_match('/\n$/', $existingContent)) {
+            return "\n";
+        }
+
+        // Otherwise, add double newline for paragraph separation
+        return "\n\n";
+    }
+
+    /**
+     * Check if content is Lexical JSON format
+     */
+    private function isLexicalJson(string $content): bool
+    {
+        if (empty($content) || !str_starts_with(trim($content), '{')) {
+            return false;
+        }
+
+        try {
+            $parsed = json_decode($content, true);
+            return isset($parsed['root']['type']) && $parsed['root']['type'] === 'root';
+        } catch (\Exception $e) {
+            return false;
+        }
+    }
+
+    /**
+     * Create a Lexical origin-text node
+     */
+    private function createOriginTextNode(string $text, string $origin = 'ai'): array
+    {
+        return [
+            'type' => 'origin-text',
+            'version' => 1,
+            'text' => $text,
+            'origin' => $origin,
+            'detail' => 0,
+            'format' => 0,
+            'mode' => 'normal',
+            'style' => '',
+        ];
+    }
+
+    /**
+     * Append text to Lexical JSON content
+     *
+     * NOTE: This matches StreamingPlugin behavior where each newline creates
+     * a new paragraph (see StreamingPlugin.tsx lines 220-233).
+     */
+    private function appendToLexicalJson(string $existingContent, string $newText, string $origin = 'ai'): string
+    {
+        $doc = json_decode($existingContent, true);
+
+        if (!$doc || !isset($doc['root']['children'])) {
+            // Fallback: create fresh document
+            $doc = [
+                'root' => [
+                    'type' => 'root',
+                    'version' => 1,
+                    'direction' => 'ltr',
+                    'format' => '',
+                    'indent' => 0,
+                    'children' => [],
+                ],
+            ];
+        }
+
+        // Add blank paragraph for spacing if there's existing content
+        if (!empty($doc['root']['children'])) {
+            $doc['root']['children'][] = [
+                'type' => 'paragraph',
+                'version' => 1,
+                'direction' => null,
+                'format' => '',
+                'indent' => 0,
+                'textStyle' => '',
+                'textFormat' => 0,
+                'children' => [],
+            ];
+        }
+
+        // Split on SINGLE newlines (matching StreamingPlugin behavior)
+        // Each line becomes its own paragraph
+        $lines = explode("\n", $newText);
+
+        foreach ($lines as $line) {
+            // Create paragraph for each line (empty lines = empty paragraphs for spacing)
+            $children = [];
+            $trimmed = trim($line);
+            if (!empty($trimmed)) {
+                $children[] = $this->createOriginTextNode($trimmed, $origin);
+            }
+
+            $doc['root']['children'][] = [
+                'type' => 'paragraph',
+                'version' => 1,
+                'direction' => 'ltr',
+                'format' => '',
+                'indent' => 0,
+                'textStyle' => '',
+                'textFormat' => 0,
+                'children' => $children,
+            ];
+        }
+
+        return json_encode($doc, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
      * Enhance Auto-Build prompt using story context
      */
     public function enhanceAutoBuildPrompt(Request $request, string $workspace_id, string $project_id)
@@ -827,7 +1072,7 @@ class ChainBuilderController extends Controller
             // Get model from request, then project settings, then default
             $model = $validated['model'] 
                 ?? ($project->settings && isset($project->settings['aiModel']) ? $project->settings['aiModel'] : null)
-                ?? 'gemini-2.0-flash'; // Default to 2.0 flash (most stable)
+                ?? 'gemini-2.5-flash'; // Default to 2.5 flash
             $provider = str_starts_with($model, 'gemini') ? 'gemini' : 'openai';
             
             // Log for debugging

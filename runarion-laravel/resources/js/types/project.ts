@@ -125,24 +125,34 @@ export interface ProjectSettings {
     storyGenre: string;
     storyTone: string;
     storyPov: string;
-    
+
     // Advanced Settings
     temperature: number;
     repetitionPenalty: number;
     outputLength: number;
     minOutputToken: number;
     thinkingBudget: number;  // Token budget for AI reasoning (thinking models only)
-    
+
     // Sampling
     topP: number;
     tailFree: number;
     topA: number;
     topK: number;
-    
+
     // Complex Settings
     phraseBias: Array<{ [key: string]: number }>;
     bannedPhrases: string[];
     stopSequences: string[];
+
+    // Auditor Tab Settings
+    auditorAnalysisModel: string;
+
+    // Advisor Tab Settings (default values for new chats)
+    advisorModel: string;
+    advisorSystemInstructions: string;
+    advisorThinkingBudget: number;
+    advisorOutputLength: number;
+    advisorTemperature: number;
 }
 
 // Type for story fix confirmation request (when confidence is 50-90%)
@@ -165,6 +175,7 @@ export interface SidebarSettingsProps {
     projectId?: string;
     authorStyles?: Array<{ id: string; name: string; status?: string }>;  // Available author styles from workspace
     onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>;  // Callback to apply story fixes, returns success/failure
+    onSavingChange?: (isSaving: boolean) => void;  // Callback to signal saving state changes (for save indicator)
 }
 
 // Models that support thinking (internal reasoning before responding)
@@ -184,7 +195,7 @@ export const DEFAULT_THINKING_BUDGETS: Record<string, number> = {
 export const DEFAULT_SETTINGS: ProjectSettings = {
     currentPreset: "story-telling",
     authorProfile: "",  // Empty - user must select from available workspace author styles
-    aiModel: "gemini-2.0-flash",
+    aiModel: "gemini-2.5-flash",
     selectionToolbarMode: "formatting",  // DEPRECATED - no longer used, kept for backward compatibility
     memory: "",
     storyGenre: "",
@@ -202,4 +213,12 @@ export const DEFAULT_SETTINGS: ProjectSettings = {
     phraseBias: [],
     bannedPhrases: [],
     stopSequences: [],
+    // Auditor Tab Settings
+    auditorAnalysisModel: "gemini-2.5-flash",
+    // Advisor Tab Settings
+    advisorModel: "gemini-2.5-flash",
+    advisorSystemInstructions: "",
+    advisorThinkingBudget: 4096,
+    advisorOutputLength: 4000,
+    advisorTemperature: 0.8,
 };

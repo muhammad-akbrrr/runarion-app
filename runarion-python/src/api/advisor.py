@@ -17,11 +17,6 @@ advisor = Blueprint("advisor", __name__)
 
 # Model configurations - use exact model names that work with Gemini API
 MODEL_CONFIGS = {
-    "gemini-2.0-flash": {
-        "model_name": "gemini-2.0-flash",
-        "max_tokens": 8192,
-        "supports_thinking": False,
-    },
     "gemini-2.5-flash": {
         "model_name": "gemini-2.5-flash",
         "max_tokens": 65536,

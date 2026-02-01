@@ -240,7 +240,7 @@ class StyleAnalyzerTest:
         profiling = ProfilingStage(
             db_pool=self.db_pool,
             provider="gemini",
-            model="gemini-2.0-flash",
+            model="gemini-2.5-flash",
             max_output_tokens=2000,
             min_success_partial_style=0.5,
         )
@@ -277,7 +277,7 @@ class StyleAnalyzerTest:
             profiling_stage=ProfilingStage(
                 db_pool=self.db_pool,
                 provider="gemini",
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 max_output_tokens=2000,
                 min_success_partial_style=0.5,
             ),
@@ -317,7 +317,7 @@ class StyleAnalyzerTest:
             profiling_stage=ProfilingStage(
                 db_pool=self.db_pool,
                 provider="gemini",
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 max_output_tokens=2000,
                 min_success_partial_style=0.5,
             ),
@@ -350,7 +350,7 @@ class StyleAnalyzerTest:
             profiling_stage=ProfilingStage(
                 db_pool=self.db_pool,
                 provider="gemini",
-                model="gemini-2.0-flash",
+                model="gemini-2.5-flash",
                 max_output_tokens=2000,
                 min_success_partial_style=0.5,
             ),

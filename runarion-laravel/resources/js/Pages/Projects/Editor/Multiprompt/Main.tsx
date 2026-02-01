@@ -15,6 +15,7 @@ export default function ProjectEditorPage({
 }>) {
     const [chapters, setChapters] = useState<ProjectChapter[]>([]);
     const [projectSettings, setProjectSettings] = useState(project.settings || {});
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         // Load chapters
@@ -36,7 +37,7 @@ export default function ProjectEditorPage({
     }, [project.settings]);
 
     // Get AI model from settings - log for debugging
-    const aiModel = projectSettings?.aiModel || project.settings?.aiModel || 'gemini-2.0-flash';
+    const aiModel = projectSettings?.aiModel || project.settings?.aiModel || 'gemini-2.5-flash';
     const authorProfile = projectSettings?.authorProfile || project.settings?.authorProfile;
     
     // Debug logging
@@ -49,17 +50,42 @@ export default function ProjectEditorPage({
         });
     }, [projectSettings, project.settings, aiModel]);
 
-    // Callback to apply result to editor - stores in localStorage and navigates
-    const handleApplyResult = (text: string) => {
+    // Callback to apply result to editor - saves server-side then navigates
+    const handleApplyResult = async (text: string) => {
         if (text && text.trim()) {
-            // Store result in localStorage for editor to pick up
-            localStorage.setItem(`chainbuilder_result_${projectId}`, text);
-            localStorage.setItem(`chainbuilder_result_timestamp_${projectId}`, Date.now().toString());
-            
-            // Navigate to editor
-            router.visit(`/${workspaceId}/projects/${projectId}/editor`, {
-                preserveScroll: false,
-            });
+            try {
+                // Save content server-side first (avoids storage size limits)
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const response = await fetch(
+                    `/${workspaceId}/projects/${projectId}/editor/chain-builder/apply-to-story`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({
+                            result_text: text,
+                            // chapter_order: optional, defaults to last chapter
+                        }),
+                    }
+                );
+
+                if (response.ok) {
+                    // Content saved successfully, navigate to editor
+                    router.visit(`/${workspaceId}/projects/${projectId}/editor`, {
+                        preserveScroll: false,
+                    });
+                } else {
+                    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    console.error('Failed to apply result:', error);
+                    alert(`Failed to save content: ${error.error || 'Please try again.'}`);
+                }
+            } catch (error) {
+                console.error('Error applying result:', error);
+                alert('Failed to save content. Please try again.');
+            }
         }
     };
 
@@ -68,6 +94,7 @@ export default function ProjectEditorPage({
             project={project}
             projectId={projectId}
             workspaceId={workspaceId}
+            isSaving={isLoading}
         >
             <Head title="Multi-Node Prompt Builder" />
             <div className="w-full h-full" style={{ minHeight: 'calc(100vh - 4rem)' }}>
@@ -80,6 +107,7 @@ export default function ProjectEditorPage({
                     authorProfile={authorProfile}
                     settings={projectSettings || project.settings || {}}
                     onApplyResult={handleApplyResult}
+                    onLoadingChange={setIsLoading}
                 />
             </div>
         </ProjectEditorLayout>

@@ -8,6 +8,7 @@ interface CollectionTypeFormProps {
     projectId: string;
     onSaved: () => void;
     onCancel: () => void;
+    onSavingChange?: (isSaving: boolean) => void;
 }
 
 export default function CollectionTypeForm({
@@ -15,6 +16,7 @@ export default function CollectionTypeForm({
     projectId,
     onSaved,
     onCancel,
+    onSavingChange,
 }: CollectionTypeFormProps) {
     const [name, setName] = useState("");
     const [saving, setSaving] = useState(false);
@@ -22,6 +24,7 @@ export default function CollectionTypeForm({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
+        onSavingChange?.(true);
 
         try {
             const response = await fetch(
@@ -72,6 +75,7 @@ export default function CollectionTypeForm({
             );
         } finally {
             setSaving(false);
+            onSavingChange?.(false);
         }
     };
 

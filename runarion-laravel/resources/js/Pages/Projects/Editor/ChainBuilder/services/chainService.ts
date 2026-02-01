@@ -18,6 +18,8 @@ export interface GenerateGraphLayoutRequest {
     entities: Array<{ name: string; type: string; properties: Record<string, any> }>;
     mode: GraphExecutionMode;
     ai_model: string;
+    existing_nodes?: GraphNode[];  // Current nodes on canvas for context
+    existing_edges?: Array<{ id: string; source: string; target: string }>;  // Current edges on canvas
 }
 
 export interface GenerateInstructionRequest {

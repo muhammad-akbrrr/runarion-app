@@ -120,6 +120,13 @@ interface AggregatedRelationship {
         first: number;
         last: number;
     };
+    chapter_analyses?: Array<{
+        chapter_number: number;
+        chapter_name?: string;
+        sentiment_score?: number;
+        emotional_tone?: string;
+        context?: string;
+    }>;
 }
 
 interface RelationshipChange {

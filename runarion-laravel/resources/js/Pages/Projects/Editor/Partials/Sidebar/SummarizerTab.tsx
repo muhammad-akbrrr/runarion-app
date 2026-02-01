@@ -58,7 +58,7 @@ export default function SummarizerTab({
     const [enableRecordKeeper, setEnableRecordKeeper] = useState<boolean>(true);
     const [selectedCategory, setSelectedCategory] = useState<string>("none");
     const [analysisMode, setAnalysisMode] = useState<"all" | "focused">("all");
-    const [selectedEntities, setSelectedEntities] = useState<number[]>([]);
+    const [selectedEntities, setSelectedEntities] = useState<string[]>([]);
     const [selectedChapters, setSelectedChapters] = useState<number[]>([]);
     const [useAllChapters, setUseAllChapters] = useState<boolean>(true);
     const [entities, setEntities] = useState<Entity[]>([]);
@@ -766,7 +766,7 @@ export default function SummarizerTab({
                     loading ||
                     (!enableRecordKeeper &&
                         (selectedCategory === "none" || !selectedCategory)) ||
-                    (selectedCategory &&
+                    !!(selectedCategory &&
                         selectedCategory !== "none" &&
                         selectedCategory !== "all_categories" &&
                         analysisMode === "focused" &&

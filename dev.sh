@@ -206,7 +206,7 @@ check_env_vars() {
 
 # Function to check if ports are available
 check_ports() {
-    local ports=("8000" "5000" "5432" "5173" "7860")
+    local ports=("8000" "5000" "5432" "5173" "8080" "7860")
     for port in "${ports[@]}"; do
         if lsof -i :$port > /dev/null 2>&1; then
             echo "Warning: Port $port is already in use. Please free up the port and try again."

@@ -6,6 +6,7 @@ from models.request import BaseGenerationRequest
 from services.generation_engine import GenerationEngine
 from services.usecase_handler.mock_handler import MockHandler
 from services.usecase_handler.story_handler import StoryHandler
+from services.usecase_handler.graph_layout_handler import GraphLayoutHandler
 from services.conversation_manager import ConversationManager
 from models.response import BaseGenerationResponse
 from models.story_generation.prompt_config import PromptConfig
@@ -15,6 +16,7 @@ generate = Blueprint("generate", __name__)
 USECASE_MAP = {
     "mock" : MockHandler(),
     "story": StoryHandler(),
+    "graph-layout": GraphLayoutHandler(),  # Bypasses conversation history for fresh graph generation
     # "summarizer": SummarizerHandler(),
 }
 

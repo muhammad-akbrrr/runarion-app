@@ -23,7 +23,7 @@ interface EntityListProps {
     onEdit: (entity: Entity) => void;
     onDelete: (vertexId: string) => void;
     onBulkDelete?: (vertexIds: string[]) => void; // Optional bulk delete handler
-    onSelect: (entity: Entity | null) => void;
+    onSelect: (entity: Entity) => void;
     selectedEntity: Entity | null;
     showGrouped?: boolean; // If true, group by type when showing all
 }
@@ -147,7 +147,7 @@ export default function EntityList({
     }, [showGrouped]); // Deliberately NOT including groupedEntities to avoid resetting on data changes
 
     // Toggle selection for a single entity
-    const toggleSelection = (vertexId: number, event?: React.MouseEvent) => {
+    const toggleSelection = (vertexId: string, event?: React.MouseEvent) => {
         if (event) {
             event.stopPropagation();
         }
@@ -163,10 +163,7 @@ export default function EntityList({
     };
 
     // Toggle select all
-    const toggleSelectAll = (event?: React.MouseEvent) => {
-        if (event) {
-            event.stopPropagation();
-        }
+    const toggleSelectAll = () => {
         if (selectedIds.size === visibleEntities.length && visibleEntities.length > 0) {
             setSelectedIds(new Set());
         } else {

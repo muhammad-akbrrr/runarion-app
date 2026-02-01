@@ -34,9 +34,10 @@ interface Relationship {
 interface RecordsPanelProps {
     workspaceId: string;
     projectId: string;
+    onSavingChange?: (isSaving: boolean) => void;
 }
 
-export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelProps) {
+export default function RecordsPanel({ workspaceId, projectId, onSavingChange }: RecordsPanelProps) {
     const [entities, setEntities] = useState<Entity[]>([]);
     const [relationships, setRelationships] = useState<Relationship[]>([]);
     const [loading, setLoading] = useState(true);
@@ -75,9 +76,9 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
                 // TEMPORARILY: Show all entities including duplicates so they can be deleted
                 // TODO: Fix duplicate creation at source - entities should never be duplicated
                 // Deduplicate by vertex_id but log duplicates for visibility
-                const entityMap = new Map<number, Entity>();
+                const entityMap = new Map<string, Entity>();
                 const duplicates: Entity[] = [];
-                
+
                 entitiesList.forEach((entity: Entity) => {
                     if (entityMap.has(entity.vertex_id)) {
                         duplicates.push(entity);
@@ -255,6 +256,7 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
             return;
         }
 
+        onSavingChange?.(true);
         try {
             console.log(`Attempting to delete entity with vertex_id: ${vertexId}`);
             const response = await fetch(
@@ -295,6 +297,8 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
         } catch (error) {
             console.error("Error deleting entity:", error);
             alert(`Failed to delete entity: ${error}`);
+        } finally {
+            onSavingChange?.(false);
         }
     };
 
@@ -303,9 +307,10 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
             return;
         }
 
+        onSavingChange?.(true);
         try {
             console.log(`Attempting to delete ${vertexIds.length} entities`);
-            
+
             // Delete entities sequentially to avoid overwhelming the server
             let successCount = 0;
             let failCount = 0;
@@ -358,6 +363,8 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
         } catch (error) {
             console.error("Error in bulk delete:", error);
             alert(`Failed to delete entities: ${error}`);
+        } finally {
+            onSavingChange?.(false);
         }
     };
 
@@ -386,6 +393,7 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
             return;
         }
 
+        onSavingChange?.(true);
         try {
             // Find the type ID from the collection types
             const response = await fetch(
@@ -435,6 +443,8 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
         } catch (error: any) {
             console.error("Error deleting collection type:", error);
             alert(`Failed to delete collection type: ${error?.message || String(error)}`);
+        } finally {
+            onSavingChange?.(false);
         }
     };
 
@@ -572,6 +582,7 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
                         entity={editingEntity}
                         onSaved={handleEntitySaved}
                         onCancel={() => setIsEntityFormOpen(false)}
+                        onSavingChange={onSavingChange}
                     />
                 </DialogContent>
             </Dialog>
@@ -599,6 +610,7 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
                             }
                         }}
                         onCancel={() => setIsRelationshipFormOpen(false)}
+                        onSavingChange={onSavingChange}
                     />
                 </DialogContent>
             </Dialog>
@@ -614,6 +626,7 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
                         projectId={projectId}
                         onSaved={handleCollectionTypeSaved}
                         onCancel={() => setIsCollectionTypeFormOpen(false)}
+                        onSavingChange={onSavingChange}
                     />
                 </DialogContent>
             </Dialog>
@@ -633,6 +646,7 @@ export default function RecordsPanel({ workspaceId, projectId }: RecordsPanelPro
                         entity={selectedEntity}
                         workspaceId={workspaceId}
                         projectId={projectId}
+                        onSavingChange={onSavingChange}
                     relationships={relationships.filter(
                         (rel) => {
                             // Only show character-to-character relationships

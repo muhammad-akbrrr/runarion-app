@@ -60,7 +60,7 @@ class ProfilingStage:
         self,
         db_pool: SimpleConnectionPool,
         provider: Optional[str] = "gemini",
-        model: Optional[str] = "gemini-2.0-flash",
+        model: Optional[str] = "gemini-2.5-flash",
         max_output_tokens: Optional[int] = 2000,
         generation_config: Optional[dict] = None,
         min_success_partial_style: Optional[int | float] = 0.5,
@@ -82,7 +82,7 @@ class ProfilingStage:
         )
 
         self._provider = provider if provider else "gemini"
-        self._model = model if model else "gemini-2.0-flash"
+        self._model = model if model else "gemini-2.5-flash"
 
         default_generation_config = {
             "temperature": 0.7,

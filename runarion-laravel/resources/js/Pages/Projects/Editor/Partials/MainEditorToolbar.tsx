@@ -17,7 +17,7 @@ import {
     Palette,
     Network,
 } from "lucide-react";
-import { Link } from "@inertiajs/react";
+import { router } from "@inertiajs/react";
 import { useState, useEffect } from "react";
 
 interface VersionControlState {
@@ -43,6 +43,7 @@ interface EditorToolbarProps {
     onToggleColorCoding?: () => void;
     workspaceId?: string;
     projectId?: string;
+    onBeforeNavigate?: () => Promise<void>;
 }
 
 export function EditorToolbar({
@@ -54,6 +55,7 @@ export function EditorToolbar({
     onToggleColorCoding,
     workspaceId,
     projectId,
+    onBeforeNavigate,
 }: EditorToolbarProps) {
     const [isButtonDisabled, setIsButtonDisabled] = useState(false);
 
@@ -111,6 +113,16 @@ export function EditorToolbar({
         if (versionControl?.onSwitchVersion && !versionControl.isLoading) {
             versionControl.onSwitchVersion(versionIndex);
         }
+    };
+
+    const handleNavigateToMultiPrompt = async () => {
+        if (onBeforeNavigate) {
+            await onBeforeNavigate();
+        }
+        router.visit(route("workspace.projects.editor.multiprompt", {
+            workspace_id: workspaceId,
+            project_id: projectId,
+        }));
     };
 
     // Calculate word count
@@ -175,18 +187,8 @@ export function EditorToolbar({
                         <DropdownMenuContent align="start" side="top">
                             <DropdownMenuItem>Auto Mode On</DropdownMenuItem>
                             <DropdownMenuItem>Auto Mode Off</DropdownMenuItem>
-                            <DropdownMenuItem>
-                                <Link
-                                    href={route(
-                                        "workspace.projects.editor.multiprompt",
-                                        {
-                                            workspace_id: workspaceId,
-                                            project_id: projectId,
-                                        }
-                                    )}
-                                >
-                                    Multi-Prompt
-                                </Link>
+                            <DropdownMenuItem onClick={handleNavigateToMultiPrompt}>
+                                Multi-Prompt
                             </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>

@@ -52,6 +52,7 @@ interface EntityDetailSidebarProps {
     onEntityUpdated: () => void;
     onRelationshipCreated: () => void;
     onRelationshipDeleted: () => void;
+    onSavingChange?: (isSaving: boolean) => void;
 }
 
 export default function EntityDetailSidebar({
@@ -64,6 +65,7 @@ export default function EntityDetailSidebar({
     onEntityUpdated,
     onRelationshipCreated,
     onRelationshipDeleted,
+    onSavingChange,
 }: EntityDetailSidebarProps) {
     const [activeTab, setActiveTab] = useState("details");
     const [isEditing, setIsEditing] = useState(false);
@@ -75,7 +77,7 @@ export default function EntityDetailSidebar({
     const [newPropertyValue, setNewPropertyValue] = useState("");
     const [saving, setSaving] = useState(false);
     const [expandedSummaries, setExpandedSummaries] = useState<Set<number>>(
-        new Set()
+        new Set(),
     );
 
     // Get summaries from edited properties, filtering out the _summaries key from regular properties display
@@ -109,11 +111,11 @@ export default function EntityDetailSidebar({
     const handleSummaryChange = (
         chapterNumber: number,
         field: string,
-        value: any
+        value: any,
     ) => {
         const summaries = getSummaries();
         const updatedSummaries = summaries.map((s) =>
-            s.chapter_number === chapterNumber ? { ...s, [field]: value } : s
+            s.chapter_number === chapterNumber ? { ...s, [field]: value } : s,
         );
         setEditedProperties({
             ...editedProperties,
@@ -125,14 +127,14 @@ export default function EntityDetailSidebar({
     const handleDeleteSummary = (chapterNumber: number) => {
         if (
             !confirm(
-                `Are you sure you want to delete the summary for Chapter ${chapterNumber}?`
+                `Are you sure you want to delete the summary for Chapter ${chapterNumber}?`,
             )
         ) {
             return;
         }
         const summaries = getSummaries();
         const updatedSummaries = summaries.filter(
-            (s) => s.chapter_number !== chapterNumber
+            (s) => s.chapter_number !== chapterNumber,
         );
         setEditedProperties({
             ...editedProperties,
@@ -146,8 +148,8 @@ export default function EntityDetailSidebar({
     const getDisplayProperties = () => {
         return Object.fromEntries(
             Object.entries(editedProperties).filter(
-                ([key]) => !key.startsWith("_")
-            )
+                ([key]) => !key.startsWith("_"),
+            ),
         );
     };
 
@@ -170,11 +172,7 @@ export default function EntityDetailSidebar({
                   // Match by entity name
                   const nameMatch =
                       rel.source === entity.name || rel.target === entity.name;
-                  // Also check if we have source_id/target_id and match by vertex_id
-                  const idMatch =
-                      (rel.source_id && rel.source_id === entity.vertex_id) ||
-                      (rel.target_id && rel.target_id === entity.vertex_id);
-                  return nameMatch || idMatch;
+                  return nameMatch;
               })
             : [];
 
@@ -199,8 +197,8 @@ export default function EntityDetailSidebar({
                 })),
             },
             null,
-            2
-        )
+            2,
+        ),
     );
 
     // Log each relationship to see its structure
@@ -211,8 +209,6 @@ export default function EntityDetailSidebar({
                 {
                     source: rel.source,
                     target: rel.target,
-                    source_id: rel.source_id,
-                    target_id: rel.target_id,
                     type: rel.relationship_type,
                     matchesEntity:
                         rel.source === entity?.name ||
@@ -220,8 +216,8 @@ export default function EntityDetailSidebar({
                     entityName: entity?.name,
                 },
                 null,
-                2
-            )
+                2,
+            ),
         );
     });
 
@@ -251,6 +247,7 @@ export default function EntityDetailSidebar({
         if (!entity) return;
 
         setSaving(true);
+        onSavingChange?.(true);
         try {
             const response = await fetch(
                 `/${workspaceId}/projects/${projectId}/editor/records/entities/${entity.vertex_id}`,
@@ -268,7 +265,7 @@ export default function EntityDetailSidebar({
                         name: editedName,
                         properties: editedProperties,
                     }),
-                }
+                },
             );
 
             if (response.ok) {
@@ -280,13 +277,13 @@ export default function EntityDetailSidebar({
                         headers: {
                             Accept: "application/json",
                         },
-                    }
+                    },
                 );
                 if (updatedResponse.ok) {
                     const updatedData = await updatedResponse.json();
                     if (updatedData.entity) {
                         setEditedProperties(
-                            updatedData.entity.properties || {}
+                            updatedData.entity.properties || {},
                         );
                     }
                 }
@@ -304,10 +301,11 @@ export default function EntityDetailSidebar({
         } catch (error: any) {
             console.error("Error updating entity:", error);
             alert(
-                `Failed to update entity: ${error?.message || String(error)}`
+                `Failed to update entity: ${error?.message || String(error)}`,
             );
         } finally {
             setSaving(false);
+            onSavingChange?.(false);
         }
     };
 
@@ -316,6 +314,7 @@ export default function EntityDetailSidebar({
             return;
         }
 
+        onSavingChange?.(true);
         try {
             const response = await fetch(
                 `/${workspaceId}/projects/${projectId}/editor/records/relationships/${edgeId}`,
@@ -328,7 +327,7 @@ export default function EntityDetailSidebar({
                                 .querySelector('meta[name="csrf-token"]')
                                 ?.getAttribute("content") || "",
                     },
-                }
+                },
             );
 
             if (response.ok) {
@@ -348,8 +347,10 @@ export default function EntityDetailSidebar({
             alert(
                 `Failed to delete relationship: ${
                     error?.message || String(error)
-                }`
+                }`,
             );
+        } finally {
+            onSavingChange?.(false);
         }
     };
 
@@ -459,44 +460,43 @@ export default function EntityDetailSidebar({
                                                 >
                                                     <div className="flex items-center gap-2 flex-1">
                                                         {isProtected && (
-                                                            <Lock
-                                                                className="h-3 w-3 text-blue-600"
-                                                                title="Protected field (required by deconstructor)"
-                                                            />
+                                                            <span title="Protected field (required by deconstructor)">
+                                                                <Lock className="h-3 w-3 text-blue-600" />
+                                                            </span>
                                                         )}
                                                         <div className="flex-1">
                                                             <span className="font-medium text-sm">
                                                                 {key}:
                                                             </span>
                                                             {Array.isArray(
-                                                                value
+                                                                value,
                                                             ) ? (
                                                                 <Textarea
                                                                     value={JSON.stringify(
                                                                         value,
                                                                         null,
-                                                                        2
+                                                                        2,
                                                                     )}
                                                                     onChange={(
-                                                                        e
+                                                                        e,
                                                                     ) => {
                                                                         try {
                                                                             const parsed =
                                                                                 JSON.parse(
                                                                                     e
                                                                                         .target
-                                                                                        .value
+                                                                                        .value,
                                                                                 );
                                                                             if (
                                                                                 Array.isArray(
-                                                                                    parsed
+                                                                                    parsed,
                                                                                 )
                                                                             ) {
                                                                                 setEditedProperties(
                                                                                     {
                                                                                         ...editedProperties,
                                                                                         [key]: parsed,
-                                                                                    }
+                                                                                    },
                                                                                 );
                                                                             }
                                                                         } catch {
@@ -509,10 +509,10 @@ export default function EntityDetailSidebar({
                                                             ) : (
                                                                 <Input
                                                                     value={String(
-                                                                        value
+                                                                        value,
                                                                     )}
                                                                     onChange={(
-                                                                        e
+                                                                        e,
                                                                     ) => {
                                                                         setEditedProperties(
                                                                             {
@@ -520,7 +520,7 @@ export default function EntityDetailSidebar({
                                                                                 [key]: e
                                                                                     .target
                                                                                     .value,
-                                                                            }
+                                                                            },
                                                                         );
                                                                     }}
                                                                     className="mt-1 h-8 text-sm"
@@ -543,7 +543,7 @@ export default function EntityDetailSidebar({
                                                                     key
                                                                 ];
                                                                 setEditedProperties(
-                                                                    newProps
+                                                                    newProps,
                                                                 );
                                                             }}
                                                             title="Remove property"
@@ -553,7 +553,7 @@ export default function EntityDetailSidebar({
                                                     )}
                                                 </div>
                                             );
-                                        }
+                                        },
                                     )}
 
                                     {/* Add Property Inputs */}
@@ -564,7 +564,7 @@ export default function EntityDetailSidebar({
                                             value={newPropertyKey}
                                             onChange={(e) =>
                                                 setNewPropertyKey(
-                                                    e.target.value
+                                                    e.target.value,
                                                 )
                                             }
                                             onKeyPress={(e) => {
@@ -580,7 +580,7 @@ export default function EntityDetailSidebar({
                                             value={newPropertyValue}
                                             onChange={(e) =>
                                                 setNewPropertyValue(
-                                                    e.target.value
+                                                    e.target.value,
                                                 )
                                             }
                                             onKeyPress={(e) => {
@@ -620,12 +620,12 @@ export default function EntityDetailSidebar({
                                             .sort(
                                                 (a, b) =>
                                                     (a.chapter_number || 0) -
-                                                    (b.chapter_number || 0)
+                                                    (b.chapter_number || 0),
                                             )
                                             .map((summary) => {
                                                 const isExpanded =
                                                     expandedSummaries.has(
-                                                        summary.chapter_number
+                                                        summary.chapter_number,
                                                     );
                                                 return (
                                                     <div
@@ -637,7 +637,7 @@ export default function EntityDetailSidebar({
                                                             type="button"
                                                             onClick={() =>
                                                                 toggleSummaryExpansion(
-                                                                    summary.chapter_number
+                                                                    summary.chapter_number,
                                                                 )
                                                             }
                                                             className="w-full flex items-center justify-between p-2 bg-linear-to-r from-blue-50 to-indigo-50 hover:from-blue-100 hover:to-indigo-100 transition-colors"
@@ -663,11 +663,11 @@ export default function EntityDetailSidebar({
                                                                 variant="ghost"
                                                                 size="sm"
                                                                 onClick={(
-                                                                    e
+                                                                    e,
                                                                 ) => {
                                                                     e.stopPropagation();
                                                                     handleDeleteSummary(
-                                                                        summary.chapter_number
+                                                                        summary.chapter_number,
                                                                     );
                                                                 }}
                                                                 className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
@@ -691,14 +691,14 @@ export default function EntityDetailSidebar({
                                                                             ""
                                                                         }
                                                                         onChange={(
-                                                                            e
+                                                                            e,
                                                                         ) =>
                                                                             handleSummaryChange(
                                                                                 summary.chapter_number,
                                                                                 "activity",
                                                                                 e
                                                                                     .target
-                                                                                    .value
+                                                                                    .value,
                                                                             )
                                                                         }
                                                                         placeholder="Describe what this entity does in this chapter..."
@@ -715,25 +715,25 @@ export default function EntityDetailSidebar({
                                                                     <Textarea
                                                                         value={
                                                                             Array.isArray(
-                                                                                summary.key_moments
+                                                                                summary.key_moments,
                                                                             )
                                                                                 ? summary.key_moments.join(
-                                                                                      "\n"
+                                                                                      "\n",
                                                                                   )
                                                                                 : summary.key_moments ||
                                                                                   ""
                                                                         }
                                                                         onChange={(
-                                                                            e
+                                                                            e,
                                                                         ) => {
                                                                             const moments =
                                                                                 e.target.value.split(
-                                                                                    "\n"
+                                                                                    "\n",
                                                                                 );
                                                                             handleSummaryChange(
                                                                                 summary.chapter_number,
                                                                                 "key_moments",
-                                                                                moments
+                                                                                moments,
                                                                             );
                                                                         }}
                                                                         placeholder="Enter key moments, one per line..."
@@ -761,7 +761,7 @@ export default function EntityDetailSidebar({
                                         setIsEditing(false);
                                         setEditedName(entity.name);
                                         setEditedProperties(
-                                            entity.properties || {}
+                                            entity.properties || {},
                                         );
                                     }}
                                 >
@@ -789,7 +789,7 @@ export default function EntityDetailSidebar({
                             </div>
 
                             {Object.keys(entity.properties || {}).filter(
-                                (k) => !k.startsWith("_")
+                                (k) => !k.startsWith("_"),
                             ).length > 0 && (
                                 <div>
                                     <Label>Properties</Label>
@@ -801,7 +801,7 @@ export default function EntityDetailSidebar({
                                     <div className="space-y-2 mt-2">
                                         {Object.entries(entity.properties || {})
                                             .filter(
-                                                ([key]) => !key.startsWith("_")
+                                                ([key]) => !key.startsWith("_"),
                                             )
                                             .map(([key, value]) => {
                                                 const isProtected =
@@ -816,10 +816,9 @@ export default function EntityDetailSidebar({
                                                         }`}
                                                     >
                                                         {isProtected && (
-                                                            <Lock
-                                                                className="h-3 w-3 text-blue-600 mt-0.5 shrink-0"
-                                                                title="Protected field (required by deconstructor)"
-                                                            />
+                                                            <span title="Protected field (required by deconstructor)">
+                                                                <Lock className="h-3 w-3 text-blue-600 mt-0.5 shrink-0" />
+                                                            </span>
                                                         )}
                                                         <div className="flex-1">
                                                             <span className="font-medium">
@@ -827,13 +826,13 @@ export default function EntityDetailSidebar({
                                                             </span>{" "}
                                                             <span className="text-gray-600">
                                                                 {Array.isArray(
-                                                                    value
+                                                                    value,
                                                                 )
                                                                     ? JSON.stringify(
-                                                                          value
+                                                                          value,
                                                                       )
                                                                     : String(
-                                                                          value
+                                                                          value,
                                                                       )}
                                                             </span>
                                                         </div>
@@ -849,7 +848,10 @@ export default function EntityDetailSidebar({
 
                 {/* Summary Tab (not shown for Record Keeper entries) */}
                 {supportsSummaryTab && (
-                    <TabsContent value="summary" className="flex-1 overflow-y-auto">
+                    <TabsContent
+                        value="summary"
+                        className="flex-1 overflow-y-auto"
+                    >
                         <SummaryTab
                             entity={entity}
                             workspaceId={workspaceId}
@@ -887,6 +889,7 @@ export default function EntityDetailSidebar({
                             onRelationshipCreated={onRelationshipCreated}
                             onRelationshipDeleted={onRelationshipDeleted}
                             onRelationshipUpdated={onRelationshipDeleted}
+                            onSavingChange={onSavingChange}
                         />
                     </TabsContent>
                 )}

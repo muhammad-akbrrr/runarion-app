@@ -13,13 +13,16 @@ import {
     DropdownMenuTrigger,
     DropdownMenuRadioGroup,
     DropdownMenuRadioItem,
-    DropdownMenuSeparator,
-    DropdownMenuSub,
-    DropdownMenuSubContent,
-    DropdownMenuSubTrigger,
 } from "@/Components/ui/dropdown-menu";
 import { Input } from "@/Components/ui/input";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/Components/ui/dialog";
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+} from "@/Components/ui/dialog";
 import { Edit, Trash2 } from "lucide-react";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import AddChapterDialog from "./Partials/AddChapterDialog";
@@ -27,49 +30,19 @@ import { useProjectEditor } from "./hooks";
 import { PendingEditsProvider } from "./contexts/PendingEditsContext";
 import { MagicWandButton } from "@/Components/MagicWandButton";
 import { findBestMatch } from "./utils/fuzzyTextMatch";
-import { getPlainTextFromEditor, replaceTextInLexicalEditor } from "./utils/lexicalTextReplace";
+import {
+    getPlainTextFromEditor,
+    replaceTextInLexicalEditor,
+    insertChainBuilderResult,
+} from "./utils/lexicalTextReplace";
+import {
+    isLexicalJSON,
+    extractTextFromNode,
+} from "./utils/lexicalTextExtract";
+import { toast } from "sonner";
 
 // Import Echo for WebSocket connection
 import "@/echo";
-
-/**
- * Check if content is valid Lexical JSON format
- */
-function isLexicalJSON(content: string): boolean {
-    if (!content?.trim().startsWith('{')) return false;
-    try {
-        const parsed = JSON.parse(content);
-        return parsed.root?.type === 'root';
-    } catch {
-        return false;
-    }
-}
-
-/**
- * Extract plain text from Lexical JSON node recursively
- */
-function extractTextFromNode(node: any): string {
-    if (!node) return '';
-
-    // Text node - return its text content
-    if (node.type === 'text' || node.type === 'origin-text') {
-        return node.text || '';
-    }
-
-    // For container nodes, process children
-    if (node.children && Array.isArray(node.children)) {
-        return node.children.map((child: any, index: number) => {
-            const text = extractTextFromNode(child);
-            // Add paragraph breaks between paragraphs
-            if (child.type === 'paragraph' && index < node.children.length - 1) {
-                return text + '\n\n';
-            }
-            return text;
-        }).join('');
-    }
-
-    return '';
-}
 
 /**
  * Calculate word count from content (handles both Lexical JSON and plain text)
@@ -89,11 +62,11 @@ function getWordCount(content: string | null | undefined): number {
     } else {
         // Plain text - just use as-is (with markdown cleanup)
         plainText = content
-            .replace(/[#*_`~\[\]()]/g, '') // Remove markdown syntax
-            .replace(/\n+/g, ' ');
+            .replace(/[#*_`~\[\]()]/g, "") // Remove markdown syntax
+            .replace(/\n+/g, " ");
     }
 
-    const cleaned = plainText.replace(/\n+/g, ' ').trim();
+    const cleaned = plainText.replace(/\n+/g, " ").trim();
     if (!cleaned) return 0;
 
     return cleaned.split(/\s+/).filter(Boolean).length;
@@ -111,14 +84,19 @@ export default function ProjectEditorPage({
     chapters?: ProjectChapter[];
 }>) {
     const { errors, authorStyles: rawAuthorStyles } = usePage().props;
-    
+
     // Get author styles from page props (provided by controller)
     // Controller sends: { id, name, status, avatar, color }
-    const authorStyles = (rawAuthorStyles as Array<{ id: string; name: string; status?: string }> | undefined)?.map(style => ({
-        id: style.id,
-        name: style.name,
-        status: style.status,
-    })) ?? [];
+    const authorStyles =
+        (
+            rawAuthorStyles as
+                | Array<{ id: string; name: string; status?: string }>
+                | undefined
+        )?.map((style) => ({
+            id: style.id,
+            name: style.name,
+            status: style.status,
+        })) ?? [];
 
     // Ref to store Lexical editor instance for migration (must be declared before useProjectEditor)
     const editorRef = useRef<any>(null);
@@ -149,6 +127,7 @@ export default function ProjectEditorPage({
         handleCancelGeneration,
         saveContent,
         smartSave,
+        flushSettingsBeforeNavigation,
     } = useProjectEditor({
         workspaceId,
         projectId,
@@ -159,101 +138,106 @@ export default function ProjectEditorPage({
 
     // State to prevent saves during UI interactions
     const [isInteracting, setIsInteracting] = useState(false);
-    
+
+    // State to track external saving operations (e.g., advisor chat operations)
+    // Uses debounced indicator like useUnifiedSave to prevent flashing
+    const [isExternalSavingRaw, setIsExternalSavingRaw] = useState(false);
+    const [isExternalSavingIndicator, setIsExternalSavingIndicator] =
+        useState(false);
+    const externalSavingDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Debounce the external saving indicator (stays visible 1.5s after save completes)
+    useEffect(() => {
+        if (isExternalSavingRaw) {
+            // Show indicator immediately when saving starts
+            setIsExternalSavingIndicator(true);
+            // Clear any pending "done" timer
+            if (externalSavingDebounceRef.current) {
+                clearTimeout(externalSavingDebounceRef.current);
+                externalSavingDebounceRef.current = null;
+            }
+        } else {
+            // Debounce hiding the indicator - wait 1.5s after saving ends
+            externalSavingDebounceRef.current = setTimeout(() => {
+                setIsExternalSavingIndicator(false);
+            }, 1500);
+        }
+
+        return () => {
+            if (externalSavingDebounceRef.current) {
+                clearTimeout(externalSavingDebounceRef.current);
+            }
+        };
+    }, [isExternalSavingRaw]);
+
+    // Callback for external saving changes (passed to AdvisorTab)
+    const handleExternalSavingChange = useCallback((saving: boolean) => {
+        setIsExternalSavingRaw(saving);
+    }, []);
+
+    // Combined saving state for the indicator
+    const isCombinedSaving = isSaving || isExternalSavingIndicator;
+
     // Ref to get current editor content
     const getCurrentEditorContentRef = useRef<(() => string) | null>(null);
 
-    // Check for pending chainbuilder result
+    // Handle chain builder results from URL params (legacy/backward compatibility)
+    // NOTE: New flow saves content server-side before redirect, so this won't trigger.
+    // Kept for backward compatibility with any bookmarked URLs or edge cases.
     useEffect(() => {
-        const resultKey = `chainbuilder_result_${projectId}`;
-        const timestampKey = `chainbuilder_result_timestamp_${projectId}`;
-        
-        const result = localStorage.getItem(resultKey);
-        const timestamp = localStorage.getItem(timestampKey);
-        
-        // Only apply if result is recent (within last 5 minutes)
-        if (result && timestamp && selectedChapter) {
-            const resultAge = Date.now() - parseInt(timestamp);
-            if (resultAge < 5 * 60 * 1000) { // 5 minutes
-                // Get current content - try ref first, then fallback to state
-                // Use a small delay to ensure ref is set
-                setTimeout(() => {
-                const currentContent = getCurrentEditorContentRef.current?.() ?? content ?? '';
-                    
-                    // FIX: Remove any overlap between current content and result
-                    // The result might already include some of the current content if it was in story context
-                    let cleanResult = result.trim();
-                    
-                    // Only append if we have current content (don't replace empty chapter)
-                    if (currentContent.trim()) {
-                        // Check if result starts with current content (duplication)
-                        const currentTrimmed = currentContent.trim();
-                        if (cleanResult.startsWith(currentTrimmed)) {
-                            // Result already includes current content, strip it
-                            cleanResult = cleanResult.slice(currentTrimmed.length).trimStart();
-                        } else {
-                            // Check for partial overlap at the end of current content
-                            // Look for the last few words/sentences of current content in the result
-                            const currentWords = currentTrimmed.split(/\s+/).filter(Boolean);
-                            const resultWords = cleanResult.split(/\s+/).filter(Boolean);
-                            
-                            // Check if result starts with tail of current content (overlap)
-                            if (currentWords.length > 0 && resultWords.length > 0) {
-                                // Check last 10 words of current content
-                                const tailWords = currentWords.slice(-10).join(' ');
-                                if (tailWords && cleanResult.startsWith(tailWords)) {
-                                    cleanResult = cleanResult.slice(tailWords.length).trimStart();
-                                }
-                            }
-                        }
-                        
-                        // Only append if we have new content to add
-                        if (cleanResult) {
-                            const separator = currentContent && !currentContent.endsWith('\n') && !currentContent.endsWith(' ')
-                                ? '\n\n'
-                                : '';
-                            const appendedText = separator + cleanResult;
-                            const newContent = currentContent + appendedText;
+        const urlParams = new URLSearchParams(window.location.search);
+        const chainResult = urlParams.get('chainBuilderResult');
+        const chainTimestamp = urlParams.get('chainBuilderTimestamp');
 
-                            // Update content - AI origin is now tracked via OriginTextNode metadata
-                            setContent(newContent);
-
-                            if (selectedChapter) {
-                                smartSave(selectedChapter.order, newContent, 'manual');
-                            }
-                        }
-                        // If cleanResult is empty after deduplication, don't append anything
-                    } else {
-                        // If chapter is empty, just set the content (no append needed)
-                        setContent(cleanResult);
-
-                        if (selectedChapter) {
-                            smartSave(selectedChapter.order, cleanResult, 'manual');
-                        }
-                    }
-
-                // Clear the stored result
-                localStorage.removeItem(resultKey);
-                localStorage.removeItem(timestampKey);
-                }, 100); // Small delay to ensure ref is set
-            } else {
-                // Clear old result
-                localStorage.removeItem(resultKey);
-                localStorage.removeItem(timestampKey);
+        if (chainResult && chainTimestamp && editorRef.current) {
+            // Process only once per timestamp
+            const processedKey = `chainbuilder_processed_${projectId}_${chainTimestamp}`;
+            if (sessionStorage.getItem(processedKey)) {
+                return;
             }
+
+            // Insert result using utility
+            insertChainBuilderResult(editorRef.current, chainResult)
+                .then(() => {
+                    // Mark as processed
+                    sessionStorage.setItem(processedKey, 'true');
+
+                    // Clean up URL params
+                    const newUrl = window.location.pathname;
+                    window.history.replaceState({}, '', newUrl);
+
+                    // Show success toast
+                    toast.success('Chain builder result appended to story');
+
+                    // Save the updated content
+                    if (selectedChapter && editorRef.current) {
+                        const updatedJson = JSON.stringify(
+                            editorRef.current.getEditorState().toJSON()
+                        );
+                        smartSave(
+                            selectedChapter.order,
+                            updatedJson,
+                            "manual",
+                        );
+                    }
+                })
+                .catch((error) => {
+                    console.error('Failed to insert chain builder result:', error);
+                    toast.error('Failed to append chain builder result');
+                });
         }
-    }, [projectId, content, setContent, selectedChapter, smartSave]);
+    }, [projectId, selectedChapter, smartSave]);
 
     // Handle focus out save - only save if content has changed
     const handleEditorBlur = useCallback(() => {
-        console.log('Editor blur event', {
+        console.log("Editor blur event", {
             hasSelectedChapter: !!selectedChapter,
             isInteracting,
             isStreaming,
-            contentLength: (content ?? '').length // Handle null content
+            contentLength: (content ?? "").length, // Handle null content
         });
         if (selectedChapter && !isInteracting && !isStreaming) {
-            smartSave(selectedChapter.order, content, 'manual');
+            smartSave(selectedChapter.order, content, "manual");
         }
     }, [selectedChapter, content, smartSave, isInteracting, isStreaming]);
 
@@ -270,7 +254,7 @@ export default function ProjectEditorPage({
         // Clear previous errors
         setAddChapterError("");
         setAddChapterLoading(true);
-        
+
         try {
             await handleAddChapter(newChapterName);
             setAddChapterDialogOpen(false);
@@ -281,7 +265,7 @@ export default function ProjectEditorPage({
             // Extract error message from Inertia error object
             if (error?.chapter_name) {
                 setAddChapterError(error.chapter_name);
-            } else if (typeof error === 'string') {
+            } else if (typeof error === "string") {
                 setAddChapterError(error);
             } else {
                 setAddChapterError("Failed to add chapter. Please try again.");
@@ -292,7 +276,7 @@ export default function ProjectEditorPage({
     };
 
     // Get existing chapter names for validation
-    const existingChapterNames = localChapters.map(ch => ch.chapter_name);
+    const existingChapterNames = localChapters.map((ch) => ch.chapter_name);
 
     // Handle dialog open/close to reset state
     const handleDialogOpenChange = (open: boolean) => {
@@ -315,7 +299,9 @@ export default function ProjectEditorPage({
 
     // Chapter edit/delete state
     const [editChapterDialogOpen, setEditChapterDialogOpen] = useState(false);
-    const [editingChapter, setEditingChapter] = useState<ProjectChapter | null>(null);
+    const [editingChapter, setEditingChapter] = useState<ProjectChapter | null>(
+        null,
+    );
     const [editingChapterName, setEditingChapterName] = useState("");
     const [editChapterLoading, setEditChapterLoading] = useState(false);
     const [editChapterError, setEditChapterError] = useState<string>("");
@@ -341,7 +327,7 @@ export default function ProjectEditorPage({
                     method: "PATCH",
                     headers: {
                         "Content-Type": "application/json",
-                        "Accept": "application/json",
+                        Accept: "application/json",
                         "X-CSRF-TOKEN":
                             document
                                 .querySelector('meta[name="csrf-token"]')
@@ -350,7 +336,7 @@ export default function ProjectEditorPage({
                     body: JSON.stringify({
                         chapter_name: editingChapterName.trim(),
                     }),
-                }
+                },
             );
 
             if (response.ok) {
@@ -374,7 +360,11 @@ export default function ProjectEditorPage({
 
     // Handle delete chapter
     const handleDeleteChapter = async (chapter: ProjectChapter) => {
-        if (!confirm(`Are you sure you want to delete "${chapter.chapter_name}"? This cannot be undone.`)) {
+        if (
+            !confirm(
+                `Are you sure you want to delete "${chapter.chapter_name}"? This cannot be undone.`,
+            )
+        ) {
             return;
         }
 
@@ -384,13 +374,13 @@ export default function ProjectEditorPage({
                 {
                     method: "DELETE",
                     headers: {
-                        "Accept": "application/json",
+                        Accept: "application/json",
                         "X-CSRF-TOKEN":
                             document
                                 .querySelector('meta[name="csrf-token"]')
                                 ?.getAttribute("content") || "",
                     },
-                }
+                },
             );
 
             if (response.ok) {
@@ -422,11 +412,11 @@ export default function ProjectEditorPage({
             // Pass current settings to regenerate function
             const currentSettings = {
                 currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || 'gemini-2.0-flash',
-                memory: settings.memory || '',
-                storyGenre: settings.storyGenre || '',
-                storyTone: settings.storyTone || '',
-                storyPov: settings.storyPov || '',
+                aiModel: settings.aiModel || "gemini-2.5-flash",
+                memory: settings.memory || "",
+                storyGenre: settings.storyGenre || "",
+                storyTone: settings.storyTone || "",
+                storyPov: settings.storyPov || "",
                 temperature: settings.temperature || 1.0,
                 repetitionPenalty: settings.repetitionPenalty || 0.0,
                 outputLength: settings.outputLength || 300,
@@ -446,68 +436,97 @@ export default function ProjectEditorPage({
     // Callback for applying story fixes from the auditor
     // Auto-applies the fix and returns success/failure (no confirmation dialog needed)
     // NOTE: This is async to ensure sequential application of batch fixes
-    const handleApplyStoryFix = useCallback(async (oldText: string, newText: string): Promise<boolean> => {
-        console.log('[StoryFix] handleApplyStoryFix called');
-        console.log('[StoryFix] oldText:', oldText?.substring(0, 100));
+    const handleApplyStoryFix = useCallback(
+        async (oldText: string, newText: string): Promise<boolean> => {
+            console.log("[StoryFix] handleApplyStoryFix called");
+            console.log("[StoryFix] oldText:", oldText?.substring(0, 100));
 
-        const editor = editorRef.current;
-        if (!editor) {
-            console.warn('[StoryFix] No editor reference');
-            return false;
-        }
-
-        // Get PLAIN TEXT from editor (not Lexical JSON)
-        const plainContent = getPlainTextFromEditor(editor);
-        if (!plainContent) {
-            console.warn('[StoryFix] No content in editor');
-            return false;
-        }
-
-        console.log('[StoryFix] Content length:', plainContent.length);
-
-        // Helper function to apply the replacement - now properly async
-        const applyReplacement = async (textToReplace: string): Promise<boolean> => {
-            const result = await replaceTextInLexicalEditor(editor, textToReplace, newText);
-            if (result.success && selectedChapter) {
-                console.log('[StoryFix] Replacement successful, saving...');
-                // Small delay for Lexical to process the update
-                await new Promise(resolve => setTimeout(resolve, 100));
-                const updatedJson = JSON.stringify(editor.getEditorState().toJSON());
-                smartSave(selectedChapter.order, updatedJson, 'manual');
-                return true;
-            } else if (!result.success) {
-                console.error('[StoryFix] Replacement failed:', result.error);
+            const editor = editorRef.current;
+            if (!editor) {
+                console.warn("[StoryFix] No editor reference");
+                return false;
             }
+
+            // Get PLAIN TEXT from editor (not Lexical JSON)
+            const plainContent = getPlainTextFromEditor(editor);
+            if (!plainContent) {
+                console.warn("[StoryFix] No content in editor");
+                return false;
+            }
+
+            console.log("[StoryFix] Content length:", plainContent.length);
+
+            // Helper function to apply the replacement - now properly async
+            const applyReplacement = async (
+                textToReplace: string,
+            ): Promise<boolean> => {
+                const result = await replaceTextInLexicalEditor(
+                    editor,
+                    textToReplace,
+                    newText,
+                );
+                if (result.success && selectedChapter) {
+                    console.log("[StoryFix] Replacement successful, saving...");
+                    // Small delay for Lexical to process the update
+                    await new Promise((resolve) => setTimeout(resolve, 100));
+                    const updatedJson = JSON.stringify(
+                        editor.getEditorState().toJSON(),
+                    );
+                    smartSave(selectedChapter.order, updatedJson, "manual");
+                    return true;
+                } else if (!result.success) {
+                    console.error(
+                        "[StoryFix] Replacement failed:",
+                        result.error,
+                    );
+                }
+                return false;
+            };
+
+            // Strategy 1: Exact match - auto-apply
+            if (plainContent.includes(oldText)) {
+                console.log("[StoryFix] Found exact match! Auto-applying...");
+                return await applyReplacement(oldText);
+            }
+
+            // Strategy 2: Fuzzy match - auto-apply
+            console.log("[StoryFix] Trying fuzzy match...");
+            const match = findBestMatch(plainContent, oldText);
+
+            if (match.found && match.confidence >= 0.5) {
+                console.log(
+                    `[StoryFix] Found match with ${(match.confidence * 100).toFixed(0)}% confidence. Auto-applying...`,
+                );
+                return await applyReplacement(match.matchedText);
+            }
+
+            // Low confidence (<50%) or not found - return false
+            console.warn(
+                "[StoryFix] Could not find text - match confidence too low or not found",
+            );
+            console.log(
+                "[StoryFix] Best match confidence:",
+                match.found
+                    ? `${(match.confidence * 100).toFixed(0)}%`
+                    : "No match",
+            );
+            console.log(
+                "[StoryFix] Old text preview:",
+                oldText.substring(0, 200),
+            );
             return false;
-        };
-
-        // Strategy 1: Exact match - auto-apply
-        if (plainContent.includes(oldText)) {
-            console.log('[StoryFix] Found exact match! Auto-applying...');
-            return await applyReplacement(oldText);
-        }
-
-        // Strategy 2: Fuzzy match - auto-apply
-        console.log('[StoryFix] Trying fuzzy match...');
-        const match = findBestMatch(plainContent, oldText);
-
-        if (match.found && match.confidence >= 0.50) {
-            console.log(`[StoryFix] Found match with ${(match.confidence * 100).toFixed(0)}% confidence. Auto-applying...`);
-            return await applyReplacement(match.matchedText);
-        }
-
-        // Low confidence (<50%) or not found - return false
-        console.warn('[StoryFix] Could not find text - match confidence too low or not found');
-        console.log('[StoryFix] Best match confidence:', match.found ? `${(match.confidence * 100).toFixed(0)}%` : 'No match');
-        console.log('[StoryFix] Old text preview:', oldText.substring(0, 200));
-        return false;
-    }, [selectedChapter, smartSave]);
+        },
+        [selectedChapter, smartSave],
+    );
 
     // Wrapper for LexicalEditor's inline diff - now just forwards to handleApplyStoryFix
     // For inline editing, auto-apply matches (user can undo via Lexical history)
-    const handleInlineApplyEdit = useCallback(async (oldText: string, newText: string): Promise<boolean> => {
-        return await handleApplyStoryFix(oldText, newText);
-    }, [handleApplyStoryFix]);
+    const handleInlineApplyEdit = useCallback(
+        async (oldText: string, newText: string): Promise<boolean> => {
+            return await handleApplyStoryFix(oldText, newText);
+        },
+        [handleApplyStoryFix],
+    );
 
     return (
         <PendingEditsProvider>
@@ -515,252 +534,306 @@ export default function ProjectEditorPage({
                 project={project}
                 projectId={projectId}
                 workspaceId={workspaceId}
-                isSaving={isSaving}
+                isSaving={isCombinedSaving}
                 setIsSaving={() => {}} // No longer needed since saves are async
             >
                 <Head title="Project Editor" />
 
                 <EditorSidebar
-                settings={settings}
-                onSettingChange={handleSettingChange}
-                workspaceId={workspaceId}
-                projectId={projectId}
-                authorStyles={authorStyles}
-                onApplyStoryFix={handleApplyStoryFix}
-            >
-                <div className="flex items-center justify-between">
-                    {/* Left side - Menu items */}
-                    <div
-                        className="
+                    settings={settings}
+                    onSettingChange={handleSettingChange}
+                    workspaceId={workspaceId}
+                    projectId={projectId}
+                    authorStyles={authorStyles}
+                    onApplyStoryFix={handleApplyStoryFix}
+                    onSavingChange={handleExternalSavingChange}
+                >
+                    <div className="flex items-center justify-between">
+                        {/* Left side - Menu items */}
+                        <div
+                            className="
                             flex items-center space-x-1
                             p-0.5
                             bg-white
                             rounded-lg border
                         "
-                    >
-                        <Button variant="ghost" size="sm">
-                            File
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                            Edit
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                            View
-                        </Button>
-                        <Button variant="ghost" size="sm">
-                            Profile
-                        </Button>
+                        >
+                            <Button variant="ghost" size="sm">
+                                File
+                            </Button>
+                            <Button variant="ghost" size="sm">
+                                Edit
+                            </Button>
+                            <Button variant="ghost" size="sm">
+                                View
+                            </Button>
+                            <Button variant="ghost" size="sm">
+                                Profile
+                            </Button>
+                        </div>
+
+                        {/* Right side - Chapter management */}
+                        <div className="flex items-center space-x-3">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger>
+                                    <Button
+                                        variant="outline"
+                                        className="flex flex-row justify-between items-center w-50 overflow-hidden"
+                                        disabled={isGenerating}
+                                    >
+                                        <p className="truncate">
+                                            {selectedChapter
+                                                ? selectedChapter.chapter_name
+                                                : "Select Chapter"}
+                                        </p>
+                                        <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                    align="start"
+                                    className="w-64"
+                                >
+                                    <DropdownMenuRadioGroup
+                                        value={selectedChapterOrder.toString()}
+                                        onValueChange={(value) =>
+                                            handleChapterSelect(parseInt(value))
+                                        }
+                                    >
+                                        {localChapters.length > 0 ? (
+                                            localChapters.map(
+                                                (chapter, index) => (
+                                                    <div
+                                                        key={index}
+                                                        className="group"
+                                                    >
+                                                        <DropdownMenuRadioItem
+                                                            value={chapter.order.toString()}
+                                                            disabled={
+                                                                isGenerating
+                                                            }
+                                                            className="flex items-center justify-between"
+                                                        >
+                                                            <span className="flex-1">
+                                                                {
+                                                                    chapter.chapter_name
+                                                                }
+                                                            </span>
+                                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6"
+                                                                    onPointerDown={(
+                                                                        e,
+                                                                    ) =>
+                                                                        e.stopPropagation()
+                                                                    }
+                                                                    onClick={(
+                                                                        e,
+                                                                    ) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        handleEditChapter(
+                                                                            chapter,
+                                                                        );
+                                                                    }}
+                                                                    disabled={
+                                                                        isGenerating
+                                                                    }
+                                                                >
+                                                                    <Edit className="h-3 w-3" />
+                                                                </Button>
+                                                                <Button
+                                                                    variant="ghost"
+                                                                    size="icon"
+                                                                    className="h-6 w-6 text-red-500 hover:text-red-700"
+                                                                    onPointerDown={(
+                                                                        e,
+                                                                    ) =>
+                                                                        e.stopPropagation()
+                                                                    }
+                                                                    onClick={(
+                                                                        e,
+                                                                    ) => {
+                                                                        e.preventDefault();
+                                                                        e.stopPropagation();
+                                                                        handleDeleteChapter(
+                                                                            chapter,
+                                                                        );
+                                                                    }}
+                                                                    disabled={
+                                                                        isGenerating
+                                                                    }
+                                                                >
+                                                                    <Trash2 className="h-3 w-3" />
+                                                                </Button>
+                                                            </div>
+                                                        </DropdownMenuRadioItem>
+                                                    </div>
+                                                ),
+                                            )
+                                        ) : (
+                                            <DropdownMenuItem disabled>
+                                                No chapters available
+                                            </DropdownMenuItem>
+                                        )}
+                                    </DropdownMenuRadioGroup>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+
+                            <Button
+                                onClick={() => setAddChapterDialogOpen(true)}
+                                disabled={isGenerating}
+                            >
+                                New Chapter
+                            </Button>
+                            <AddChapterDialog
+                                open={addChapterDialogOpen}
+                                setOpen={handleDialogOpenChange}
+                                chapterName={newChapterName}
+                                setChapterName={handleChapterNameChange}
+                                loading={addChapterLoading}
+                                handleAddChapter={handleAddChapterClick}
+                                existingChapterNames={existingChapterNames}
+                                error={addChapterError}
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                            />
+                        </div>
                     </div>
 
-                    {/* Right side - Chapter management */}
-                    <div className="flex items-center space-x-3">
-                        <DropdownMenu>
-                            <DropdownMenuTrigger>
+                    {/* Edit Chapter Dialog */}
+                    <Dialog
+                        open={editChapterDialogOpen}
+                        onOpenChange={setEditChapterDialogOpen}
+                    >
+                        <DialogContent>
+                            <DialogHeader>
+                                <DialogTitle>Edit Chapter</DialogTitle>
+                                <DialogDescription>
+                                    Update the chapter name. This will not
+                                    affect the chapter content.
+                                </DialogDescription>
+                            </DialogHeader>
+                            <div className="space-y-4 py-4">
+                                <div>
+                                    <label className="text-sm font-medium">
+                                        Chapter Name
+                                    </label>
+                                    <div className="flex gap-2 mt-1">
+                                        <Input
+                                            value={editingChapterName}
+                                            onChange={(e) => {
+                                                setEditingChapterName(
+                                                    e.target.value,
+                                                );
+                                                setEditChapterError("");
+                                            }}
+                                            placeholder="Enter chapter name"
+                                            className="flex-1"
+                                            disabled={editChapterLoading}
+                                        />
+                                        <MagicWandButton
+                                            text={editingChapterName}
+                                            onEnhanced={(enhanced) => {
+                                                setEditingChapterName(enhanced);
+                                                setEditChapterError("");
+                                            }}
+                                            enhancementMode="chapter_name"
+                                            workspaceId={workspaceId}
+                                            projectId={projectId}
+                                            disabled={editChapterLoading}
+                                            size="icon"
+                                            variant="outline"
+                                            chapterContent={
+                                                editingChapter?.content || ""
+                                            }
+                                        />
+                                    </div>
+                                    {editChapterError && (
+                                        <p className="text-sm text-red-500 mt-1">
+                                            {editChapterError}
+                                        </p>
+                                    )}
+                                </div>
+                            </div>
+                            <DialogFooter>
                                 <Button
                                     variant="outline"
-                                    className="flex flex-row justify-between items-center w-50 overflow-hidden"
-                                    disabled={isGenerating}
+                                    onClick={() => {
+                                        setEditChapterDialogOpen(false);
+                                        setEditingChapter(null);
+                                        setEditingChapterName("");
+                                        setEditChapterError("");
+                                    }}
+                                    disabled={editChapterLoading}
                                 >
-                                    <p className="truncate">
-                                        {selectedChapter
-                                            ? selectedChapter.chapter_name
-                                            : "Select Chapter"}
-                                    </p>
-                                    <ChevronDown className="h-4 w-4" />
+                                    Cancel
                                 </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="start" className="w-64">
-                                <DropdownMenuRadioGroup
-                                    value={selectedChapterOrder.toString()}
-                                    onValueChange={(value) =>
-                                        handleChapterSelect(parseInt(value))
+                                <Button
+                                    onClick={handleSaveChapterEdit}
+                                    disabled={
+                                        editChapterLoading ||
+                                        !editingChapterName.trim()
                                     }
                                 >
-                                    {localChapters.length > 0 ? (
-                                        localChapters.map((chapter, index) => (
-                                            <div key={index} className="group">
-                                                <DropdownMenuRadioItem
-                                                    value={chapter.order.toString()}
-                                                    disabled={isGenerating}
-                                                    className="flex items-center justify-between"
-                                                >
-                                                    <span className="flex-1">{chapter.chapter_name}</span>
-                                                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6"
-                                                            onPointerDown={(e) => e.stopPropagation()}
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                handleEditChapter(chapter);
-                                                            }}
-                                                            disabled={isGenerating}
-                                                        >
-                                                            <Edit className="h-3 w-3" />
-                                                        </Button>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="icon"
-                                                            className="h-6 w-6 text-red-500 hover:text-red-700"
-                                                            onPointerDown={(e) => e.stopPropagation()}
-                                                            onClick={(e) => {
-                                                                e.preventDefault();
-                                                                e.stopPropagation();
-                                                                handleDeleteChapter(chapter);
-                                                            }}
-                                                            disabled={isGenerating}
-                                                        >
-                                                            <Trash2 className="h-3 w-3" />
-                                                        </Button>
-                                                    </div>
-                                                </DropdownMenuRadioItem>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <DropdownMenuItem disabled>
-                                            No chapters available
-                                        </DropdownMenuItem>
-                                    )}
-                                </DropdownMenuRadioGroup>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
+                                    {editChapterLoading ? "Saving..." : "Save"}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
 
-                        <Button
-                            onClick={() => setAddChapterDialogOpen(true)}
-                            disabled={isGenerating}
-                        >
-                            New Chapter
-                        </Button>
-                        <AddChapterDialog
-                            open={addChapterDialogOpen}
-                            setOpen={handleDialogOpenChange}
-                            chapterName={newChapterName}
-                            setChapterName={handleChapterNameChange}
-                            loading={addChapterLoading}
-                            handleAddChapter={handleAddChapterClick}
-                            existingChapterNames={existingChapterNames}
-                            error={addChapterError}
-                            workspaceId={workspaceId}
-                            projectId={projectId}
-                        />
-                    </div>
-                </div>
-
-                {/* Edit Chapter Dialog */}
-                <Dialog open={editChapterDialogOpen} onOpenChange={setEditChapterDialogOpen}>
-                    <DialogContent>
-                        <DialogHeader>
-                            <DialogTitle>Edit Chapter</DialogTitle>
-                            <DialogDescription>
-                                Update the chapter name. This will not affect the chapter content.
-                            </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                            <div>
-                                <label className="text-sm font-medium">Chapter Name</label>
-                                <div className="flex gap-2 mt-1">
-                                    <Input
-                                        value={editingChapterName}
-                                        onChange={(e) => {
-                                            setEditingChapterName(e.target.value);
-                                            setEditChapterError("");
-                                        }}
-                                        placeholder="Enter chapter name"
-                                        className="flex-1"
-                                        disabled={editChapterLoading}
-                                    />
-                                    <MagicWandButton
-                                        text={editingChapterName}
-                                        onEnhanced={(enhanced) => {
-                                            setEditingChapterName(enhanced);
-                                            setEditChapterError("");
-                                        }}
-                                        enhancementMode="chapter_name"
-                                        workspaceId={workspaceId}
-                                        projectId={projectId}
-                                        disabled={editChapterLoading}
-                                        size="icon"
-                                        variant="outline"
-                                        chapterContent={editingChapter?.content || ''}
-                                    />
-                                </div>
-                                {editChapterError && (
-                                    <p className="text-sm text-red-500 mt-1">{editChapterError}</p>
-                                )}
-                            </div>
-                        </div>
-                        <DialogFooter>
-                            <Button
-                                variant="outline"
-                                onClick={() => {
-                                    setEditChapterDialogOpen(false);
-                                    setEditingChapter(null);
-                                    setEditingChapterName("");
-                                    setEditChapterError("");
-                                }}
-                                disabled={editChapterLoading}
-                            >
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={handleSaveChapterEdit}
-                                disabled={editChapterLoading || !editingChapterName.trim()}
-                            >
-                                {editChapterLoading ? "Saving..." : "Save"}
-                            </Button>
-                        </DialogFooter>
-                    </DialogContent>
-                </Dialog>
-
-                <div className="flex-1 relative overflow-hidden">
-                    <LexicalEditor
-                        content={content}
-                        setContent={setContent}
-                        isStreaming={isStreaming}
-                        streamingText={streamingText}
-                        baseContent={baseContent}
-                        isColorCoded={isColorCoded}
-                        selectedChapter={selectedChapter}
-                        isInteracting={isInteracting}
-                        setIsInteracting={setIsInteracting}
-                        isRegenerating={isRegenerating}
-                        onBlur={handleEditorBlur}
-                        onGetCurrentContent={(getter) => {
-                            getCurrentEditorContentRef.current = getter;
-                        }}
-                        workspaceId={workspaceId}
-                        projectId={projectId}
-                        aiModel={settings.aiModel}
-                        selectionToolbarMode={settings.selectionToolbarMode}
-                        onApplyEdit={handleInlineApplyEdit}
-                        editorRef={editorRef}
-                    />
-
-                    <div className="absolute left-0 bottom-0 w-full p-4">
-                        <EditorToolbar
-                            onSend={() => {
-                                // Get current editor content directly before generating
-                                const currentEditorContent = getCurrentEditorContentRef.current?.() ?? content ?? '';
-                                handleGenerateText(currentEditorContent);
-                            }}
-                            isGenerating={isGenerating}
-                            versionControl={versionControlState}
+                    <div className="flex-1 relative overflow-hidden">
+                        <LexicalEditor
+                            content={content}
+                            setContent={setContent}
+                            isStreaming={isStreaming}
+                            streamingText={streamingText}
+                            baseContent={baseContent}
                             isColorCoded={isColorCoded}
-                            onToggleColorCoding={() => {
-                                if (typeof setIsColorCoded === 'function') {
-                                    setIsColorCoded(!isColorCoded);
-                                }
+                            selectedChapter={selectedChapter}
+                            isInteracting={isInteracting}
+                            setIsInteracting={setIsInteracting}
+                            isRegenerating={isRegenerating}
+                            onBlur={handleEditorBlur}
+                            onGetCurrentContent={(getter) => {
+                                getCurrentEditorContentRef.current = getter;
                             }}
                             workspaceId={workspaceId}
                             projectId={projectId}
-                            wordCount={getWordCount(content)}
+                            aiModel={settings.aiModel}
+                            selectionToolbarMode={settings.selectionToolbarMode}
+                            onApplyEdit={handleInlineApplyEdit}
+                            editorRef={editorRef}
                         />
+
+                        <div className="absolute left-0 bottom-0 w-full p-4">
+                            <EditorToolbar
+                                onSend={() => {
+                                    // Get current editor content directly before generating
+                                    const currentEditorContent =
+                                        getCurrentEditorContentRef.current?.() ??
+                                        content ??
+                                        "";
+                                    handleGenerateText(currentEditorContent);
+                                }}
+                                isGenerating={isGenerating}
+                                versionControl={versionControlState}
+                                isColorCoded={isColorCoded}
+                                onToggleColorCoding={() => {
+                                    if (typeof setIsColorCoded === "function") {
+                                        setIsColorCoded(!isColorCoded);
+                                    }
+                                }}
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                wordCount={getWordCount(content)}
+                                onBeforeNavigate={flushSettingsBeforeNavigation}
+                            />
+                        </div>
                     </div>
-                </div>
-            </EditorSidebar>
-        </ProjectEditorLayout>
+                </EditorSidebar>
+            </ProjectEditorLayout>
         </PendingEditsProvider>
     );
 }

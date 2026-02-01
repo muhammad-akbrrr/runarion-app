@@ -82,8 +82,8 @@ return [
                 'scheme' => env('REVERB_SCHEME'),
             ],
             'allowed_origins' => ['*'],
-            'ping_interval' => env('REVERB_APP_PING_INTERVAL', 60),
-            'activity_timeout' => env('REVERB_ACTIVITY_TIMEOUT', 30),
+            'ping_interval' => env('REVERB_APP_PING_INTERVAL', 30),
+            'activity_timeout' => env('REVERB_ACTIVITY_TIMEOUT', 120),
             'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 100000), // 100KB - allows for long generations
             ],
         ],

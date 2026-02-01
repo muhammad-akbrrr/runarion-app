@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useState } from 'react';
 import { router } from '@inertiajs/react';
 import { ProjectChapter } from '@/types';
 import { logError, parseErrorDetails } from '@/Lib/errorHandler';
@@ -53,27 +53,63 @@ export function useUnifiedSave({
     onSaveError,
 }: UseUnifiedSaveProps) {
     const saveQueue = useRef<SaveOperation[]>([]);
-    const isProcessing = useRef<boolean>(false);
+    const [isProcessing, setIsProcessing] = useState<boolean>(false);
+    // Debounced indicator state - stays true for 1.5s after isProcessing becomes false
+    const [isIndicatorVisible, setIsIndicatorVisible] = useState<boolean>(false);
+    const indicatorDebounceRef = useRef<NodeJS.Timeout | null>(null);
     const debounceTimeout = useRef<NodeJS.Timeout | null>(null);
     const lastSaveData = useRef<{
         content?: { order: number; content: string };
         settings?: any;
     }>({});
 
+    // Sync indicator visibility with debounce
+    useEffect(() => {
+        if (isProcessing) {
+            // Show indicator immediately when processing starts
+            setIsIndicatorVisible(true);
+            // Clear any pending "done" timer
+            if (indicatorDebounceRef.current) {
+                clearTimeout(indicatorDebounceRef.current);
+                indicatorDebounceRef.current = null;
+            }
+        } else {
+            // Debounce hiding the indicator - wait 1.5s after processing ends
+            indicatorDebounceRef.current = setTimeout(() => {
+                setIsIndicatorVisible(false);
+            }, 1500);
+        }
+
+        return () => {
+            if (indicatorDebounceRef.current) {
+                clearTimeout(indicatorDebounceRef.current);
+            }
+        };
+    }, [isProcessing]);
+
     // Generate unique operation ID
     const generateOperationId = useCallback(() => {
         return `save_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     }, []);
 
+    // Use a ref to track processing state inside the callback to avoid stale closures
+    const isProcessingRef = useRef<boolean>(false);
+
+    // Sync the ref with state
+    useEffect(() => {
+        isProcessingRef.current = isProcessing;
+    }, [isProcessing]);
+
     // Process the save queue with retry logic
     const processQueue = useCallback(async () => {
-        if (isProcessing.current || saveQueue.current.length === 0) {
-            console.log('📤 processQueue skipped:', { isProcessing: isProcessing.current, queueLength: saveQueue.current.length });
+        if (isProcessingRef.current || saveQueue.current.length === 0) {
+            console.log('📤 processQueue skipped:', { isProcessing: isProcessingRef.current, queueLength: saveQueue.current.length });
             return;
         }
 
         console.log('📤 processQueue starting, queue length:', saveQueue.current.length);
-        isProcessing.current = true;
+        isProcessingRef.current = true;
+        setIsProcessing(true);
 
         try {
             // Get the most recent operation for each type (content/settings)
@@ -260,9 +296,10 @@ export function useUnifiedSave({
             saveQueue.current.forEach(op => op.reject(error));
             saveQueue.current = [];
         } finally {
-            isProcessing.current = false;
+            isProcessingRef.current = false;
+            setIsProcessing(false);
             console.log('📤 processQueue finished, remaining queue length:', saveQueue.current.length);
-            
+
             // Process any new operations that were added during processing
             if (saveQueue.current.length > 0) {
                 console.log('📤 Processing remaining operations...');
@@ -355,7 +392,7 @@ export function useUnifiedSave({
                 id: operation.id,
                 hasContent: !!data.content,
                 queueLength: saveQueue.current.length,
-                isProcessing: isProcessing.current
+                isProcessing: isProcessingRef.current
             });
 
             saveQueue.current.push(operation);
@@ -459,17 +496,20 @@ export function useUnifiedSave({
         saveContent,
         saveSettings,
         saveBoth,
-        
+
         // Debounced save operations
         debouncedSaveContent,
         debouncedSaveSettings,
-        
+
         // Advanced operations
         forceSave,
         cancelPendingSaves,
-        
-        // State
-        isProcessing: isProcessing.current,
+
+        // State - isProcessing is the debounced indicator state for UI updates
+        // (stays visible for 1.5s after save completes to prevent flashing)
+        isProcessing: isIndicatorVisible,
+        // Raw processing state (for internal use if needed)
+        isActuallyProcessing: isProcessing,
         queueLength: saveQueue.current.length,
     };
 }

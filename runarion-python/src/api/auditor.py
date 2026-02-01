@@ -34,7 +34,7 @@ def summarize():
         "mode": "all" | "focused",  // Required only if category is selected (not "all_categories")
         "entity_ids": [1, 2, 3],  // Optional, for focused mode
         "chapter_orders": [0, 1, 2],  // Optional, if None uses all chapters
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -51,7 +51,7 @@ def summarize():
         mode = data.get('mode', 'all')
         entity_ids = data.get('entity_ids')
         chapter_orders = data.get('chapter_orders')  # None = all chapters
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -234,7 +234,7 @@ def extract_entities():
         "categories": ["character", "location"] or ["all_categories"],
         "chapter_orders": [0, 1, 2],  // Optional, if None uses all chapters
         "scan_mode": "incremental" | "full" | "new_only",  // Optional, defaults to "incremental"
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -249,7 +249,7 @@ def extract_entities():
         categories = data.get('categories', [])
         chapter_orders = data.get('chapter_orders')  # None = all chapters
         scan_mode = data.get('scan_mode', 'incremental')  # incremental, full, or new_only
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -343,7 +343,7 @@ def check_record_consistency():
         "project_id": "project_uuid",
         "workspace_id": "workspace_uuid",
         "categories": ["character", "location"],  // Optional, null = all
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -356,7 +356,7 @@ def check_record_consistency():
         project_id = data.get('project_id')
         workspace_id = data.get('workspace_id')
         categories = data.get('categories')  # None = all
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -401,7 +401,7 @@ def check_story_consistency():
         "workspace_id": "workspace_uuid",
         "check_types": ["plot_holes", "timeline", "character", "continuity"],  // Optional, null = all
         "chapter_orders": [0, 1, 2],  // Optional, null = all chapters
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -415,7 +415,7 @@ def check_story_consistency():
         workspace_id = data.get('workspace_id')
         check_types = data.get('check_types')  # None = all
         chapter_orders = data.get('chapter_orders')  # None = all chapters
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -462,7 +462,7 @@ def find_duplicates():
         "scope": "all" | "category" | "entity",  // Optional, defaults to "all"
         "categories": ["character", "location"],  // Optional, null = all
         "entity_ids": ["vertex_id1", "vertex_id2"],  // Optional, for entity scope
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -477,7 +477,7 @@ def find_duplicates():
         scope = data.get('scope', 'all')
         categories = data.get('categories')  # None = all
         entity_ids = data.get('entity_ids')  # For specific entity scope
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -586,7 +586,7 @@ def refresh_entity_properties():
         "project_id": "project_uuid",
         "workspace_id": "workspace_uuid",
         "vertex_id": "entity_vertex_id",
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -599,7 +599,7 @@ def refresh_entity_properties():
         project_id = data.get('project_id')
         workspace_id = data.get('workspace_id')
         vertex_id = data.get('vertex_id')
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -646,7 +646,7 @@ def refresh_all_properties():
         "project_id": "project_uuid",
         "workspace_id": "workspace_uuid",
         "categories": ["character", "location"],  // Optional, null = all
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -660,7 +660,7 @@ def refresh_all_properties():
         workspace_id = data.get('workspace_id')
         categories = data.get('categories')  # None = all categories
         entity_ids = data.get('entity_ids')  # None = all entities in selected categories
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -709,7 +709,7 @@ def apply_consistency_fix():
         "issue_type": "contradiction" | "outdated" | "missing_update",
         "field": "emotional_state",  // Optional - the specific field to update
         "suggestion": "Update the trait to reflect...",
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -726,7 +726,7 @@ def apply_consistency_fix():
         issue_type = data.get('issue_type')
         field = data.get('field')
         suggestion = data.get('suggestion')
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -783,7 +783,7 @@ def fix_story_text():
         "evidence": "Quote from the text",
         "location": "Chapter 1",
         "suggestion": "How to fix it",
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     """
@@ -801,7 +801,7 @@ def fix_story_text():
         evidence = data.get('evidence', '')
         location = data.get('location', '')
         suggestion = data.get('suggestion', '')
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -861,7 +861,7 @@ def batch_fix_story_text():
             },
             ...
         ],
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
 
@@ -895,7 +895,7 @@ def batch_fix_story_text():
         project_id = data.get('project_id')
         workspace_id = data.get('workspace_id')
         issues = data.get('issues', [])
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
 
         if not project_id:
@@ -951,7 +951,7 @@ def extract_relationships():
         "workspace_id": "workspace_uuid",
         "character_ids": [123, 456],  // Optional - vertex IDs to focus on (null = all)
         "chapter_orders": [0, 1, 2],  // Optional - chapters to analyze (null = all)
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     
@@ -986,7 +986,7 @@ def extract_relationships():
         workspace_id = data.get('workspace_id')
         character_ids = data.get('character_ids')  # Optional list of vertex IDs
         chapter_orders = data.get('chapter_orders')  # Optional list
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         focus_mode = data.get('focus_mode', 'all')  # 'all', 'selected', or '1-to-1'
         
@@ -1036,7 +1036,7 @@ def extract_relationships_v2():
         "workspace_id": "workspace_uuid",
         "character_ids": [123, 456],  // Optional - vertex IDs to focus on
         "chapter_orders": [0, 1, 2],  // Optional - chapters to analyze
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini",
         "focus_mode": "all" | "selected" | "1-to-1"
     }
@@ -1085,7 +1085,7 @@ def extract_relationships_v2():
         workspace_id = data.get('workspace_id')
         character_ids = data.get('character_ids')
         chapter_orders = data.get('chapter_orders')
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         focus_mode = data.get('focus_mode', 'all')
         
@@ -1347,7 +1347,7 @@ def scan_relationship_changes():
     {
         "project_id": "project_uuid",
         "workspace_id": "workspace_uuid",
-        "model": "gemini-2.0-flash",
+        "model": "gemini-2.5-flash",
         "provider": "gemini"
     }
     
@@ -1376,7 +1376,7 @@ def scan_relationship_changes():
         
         project_id = data.get('project_id')
         workspace_id = data.get('workspace_id')
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id:
@@ -1831,7 +1831,7 @@ def synthesize_relationship():
         workspace_id: Required - Workspace UUID
         source_character: Required - Source character name
         target_character: Required - Target character name
-        model: Optional - AI model to use (default: gemini-2.0-flash)
+        model: Optional - AI model to use (default: gemini-2.5-flash)
         provider: Optional - AI provider (default: gemini)
     
     Returns:
@@ -1851,7 +1851,7 @@ def synthesize_relationship():
         workspace_id = data.get('workspace_id')
         source_character = data.get('source_character')
         target_character = data.get('target_character')
-        model = data.get('model', 'gemini-2.0-flash')
+        model = data.get('model', 'gemini-2.5-flash')
         provider = data.get('provider', 'gemini')
         
         if not project_id or not workspace_id:

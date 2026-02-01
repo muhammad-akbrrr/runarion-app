@@ -1,16 +1,22 @@
 // Story context utilities for combining chapters
 
 import { ProjectChapter } from '../types';
+import { extractTextFromLexical } from '../../utils/lexicalTextExtract';
 
 /**
  * Get full story context from all chapters
+ * Handles both plain text and Lexical JSON content formats
  */
 export const getFullStoryContext = (chapters: ProjectChapter[]): string => {
     if (!chapters || chapters.length === 0) return '';
-    
+
     return chapters
         .sort((a, b) => a.order - b.order)
-        .map(ch => `=== ${ch.chapter_name} ===\n${ch.content || ''}`)
+        .map(ch => {
+            // Convert Lexical JSON to plain text if needed
+            const plainContent = extractTextFromLexical(ch.content);
+            return `=== ${ch.chapter_name} ===\n${plainContent || ''}`;
+        })
         .join('\n\n');
 };
 

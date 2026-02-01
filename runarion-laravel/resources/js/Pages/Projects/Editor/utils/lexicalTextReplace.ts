@@ -5,7 +5,10 @@ import {
     $setSelection,
     TextNode,
     $isElementNode,
+    $createParagraphNode,
+    $createLineBreakNode,
 } from 'lexical';
+import { $createOriginTextNode, OriginType } from '../nodes/OriginTextNode';
 
 interface ReplaceResult {
     success: boolean;
@@ -149,5 +152,119 @@ export function replaceTextInLexicalEditor(
                 resolve({ success: false, error: String(error) });
             }
         });
+    });
+}
+
+/**
+ * Append text to the end of the editor with a specific origin
+ * Used for ChainBuilder output insertion to properly mark content as AI-generated
+ */
+export function appendTextWithOrigin(
+    editor: LexicalEditor,
+    text: string,
+    origin: OriginType,
+    separator: string = '\n\n'
+): Promise<ReplaceResult> {
+    return new Promise((resolve) => {
+        editor.update(() => {
+            try {
+                const root = $getRoot();
+                const currentContent = root.getTextContent();
+
+                // Add separator if there's existing content
+                const needsSeparator = currentContent.trim().length > 0;
+
+                // Split the new text by double newlines to create paragraphs
+                const paragraphs = text.split(/\n\n+/);
+
+                paragraphs.forEach((para, index) => {
+                    if (!para.trim() && index !== paragraphs.length - 1) return;
+
+                    // Add separator paragraph before first new paragraph if needed
+                    if (needsSeparator && index === 0) {
+                        // Get last paragraph and append separator + content
+                        const lastChild = root.getLastChild();
+                        if (lastChild && $isElementNode(lastChild)) {
+                            // Add a blank line by creating a new paragraph
+                            if (separator === '\n\n') {
+                                const blankPara = $createParagraphNode();
+                                root.append(blankPara);
+                            }
+                        }
+                    }
+
+                    const p = $createParagraphNode();
+                    // Handle single newlines within paragraph
+                    const lines = para.split('\n');
+                    lines.forEach((line, lineIndex) => {
+                        if (lineIndex > 0) {
+                            p.append($createOriginTextNode('\n', origin));
+                        }
+                        if (line) {
+                            p.append($createOriginTextNode(line, origin));
+                        }
+                    });
+                    root.append(p);
+                });
+
+                // Move cursor to end
+                const lastPara = root.getLastChild();
+                if (lastPara) {
+                    lastPara.selectEnd();
+                }
+
+                resolve({ success: true });
+            } catch (error) {
+                console.error('[LexicalAppend] Error:', error);
+                resolve({ success: false, error: String(error) });
+            }
+        });
+    });
+}
+
+/**
+ * Inserts chain builder result as AI-originated content at the end of the document
+ * Ignores any markdown formatting in the text and treats everything as plain text
+ *
+ * @param editor - Lexical editor instance
+ * @param text - Plain text result from chain builder
+ * @returns Promise that resolves when insertion is complete
+ */
+export function insertChainBuilderResult(
+    editor: LexicalEditor,
+    text: string
+): Promise<void> {
+    return new Promise((resolve) => {
+        editor.update(() => {
+            const root = $getRoot();
+
+            // Split by double newlines for paragraphs
+            const paragraphs = text.split(/\n\n+/);
+
+            paragraphs.forEach((para) => {
+                const p = $createParagraphNode();
+                const lines = para.split('\n');
+
+                lines.forEach((line, idx) => {
+                    // Add line break for lines after the first
+                    if (idx > 0) {
+                        p.append($createLineBreakNode());
+                    }
+                    // Only add text if line is not empty
+                    if (line.trim()) {
+                        // Create OriginTextNode with 'ai' origin for color coding
+                        p.append($createOriginTextNode(line, 'ai'));
+                    }
+                });
+
+                // Append paragraph to end of document
+                root.append(p);
+            });
+
+            // Move cursor to end
+            root.selectEnd();
+
+            resolve();
+        }, { discrete: true });
     });
 }

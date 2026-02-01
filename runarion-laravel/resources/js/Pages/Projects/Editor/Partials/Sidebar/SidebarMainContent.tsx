@@ -157,7 +157,6 @@ export function SidebarContent({
                     <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash (Stable)</SelectItem>
                         <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash (Fast + Thinking)</SelectItem>
                         <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro (Quality + Thinking)</SelectItem>
                         <SelectItem value="gemini-3-pro-preview">Gemini 3.0 Pro (Paid API Key)</SelectItem>

@@ -205,7 +205,7 @@ class StreamLLMJob implements ShouldQueue
         return [
             'usecase' => 'story',
             'provider' => $this->determineProvider(),
-            'model' => $this->settings['aiModel'] ?? 'gemini-2.0-flash',
+            'model' => $this->settings['aiModel'] ?? 'gemini-2.5-flash',
             'prompt' => $processedPrompt['baseContent'],
             'writing_guidance' => $processedPrompt['guidance'],
             'chapter_order' => $this->chapterOrder, // Include chapter_order for conversation history
@@ -299,7 +299,7 @@ class StreamLLMJob implements ShouldQueue
      */
     private function determineProvider(): string
     {
-        $model = $this->settings['aiModel'] ?? 'gemini-2.0-flash';
+        $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
         
         if (stripos($model, 'gemini') !== false) {
             return 'gemini';
@@ -327,7 +327,7 @@ class StreamLLMJob implements ShouldQueue
             'gemini-3-pro-preview'
         ];
 
-        $model = $this->settings['aiModel'] ?? 'gemini-2.0-flash';
+        $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
         return in_array($model, $thinkingModels);
     }
 

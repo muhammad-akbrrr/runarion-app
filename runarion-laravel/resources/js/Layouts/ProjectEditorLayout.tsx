@@ -244,8 +244,8 @@ interface ProjectEditorLayoutProps {
     project: Project;
     projectId: string;
     workspaceId: string;
-    isSaving: boolean;
-    setIsSaving: (saving: boolean) => void;
+    isSaving?: boolean;
+    setIsSaving?: (saving: boolean) => void;
 }
 
 export default function ProjectEditorLayout({

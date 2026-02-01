@@ -13,6 +13,7 @@ export function SidebarTabs({
     projectId,
     authorStyles,
     onApplyStoryFix,
+    onSavingChange,
 }: SidebarSettingsProps) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
@@ -82,20 +83,29 @@ export function SidebarTabs({
 
                     {/* Advisor tab content */}
                     <TabsContent value="advisor" className="mt-0 h-[calc(100vh-120px)]">
-                        <AdvisorTab 
-                            workspaceId={workspaceId}
-                            projectId={projectId}
-                            onApplyEdit={onApplyStoryFix}
-                        />
+                        {workspaceId && projectId && (
+                            <AdvisorTab
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                onApplyEdit={onApplyStoryFix}
+                                settings={settings}
+                                onSettingChange={onSettingChange}
+                                onSavingChange={onSavingChange}
+                            />
+                        )}
                     </TabsContent>
 
                     {/* Auditor tab content */}
                     <TabsContent value="auditor" className="mt-0">
-                        <AuditorTab
-                            workspaceId={workspaceId}
-                            projectId={projectId}
-                            onApplyStoryFix={onApplyStoryFix}
-                        />
+                        {workspaceId && projectId && (
+                            <AuditorTab
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                onApplyStoryFix={onApplyStoryFix}
+                                settings={settings}
+                                onSettingChange={onSettingChange}
+                            />
+                        )}
                     </TabsContent>
                 </div>
             </Tabs>

@@ -26,7 +26,7 @@ class TokenizerManager:
         "text-embedding-3-large": "cl100k_base",
         
         # Gemini Models
-        "gemini-2.0-flash": "cl100k_base",
+        "gemini-2.5-flash": "cl100k_base",
         
         # Default for other models
         "default": "cl100k_base"

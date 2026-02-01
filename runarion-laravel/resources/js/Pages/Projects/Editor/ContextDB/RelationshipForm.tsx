@@ -23,6 +23,7 @@ interface RelationshipFormProps {
     defaultSource?: string; // Pre-select source entity (for creating from sidebar)
     onSaved: () => void;
     onCancel: () => void;
+    onSavingChange?: (isSaving: boolean) => void;
 }
 
 const RELATIONSHIP_TYPES = [
@@ -45,6 +46,7 @@ export default function RelationshipForm({
     defaultSource,
     onSaved,
     onCancel,
+    onSavingChange,
 }: RelationshipFormProps) {
     console.log("RelationshipForm received entities:", entities);
 
@@ -98,6 +100,7 @@ export default function RelationshipForm({
         }
 
         setSaving(true);
+        onSavingChange?.(true);
 
         try {
             const type = useCustomType ? customType : relationshipType;
@@ -153,6 +156,7 @@ export default function RelationshipForm({
             );
         } finally {
             setSaving(false);
+            onSavingChange?.(false);
         }
     };
 

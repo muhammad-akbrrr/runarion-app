@@ -801,6 +801,14 @@ class MainEditorController extends Controller
                 'settings.bannedPhrases.*' => 'nullable|string',
                 'settings.stopSequences' => 'nullable|array',
                 'settings.stopSequences.*' => 'nullable|string',
+                // Auditor Tab Settings
+                'settings.auditorAnalysisModel' => 'nullable|string',
+                // Advisor Tab Settings
+                'settings.advisorModel' => 'nullable|string',
+                'settings.advisorSystemInstructions' => 'nullable|string',
+                'settings.advisorThinkingBudget' => 'nullable|integer|min:1024|max:16384',
+                'settings.advisorOutputLength' => 'nullable|integer|min:100|max:16000',
+                'settings.advisorTemperature' => 'nullable|numeric|min:0|max:2',
             ]);
 
             $project = Projects::where('id', $project_id)
@@ -1599,7 +1607,7 @@ class MainEditorController extends Controller
             // Determine the model to use - check settings properly
             $model = $validated['model']
                 ?? ($project->settings && isset($project->settings['aiModel']) ? $project->settings['aiModel'] : null)
-                ?? 'gemini-2.0-flash'; // Default to 2.0 flash (most stable)
+                ?? 'gemini-2.5-flash'; // Default to 2.5 flash
 
             // Map model names to provider
             $provider = 'gemini';

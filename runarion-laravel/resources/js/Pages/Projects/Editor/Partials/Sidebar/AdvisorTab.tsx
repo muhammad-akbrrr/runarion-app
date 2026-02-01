@@ -71,10 +71,15 @@ interface AdvisorMessage {
     created_at: string;
 }
 
+import { ProjectSettings } from "@/types/project";
+
 interface AdvisorTabProps {
     workspaceId: string;
     projectId: string;
     onApplyEdit?: (oldText: string, newText: string) => Promise<boolean>;
+    settings?: Partial<ProjectSettings>;
+    onSettingChange?: (key: keyof ProjectSettings, value: any) => void;
+    onSavingChange?: (isSaving: boolean) => void;
 }
 
 // Helper to get CSRF token
@@ -102,11 +107,6 @@ const fetchWithCsrf = async (url: string, options: RequestInit = {}) => {
 
 // Available models
 const AVAILABLE_MODELS = [
-    {
-        value: "gemini-2.0-flash",
-        label: "Gemini 2.0 Flash (Stable)",
-        thinking: false,
-    },
     {
         value: "gemini-2.5-flash",
         label: "Gemini 2.5 Flash (Thinking)",
@@ -151,6 +151,9 @@ export default function AdvisorTab({
     workspaceId,
     projectId,
     onApplyEdit,
+    settings,
+    onSettingChange,
+    onSavingChange,
 }: AdvisorTabProps) {
     // Pending edits context for agent mode
     const {
@@ -173,15 +176,23 @@ export default function AdvisorTab({
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamingContent, setStreamingContent] = useState("");
 
-    // Settings state
+    // Settings state - local state for active session, with defaults from project settings
     const [showSettings, setShowSettings] = useState(false);
-    const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
-    const [systemInstructions, setSystemInstructions] = useState(
-        DEFAULT_SYSTEM_INSTRUCTIONS
+    const [selectedModel, setSelectedModel] = useState(
+        settings?.advisorModel || "gemini-2.5-flash"
     );
-    const [thinkingBudget, setThinkingBudget] = useState(4096);
-    const [outputLength, setOutputLength] = useState(4000); // Increased default for more detailed responses
-    const [temperature, setTemperature] = useState(0.8);
+    const [systemInstructions, setSystemInstructions] = useState(
+        settings?.advisorSystemInstructions || DEFAULT_SYSTEM_INSTRUCTIONS
+    );
+    const [thinkingBudget, setThinkingBudget] = useState(
+        settings?.advisorThinkingBudget || 4096
+    );
+    const [outputLength, setOutputLength] = useState(
+        settings?.advisorOutputLength || 4000
+    ); // Increased default for more detailed responses
+    const [temperature, setTemperature] = useState(
+        settings?.advisorTemperature || 0.8
+    );
 
     // UI state
     const [showChatList, setShowChatList] = useState(false);
@@ -373,6 +384,7 @@ export default function AdvisorTab({
     const createNewChat = async () => {
         setShowChatList(false);
         setShowActions(false);
+        onSavingChange?.(true);
         try {
             const response = await fetchWithCsrf(
                 route("advisor.chats.create", {
@@ -396,12 +408,15 @@ export default function AdvisorTab({
             }
         } catch (error) {
             console.error("Error creating chat:", error);
+        } finally {
+            onSavingChange?.(false);
         }
     };
 
     const updateChatTitle = async () => {
         if (!activeChat || !titleValue.trim()) return;
         setEditingTitle(false);
+        onSavingChange?.(true);
         try {
             const response = await fetchWithCsrf(
                 route("advisor.chats.update", {
@@ -423,12 +438,15 @@ export default function AdvisorTab({
             }
         } catch (error) {
             console.error("Error updating chat:", error);
+        } finally {
+            onSavingChange?.(false);
         }
     };
 
     const saveSettings = async () => {
         if (!activeChat) return;
         setShowSettings(false);
+        onSavingChange?.(true);
         try {
             const response = await fetchWithCsrf(
                 route("advisor.chats.update", {
@@ -451,12 +469,22 @@ export default function AdvisorTab({
                 );
                 setActiveChat(data.chat);
             }
+
+            // Also persist default settings to project settings
+            onSettingChange?.('advisorModel', selectedModel);
+            onSettingChange?.('advisorSystemInstructions', systemInstructions);
+            onSettingChange?.('advisorThinkingBudget', thinkingBudget);
+            onSettingChange?.('advisorOutputLength', outputLength);
+            onSettingChange?.('advisorTemperature', temperature);
         } catch (error) {
             console.error("Error saving settings:", error);
+        } finally {
+            onSavingChange?.(false);
         }
     };
 
     const deleteChat = async (chatId: string) => {
+        onSavingChange?.(true);
         try {
             const response = await fetchWithCsrf(
                 route("advisor.chats.delete", {
@@ -476,6 +504,8 @@ export default function AdvisorTab({
             }
         } catch (error) {
             console.error("Error deleting chat:", error);
+        } finally {
+            onSavingChange?.(false);
         }
         setDeleteConfirmChat(null);
     };
@@ -483,6 +513,7 @@ export default function AdvisorTab({
     const clearChat = async () => {
         if (!activeChat) return;
         setShowActions(false);
+        onSavingChange?.(true);
 
         try {
             const response = await fetchWithCsrf(
@@ -501,6 +532,8 @@ export default function AdvisorTab({
             }
         } catch (error) {
             console.error("Error clearing chat:", error);
+        } finally {
+            onSavingChange?.(false);
         }
     };
 

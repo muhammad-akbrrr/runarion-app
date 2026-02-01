@@ -348,7 +348,7 @@ Return JSON only:
         source_character: str,
         target_character: str,
         chapters: List[Dict[str, Any]],
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -683,7 +683,7 @@ Return JSON only:
         workspace_id: str,
         character_ids: Optional[List[str]] = None,
         chapter_orders: Optional[List[int]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini",
         focus_mode: str = "all"  # 'all', 'selected', or '1-to-1'
     ) -> Dict[str, Any]:
@@ -822,7 +822,7 @@ Return JSON only:
             logger.error(f"Error in extract_relationships_v2: {e}", exc_info=True)
             return {'error': str(e), 'success': False}
     
-    def _store_relationship_v2(self, project_id: str, workspace_id: str, relationship_data: Dict[str, Any], model: str = "gemini-2.0-flash", provider: str = "gemini") -> None:
+    def _store_relationship_v2(self, project_id: str, workspace_id: str, relationship_data: Dict[str, Any], model: str = "gemini-2.5-flash", provider: str = "gemini") -> None:
         """
         Store the V2 relationship data in the database.
         
@@ -1055,7 +1055,7 @@ Return JSON only:
         source_character: str,
         target_character: str,
         chapter_analyses: List[Dict[str, Any]],
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -1298,7 +1298,7 @@ Return JSON only:
         workspace_id: str,
         character_ids: Optional[List[str]] = None,  # None = all characters
         chapter_orders: Optional[List[int]] = None,  # None = all chapters
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini",
         focus_mode: str = "all"  # 'all', 'selected', or '1-to-1'
     ) -> Dict[str, Any]:
@@ -2390,7 +2390,7 @@ Return JSON only:
         source_character: str,
         target_character: str,
         interactions: List[Dict[str, Any]],
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -2502,7 +2502,7 @@ Return JSON only:
         workspace_id: str,
         character_ids: Optional[List[str]] = None,
         chapter_orders: Optional[List[int]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -2669,7 +2669,7 @@ Return JSON only:
         self,
         project_id: str,
         workspace_id: str,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """

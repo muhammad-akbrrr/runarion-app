@@ -111,7 +111,7 @@ function getPlainText(content: string): string {
  * This ensures generate and regenerate use the EXACT SAME settings
  */
 function buildGenerationSettings(settings: any) {
-    const aiModel = settings.aiModel || 'gemini-2.0-flash';
+    const aiModel = settings.aiModel || 'gemini-2.5-flash';
     const isThinkingModel = THINKING_MODELS.includes(aiModel);
 
     return {
@@ -159,6 +159,12 @@ export function useProjectEditor({
     const isInitialized = useRef(false);
     const originalContent = useRef<string>('');
     const originalSettings = useRef<any>({});
+
+    // Track whether stream completion save is in progress (guards against race condition)
+    const streamCompletionInProgressRef = useRef(false);
+
+    // Safety timeout ref to reset stuck generating state
+    const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
     
     // Track the last chapter order to detect actual chapter switches vs content updates
     const lastChapterOrderRef = useRef<number | null>(null);
@@ -182,6 +188,7 @@ export function useProjectEditor({
         debouncedSaveSettings,
         forceSave,
         cancelPendingSaves,
+        isProcessing: isSaving,
     } = useUnifiedSave({
         workspaceId,
         projectId,
@@ -230,11 +237,21 @@ export function useProjectEditor({
             });
             setIsGenerating(false);
 
+            // Clear safety timeout since stream completed successfully
+            if (safetyTimeoutRef.current) {
+                clearTimeout(safetyTimeoutRef.current);
+                safetyTimeoutRef.current = null;
+            }
+
+            // Mark stream completion in progress to prevent race condition with .project.content.updated
+            streamCompletionInProgressRef.current = true;
+
             // CRITICAL: Wait for editor to finalize streaming content, then get Lexical JSON
             // The editor has the correct OriginTextNode metadata (user vs ai origin)
             // We MUST save the Lexical JSON, not plain text, to preserve this metadata
             setTimeout(() => {
                 const currentChapter = selectedChapterRef.current;
+                let savedSuccessfully = false;
 
                 // Try to get Lexical JSON from editor (preserves origin metadata)
                 if (editorRef?.current) {
@@ -262,46 +279,59 @@ export function useProjectEditor({
                             versionControl.cacheVersion(newVersionIndex, lexicalJSON);
                         }
 
-                        return;
+                        savedSuccessfully = true;
                     } catch (error) {
                         console.error('Failed to get Lexical JSON from editor, falling back to plain text:', error);
                     }
                 }
 
-                // FALLBACK: If editor ref not available, compose plain text (origin metadata will be lost)
-                // This should rarely happen, but we keep it for safety
-                const baseContentRaw = baseContentRef.current || '';
-                const userPlainText = getPlainText(baseContentRaw);
+                if (!savedSuccessfully) {
+                    // FALLBACK: If editor ref not available, compose plain text (origin metadata will be lost)
+                    // This should rarely happen, but we keep it for safety
+                    const baseContentRaw = baseContentRef.current || '';
+                    const userPlainText = getPlainText(baseContentRaw);
 
-                let separator = '';
-                if (userPlainText && !userPlainText.endsWith('\n') && !userPlainText.endsWith(' ') &&
-                    !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
-                    separator = ' ';
+                    let separator = '';
+                    if (userPlainText && !userPlainText.endsWith('\n') && !userPlainText.endsWith(' ') &&
+                        !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
+                        separator = ' ';
+                    }
+
+                    const finalContent = userPlainText + separator + generatedText;
+
+                    console.log('FALLBACK: Final content composed as plain text (origin metadata lost):', {
+                        userPlainTextLength: userPlainText.length,
+                        finalContentLength: finalContent.length
+                    });
+
+                    if (currentChapter) {
+                        saveContent(currentChapter.order, finalContent, 'llm_generation');
+                    }
+
+                    setContent(finalContent);
+                    originalContent.current = finalContent;
+
+                    if (currentChapter?.navigation_info) {
+                        const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
+                        versionControl.cacheVersion(newVersionIndex, finalContent);
+                    }
                 }
 
-                const finalContent = userPlainText + separator + generatedText;
-
-                console.log('FALLBACK: Final content composed as plain text (origin metadata lost):', {
-                    userPlainTextLength: userPlainText.length,
-                    finalContentLength: finalContent.length
-                });
-
-                if (currentChapter) {
-                    saveContent(currentChapter.order, finalContent, 'llm_generation');
-                }
-
-                setContent(finalContent);
-                originalContent.current = finalContent;
-
-                if (currentChapter?.navigation_info) {
-                    const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
-                    versionControl.cacheVersion(newVersionIndex, finalContent);
-                }
+                // After save completes, refresh navigation info and clear the flag
+                streamCompletionInProgressRef.current = false;
+                console.log('Stream completion save done, refreshing navigation info');
+                router.reload({ only: ['chapters'] });
             }, 150); // Wait for StreamingPlugin to finalize content rendering
         },
         onStreamError: (error) => {
             console.error('Stream error:', error);
             setIsGenerating(false);
+
+            // Clear safety timeout since we got a response (error)
+            if (safetyTimeoutRef.current) {
+                clearTimeout(safetyTimeoutRef.current);
+                safetyTimeoutRef.current = null;
+            }
 
             // Show error alert
             alert(error);
@@ -620,11 +650,16 @@ export function useProjectEditor({
                             parentContentLength: parentContent.length
                         });
                     } else if (['llm_generation', 'llm_regeneration'].includes(data.trigger)) {
-                        // Generation completed - refresh navigation info
-                        console.log('Generation completed, refreshing navigation info');
-                        setTimeout(() => {
-                            router.reload({ only: ['chapters'] });
-                        }, 100);
+                        // Generation completed - only refresh if onStreamComplete is NOT currently handling the save
+                        // onStreamComplete already does router.reload after saving, so skip here to avoid race condition
+                        if (!streamCompletionInProgressRef.current) {
+                            console.log('Generation completed (non-streaming path), refreshing navigation info');
+                            setTimeout(() => {
+                                router.reload({ only: ['chapters'] });
+                            }, 300);
+                        } else {
+                            console.log('Generation completed but stream completion in progress, skipping reload (onStreamComplete will handle it)');
+                        }
                     }
                 }
             });
@@ -861,6 +896,17 @@ export function useProjectEditor({
         // NOW trigger generation - baseContent is already set
         setIsGenerating(true);
 
+        // Safety timeout - if no stream completion received within 30 seconds, reset generating state
+        if (safetyTimeoutRef.current) {
+            clearTimeout(safetyTimeoutRef.current);
+        }
+        safetyTimeoutRef.current = setTimeout(() => {
+            console.warn('Stream safety timeout: no stream completion received within 30s, resetting state');
+            setIsGenerating(false);
+            setPreservedChapterOrder(null);
+            safetyTimeoutRef.current = null;
+        }, 30000);
+
         // Extract plain text from Lexical JSON before sending to LLM
         // The LLM needs plain text, not JSON structure
         const plainTextPrompt = getPlainText(currentContent || "");
@@ -888,7 +934,13 @@ export function useProjectEditor({
                     console.error("Failed to start text generation:", errors);
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
-                    
+
+                    // Clear safety timeout since the request itself failed
+                    if (safetyTimeoutRef.current) {
+                        clearTimeout(safetyTimeoutRef.current);
+                        safetyTimeoutRef.current = null;
+                    }
+
                     // Handle Inertia errors
                     if (errors.generation) {
                         alert(errors.generation);
@@ -909,9 +961,20 @@ export function useProjectEditor({
         setPreservedChapterOrder(selectedChapter.order);
         setIsGenerating(true);
 
+        // Safety timeout - if no stream completion received within 30 seconds, reset generating state
+        if (safetyTimeoutRef.current) {
+            clearTimeout(safetyTimeoutRef.current);
+        }
+        safetyTimeoutRef.current = setTimeout(() => {
+            console.warn('Regeneration safety timeout: no stream completion received within 30s, resetting state');
+            setIsGenerating(false);
+            setPreservedChapterOrder(null);
+            safetyTimeoutRef.current = null;
+        }, 30000);
+
         // Use current editor content if provided, otherwise use state
         const currentContent = currentEditorContent ?? content ?? '';
-        
+
         // Update baseContent to current content (which will be cleared during regeneration)
         originalContent.current = currentContent;
         setBaseContent(currentContent);
@@ -944,7 +1007,13 @@ export function useProjectEditor({
                     console.error("Failed to start text regeneration:", errors);
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
-                    
+
+                    // Clear safety timeout since the request itself failed
+                    if (safetyTimeoutRef.current) {
+                        clearTimeout(safetyTimeoutRef.current);
+                        safetyTimeoutRef.current = null;
+                    }
+
                     if (errors.generation) {
                         alert(errors.generation);
                     } else {
@@ -961,6 +1030,12 @@ export function useProjectEditor({
         }
         setIsGenerating(false);
         setPreservedChapterOrder(null);
+
+        // Clear safety timeout
+        if (safetyTimeoutRef.current) {
+            clearTimeout(safetyTimeoutRef.current);
+            safetyTimeoutRef.current = null;
+        }
         
         // If we were regenerating, restore the original chapter content
         if (isRegenerating && selectedChapter) {
@@ -1001,6 +1076,10 @@ export function useProjectEditor({
     useEffect(() => {
         return () => {
             cancelPendingSaves();
+            if (safetyTimeoutRef.current) {
+                clearTimeout(safetyTimeoutRef.current);
+                safetyTimeoutRef.current = null;
+            }
         };
     }, [cancelPendingSaves]);
 
@@ -1009,9 +1088,22 @@ export function useProjectEditor({
         baseContentRef.current = baseContent;
     }, [baseContent]);
 
+    // Flush settings before navigation (e.g., to ChainBuilder)
+    // This ensures debounced settings are saved before leaving the page
+    const flushSettingsBeforeNavigation = useCallback(async () => {
+        const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
+
+        if (settingsChanged) {
+            console.log('Flushing settings before navigation');
+            // forceSave cancels pending debounced saves and saves immediately
+            await forceSave({ settings });
+            originalSettings.current = { ...settings };
+        }
+    }, [settings, forceSave]);
+
     return {
         // State
-        isSaving: false, // Always false since saves are async
+        isSaving: isSaving || isGenerating || isStreaming, // Also true while streaming
         isGenerating: isGenerating || isStreaming,
         content,
         setContent,
@@ -1046,5 +1138,8 @@ export function useProjectEditor({
         // Save functions
         saveContent: (order: number, content: string | null, trigger: string) => saveContent(order, content ?? '', trigger),
         smartSave,
+
+        // Navigation helpers
+        flushSettingsBeforeNavigation,
     };
 }

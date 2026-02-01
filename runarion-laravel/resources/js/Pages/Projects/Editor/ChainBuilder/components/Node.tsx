@@ -15,10 +15,12 @@ import {
     ChevronUp,
 } from "lucide-react";
 import { Button } from "@/Components/ui/button";
+import { Input } from "@/Components/ui/input";
 
 interface NodeProps {
     node: GraphNode;
     isSelected: boolean;
+    zIndex?: number;
     onSelect: (e: React.MouseEvent) => void;
     onDragStart: (e: React.MouseEvent) => void;
     onConnectorMouseUp?: (e: React.MouseEvent) => void;
@@ -30,7 +32,6 @@ interface NodeProps {
     onMagicWand?: (seed: string) => void;
     workspaceId?: string;
     projectId?: string;
-    aiModel?: string;
 }
 
 const getNodeColors = (type: GraphNodeType) => {
@@ -123,6 +124,7 @@ const OutputDisplay: React.FC<{
 export const Node: React.FC<NodeProps> = ({
     node,
     isSelected,
+    zIndex,
     onSelect,
     onDragStart,
     onConnectorMouseUp,
@@ -134,7 +136,6 @@ export const Node: React.FC<NodeProps> = ({
     onMagicWand,
     workspaceId,
     projectId,
-    aiModel,
 }) => {
     const colors = getNodeColors(node.type);
     const isRunning = node.data.status === "running";
@@ -143,20 +144,24 @@ export const Node: React.FC<NodeProps> = ({
 
     return (
         <div
+            data-node-id={node.id}
             className={`
-                absolute w-[300px] rounded-lg shadow-md border-2 transition-all
+                absolute w-[300px] rounded-lg shadow-md border-2
+                transition-[box-shadow,border-color,background-color,ring-color] duration-150
                 ${colors.bg} ${colors.border}
-                ${isSelected ? "ring-2 ring-blue-500 shadow-lg scale-105" : ""}
+                ${isSelected ? "ring-2 ring-blue-500 shadow-lg" : ""}
                 ${isRunning ? "ring-2 ring-yellow-400 animate-pulse" : ""}
+                pointer-events-auto
             `}
             style={{
                 transform: `translate(${node.position.x}px, ${node.position.y}px)`,
+                zIndex: zIndex || "auto",
             }}
             onMouseDown={onSelect}
         >
             {/* Header */}
             <div
-                className={`p-2 border-b flex items-center justify-between ${colors.headerBg} ${colors.headerBorder} rounded-t-lg`}
+                className={`p-2 border-b flex items-center gap-2 justify-between ${colors.headerBg} ${colors.headerBorder} rounded-t-lg`}
             >
                 <div className="flex items-center gap-2 flex-1 min-w-0">
                     {node.type === "prompt" && (
@@ -168,12 +173,13 @@ export const Node: React.FC<NodeProps> = ({
                     {node.type === "logic" && (
                         <Wand2 className={`w-4 h-4 ${colors.icon} shrink-0`} />
                     )}
-                    <input
+                    <Input
                         value={node.data.label}
                         onChange={(e) => onUpdate({ label: e.target.value })}
-                        className="bg-transparent text-xs font-semibold text-gray-800 focus:outline-none flex-1 min-w-0"
+                        className="h-auto py-0 px-1 bg-transparent border-none shadow-none text-xs font-semibold text-gray-800 focus-visible:ring-0 focus-visible:border-none flex-1 min-w-0"
                         placeholder="Node label"
                         onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => e.stopPropagation()}
                     />
                 </div>
                 <div className="flex gap-1 shrink-0">
@@ -236,8 +242,8 @@ export const Node: React.FC<NodeProps> = ({
                         node.type === "prompt"
                             ? "Instructions for AI..."
                             : node.type === "context"
-                            ? "Context data..."
-                            : "Logic/analysis instructions..."
+                              ? "Context data..."
+                              : "Logic/analysis instructions..."
                     }
                     className="w-full bg-white rounded border border-gray-300 p-2 text-xs text-gray-700 resize-y min-h-20 focus:border-gray-400 focus:outline-none"
                     onClick={(e) => e.stopPropagation()}

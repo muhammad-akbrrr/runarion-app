@@ -660,7 +660,7 @@ class AuditorService:
         project_id: str,
         workspace_id: str,
         categories: Optional[List[str]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -859,7 +859,7 @@ ANALYSIS:"""
         project_id: str,
         workspace_id: str,
         check_types: Optional[List[str]] = None,  # ['plot_holes', 'timeline', 'character', 'continuity']
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini",
         chapter_orders: Optional[List[int]] = None  # Optional: specific chapters to check
     ) -> Dict[str, Any]:
@@ -1123,7 +1123,7 @@ ANALYSIS:"""
         project_id: str,
         workspace_id: str,
         vertex_id: str,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini",
         entity_data: Optional[Dict[str, Any]] = None,
         chapters_cache: Optional[List[Dict[str, Any]]] = None
@@ -1440,7 +1440,7 @@ ANALYSIS:"""
         workspace_id: str,
         categories: Optional[List[str]] = None,
         entity_ids: Optional[List[str]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -1558,7 +1558,7 @@ ANALYSIS:"""
         issue_type: Optional[str] = None,
         field: Optional[str] = None,
         suggestion: str = "",
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -1797,7 +1797,7 @@ OUTPUT (JSON only):"""
         evidence: str = "",
         location: str = "",
         suggestion: str = "",
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -1954,7 +1954,7 @@ IMPORTANT:
         project_id: str,
         workspace_id: str = None,
         issues: List[Dict] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -2199,7 +2199,7 @@ Return fixes for ALL {len(chapter_issues)} issues.
         scope: str = "all",
         categories: Optional[List[str]] = None,
         entity_ids: Optional[List[str]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -2850,7 +2850,7 @@ ANALYSIS:"""
         self,
         project_id: str,
         chapter: Dict[str, Any],
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini",
         workspace_id: str = None
     ) -> Optional[Dict[str, Any]]:
@@ -3090,7 +3090,7 @@ ANALYSIS:"""
         mode: str = "all",
         entity_ids: Optional[List[str]] = None,
         chapter_orders: Optional[List[int]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """
@@ -3656,7 +3656,7 @@ EXTRACTED ENTITIES:"""
         workspace_id: str,
         categories: List[str],  # List of category names or ["all_categories"]
         chapter_orders: Optional[List[int]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini",
         scan_mode: str = "incremental"  # "incremental", "full", or "new_only"
     ) -> Dict[str, Any]:
@@ -3985,7 +3985,7 @@ EXTRACTED ENTITIES:"""
         category: str,
         entity_ids: Optional[List[int]] = None,
         chapters: Optional[List[Dict[str, Any]]] = None,
-        model: str = "gemini-2.0-flash",
+        model: str = "gemini-2.5-flash",
         provider: str = "gemini"
     ) -> Dict[str, Any]:
         """

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { PageProps, Project } from "@/types";
 import { Head, router } from "@inertiajs/react";
@@ -31,11 +31,9 @@ import {
     Clock,
     User,
     Loader2,
-    AlertCircle,
-    CheckCircle2,
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { Alert, AlertDescription } from "@/Components/ui/alert";
+import { toast } from "sonner";
 
 interface Snapshot {
     id: string;
@@ -103,19 +101,46 @@ export default function VersionHistoryPage({
     const [snapshotName, setSnapshotName] = useState("");
     const [snapshotDescription, setSnapshotDescription] = useState("");
     const [isSaving, setIsSaving] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [expandedChapters, setExpandedChapters] = useState<Set<number>>(
-        new Set()
+        new Set(),
     );
     const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-    const [message, setMessage] = useState<{
-        type: "success" | "error";
-        text: string;
-    } | null>(null);
+
+    // Debounced saving indicator (stays visible 1.5s after operation completes)
+    const [isSavingIndicator, setIsSavingIndicator] = useState(false);
+    const savingDebounceRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Combined raw saving state
+    const isOperationInProgress = isSaving || isDeleting || isLoading;
+
+    // Debounce the saving indicator
+    useEffect(() => {
+        if (isOperationInProgress) {
+            // Show indicator immediately when operation starts
+            setIsSavingIndicator(true);
+            // Clear any pending "done" timer
+            if (savingDebounceRef.current) {
+                clearTimeout(savingDebounceRef.current);
+                savingDebounceRef.current = null;
+            }
+        } else {
+            // Debounce hiding the indicator - wait 1.5s after operation ends
+            savingDebounceRef.current = setTimeout(() => {
+                setIsSavingIndicator(false);
+            }, 1500);
+        }
+
+        return () => {
+            if (savingDebounceRef.current) {
+                clearTimeout(savingDebounceRef.current);
+            }
+        };
+    }, [isOperationInProgress]);
 
     const handleSaveSnapshot = async () => {
         setIsSaving(true);
-        setMessage(null);
 
         try {
             const csrfToken =
@@ -153,10 +178,9 @@ export default function VersionHistoryPage({
             } catch (jsonError) {
                 const text = await response.text();
                 console.error("Failed to parse JSON response:", text);
-                setMessage({
-                    type: "error",
-                    text: `Server error: ${response.status} ${response.statusText}`,
-                });
+                toast.error(
+                    `Server error: ${response.status} ${response.statusText}`,
+                );
                 setIsSaving(false);
                 return;
             }
@@ -166,27 +190,20 @@ export default function VersionHistoryPage({
                 setSnapshotName("");
                 setSnapshotDescription("");
                 setIsSaveDialogOpen(false);
-                setMessage({
-                    type: "success",
-                    text: "Snapshot saved successfully!",
-                });
-                setTimeout(() => setMessage(null), 3000);
+                toast.success("Snapshot saved successfully!");
             } else {
                 console.error("Save failed:", data);
-                setMessage({
-                    type: "error",
-                    text:
-                        data.error || data.message || "Failed to save snapshot",
-                });
+                toast.error(
+                    data.error || data.message || "Failed to save snapshot",
+                );
             }
         } catch (error) {
             console.error("Save snapshot error:", error);
-            setMessage({
-                type: "error",
-                text: `Failed to save snapshot: ${
+            toast.error(
+                `Failed to save snapshot: ${
                     error instanceof Error ? error.message : "Unknown error"
                 }`,
-            });
+            );
         } finally {
             setIsSaving(false);
         }
@@ -195,14 +212,13 @@ export default function VersionHistoryPage({
     const handleLoadSnapshot = async (snapshotId: string) => {
         if (
             !confirm(
-                "Are you sure you want to load this snapshot? This will restore all chapters to their saved state. You will need to refresh the editor to see the changes."
+                "Are you sure you want to load this snapshot? This will restore all chapters to their saved state. You will need to refresh the editor to see the changes.",
             )
         ) {
             return;
         }
 
         setIsLoading(true);
-        setMessage(null);
 
         try {
             const csrfToken =
@@ -218,42 +234,38 @@ export default function VersionHistoryPage({
                         "X-CSRF-TOKEN": csrfToken,
                         "X-Requested-With": "XMLHttpRequest",
                     },
-                }
+                },
             );
 
             const data = await response.json();
 
             if (response.ok && data.success) {
                 setLocalChapters(data.chapters);
-                setMessage({
-                    type: "success",
-                    text: "Snapshot loaded successfully! Redirecting to editor to see changes...",
-                });
+                toast.success(
+                    "Snapshot loaded successfully! Redirecting to editor...",
+                );
                 // Redirect to main editor so user can see the restored content
                 setTimeout(() => {
                     router.visit(
                         route("workspace.projects.editor", {
                             workspace_id: workspaceId,
                             project_id: projectId,
-                        })
+                        }),
                     );
                 }, 1500);
             } else {
                 console.error("Load snapshot failed:", data);
-                setMessage({
-                    type: "error",
-                    text:
-                        data.error || data.message || "Failed to load snapshot",
-                });
+                toast.error(
+                    data.error || data.message || "Failed to load snapshot",
+                );
             }
         } catch (error) {
             console.error("Load snapshot error:", error);
-            setMessage({
-                type: "error",
-                text: `Failed to load snapshot: ${
+            toast.error(
+                `Failed to load snapshot: ${
                     error instanceof Error ? error.message : "Unknown error"
                 }`,
-            });
+            );
         } finally {
             setIsLoading(false);
         }
@@ -262,11 +274,13 @@ export default function VersionHistoryPage({
     const handleDeleteSnapshot = async (snapshotId: string) => {
         if (
             !confirm(
-                "Are you sure you want to delete this snapshot? This action cannot be undone."
+                "Are you sure you want to delete this snapshot? This action cannot be undone.",
             )
         ) {
             return;
         }
+
+        setIsDeleting(true);
 
         try {
             const csrfToken =
@@ -282,28 +296,23 @@ export default function VersionHistoryPage({
                         "X-CSRF-TOKEN": csrfToken,
                         "X-Requested-With": "XMLHttpRequest",
                     },
-                }
+                },
             );
 
             const data = await response.json();
 
             if (response.ok && data.success) {
                 setLocalSnapshots(
-                    localSnapshots.filter((s) => s.id !== snapshotId)
+                    localSnapshots.filter((s) => s.id !== snapshotId),
                 );
-                setMessage({
-                    type: "success",
-                    text: "Snapshot deleted successfully!",
-                });
-                setTimeout(() => setMessage(null), 3000);
+                toast.success("Snapshot deleted successfully!");
             } else {
-                setMessage({
-                    type: "error",
-                    text: data.error || "Failed to delete snapshot",
-                });
+                toast.error(data.error || "Failed to delete snapshot");
             }
         } catch (error) {
-            setMessage({ type: "error", text: "Failed to delete snapshot" });
+            toast.error("Failed to delete snapshot");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -333,7 +342,7 @@ export default function VersionHistoryPage({
         }
 
         return (
-            <div className="ml-4 space-y-2">
+            <div className="ml-2 space-y-2">
                 {chapter.version_tree.map((node, nodeIndex) => (
                     <div
                         key={node.node_id}
@@ -367,7 +376,7 @@ export default function VersionHistoryPage({
                                 {node.created_at &&
                                     formatDistanceToNow(
                                         new Date(node.created_at),
-                                        { addSuffix: true }
+                                        { addSuffix: true },
                                     )}
                             </span>
                         </div>
@@ -395,9 +404,9 @@ export default function VersionHistoryPage({
                                                 {version.created_at &&
                                                     formatDistanceToNow(
                                                         new Date(
-                                                            version.created_at
+                                                            version.created_at,
                                                         ),
-                                                        { addSuffix: true }
+                                                        { addSuffix: true },
                                                     )}
                                             </span>
                                         </div>
@@ -423,29 +432,11 @@ export default function VersionHistoryPage({
             project={project}
             projectId={projectId}
             workspaceId={workspaceId}
+            isSaving={isSavingIndicator}
         >
             <Head title="Version History" />
 
             <div className="w-full h-full flex flex-col bg-gray-50">
-                {message && (
-                    <Alert
-                        className={`m-4 ${
-                            message.type === "success"
-                                ? "bg-green-50 border-green-200"
-                                : "bg-red-50 border-red-200"
-                        }`}
-                    >
-                        <div className="flex items-center gap-2">
-                            {message.type === "success" ? (
-                                <CheckCircle2 className="h-4 w-4 text-green-600" />
-                            ) : (
-                                <AlertCircle className="h-4 w-4 text-red-600" />
-                            )}
-                            <AlertDescription>{message.text}</AlertDescription>
-                        </div>
-                    </Alert>
-                )}
-
                 <div className="flex-1 flex gap-4 p-4 overflow-hidden min-h-0">
                     {/* Left Sidebar - Snapshots */}
                     <div className="w-80 flex flex-col bg-white rounded-lg shadow-sm border border-gray-200 min-h-0">
@@ -477,48 +468,46 @@ export default function VersionHistoryPage({
                                 localSnapshots.map((snapshot) => (
                                     <Card
                                         key={snapshot.id}
-                                        className="hover:shadow-md transition-shadow"
+                                        className="hover:shadow-md transition-shadow py-4 gap-4"
                                     >
-                                        <CardHeader className="pb-3">
-                                            <div className="flex items-start justify-between">
-                                                <div className="flex-1">
+                                        <CardHeader className="px-4">
+                                            <div className="flex items-center justify-between gap-4">
+                                                <div className="flex-1 flex-col gap-1">
                                                     <CardTitle className="text-sm font-medium">
                                                         {snapshot.name ||
                                                             "Unnamed Snapshot"}
                                                     </CardTitle>
                                                     {snapshot.description && (
-                                                        <CardDescription className="text-xs mt-1">
+                                                        <CardDescription className="text-xs">
                                                             {
                                                                 snapshot.description
                                                             }
                                                         </CardDescription>
                                                     )}
                                                 </div>
-                                                <div className="flex gap-1">
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        onClick={() =>
-                                                            handleDeleteSnapshot(
-                                                                snapshot.id
-                                                            )
-                                                        }
-                                                        className="h-6 w-6 p-0"
-                                                    >
-                                                        <Trash2 className="h-3 w-3" />
-                                                    </Button>
-                                                </div>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() =>
+                                                        handleDeleteSnapshot(
+                                                            snapshot.id,
+                                                        )
+                                                    }
+                                                    className="h-6 w-6 p-0"
+                                                >
+                                                    <Trash2 className="h-3 w-3" />
+                                                </Button>
                                             </div>
                                         </CardHeader>
-                                        <CardContent className="pt-0">
-                                            <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
+                                        <CardContent className="px-4 flex flex-col gap-2">
+                                            <div className="flex items-center justify-between gap-4 text-xs text-gray-500">
                                                 <div className="flex items-center gap-1">
                                                     <Clock className="h-3 w-3" />
                                                     {formatDistanceToNow(
                                                         new Date(
-                                                            snapshot.created_at
+                                                            snapshot.created_at,
                                                         ),
-                                                        { addSuffix: true }
+                                                        { addSuffix: true },
                                                     )}
                                                 </div>
                                                 {snapshot.created_by && (
@@ -534,7 +523,7 @@ export default function VersionHistoryPage({
                                             <Button
                                                 onClick={() =>
                                                     handleLoadSnapshot(
-                                                        snapshot.id
+                                                        snapshot.id,
                                                     )
                                                 }
                                                 size="sm"
@@ -583,14 +572,14 @@ export default function VersionHistoryPage({
                                                 <button
                                                     onClick={() =>
                                                         toggleChapter(
-                                                            chapter.order
+                                                            chapter.order,
                                                         )
                                                     }
                                                     className="flex items-center justify-between w-full text-left"
                                                 >
                                                     <div className="flex items-center gap-2">
                                                         {expandedChapters.has(
-                                                            chapter.order
+                                                            chapter.order,
                                                         ) ? (
                                                             <ChevronDown className="h-4 w-4 text-gray-400" />
                                                         ) : (
@@ -624,7 +613,7 @@ export default function VersionHistoryPage({
                                                 </button>
                                             </CardHeader>
                                             {expandedChapters.has(
-                                                chapter.order
+                                                chapter.order,
                                             ) && (
                                                 <CardContent className="px-4!">
                                                     {chapter.version_tree
@@ -634,7 +623,7 @@ export default function VersionHistoryPage({
                                                         </p>
                                                     ) : (
                                                         renderVersionTree(
-                                                            chapter
+                                                            chapter,
                                                         )
                                                     )}
                                                 </CardContent>

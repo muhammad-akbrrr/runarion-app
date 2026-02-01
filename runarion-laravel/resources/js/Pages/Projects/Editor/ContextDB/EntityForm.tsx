@@ -284,6 +284,7 @@ interface EntityFormProps {
     entity?: Entity | null;
     onSaved: () => void;
     onCancel: () => void;
+    onSavingChange?: (isSaving: boolean) => void;
 }
 
 const SYSTEM_TYPES = [
@@ -309,6 +310,7 @@ export default function EntityForm({
     entity,
     onSaved,
     onCancel,
+    onSavingChange,
 }: EntityFormProps) {
     const [name, setName] = useState("");
     const [type, setType] = useState("character");
@@ -500,6 +502,7 @@ export default function EntityForm({
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setSaving(true);
+        onSavingChange?.(true);
 
         try {
             const url = entity
@@ -557,6 +560,7 @@ export default function EntityForm({
             alert(`Failed to save entity: ${error?.message || String(error)}`);
         } finally {
             setSaving(false);
+            onSavingChange?.(false);
         }
     };
 
@@ -631,10 +635,9 @@ export default function EntityForm({
                                 >
                                     <div className="flex items-center gap-2 mb-2">
                                         {isProtected && (
-                                            <Lock
-                                                className="h-3 w-3 text-blue-600"
-                                                title="Protected field (required by deconstructor)"
-                                            />
+                                            <span title="Protected field (required by deconstructor)">
+                                                <Lock className="h-3 w-3 text-blue-600" />
+                                            </span>
                                         )}
                                         <Label className="text-sm font-medium">
                                             {field.label}

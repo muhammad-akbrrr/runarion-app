@@ -7,10 +7,23 @@ import {
     AccordionItem,
     AccordionTrigger,
 } from "@/Components/ui/accordion";
-import { AlertTriangle, Loader2, Wand2, CheckSquare } from "lucide-react";
-import type { ConsistencyIssue, SharedSectionProps, RecordFixPreviewData } from "./types";
+import {
+    AlertTriangle,
+    Loader2,
+    Wand2,
+    CheckSquare,
+    ChevronDown,
+    ChevronRight,
+} from "lucide-react";
+import type {
+    ConsistencyIssue,
+    SharedSectionProps,
+    RecordFixPreviewData,
+} from "./types";
 import { getSeverityColor, getIssueTypeColor, getPostOptions } from "./utils";
-import CategoryEntityPicker, { type PickerMode } from "./shared/CategoryEntityPicker";
+import CategoryEntityPicker, {
+    type PickerMode,
+} from "./shared/CategoryEntityPicker";
 import RecordFixPreviewDialog from "./shared/RecordFixPreviewDialog";
 
 interface RecordConsistencySectionProps extends SharedSectionProps {
@@ -32,24 +45,30 @@ export default function RecordConsistencySection({
     onRecordIssuesChange,
 }: RecordConsistencySectionProps) {
     const [loadingRecordCheck, setLoadingRecordCheck] = useState(false);
-    const [selectedIssues, setSelectedIssues] = useState<Set<number>>(new Set());
+    const [selectedIssues, setSelectedIssues] = useState<Set<number>>(
+        new Set(),
+    );
     const [applyingFix, setApplyingFix] = useState<number | null>(null);
     const [applyingAll, setApplyingAll] = useState(false);
-    const [expandedIssues, setExpandedIssues] = useState<Set<number>>(new Set());
+    const [expandedIssues, setExpandedIssues] = useState<Set<number>>(
+        new Set(),
+    );
     const [previewMode, setPreviewMode] = useState(true);
     const [previewData, setPreviewData] = useState<RecordFixPreviewData | null>(
-        null
+        null,
     );
 
     // Selection state
     const [recordCheckMode, setRecordCheckMode] = useState<PickerMode>("all");
     const [selectedCategories, setSelectedCategories] = useState<Set<string>>(
-        new Set()
+        new Set(),
     );
     const [selectedEntities, setSelectedEntities] = useState<Set<string>>(
-        new Set()
+        new Set(),
     );
-    const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
+    const [expandedCategory, setExpandedCategory] = useState<string | null>(
+        null,
+    );
 
     const handleRecordConsistencyCheck = async () => {
         setLoadingRecordCheck(true);
@@ -70,7 +89,7 @@ export default function RecordConsistencySection({
                     provider: "gemini",
                     categories: targetCategories,
                     entity_ids: targetEntities,
-                })
+                }),
             );
             if (response.ok) {
                 const data = await response.json();
@@ -86,7 +105,7 @@ export default function RecordConsistencySection({
     const handleApplyFix = async (
         issue: ConsistencyIssue,
         index: number,
-        skipPreview = false
+        skipPreview = false,
     ) => {
         setApplyingFix(index);
         try {
@@ -101,7 +120,7 @@ export default function RecordConsistencySection({
                     story_evidence: issue.story_evidence,
                     model: selectedModel,
                     provider: "gemini",
-                })
+                }),
             );
 
             if (response.ok) {
@@ -121,13 +140,14 @@ export default function RecordConsistencySection({
                                 typeof results.new_value === "object"
                                     ? JSON.stringify(results.new_value, null, 2)
                                     : String(results.new_value ?? ""),
-                            explanation: results.explanation || results.message || "",
+                            explanation:
+                                results.explanation || results.message || "",
                         });
                     }
 
                     // Remove from list since it was applied
                     onRecordIssuesChange(
-                        recordIssues.filter((_, i) => i !== index)
+                        recordIssues.filter((_, i) => i !== index),
                     );
                     setSelectedIssues((prev) => {
                         const next = new Set(prev);
@@ -138,7 +158,7 @@ export default function RecordConsistencySection({
                     alert(
                         `Failed to apply fix: ${
                             data.error || results?.error || "Unknown error"
-                        }`
+                        }`,
                     );
                 }
             } else {
@@ -159,7 +179,9 @@ export default function RecordConsistencySection({
             return;
         }
 
-        if (!confirm(`Apply fixes for ${selectedIssues.size} selected issues?`)) {
+        if (
+            !confirm(`Apply fixes for ${selectedIssues.size} selected issues?`)
+        ) {
             return;
         }
 
@@ -185,7 +207,7 @@ export default function RecordConsistencySection({
                         story_evidence: issue.story_evidence,
                         model: selectedModel,
                         provider: "gemini",
-                    })
+                    }),
                 );
                 if (response.ok) {
                     const data = await response.json();
@@ -207,7 +229,7 @@ export default function RecordConsistencySection({
             alert(
                 `Applied ${successCount} fix(es) successfully${
                     failCount > 0 ? `, ${failCount} failed` : ""
-                }`
+                }`,
             );
             handleRecordConsistencyCheck();
         } else {
@@ -266,8 +288,9 @@ export default function RecordConsistencySection({
                 <AccordionContent>
                     <div className="space-y-3 pt-2">
                         <p className="text-xs text-gray-500">
-                            Compares your database records against story content to
-                            find contradictions, outdated info, or missing updates.
+                            Compares your database records against story content
+                            to find contradictions, outdated info, or missing
+                            updates.
                         </p>
 
                         <CategoryEntityPicker
@@ -301,14 +324,19 @@ export default function RecordConsistencySection({
                             ) : (
                                 <>
                                     <AlertTriangle className="h-4 w-4 mr-2" />
-                                    {recordCheckMode === "all" && "Check All Records"}
+                                    {recordCheckMode === "all" &&
+                                        "Check All Records"}
                                     {recordCheckMode === "category" &&
                                         `Check ${selectedCategories.size} Categor${
-                                            selectedCategories.size === 1 ? "y" : "ies"
+                                            selectedCategories.size === 1
+                                                ? "y"
+                                                : "ies"
                                         }`}
                                     {recordCheckMode === "entity" &&
                                         `Check ${selectedEntities.size} Entit${
-                                            selectedEntities.size === 1 ? "y" : "ies"
+                                            selectedEntities.size === 1
+                                                ? "y"
+                                                : "ies"
                                         }`}
                                 </>
                             )}
@@ -319,7 +347,10 @@ export default function RecordConsistencySection({
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs font-medium text-orange-700">
                                         {recordIssues.length} issue
-                                        {recordIssues.length !== 1 ? "s" : ""} found
+                                        {recordIssues.length !== 1
+                                            ? "s"
+                                            : ""}{" "}
+                                        found
                                     </span>
                                     <Button
                                         variant="ghost"
@@ -380,7 +411,8 @@ export default function RecordConsistencySection({
                                             ) : (
                                                 <>
                                                     <CheckSquare className="h-3 w-3 mr-1" />
-                                                    Fix Selected ({selectedIssues.size})
+                                                    Fix Selected (
+                                                    {selectedIssues.size})
                                                 </>
                                             )}
                                         </Button>
@@ -392,14 +424,18 @@ export default function RecordConsistencySection({
                                         <div
                                             key={idx}
                                             className={`p-2 rounded border ${getSeverityColor(
-                                                issue.severity
+                                                issue.severity,
                                             )}`}
                                         >
                                             <div className="flex items-start gap-2">
                                                 <Checkbox
-                                                    checked={selectedIssues.has(idx)}
+                                                    checked={selectedIssues.has(
+                                                        idx,
+                                                    )}
                                                     onCheckedChange={() =>
-                                                        toggleIssueSelection(idx)
+                                                        toggleIssueSelection(
+                                                            idx,
+                                                        )
                                                     }
                                                     className="mt-0.5"
                                                 />
@@ -413,44 +449,58 @@ export default function RecordConsistencySection({
                                                     <div className="flex items-center gap-2 mb-1">
                                                         <Badge
                                                             className={`${getIssueTypeColor(
-                                                                issue.issue_type
+                                                                issue.issue_type,
                                                             )} text-white text-xs`}
                                                         >
                                                             {issue.issue_type?.replace(
                                                                 "_",
-                                                                " "
+                                                                " ",
                                                             )}
                                                         </Badge>
                                                         <span className="font-medium text-sm truncate">
                                                             {issue.entity_name}
                                                         </span>
-                                                        <span className="text-[10px] text-gray-400 ml-auto">
-                                                            {expandedIssues.has(idx)
-                                                                ? "▼"
-                                                                : "▶"}
+                                                        <span className="text-gray-400 ml-auto">
+                                                            {expandedIssues.has(
+                                                                idx,
+                                                            ) ? (
+                                                                <ChevronDown className="w-4! h-4!" />
+                                                            ) : (
+                                                                <ChevronRight className="w-4! h-4!" />
+                                                            )}
                                                         </span>
                                                     </div>
                                                     {issue.field && (
                                                         <p className="text-xs">
-                                                            <strong>Field:</strong>{" "}
+                                                            <strong>
+                                                                Field:
+                                                            </strong>{" "}
                                                             {issue.field}
                                                         </p>
                                                     )}
                                                     {issue.story_evidence && (
                                                         <p
                                                             className={`text-xs mt-1 italic text-orange-700 ${
-                                                                expandedIssues.has(idx)
+                                                                expandedIssues.has(
+                                                                    idx,
+                                                                )
                                                                     ? ""
                                                                     : "line-clamp-2"
                                                             }`}
                                                         >
-                                                            "{issue.story_evidence}"
+                                                            "
+                                                            {
+                                                                issue.story_evidence
+                                                            }
+                                                            "
                                                         </p>
                                                     )}
                                                     {issue.suggestion && (
                                                         <p
                                                             className={`text-xs mt-1 text-gray-600 ${
-                                                                expandedIssues.has(idx)
+                                                                expandedIssues.has(
+                                                                    idx,
+                                                                )
                                                                     ? ""
                                                                     : "line-clamp-2"
                                                             }`}
@@ -464,7 +514,10 @@ export default function RecordConsistencySection({
                                                     size="sm"
                                                     variant="outline"
                                                     onClick={() =>
-                                                        handleApplyFix(issue, idx)
+                                                        handleApplyFix(
+                                                            issue,
+                                                            idx,
+                                                        )
                                                     }
                                                     disabled={
                                                         applyingFix === idx ||

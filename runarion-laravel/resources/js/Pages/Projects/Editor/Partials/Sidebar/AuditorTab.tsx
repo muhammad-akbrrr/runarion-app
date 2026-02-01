@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { Button } from "@/Components/ui/button";
 import { Label } from "@/Components/ui/label";
@@ -20,23 +19,32 @@ import EntityExtractorTab from "./EntityExtractorTab";
 import AuditorToolsTab from "./AuditorToolsTab";
 import SentimentTab from "./SentimentTab";
 
+import { ProjectSettings } from "@/types/project";
+
 interface AuditorTabProps {
     workspaceId: string;
     projectId: string;
     onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>;
+    settings?: Partial<ProjectSettings>;
+    onSettingChange?: (key: keyof ProjectSettings, value: any) => void;
 }
 
 export default function AuditorTab({
     workspaceId,
     projectId,
     onApplyStoryFix,
+    settings,
+    onSettingChange,
 }: AuditorTabProps) {
-    const [selectedModel, setSelectedModel] =
-        useState<string>("gemini-2.0-flash");
+    // Use settings for model persistence, fallback to default
+    const selectedModel = settings?.auditorAnalysisModel || "gemini-2.5-flash";
+
+    const handleModelChange = (value: string) => {
+        onSettingChange?.('auditorAnalysisModel', value);
+    };
 
     // Available Gemini models for analysis (same as editor settings)
     const availableModels = [
-        { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Stable)" },
         {
             value: "gemini-2.5-flash",
             label: "Gemini 2.5 Flash (Fast + Thinking)",
@@ -65,7 +73,7 @@ export default function AuditorTab({
                     <div className="flex gap-2 items-center">
                         <Select
                             value={selectedModel}
-                            onValueChange={setSelectedModel}
+                            onValueChange={handleModelChange}
                         >
                             <SelectTrigger id="model-select" className="w-full">
                                 <SelectValue />
@@ -91,8 +99,8 @@ export default function AuditorTab({
                                     analysis. These are the same models
                                     available in Editor Settings. Gemini 3.0 Pro
                                     and 2.5 Pro provide the best quality with
-                                    thinking capabilities. Gemini 2.0 Flash is
-                                    the fastest and most stable option.
+                                    thinking capabilities. Gemini 2.5 Flash is
+                                    the fastest option with thinking support.
                                 </p>
                             </TooltipContent>
                         </Tooltip>
