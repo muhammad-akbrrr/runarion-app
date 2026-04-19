@@ -31,7 +31,7 @@ import {
     Sparkles,
 } from "lucide-react";
 import { Switch } from "@/Components/ui/switch";
-import { SidebarSettingsProps, DEFAULT_SETTINGS, THINKING_MODELS, DEFAULT_THINKING_BUDGETS } from "@/types/project";
+import { SidebarSettingsProps, DEFAULT_SETTINGS, THINKING_MODELS, DEFAULT_THINKING_BUDGETS, MODEL_CONFIGS } from "@/types/project";
 
 export function SidebarContent({ 
     settings,
@@ -71,6 +71,9 @@ export function SidebarContent({
     
     // Check if current model supports thinking
     const isThinkingModel = THINKING_MODELS.includes(aiModel);
+
+    // Get model-specific parameter config
+    const modelConfig = MODEL_CONFIGS[aiModel];
 
     return (
         <div
@@ -157,14 +160,15 @@ export function SidebarContent({
                     <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash (Fast + Thinking)</SelectItem>
-                        <SelectItem value="gemini-2.5-pro">Gemini 2.5 Pro (Quality + Thinking)</SelectItem>
-                        <SelectItem value="gemini-3-pro-preview">Gemini 3.0 Pro (Paid API Key)</SelectItem>
+                        {Object.values(MODEL_CONFIGS).map((mc) => (
+                            <SelectItem key={mc.id} value={mc.id}>{mc.label}</SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
 
             {/* Thinking Budget - Only for thinking models */}
+            {modelConfig?.params.thinkingBudget && (
             <div className={`space-y-3 ${!isThinkingModel ? 'opacity-50' : ''}`}>
                 <div className="flex justify-between items-center">
                     <Label className={!isThinkingModel ? 'text-gray-400' : ''}>
@@ -175,7 +179,7 @@ export function SidebarContent({
                     </span>
                 </div>
                 <p className="text-xs text-gray-500">
-                    {isThinkingModel 
+                    {isThinkingModel
                         ? "Tokens for AI reasoning (higher = better quality, slower)"
                         : "Only available for thinking models"
                     }
@@ -183,19 +187,20 @@ export function SidebarContent({
                 <Slider
                     value={[thinkingBudget]}
                     onValueChange={(value) => onSettingChange?.('thinkingBudget', value[0])}
-                    max={8192}
-                    min={1024}
-                    step={256}
+                    max={modelConfig.params.thinkingBudget.max}
+                    min={modelConfig.params.thinkingBudget.min}
+                    step={modelConfig.params.thinkingBudget.step}
                     className="w-full"
                     disabled={!isThinkingModel}
                 />
                 {isThinkingModel && (
                     <div className="flex justify-between text-xs text-gray-400">
-                        <span>1024 (Fast)</span>
-                        <span>8192 (Quality)</span>
+                        <span>{modelConfig.params.thinkingBudget.min} (Fast)</span>
+                        <span>{modelConfig.params.thinkingBudget.max} (Quality)</span>
                     </div>
                 )}
             </div>
+            )}
 
             {/* Memory */}
             <div className="space-y-2">
@@ -330,7 +335,7 @@ export function SidebarContent({
                         <div className="flex justify-between items-center">
                             <Label>Temperature</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 1
+                                Default: {modelConfig?.params.temperature?.default ?? 1}
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -341,20 +346,21 @@ export function SidebarContent({
                             <Slider
                                 value={[temperature]}
                                 onValueChange={(value) => onSettingChange?.('temperature', value[0])}
-                                max={2}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig?.params.temperature?.max ?? 2}
+                                min={modelConfig?.params.temperature?.min ?? 0}
+                                step={modelConfig?.params.temperature?.step ?? 0.01}
                                 className="w-full"
                             />
                         </div>
                     </div>
 
                     {/* Repetition Penalty */}
+                    {modelConfig?.params.repetitionPenalty && (
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <Label>Repetition Penalty</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 0
+                                Default: {modelConfig.params.repetitionPenalty.default}
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -367,20 +373,21 @@ export function SidebarContent({
                             <Slider
                                 value={[repetitionPenalty]}
                                 onValueChange={(value) => onSettingChange?.('repetitionPenalty', value[0])}
-                                max={2}
-                                min={-2}
-                                step={0.1}
+                                max={modelConfig.params.repetitionPenalty.max}
+                                min={modelConfig.params.repetitionPenalty.min}
+                                step={modelConfig.params.repetitionPenalty.step}
                                 className="w-full"
                             />
                         </div>
                     </div>
+                    )}
 
                     {/* Output Length */}
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <Label>Output Length</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 300
+                                Default: {modelConfig?.params.outputLength?.default ?? 300}
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -391,9 +398,9 @@ export function SidebarContent({
                             <Slider
                                 value={[outputLength]}
                                 onValueChange={(value) => onSettingChange?.('outputLength', value[0])}
-                                max={1000}
-                                min={50}
-                                step={10}
+                                max={modelConfig?.params.outputLength?.max ?? 8192}
+                                min={modelConfig?.params.outputLength?.min ?? 50}
+                                step={modelConfig?.params.outputLength?.step ?? 10}
                                 className="w-full"
                             />
                         </div>
@@ -403,73 +410,90 @@ export function SidebarContent({
                     <div className="space-y-3">
                         <Label>Sampling</Label>
                         <div className="space-y-3">
+                            {/* Nucleus (Top-P) — always shown */}
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Nucleus: {topP}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig?.params.topP?.default ?? 0.85}
                                 </span>
                             </div>
                             <Slider
                                 value={[topP]}
                                 onValueChange={(value) => onSettingChange('topP', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig?.params.topP?.max ?? 1}
+                                min={modelConfig?.params.topP?.min ?? 0}
+                                step={modelConfig?.params.topP?.step ?? 0.01}
                             />
 
+                            {/* Tail-Free — only if model supports it */}
+                            {modelConfig?.params.tailFree && (
+                            <>
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Tail-Free: {tailFree}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig.params.tailFree.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[tailFree]}
                                 onValueChange={(value) => onSettingChange('tailFree', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig.params.tailFree.max}
+                                min={modelConfig.params.tailFree.min}
+                                step={modelConfig.params.tailFree.step}
                             />
+                            </>
+                            )}
 
+                            {/* Top-A — only if model supports it */}
+                            {modelConfig?.params.topA && (
+                            <>
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Top-A: {topA}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig.params.topA.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[topA]}
                                 onValueChange={(value) => onSettingChange('topA', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig.params.topA.max}
+                                min={modelConfig.params.topA.min}
+                                step={modelConfig.params.topA.step}
                             />
+                            </>
+                            )}
 
+                            {/* Top-K — only if model supports it */}
+                            {modelConfig?.params.topK && (
+                            <>
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Top-K: {topK}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig.params.topK.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[topK]}
                                 onValueChange={(value) => onSettingChange('topK', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig.params.topK.max}
+                                min={modelConfig.params.topK.min}
+                                step={modelConfig.params.topK.step}
                             />
+                            </>
+                            )}
                         </div>
                     </div>
 
-                    {/* Phrase Bias */}
+                    {/* Phrase Bias — only if model supports it */}
+                    {modelConfig?.params.phraseBias && (
                     <div className="space-y-3">
                         <Label>Phrase Bias</Label>
                         <p className="text-xs text-gray-500">
@@ -586,6 +610,7 @@ export function SidebarContent({
                             )}
                         </div>
                     </div>
+                    )}
 
                     {/* Phrases */}
                     <div className="space-y-3">
@@ -812,24 +837,27 @@ export function SidebarContent({
                             </div>
                         )}
 
+                        {/* Min Output Token — only if model supports it */}
+                        {modelConfig?.params.minOutputToken && (
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Min Output Token: {minOutputToken}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 1
+                                    Default: {modelConfig.params.minOutputToken.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[minOutputToken]}
                                 onValueChange={(value) => onSettingChange('minOutputToken', value[0])}
-                                max={100}
-                                min={1}
-                                step={1}
+                                max={modelConfig.params.minOutputToken.max}
+                                min={modelConfig.params.minOutputToken.min}
+                                step={modelConfig.params.minOutputToken.step}
                                 className="w-full"
                             />
                         </div>
+                        )}
                     </div>
                 </CollapsibleContent>
             </Collapsible>

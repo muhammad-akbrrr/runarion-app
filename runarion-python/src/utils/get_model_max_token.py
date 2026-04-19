@@ -51,10 +51,10 @@ def get_huggingface_model_max_token(model: str) -> Optional[int]:
 def get_model_max_tokens(provider: str, model: str) -> int:
     """
     Get the max token limit for a model based on the provider and model name.
-    The provider can be "openai", "gemini", or other (Hugging Face).
+    The provider can be "gemini", "openai", or other (Hugging Face).
 
     Args:
-        provider: AI provider ('openai', 'gemini', etc.)
+        provider: AI provider ('gemini', 'openai', etc.)
         model: Specific model name
 
     Returns:

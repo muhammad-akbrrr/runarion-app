@@ -1,0 +1,346 @@
+"""
+Stage 4: Scene Improvement for the novel writer pipeline.
+Iteratively improves flagged chapters based on quality assessment feedback.
+"""
+
+import json
+import logging
+from typing import Dict, Any, List
+
+from .base_stage import BasePipelineStage, PipelineStageContext, PipelineStageResult
+from .story_context import StoryContext, GeneratedChapter
+from .prompt_template import NovelWriterPrompts
+from .stage_3_quality import DIMENSION_WEIGHTS, ALL_DIMENSIONS
+from utils.llm_retry import call_llm_with_retry
+
+logger = logging.getLogger(__name__)
+
+# Expansion factors for weak dimensions
+EXPANSION_FACTORS = {
+    'dialogue_depth': 3.0,
+    'character_descriptions': 2.5,
+    'action_pacing': 2.0,
+    'location_atmosphere': 2.5,
+    'thematic_depth': 2.0,
+    'show_dont_tell': 2.0,
+    'opening_hook': 1.5,
+    'ending_impact': 1.5,
+    'author_style': 1.5,
+    'scene_coverage': 2.0,
+}
+
+
+class SceneImprovementStage(BasePipelineStage):
+    """
+    Stage 4: Improve flagged chapters based on quality feedback.
+
+    Reads from:
+        context.metadata['story_context'] (generated_chapters + author_style)
+        context.metadata['quality_assessments']
+    Produces:
+        Updated generated_chapters in story_context
+    """
+
+    def __init__(self, db_pool, generation_engine):
+        super().__init__(db_pool, "SceneImprovementStage", generation_engine)
+
+    def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
+        story_context: StoryContext = context.get('story_context')
+        if not story_context:
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error="StoryContext not found."
+            )
+
+        quality_assessments = context.get('quality_assessments')
+        if not quality_assessments:
+            return PipelineStageResult.error_result(
+                self.stage_name,
+                error="Quality assessments not found. Stage 3 must complete first."
+            )
+
+        max_passes = context.config.get('max_improvement_passes', 2)
+
+        # Filter chapters that need improvement
+        chapters_to_improve = {
+            ch_num: assessment
+            for ch_num, assessment in quality_assessments.items()
+            if assessment.get('needs_improvement', False)
+        }
+
+        if not chapters_to_improve:
+            self.logger.info("No chapters flagged for improvement, skipping stage")
+            return PipelineStageResult.success_result(
+                self.stage_name,
+                chapters_improved=0,
+                chapters_skipped=len(quality_assessments),
+                improvement_passes=0,
+            )
+
+        self.logger.info(
+            f"{len(chapters_to_improve)} chapters flagged for improvement "
+            f"(max {max_passes} passes each)"
+        )
+
+        chapters_improved = 0
+        chapters_failed = 0
+        total_passes = 0
+        improvement_details = []
+
+        for chapter_number, assessment in sorted(chapters_to_improve.items()):
+            chapter = story_context.generated_chapters.get(chapter_number)
+            if not chapter:
+                self.logger.warning(f"Chapter {chapter_number} not found in generated chapters")
+                chapters_failed += 1
+                continue
+
+            original_score = assessment.get('overall_score', 0)
+            self.logger.info(
+                f"Improving chapter {chapter_number} (score: {original_score:.1f})"
+            )
+
+            improved = False
+            current_content = chapter.content
+            current_score = original_score
+            passes_used = 0
+
+            for pass_num in range(max_passes):
+                passes_used += 1
+                total_passes += 1
+
+                try:
+                    improved_content = self._improve_chapter(
+                        story_context, current_content,
+                        assessment, chapter_number
+                    )
+
+                    if not improved_content:
+                        self.logger.warning(
+                            f"Improvement pass {pass_num + 1} failed for chapter {chapter_number}"
+                        )
+                        break
+
+                    # Lightweight re-assessment (check overall score)
+                    new_score = self._quick_score_check(
+                        improved_content, story_context
+                    )
+
+                    self.logger.info(
+                        f"Chapter {chapter_number} pass {pass_num + 1}: "
+                        f"{current_score:.1f} -> {new_score:.1f}"
+                    )
+
+                    if new_score > current_score:
+                        current_content = improved_content
+                        current_score = new_score
+                        improved = True
+                    else:
+                        self.logger.info(
+                            f"Score did not improve for chapter {chapter_number} "
+                            f"on pass {pass_num + 1}, keeping previous version"
+                        )
+                        break
+
+                except Exception as e:
+                    self.logger.error(
+                        f"Improvement error for chapter {chapter_number} "
+                        f"pass {pass_num + 1}: {e}"
+                    )
+                    break
+
+            if improved:
+                # Update the generated chapter with improved content
+                word_count = len(current_content.split())
+                story_context.generated_chapters[chapter_number] = GeneratedChapter(
+                    chapter_number=chapter_number,
+                    title=chapter.title,
+                    content=current_content,
+                    word_count=word_count,
+                    summary=chapter.summary,
+                    source_scenes=chapter.source_scenes,
+                )
+                chapters_improved += 1
+
+                improvement_details.append({
+                    'chapter': chapter_number,
+                    'original_score': original_score,
+                    'final_score': current_score,
+                    'passes_used': passes_used,
+                    'improved': True,
+                })
+            else:
+                chapters_failed += 1
+                improvement_details.append({
+                    'chapter': chapter_number,
+                    'original_score': original_score,
+                    'final_score': current_score,
+                    'passes_used': passes_used,
+                    'improved': False,
+                })
+
+        return PipelineStageResult.success_result(
+            self.stage_name,
+            chapters_improved=chapters_improved,
+            chapters_failed=chapters_failed,
+            total_passes=total_passes,
+            improvement_details=improvement_details,
+        )
+
+    def _improve_chapter(self, story_context: StoryContext,
+                         chapter_content: str, assessment: Dict[str, Any],
+                         chapter_number: int) -> str:
+        """Generate an improved version of a chapter."""
+
+        # Build quality feedback text
+        weak_dimensions = assessment.get('weak_dimensions', [])
+        feedback = assessment.get('feedback', {})
+
+        quality_feedback_parts = []
+        for wd in weak_dimensions:
+            dim = wd.get('dimension', '')
+            score = wd.get('score', 0)
+            fb = feedback.get(dim, wd.get('feedback', ''))
+            quality_feedback_parts.append(f"- {dim} (score: {score}/10): {fb}")
+
+        quality_feedback = '\n'.join(quality_feedback_parts) if quality_feedback_parts else 'General improvement needed.'
+
+        # Build weak dimensions summary
+        weak_dims_text = ', '.join(
+            f"{wd['dimension']} ({wd['score']}/10)" for wd in weak_dimensions
+        ) if weak_dimensions else 'No specific weak dimensions identified.'
+
+        # Build expansion guidance
+        expansion_parts = []
+        for wd in weak_dimensions:
+            dim = wd.get('dimension', '')
+            factor = EXPANSION_FACTORS.get(dim, 1.5)
+            expansion_parts.append(
+                f"- {dim}: Expand by ~{factor}x. "
+                f"Add significantly more detail and depth in this area."
+            )
+        expansion_guidance = '\n'.join(expansion_parts) if expansion_parts else 'Focus on overall quality improvement.'
+
+        # Get author style examples for weak areas
+        style_example_parts = []
+        weak_categories = set()
+        for wd in weak_dimensions:
+            dim = wd.get('dimension', '')
+            # Map dimensions to style categories
+            category_map = {
+                'dialogue_depth': 'dialogue',
+                'character_descriptions': 'descriptions',
+                'action_pacing': 'action',
+                'location_atmosphere': 'descriptions',
+                'thematic_depth': 'literary',
+                'show_dont_tell': 'literary',
+                'author_style': 'literary',
+            }
+            cat = category_map.get(dim)
+            if cat and cat not in weak_categories:
+                weak_categories.add(cat)
+                examples = NovelWriterPrompts.get_author_style_examples(
+                    story_context.author_style, cat, max_examples=2
+                )
+                if 'No' not in examples[:10]:
+                    style_example_parts.append(examples)
+
+        author_style_examples = '\n\n'.join(style_example_parts) if style_example_parts else \
+            'No specific author style examples available for weak areas.'
+
+        # Build the improvement prompt
+        prompt_template = NovelWriterPrompts.get_improvement_prompt()
+        prompt = prompt_template.format(
+            chapter_content=chapter_content,
+            quality_feedback=quality_feedback,
+            weak_dimensions=weak_dims_text,
+            expansion_guidance=expansion_guidance,
+            author_style_examples=author_style_examples,
+        )
+
+        # Estimate tokens needed (chapter content + expansion)
+        current_words = len(chapter_content.split())
+        max_output_tokens = max(current_words * 2, 6000)
+
+        try:
+            self.generation_engine.request.prompt = prompt
+            self.generation_engine.request.instruction = (
+                "You are a master literary editor. Improve the chapter to address "
+                "all quality issues. Return the complete improved chapter."
+            )
+            self.generation_engine.request.generation_config.max_output_tokens = max_output_tokens
+
+            response = call_llm_with_retry(
+                lambda: self.generation_engine.generate(skip_quota=True)
+            )
+
+            # Handle truncation
+            if (response.success and hasattr(response, 'metadata')
+                    and response.metadata.finish_reason == 'length'):
+                new_limit = int(max_output_tokens * 1.5)
+                self.logger.warning(
+                    f"Improvement truncated. Increasing tokens to {new_limit}"
+                )
+                self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                response = call_llm_with_retry(
+                    lambda: self.generation_engine.generate(skip_quota=True)
+                )
+
+            if response.success:
+                improved = response.text.strip()
+                # Validate the improvement isn't drastically shorter
+                improved_words = len(improved.split())
+                if improved_words < current_words * 0.7:
+                    self.logger.warning(
+                        f"Improved version too short ({improved_words} vs {current_words} words), "
+                        f"rejecting improvement"
+                    )
+                    return ""
+                return improved
+            else:
+                error_msg = getattr(response, 'error_message', 'Unknown error')
+                self.logger.warning(f"Improvement generation failed: {error_msg}")
+                return ""
+
+        except Exception as e:
+            self.logger.error(f"Improvement generation exception: {e}")
+            return ""
+
+    def _quick_score_check(self, chapter_content: str,
+                           story_context: StoryContext) -> float:
+        """Do a lightweight overall quality score check."""
+        try:
+            prompt = (
+                "Rate this chapter's overall literary quality on a scale of 1-10. "
+                "Consider: prose quality, character depth, dialogue, pacing, "
+                "show-don't-tell, and atmospheric detail.\n\n"
+                f"CHAPTER:\n{chapter_content[:8000]}\n\n"
+                "Return ONLY a single number (1-10):"
+            )
+
+            self.generation_engine.request.prompt = prompt
+            self.generation_engine.request.instruction = (
+                "Return only a single number between 1 and 10."
+            )
+            self.generation_engine.request.generation_config.max_output_tokens = 50
+
+            response = call_llm_with_retry(
+                lambda: self.generation_engine.generate(skip_quota=True)
+            )
+
+            if response.success:
+                text = response.text.strip()
+                # Extract number from response
+                for token in text.split():
+                    try:
+                        score = float(token.replace(',', '').replace('.', '', token.count('.') - 1))
+                        if 1 <= score <= 10:
+                            return score
+                    except ValueError:
+                        continue
+
+            # Default to moderate score on failure
+            return 5.0
+
+        except Exception as e:
+            self.logger.warning(f"Quick score check failed: {e}")
+            return 5.0

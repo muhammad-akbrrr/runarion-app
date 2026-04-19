@@ -28,8 +28,8 @@ def start_deconstruction():
     {
         "draft_id": "uuid-string",
         "file_name": "manuscript.pdf",
-        "provider": "openai",
-        "model": "gpt-4o",
+        "provider": "gemini",
+        "model": "gemini-2.5-flash",
         "user_id": 123,
         "workspace_id": "workspace-uuid",
         "project_id": "project-uuid",
@@ -57,8 +57,8 @@ def start_deconstruction():
         
         draft_id = data['draft_id']
         file_name = secure_filename(data['file_name'])
-        provider = data.get('provider', 'openai')
-        model = data.get('model', 'gpt-4o')
+        provider = data.get('provider', 'gemini')
+        model = data.get('model', 'gemini-2.5-flash')
         user_id = data['user_id']
         workspace_id = data['workspace_id']
         project_id = data.get('project_id', workspace_id)

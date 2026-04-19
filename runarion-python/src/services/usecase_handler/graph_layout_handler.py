@@ -31,7 +31,7 @@ class GraphLayoutHandler(UseCaseHandler):
         # Create the request - simple pass-through, no instruction building
         return BaseGenerationRequest(
             usecase="graph-layout",
-            provider=raw_json.get("provider", "openai"),
+            provider=raw_json.get("provider", "gemini"),
             model=raw_json.get("model"),
             prompt=raw_json.get("prompt", ""),
             instruction=None,  # No additional instruction - prompt contains everything

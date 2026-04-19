@@ -110,8 +110,8 @@ class EndToEndPipelineTest:
         """Create real generation engine with LLM provider."""
         # Validate API keys
         api_keys = {
-            'openai': os.getenv('OPENAI_API_KEY'),
             'gemini': os.getenv('GEMINI_API_KEY'),
+            'openai': os.getenv('OPENAI_API_KEY'),
             'deepseek': os.getenv('DEEPSEEK_API_KEY')
         }
         
@@ -143,7 +143,7 @@ class EndToEndPipelineTest:
         request = BaseGenerationRequest(
             usecase="novel_deconstruction",
             provider=provider,
-            model="gpt-4o-mini",
+            model="gemini-2.5-flash",
             generation_config=generation_config,
             caller=caller_info
         )

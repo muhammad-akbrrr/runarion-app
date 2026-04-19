@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from services.generation_engine import GenerationEngine
 from ulid import ULID
 from utils.database_utils import clean_text_for_database, utf8_database_connection
+from utils.llm_retry import call_llm_with_retry
 from utils.document_processor import ChunkWithStart, DocumentProcessor
 from utils.json_response_parser import JSONResponseParser, ResponseFormat
 
@@ -157,7 +158,7 @@ class ProfilingStage:
 
         engine = GenerationEngine(request)
 
-        response = engine.generate()
+        response = call_llm_with_retry(lambda: engine.generate())
 
         if not response.success and raise_errors:
             error_message = f"LLM call failed for mode {mode}: {response.error_message}"

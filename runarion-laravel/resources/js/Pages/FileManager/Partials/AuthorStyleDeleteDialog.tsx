@@ -29,13 +29,13 @@ export default function AuthorStyleDeleteDialog({
 
     const handleDelete = () => {
         if (!authorStyle) return;
-        
+
         setIsDeleting(true);
 
         router.delete(
-            route("workspace.files.author-styles.delete", { 
-                workspace_id: workspaceId, 
-                author_style_id: authorStyle.id 
+            route("workspace.files.author-styles.delete", {
+                workspace_id: workspaceId,
+                author_style_id: authorStyle.id,
             }),
             {
                 preserveScroll: true,
@@ -46,7 +46,7 @@ export default function AuthorStyleDeleteDialog({
                 onError: () => {
                     setIsDeleting(false);
                 },
-            }
+            },
         );
     };
 
@@ -58,17 +58,20 @@ export default function AuthorStyleDeleteDialog({
                 <AlertDialogHeader>
                     <AlertDialogTitle>Delete Author Style</AlertDialogTitle>
                     <AlertDialogDescription>
-                        Are you sure you want to delete the author style "{authorStyle.name}"? 
-                        This action cannot be undone and will remove all associated data including 
-                        techniques and examples.
+                        Are you sure you want to delete the author style "
+                        {authorStyle.name}"? This action cannot be undone and
+                        will remove all associated data including techniques and
+                        examples.
                     </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                    <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
+                    <AlertDialogCancel disabled={isDeleting}>
+                        Cancel
+                    </AlertDialogCancel>
+                    <AlertDialogAction
                         onClick={handleDelete}
                         disabled={isDeleting}
-                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        className="bg-destructive text-white hover:bg-destructive/90"
                     >
                         {isDeleting ? "Deleting..." : "Delete"}
                     </AlertDialogAction>
@@ -77,4 +80,3 @@ export default function AuthorStyleDeleteDialog({
         </AlertDialog>
     );
 }
-

@@ -11,6 +11,7 @@ from datetime import datetime
 from ulid import ULID
 from .prompt_template import DeconstructorPrompts
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
+from utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -473,8 +474,8 @@ class EnhancementStage(BasePipelineStage):
                 self.generation_engine.request.prompt = prompt
                 self.generation_engine.request.instruction = f"Enhance scene {scene['scene_number']} while maintaining the author's voice and addressing identified issues."
 
-                # Token limit baseline
-                self.generation_engine.request.generation_config.max_output_tokens = 3000
+                # Provider-aware token limit for text generation
+                self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("text_generation")
 
                 # Call provider with transport/overload retry
                 response = self._call_api_with_retry(max_retries=2, base_delay=1.0, rate_limit_delay=0.2)
@@ -705,7 +706,11 @@ class EnhancementStage(BasePipelineStage):
         
         for attempt in range(max_retries + 1):
             try:
-                response = self.generation_engine.generate(skip_quota=True)
+                # call_llm_with_retry handles transient 503/429 errors; the
+                # outer loop handles validation-level retries (content too short).
+                response = call_llm_with_retry(
+                    lambda: self.generation_engine.generate(skip_quota=True)
+                )
 
                 # Check if response was truncated due to token limit
                 if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
@@ -717,17 +722,10 @@ class EnhancementStage(BasePipelineStage):
                         f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
                     )
                     self.generation_engine.request.generation_config.max_output_tokens = new_limit
-                    response = self.generation_engine.generate(skip_quota=True)
+                    response = call_llm_with_retry(
+                        lambda: self.generation_engine.generate(skip_quota=True)
+                    )
 
-                # If provider signals overload, retry
-                if not response.success and hasattr(response, 'error_message'):
-                    error_msg = (response.error_message or "").lower()
-                    if any(x in error_msg for x in ['503', 'overloaded', 'unavailable', 'rate limit']):
-                        if attempt < max_retries:
-                            delay = base_delay * (2 ** attempt)
-                            self.logger.warning(f"Enhancement API overload (attempt {attempt + 1}/{max_retries + 1}). Retrying in {delay}s: {response.error_message}")
-                            time.sleep(delay)
-                            continue
                 return response
             except Exception as e:
                 if attempt < max_retries:

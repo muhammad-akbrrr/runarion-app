@@ -9,6 +9,7 @@ from api.generation import generate
 from api.deconstructor import deconstruct
 from api.style_analyzer import analyze_style
 from api.novel_writer import rewrite_novel
+from api.novel_pipeline_orchestrator import novel_pipeline
 from api.records import records
 from api.auditor import auditor
 from api.advisor import advisor
@@ -92,6 +93,7 @@ app.register_blueprint(generate, url_prefix='/api')
 app.register_blueprint(deconstruct, url_prefix='/api')
 app.register_blueprint(analyze_style, url_prefix='/api')
 app.register_blueprint(rewrite_novel, url_prefix='/api')
+app.register_blueprint(novel_pipeline, url_prefix='/api')
 app.register_blueprint(records, url_prefix='/api')
 app.register_blueprint(auditor, url_prefix='/api')
 app.register_blueprint(advisor, url_prefix='/api')
@@ -133,8 +135,9 @@ def root():
             "generation": "/api/generate",
             "streaming": "/api/stream",
             "story_deconstructor": "/api/deconstruct",
-            "style_analysis": "/api/analyze_style",
-            "novel_rewrite": "/api/rewrite_novel",
+            "style_analysis": "/api/analyze-style",
+            "novel_rewrite": "/api/novel-writer/generate",
+            "novel_pipeline": "/api/novel-pipeline/start",
             "health": "/health"
         }
     })

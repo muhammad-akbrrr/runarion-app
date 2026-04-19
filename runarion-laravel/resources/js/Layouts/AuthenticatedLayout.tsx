@@ -72,9 +72,10 @@ export default function AuthenticatedLayout({
     const workspaceId = user.last_workspace_id;
     const projectId = route().params.project_id as string | undefined;
 
-    const workspaceName = workspaces.find(
+    const currentWorkspace = workspaces.find(
         (workspace) => workspace.id === workspaceId
-    )?.name;
+    );
+    const workspaceName = currentWorkspace?.name;
 
     const [loading, setLoading] = React.useState(false);
     const [completedSteps, setCompletedSteps] = React.useState(0);
@@ -240,12 +241,12 @@ export default function AuthenticatedLayout({
                                 <div className="w-full h-12 rounded flex items-center gap-2 px-2 cursor-pointer hover:bg-gray-100">
                                     <Avatar>
                                         <AvatarImage
-                                            src={user.avatar_url || undefined}
-                                            alt={user.name}
+                                            src={currentWorkspace?.cover_image_url || undefined}
+                                            alt={workspaceName}
                                             className="object-cover object-center"
                                         />
                                         <AvatarFallback>
-                                            {userInitials}
+                                            {workspaceName?.substring(0, 2).toUpperCase()}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 overflow-hidden text-left">

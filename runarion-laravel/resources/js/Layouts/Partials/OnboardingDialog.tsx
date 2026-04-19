@@ -52,6 +52,7 @@ function NonClosableDialogContent({
 export interface AuthorStyle {
     id: string;
     author_name: string;
+    status?: 'init_completed' | 'sampling_completed' | 'sampling_failed' | 'profiling_completed' | 'profiling_failed';
 }
 
 // Add LocalAuthorStyle type
@@ -59,6 +60,23 @@ interface LocalAuthorStyle {
     id: string;
     author_name: string;
     files: File[];
+}
+
+function getStatusLabel(status?: AuthorStyle['status']): string | null {
+    switch (status) {
+        case 'init_completed':
+            return 'Initializing...';
+        case 'sampling_completed':
+            return 'Profiling...';
+        case 'sampling_failed':
+            return 'Sampling failed';
+        case 'profiling_failed':
+            return 'Profiling failed';
+        case 'profiling_completed':
+            return null;
+        default:
+            return 'Processing...';
+    }
 }
 
 const WRITING_PERSPECTIVES = [
@@ -392,14 +410,24 @@ export default function OnboardingDialog({
                                                 [
                                                     ...authorStyles,
                                                     ...localAuthorStyles,
-                                                ].map((style) => (
-                                                    <SelectItem
-                                                        key={style.id}
-                                                        value={style.id}
-                                                    >
-                                                        {style.author_name}
-                                                    </SelectItem>
-                                                ))
+                                                ].map((style) => {
+                                                    const statusLabel = getStatusLabel(style.status);
+                                                    const isIncomplete = style.status !== undefined && style.status !== 'profiling_completed';
+                                                    return (
+                                                        <SelectItem
+                                                            key={style.id}
+                                                            value={style.id}
+                                                            disabled={isIncomplete}
+                                                        >
+                                                            {style.author_name}
+                                                            {statusLabel && (
+                                                                <span className="ml-2 text-xs text-muted-foreground">
+                                                                    ({statusLabel})
+                                                                </span>
+                                                            )}
+                                                        </SelectItem>
+                                                    );
+                                                })
                                             )}
                                         </SelectContent>
                                     </Select>

@@ -11,6 +11,7 @@ from .prompt_template import DeconstructorPrompts
 from utils.database_utils import clean_text_for_database
 from utils.json_response_parser import parse_scene_detection_response, JSONResponseParser
 from config.deconstructor_config import Stage3Config
+from utils.llm_retry import call_llm_with_retry
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
@@ -160,7 +161,12 @@ class SceneDetectionStage(BasePipelineStage):
         
         for attempt in range(max_retries + 1):
             try:
-                response = self.generation_engine.generate(skip_quota=True)
+                # call_llm_with_retry handles transient 503/429 errors with
+                # exponential backoff; the scene-count loop above handles the
+                # case where we got a valid response but the wrong scene count.
+                response = call_llm_with_retry(
+                    lambda: self.generation_engine.generate(skip_quota=True)
+                )
 
                 # Check if response was truncated due to token limit
                 if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
@@ -172,29 +178,20 @@ class SceneDetectionStage(BasePipelineStage):
                         f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
                     )
                     self.generation_engine.request.generation_config.max_output_tokens = new_limit
-                    response = self.generation_engine.generate(skip_quota=True)
+                    response = call_llm_with_retry(
+                        lambda: self.generation_engine.generate(skip_quota=True)
+                    )
 
-                # Check if the response indicates an API overload (503 error)
-                if not response.success and hasattr(response, 'error_message'):
-                    error_msg = response.error_message.lower()
-                    if '503' in error_msg or 'overloaded' in error_msg or 'unavailable' in error_msg:
-                        if attempt < max_retries:
-                            # Calculate exponential backoff delay (more aggressive for 503 errors)
-                            delay = Stage3Config.get_retry_delay(attempt, is_overload_error=True)
-                            self.logger.warning(f"API overload detected (attempt {attempt + 1}/{max_retries + 1}), retrying in {delay}s: {response.error_message}")
-                            time.sleep(delay)
-                            continue
-                        else:
-                            self.logger.error(f"API overload - max retries ({max_retries}) reached: {response.error_message}")
-                            return response
-                
                 # Return on success or non-retryable errors
+                # (transient errors were already retried by call_llm_with_retry)
                 return response
-                
+
             except Exception as e:
                 if attempt < max_retries:
-                    delay = Stage3Config.get_retry_delay(attempt, is_overload_error=False)
-                    self.logger.warning(f"API call failed (attempt {attempt + 1}/{max_retries + 1}), retrying in {delay}s: {e}")
+                    delay = Stage3Config.get_retry_delay(
+                        attempt, is_overload_error=False, error_message=str(e)
+                    )
+                    self.logger.warning(f"API call failed (attempt {attempt + 1}/{max_retries + 1}), retrying in {delay:.1f}s: {e}")
                     time.sleep(delay)
                 else:
                     self.logger.error(f"API call failed after {max_retries} retries: {e}")
@@ -518,12 +515,19 @@ class SceneDetectionStage(BasePipelineStage):
             self.generation_engine.request.prompt = enhanced_prompt
             self.generation_engine.request.instruction = f"Extract {adjustment} scenes to get 8-20 scenes total. {instruction}"
             
-            # Set appropriate token limit for scene detection (8-20 detailed scenes in JSON format)
-            self.generation_engine.request.generation_config.max_output_tokens = 3500
-            
-            # Generate scene analysis
-            response = self._call_api_with_retry()
-            
+            # Set provider-aware token limit for scene detection JSON
+            self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("json_analytical")
+
+            # Enable JSON mode for Gemini structured output
+            self.generation_engine.request.generation_config.response_mime_type = "application/json"
+
+            try:
+                # Generate scene analysis
+                response = self._call_api_with_retry()
+            finally:
+                # Reset to avoid leaking into subsequent plain-text stages
+                self.generation_engine.request.generation_config.response_mime_type = None
+
             if not response or not response.success:
                 self.logger.error(f"AI generation failed on retry attempt {attempt}: {response.error_message if response else 'No response'}")
                 return []
@@ -564,28 +568,35 @@ class SceneDetectionStage(BasePipelineStage):
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = "Analyze the text and identify distinct scenes with their boundaries and metadata."
             
-            # Set appropriate token limit for scene detection (8-20 detailed scenes in JSON format)
-            self.generation_engine.request.generation_config.max_output_tokens = 3500
-            
-            # Generate scene analysis
-            response = self._call_api_with_retry()
-            
+            # Set provider-aware token limit for scene detection JSON
+            self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("json_analytical")
+
+            # Enable JSON mode for Gemini structured output
+            self.generation_engine.request.generation_config.response_mime_type = "application/json"
+
+            try:
+                # Generate scene analysis
+                response = self._call_api_with_retry()
+            finally:
+                # Reset to avoid leaking into subsequent plain-text stages
+                self.generation_engine.request.generation_config.response_mime_type = None
+
             if not response or not response.success:
                 self.logger.error(f"AI generation failed: {response.error_message if response else 'No response'}")
                 return []
-            
+
             # Parse the JSON response using unified parser
             try:
                 validated_scenes = parse_scene_detection_response(response)
                 self.logger.debug(f"Successfully parsed {len(validated_scenes)} scenes")
                 return validated_scenes
-                
+
             except Exception as e:
                 self.logger.error(f"Failed to parse scene detection JSON: {e}")
                 if hasattr(response, 'text'):
                     self.logger.error(f"Raw response (full): {str(response.text)}")
                 return []
-                
+
         except Exception as e:
             self.logger.error(f"Error detecting scenes: {e}")
             return []

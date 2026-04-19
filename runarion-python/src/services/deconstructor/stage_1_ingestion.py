@@ -25,7 +25,7 @@ class PDFIngestionStage(BasePipelineStage):
             db_pool: Database connection pool
         """
         super().__init__(db_pool, "PDFIngestionStage")
-        self.document_processor = DocumentProcessor(provider="openai", model="gpt-4o", chunk_word_limit=2000)
+        self.document_processor = DocumentProcessor(provider="gemini", model="gemini-2.5-flash", chunk_word_limit=2000)
     
     def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """

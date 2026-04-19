@@ -32,6 +32,7 @@ from datetime import datetime
 from ulid import ULID
 from .prompt_template import DeconstructorPrompts
 from utils.database_utils import clean_text_for_database, ensure_utf8_json
+from utils.llm_retry import call_llm_with_retry
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
@@ -315,11 +316,21 @@ class ChapteringStage(BasePipelineStage):
                 f"chapters with natural narrative breaks."
             )
 
-            # Drastically reduced token limit since we only need structure
-            self.generation_engine.request.generation_config.max_output_tokens = 1000
+            # Provider-aware token limit for chaptering structure JSON
+            self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("json_analytical")
 
-            # Single attempt - no retry needed with low token requirement
-            response = self.generation_engine.generate(skip_quota=True)
+            # Enable JSON mode for Gemini structured output
+            self.generation_engine.request.generation_config.response_mime_type = "application/json"
+
+            try:
+                # Wrap with transient-error retry even though token requirement
+                # is low — a 503 spike would still cause a needless failure.
+                response = call_llm_with_retry(
+                    lambda: self.generation_engine.generate(skip_quota=True)
+                )
+            finally:
+                # Reset to avoid leaking into subsequent plain-text stages
+                self.generation_engine.request.generation_config.response_mime_type = None
 
             if response.success:
                 try:
@@ -961,11 +972,13 @@ Respond with only the title, no quotes or explanation."""
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = f"Generate a chapter title for Chapter {chapter_number}."
             
-            # Set appropriate token limit for title generation
-            self.generation_engine.request.generation_config.max_output_tokens = 100
+            # Provider-aware token limit for short text
+            self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("short_text")
             
-            response = self.generation_engine.generate(skip_quota=True)
-            
+            response = call_llm_with_retry(
+                lambda: self.generation_engine.generate(skip_quota=True)
+            )
+
             if response.success:
                 title = response.text.strip().strip('"').strip("'")
                 

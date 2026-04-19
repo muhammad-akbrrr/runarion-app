@@ -487,16 +487,33 @@ export default function ProjectEditorLayout({
                         {/* Sidebar Footer (unchanged) */}
                         <SidebarFooter className="border-t py-4 flex flex-col items-center">
                             <SidebarMenu className="flex flex-col items-center">
-                                {footerItems.map((item) => (
-                                    <SidebarMenuItem key={item.label}>
-                                        <SidebarMenuButton
-                                            tooltip={item.label}
-                                            className="w-8 h-8 flex items-center justify-center p-0"
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        asChild
+                                        tooltip="Settings"
+                                        className="w-8 h-8 flex items-center justify-center p-0"
+                                    >
+                                        <Link
+                                            href={route(
+                                                "workspace.projects.edit",
+                                                {
+                                                    workspace_id: workspaceId,
+                                                    project_id: projectId,
+                                                }
+                                            )}
                                         >
-                                            <item.icon className="size-5" />
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                ))}
+                                            <Settings className="size-5" />
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        tooltip="Documentation"
+                                        className="w-8 h-8 flex items-center justify-center p-0"
+                                    >
+                                        <FileText className="size-5" />
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
                             </SidebarMenu>
                         </SidebarFooter>
                     </Sidebar>

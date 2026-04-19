@@ -462,6 +462,33 @@ set_permissions() {
     docker compose -f docker-compose.dev.yml exec laravel-app chown -R www-data:www-data storage bootstrap/cache
 }
 
+# Function to fix storage permissions before Docker build
+# This prevents "permission denied" errors when Docker tries to read the build context
+fix_storage_permissions() {
+    echo "Fixing storage directory permissions for Docker build context..."
+
+    local storage_app_dir="runarion-laravel/storage/app"
+
+    # Check if any directories under storage/app have restrictive permissions
+    if [ -d "$storage_app_dir" ]; then
+        # Find directories owned by root or with restrictive permissions and fix them
+        local problem_dirs=$(find "$storage_app_dir" -type d ! -perm -o+rx 2>/dev/null || true)
+
+        if [ -n "$problem_dirs" ]; then
+            echo "Found directories with restrictive permissions, fixing..."
+            # Use sudo to fix permissions on problematic directories
+            sudo chown -R "$USER:$USER" "$storage_app_dir" 2>/dev/null || true
+            sudo chmod -R 755 "$storage_app_dir" 2>/dev/null || true
+            echo "Storage permissions fixed."
+        else
+            echo "Storage permissions are OK."
+        fi
+    else
+        echo "Creating storage/app directory structure..."
+        mkdir -p "$storage_app_dir"
+    fi
+}
+
 # Function to cleanup development environment
 cleanup() {
     echo "Cleaning up development environment..."
@@ -492,6 +519,9 @@ make_scripts_executable
 
 # Setup Stable Diffusion
 # setup_stable_diffusion
+
+# Fix storage permissions before Docker build
+fix_storage_permissions
 
 # Build and start containers
 echo "Building and starting containers..."

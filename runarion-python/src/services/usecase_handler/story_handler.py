@@ -41,7 +41,7 @@ class StoryHandler(UseCaseHandler):
             # Create the request
             return BaseGenerationRequest(
                 usecase=raw_json.get("usecase", "story"),
-                provider=raw_json.get("provider", "openai"),
+                provider=raw_json.get("provider", "gemini"),
                 model=raw_json.get("model"),
                 prompt=prompt,
                 instruction=instruction,

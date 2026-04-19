@@ -71,7 +71,7 @@ interface AdvisorMessage {
     created_at: string;
 }
 
-import { ProjectSettings } from "@/types/project";
+import { ProjectSettings, MODEL_CONFIGS } from "@/types/project";
 
 interface AdvisorTabProps {
     workspaceId: string;
@@ -105,24 +105,12 @@ const fetchWithCsrf = async (url: string, options: RequestInit = {}) => {
     return response;
 };
 
-// Available models
-const AVAILABLE_MODELS = [
-    {
-        value: "gemini-2.5-flash",
-        label: "Gemini 2.5 Flash (Thinking)",
-        thinking: true,
-    },
-    {
-        value: "gemini-2.5-pro",
-        label: "Gemini 2.5 Pro (Thinking)",
-        thinking: true,
-    },
-    {
-        value: "gemini-3-pro-preview",
-        label: "Gemini 3.0 Pro (Paid)",
-        thinking: true,
-    },
-];
+// Available models — derived from MODEL_CONFIGS
+const AVAILABLE_MODELS = Object.values(MODEL_CONFIGS).map((mc) => ({
+    value: mc.id,
+    label: mc.label,
+    thinking: mc.supportsThinking,
+}));
 
 const DEFAULT_SYSTEM_INSTRUCTIONS = `You are an expert writing advisor and creative assistant. You have access to the full story context and can help with:
 
@@ -336,6 +324,9 @@ export default function AdvisorTab({
     const isThinkingModel =
         AVAILABLE_MODELS.find((m) => m.value === selectedModel)?.thinking ??
         false;
+
+    // Get model-specific parameter config for advisor sliders
+    const advisorModelConfig = MODEL_CONFIGS[selectedModel];
 
     const loadChats = async () => {
         setIsLoadingChats(true);
@@ -1436,9 +1427,9 @@ export default function AdvisorTab({
                         <Slider
                             value={[thinkingBudget]}
                             onValueChange={([v]) => setThinkingBudget(v)}
-                            min={1024}
-                            max={8192}
-                            step={512}
+                            min={advisorModelConfig?.params.thinkingBudget?.min ?? 0}
+                            max={advisorModelConfig?.params.thinkingBudget?.max ?? 24576}
+                            step={advisorModelConfig?.params.thinkingBudget?.step ?? 256}
                             className="w-full"
                             disabled={!isThinkingModel}
                         />
@@ -1462,9 +1453,9 @@ export default function AdvisorTab({
                         <Slider
                             value={[outputLength]}
                             onValueChange={([v]) => setOutputLength(v)}
-                            min={500}
-                            max={8000}
-                            step={500}
+                            min={advisorModelConfig?.params.outputLength?.min ?? 50}
+                            max={advisorModelConfig?.params.outputLength?.max ?? 8192}
+                            step={advisorModelConfig?.params.outputLength?.step ?? 10}
                             className="w-full"
                         />
                     </div>
@@ -1482,9 +1473,9 @@ export default function AdvisorTab({
                         <Slider
                             value={[temperature]}
                             onValueChange={([v]) => setTemperature(v)}
-                            min={0}
-                            max={2}
-                            step={0.1}
+                            min={advisorModelConfig?.params.temperature?.min ?? 0}
+                            max={advisorModelConfig?.params.temperature?.max ?? 2}
+                            step={advisorModelConfig?.params.temperature?.step ?? 0.01}
                             className="w-full"
                         />
                     </div>

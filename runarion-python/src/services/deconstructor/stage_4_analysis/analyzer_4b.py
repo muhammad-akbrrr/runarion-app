@@ -9,6 +9,7 @@ import os
 from typing import Dict, Any, List, Tuple, Optional
 from ..prompt_template import DeconstructorPrompts
 from utils.json_response_parser import parse_graph_analysis_response
+from utils.llm_retry import call_llm_with_retry
 from ..base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
@@ -203,23 +204,34 @@ class ProgressiveGraphAnalysisStage(BasePipelineStage):
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = "Extract entities and relationships for graph database storage."
             
-            # Set appropriate token limit for graph analysis (relationships JSON, not full content)
-            self.generation_engine.request.generation_config.max_output_tokens = 2000
-            
-            # Generate graph analysis
-            response = self.generation_engine.generate(skip_quota=True)
+            # Set provider-aware token limit for graph analysis JSON
+            self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("json_analytical")
 
-            # Check if response was truncated due to token limit
-            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
-                current_limit = self.generation_engine.request.generation_config.max_output_tokens
-                new_limit = int(current_limit * 1.5)  # Increase by 50%
-                self.logger.warning(
-                    f"Stage 4B graph analysis truncated (finish_reason='length'). "
-                    f"Tokens: {response.metadata.output_tokens}. "
-                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+            # Enable JSON mode for Gemini structured output
+            self.generation_engine.request.generation_config.response_mime_type = "application/json"
+
+            try:
+                # Generate graph analysis (with transient-error retry)
+                response = call_llm_with_retry(
+                    lambda: self.generation_engine.generate(skip_quota=True)
                 )
-                self.generation_engine.request.generation_config.max_output_tokens = new_limit
-                response = self.generation_engine.generate(skip_quota=True)
+
+                # Check if response was truncated due to token limit
+                if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                    current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                    new_limit = int(current_limit * 1.5)  # Increase by 50%
+                    self.logger.warning(
+                        f"Stage 4B graph analysis truncated (finish_reason='length'). "
+                        f"Tokens: {response.metadata.output_tokens}. "
+                        f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                    )
+                    self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                    response = call_llm_with_retry(
+                        lambda: self.generation_engine.generate(skip_quota=True)
+                    )
+            finally:
+                # Reset to avoid leaking into subsequent plain-text stages
+                self.generation_engine.request.generation_config.response_mime_type = None
 
             if not response.success:
                 self.logger.error(f"AI generation failed for scene batch: {response.error_message}")

@@ -12,7 +12,7 @@ class CallerInfo(BaseModel):
     session_id: Optional[str] = None
 
 class GenerationConfig(BaseModel):
-    temperature: float = Field(0.7, ge=0.0, le=1.0)
+    temperature: float = Field(0.7, ge=0.0, le=2.0)
     repetition_penalty: float = Field(0.0, ge=-2.0, le=2.0)
     min_output_tokens: int = Field(50, ge=1)
     max_output_tokens: int = Field(300, ge=1)
@@ -24,6 +24,9 @@ class GenerationConfig(BaseModel):
     banned_tokens: Optional[List[str]] = None
     stop_sequences: Optional[List[str]] = None
     stream: bool = False
+    # Gemini structured output - when set to "application/json", Gemini guarantees valid JSON output
+    # Set to None for plain text stages (e.g. text cleaning, enhancement, title generation)
+    response_mime_type: Optional[str] = None
     # Gemini thinking config - allows configurable thinking budget for supported models
     # Set to None to use model-specific defaults, 0 to disable, or a positive value for custom budget
     thinking_budget: Optional[int] = None
@@ -31,7 +34,7 @@ class GenerationConfig(BaseModel):
 
 class BaseGenerationRequest(BaseModel):
     usecase: str = "mock"
-    provider: str = "openai"
+    provider: str = "gemini"
     model: Optional[str] = None
     prompt: Optional[str] = None
     instruction: Optional[object] = None

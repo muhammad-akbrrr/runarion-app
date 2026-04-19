@@ -120,7 +120,7 @@ export interface ProjectSettings {
     currentPreset: string;
     authorProfile: string;
     aiModel: string;
-    selectionToolbarMode: 'formatting' | 'ai-rewrite';  // DEPRECATED - unified toolbar now shows both formatting and AI features
+    selectionToolbarMode: "formatting" | "ai-rewrite"; // DEPRECATED - unified toolbar now shows both formatting and AI features
     memory: string;
     storyGenre: string;
     storyTone: string;
@@ -131,7 +131,7 @@ export interface ProjectSettings {
     repetitionPenalty: number;
     outputLength: number;
     minOutputToken: number;
-    thinkingBudget: number;  // Token budget for AI reasoning (thinking models only)
+    thinkingBudget: number; // Token budget for AI reasoning (thinking models only)
 
     // Sampling
     topP: number;
@@ -173,43 +173,113 @@ export interface SidebarSettingsProps {
     onSettingChange: (key: keyof ProjectSettings, value: any) => void;
     workspaceId?: string;
     projectId?: string;
-    authorStyles?: Array<{ id: string; name: string; status?: string }>;  // Available author styles from workspace
-    onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>;  // Callback to apply story fixes, returns success/failure
-    onSavingChange?: (isSaving: boolean) => void;  // Callback to signal saving state changes (for save indicator)
+    authorStyles?: Array<{ id: string; name: string; status?: string }>; // Available author styles from workspace
+    onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>; // Callback to apply story fixes, returns success/failure
+    onSavingChange?: (isSaving: boolean) => void; // Callback to signal saving state changes (for save indicator)
 }
 
-// Models that support thinking (internal reasoning before responding)
-export const THINKING_MODELS = [
-    "gemini-2.5-pro",
-    "gemini-2.5-flash", 
-    "gemini-3-pro-preview"
-];
+// Parameter range configuration for model-specific slider settings
+export interface ParameterRange {
+    min: number;
+    max: number;
+    step: number;
+    default: number;
+}
 
-// Default thinking budgets per model
-export const DEFAULT_THINKING_BUDGETS: Record<string, number> = {
-    "gemini-2.5-pro": 4096,
-    "gemini-2.5-flash": 2048,
-    "gemini-3-pro-preview": 4096,
+// Per-model configuration defining supported parameters and their ranges
+export interface ModelConfig {
+    id: string;
+    label: string;
+    provider: string;
+    supportsThinking: boolean;
+    params: {
+        temperature?: ParameterRange;
+        topP?: ParameterRange;
+        topK?: ParameterRange;
+        outputLength?: ParameterRange;
+        thinkingBudget?: ParameterRange;
+        repetitionPenalty?: ParameterRange;
+        tailFree?: ParameterRange;
+        topA?: ParameterRange;
+        phraseBias?: ParameterRange;
+        minOutputToken?: ParameterRange;
+    };
+}
+
+export const MODEL_CONFIGS: Record<string, ModelConfig> = {
+    "gemini-2.5-flash": {
+        id: "gemini-2.5-flash",
+        label: "Gemini 2.5 Flash (Fast + Thinking)",
+        provider: "gemini",
+        supportsThinking: true,
+        params: {
+            temperature: { min: 0, max: 2, step: 0.01, default: 1 },
+            topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
+            outputLength: { min: 50, max: 8192, step: 10, default: 1000 },
+            thinkingBudget: { min: 0, max: 24576, step: 256, default: 2048 },
+            // repetitionPenalty: not supported — "Penalty is not enabled for models/gemini-2.5-flash"
+        },
+    },
+    "gemini-2.5-pro": {
+        id: "gemini-2.5-pro",
+        label: "Gemini 2.5 Pro (Quality + Thinking)",
+        provider: "gemini",
+        supportsThinking: true,
+        params: {
+            temperature: { min: 0, max: 2, step: 0.01, default: 1 },
+            topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
+            outputLength: { min: 50, max: 8192, step: 10, default: 1000 },
+            thinkingBudget: { min: 0, max: 24576, step: 256, default: 4096 },
+            // repetitionPenalty: not supported — "Penalty is not enabled for models/gemini-2.5-*"
+        },
+    },
+    "gemini-3-pro-preview": {
+        id: "gemini-3-pro-preview",
+        label: "Gemini 3.0 Pro (Paid API Key)",
+        provider: "gemini",
+        supportsThinking: true,
+        params: {
+            temperature: { min: 0, max: 2, step: 0.01, default: 1 },
+            topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
+            topK: { min: 1, max: 100, step: 1, default: 64 },
+            outputLength: { min: 50, max: 8192, step: 10, default: 1000 },
+            thinkingBudget: { min: 0, max: 24576, step: 256, default: 4096 },
+            repetitionPenalty: { min: -2, max: 2, step: 0.1, default: 0 },
+        },
+    },
 };
+
+// Models that support thinking — derived from MODEL_CONFIGS
+export const THINKING_MODELS = Object.values(MODEL_CONFIGS)
+    .filter((m) => m.supportsThinking)
+    .map((m) => m.id);
+
+// Default thinking budgets per model — derived from MODEL_CONFIGS
+export const DEFAULT_THINKING_BUDGETS: Record<string, number> =
+    Object.fromEntries(
+        Object.values(MODEL_CONFIGS)
+            .filter((m) => m.params.thinkingBudget)
+            .map((m) => [m.id, m.params.thinkingBudget!.default]),
+    );
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
     currentPreset: "story-telling",
-    authorProfile: "",  // Empty - user must select from available workspace author styles
+    authorProfile: "", // Empty - user must select from available workspace author styles
     aiModel: "gemini-2.5-flash",
-    selectionToolbarMode: "formatting",  // DEPRECATED - no longer used, kept for backward compatibility
+    selectionToolbarMode: "formatting", // DEPRECATED - no longer used, kept for backward compatibility
     memory: "",
     storyGenre: "",
     storyTone: "",
     storyPov: "",
     temperature: 1,
     repetitionPenalty: 0,
-    outputLength: 300,
+    outputLength: 1000,
     minOutputToken: 50,
-    thinkingBudget: 4096,  // Default thinking budget (only used for thinking models)
+    thinkingBudget: 4096, // Default thinking budget (only used for thinking models)
     topP: 0.85,
     tailFree: 0.85,
     topA: 0.85,
-    topK: 0.85,
+    topK: 64,
     phraseBias: [],
     bannedPhrases: [],
     stopSequences: [],

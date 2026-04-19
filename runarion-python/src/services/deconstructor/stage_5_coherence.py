@@ -9,6 +9,7 @@ from typing import Dict, Any, List
 from collections import defaultdict
 from .prompt_template import DeconstructorPrompts
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
+from utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -610,23 +611,35 @@ class CoherenceCheckStage(BasePipelineStage):
             # Generate AI analysis
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = "Analyze the story for plot holes, inconsistencies, and coherence issues."
-            
-            # Set appropriate token limit for coherence analysis (issue identification, not full content)
-            self.generation_engine.request.generation_config.max_output_tokens = 1500
-            
-            response = self.generation_engine.generate(skip_quota=True)
 
-            # Check if response was truncated due to token limit
-            if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
-                current_limit = self.generation_engine.request.generation_config.max_output_tokens
-                new_limit = int(current_limit * 1.5)  # Increase by 50%
-                self.logger.warning(
-                    f"Stage 5 coherence analysis truncated (finish_reason='length'). "
-                    f"Tokens: {response.metadata.output_tokens}. "
-                    f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+            # Set provider-aware token limit for coherence analysis JSON
+            self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("json_analytical")
+
+            # Enable JSON mode for Gemini structured output
+            self.generation_engine.request.generation_config.response_mime_type = "application/json"
+
+            try:
+                # Generate coherence analysis (with transient-error retry)
+                response = call_llm_with_retry(
+                    lambda: self.generation_engine.generate(skip_quota=True)
                 )
-                self.generation_engine.request.generation_config.max_output_tokens = new_limit
-                response = self.generation_engine.generate(skip_quota=True)
+
+                # Check if response was truncated due to token limit
+                if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
+                    current_limit = self.generation_engine.request.generation_config.max_output_tokens
+                    new_limit = int(current_limit * 1.5)  # Increase by 50%
+                    self.logger.warning(
+                        f"Stage 5 coherence analysis truncated (finish_reason='length'). "
+                        f"Tokens: {response.metadata.output_tokens}. "
+                        f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
+                    )
+                    self.generation_engine.request.generation_config.max_output_tokens = new_limit
+                    response = call_llm_with_retry(
+                        lambda: self.generation_engine.generate(skip_quota=True)
+                    )
+            finally:
+                # Reset to avoid leaking into subsequent plain-text stages
+                self.generation_engine.request.generation_config.response_mime_type = None
 
             if response.success:
                 try:

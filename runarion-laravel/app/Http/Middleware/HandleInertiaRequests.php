@@ -36,7 +36,7 @@ class HandleInertiaRequests extends Middleware
         $workspaces = $user ? DB::table('workspace_members')
             ->where('user_id', $user->id)
             ->join('workspaces', 'workspace_members.workspace_id', '=', 'workspaces.id')
-            ->select('workspaces.id', 'workspaces.name', 'workspaces.slug')
+            ->select('workspaces.id', 'workspaces.name', 'workspaces.slug', 'workspaces.cover_image_url')
             ->orderByRaw("CASE WHEN workspace_members.role = 'owner' THEN 1 ELSE 2 END")
             ->orderBy('workspaces.name')
             ->get() : [];

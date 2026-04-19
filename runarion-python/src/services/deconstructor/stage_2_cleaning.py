@@ -9,6 +9,8 @@ from typing import Dict, Any, List, Tuple
 from .prompt_template import DeconstructorPrompts
 from utils.database_utils import clean_text_for_database
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
+from config.deconstructor_config import Stage3Config
+from utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -171,11 +173,13 @@ class TextCleaningStage(BasePipelineStage):
                 self.generation_engine.request.prompt = prompt
                 self.generation_engine.request.instruction = "Clean and normalize the provided text while preserving all narrative content."
                 
-                # Set appropriate token limit for text cleaning (match input chunk size ~3000 tokens)
-                self.generation_engine.request.generation_config.max_output_tokens = 3000
+                # Set provider-aware token limit for text cleaning
+                self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("text_generation")
                 
-                # Generate cleaned text
-                response = self.generation_engine.generate(skip_quota=True)
+                # Generate cleaned text (with transient-error retry)
+                response = call_llm_with_retry(
+                    lambda: self.generation_engine.generate(skip_quota=True)
+                )
 
                 # Check if response was truncated due to token limit
                 if response.success and hasattr(response, 'metadata') and response.metadata.finish_reason == 'length':
@@ -187,7 +191,9 @@ class TextCleaningStage(BasePipelineStage):
                         f"Increasing max_output_tokens from {current_limit} to {new_limit} and retrying..."
                     )
                     self.generation_engine.request.generation_config.max_output_tokens = new_limit
-                    response = self.generation_engine.generate(skip_quota=True)
+                    response = call_llm_with_retry(
+                        lambda: self.generation_engine.generate(skip_quota=True)
+                    )
 
                 if response.success:
                     cleaned_text = response.text.strip()
@@ -212,16 +218,33 @@ class TextCleaningStage(BasePipelineStage):
                     
                     return cleaned_text
                 else:
+                    error_msg_str = response.error_message or ''
                     if attempt < max_retries:
-                        logger.warning(f"AI generation failed (attempt {attempt + 1}/{max_retries + 1}): {response.error_message}, retrying...")
+                        delay = Stage3Config.parse_rate_limit_delay(error_msg_str)
+                        if delay > 0:
+                            logger.warning(
+                                f"AI generation rate-limited (attempt {attempt + 1}/{max_retries + 1}), "
+                                f"sleeping {delay:.1f}s before retry"
+                            )
+                            import time as _time; _time.sleep(delay)
+                        else:
+                            logger.warning(f"AI generation failed (attempt {attempt + 1}/{max_retries + 1}): {error_msg_str}, retrying...")
                         continue
                     else:
-                        logger.error(f"AI generation failed after {max_retries + 1} attempts: {response.error_message}")
+                        logger.error(f"AI generation failed after {max_retries + 1} attempts: {error_msg_str}")
                         return raw_text
-                        
+
             except Exception as e:
                 if attempt < max_retries:
-                    logger.warning(f"Error cleaning text chunk (attempt {attempt + 1}/{max_retries + 1}): {e}, retrying...")
+                    delay = Stage3Config.parse_rate_limit_delay(str(e))
+                    if delay > 0:
+                        logger.warning(
+                            f"Error cleaning text chunk rate-limited (attempt {attempt + 1}/{max_retries + 1}), "
+                            f"sleeping {delay:.1f}s before retry"
+                        )
+                        import time as _time; _time.sleep(delay)
+                    else:
+                        logger.warning(f"Error cleaning text chunk (attempt {attempt + 1}/{max_retries + 1}): {e}, retrying...")
                     continue
                 else:
                     logger.error(f"Error cleaning text chunk after {max_retries + 1} attempts: {e}")

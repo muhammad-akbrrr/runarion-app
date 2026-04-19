@@ -283,7 +283,7 @@ class DeconstructorOrchestrator:
                     'draft_id': draft_id,
                     'error': error_msg,
                     'stage_failed': '4a',
-                    'processing_time_seconds': (datetime.now() - pipeline_start_time).total_seconds(),
+                    'processing_time_seconds': (datetime.now() - start_time).total_seconds(),
                     'stages_completed': pipeline_results['stages_completed']
                 }
 
@@ -328,7 +328,7 @@ class DeconstructorOrchestrator:
                     'draft_id': draft_id,
                     'error': error_msg,
                     'stage_failed': '5',
-                    'processing_time_seconds': (datetime.now() - pipeline_start_time).total_seconds(),
+                    'processing_time_seconds': (datetime.now() - start_time).total_seconds(),
                     'stages_completed': pipeline_results['stages_completed']
                 }
 

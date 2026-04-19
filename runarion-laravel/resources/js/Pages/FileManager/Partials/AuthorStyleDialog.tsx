@@ -7,10 +7,15 @@ import {
 } from "@/Components/ui/dialog";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
-import { Checkbox } from "@/Components/ui/checkbox";
-import { Label } from "@/Components/ui/label";
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/Components/ui/select";
 import { router, usePage } from "@inertiajs/react";
-import { CloudUpload, X, Check } from "lucide-react";
+import { CloudUpload, X } from "lucide-react";
 import { AuthorStyle } from "@/types/files";
 import { PageProps } from "@/types";
 
@@ -25,16 +30,15 @@ export default function AuthorStyleDialog({
     onClose,
     authorStyles,
 }: AuthorStyleDialogProps) {
-    const { projects, workspaceId } = usePage<PageProps<{ 
+    const { projects, workspaceId } = usePage<PageProps<{
         projects: { id: string; name: string }[],
         workspaceId: string
     }>>().props;
-    
+
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [authorName, setAuthorName] = React.useState("");
     const [authorFiles, setAuthorFiles] = React.useState<File[]>([]);
-    const [selectedProjectIds, setSelectedProjectIds] = React.useState<string[]>([]);
-    const [applyToAll, setApplyToAll] = React.useState(false);
+    const [selectedProjectId, setSelectedProjectId] = React.useState<string | null>(null);
     const [authorNameTouched, setAuthorNameTouched] = React.useState(false);
     const [projectTouched, setProjectTouched] = React.useState(false);
     const [authorStyleError, setAuthorStyleError] = React.useState<string | null>(null);
@@ -44,43 +48,13 @@ export default function AuthorStyleDialog({
         if (!open) {
             setAuthorName("");
             setAuthorFiles([]);
-            setSelectedProjectIds([]);
-            setApplyToAll(false);
+            setSelectedProjectId(null);
             setIsProcessing(false);
             setAuthorNameTouched(false);
             setProjectTouched(false);
             setAuthorStyleError(null);
         }
     }, [open]);
-
-    // Handle apply to all toggle
-    const handleApplyToAllChange = (checked: boolean) => {
-        setApplyToAll(checked);
-        if (checked && projects) {
-            setSelectedProjectIds(projects.map(p => p.id));
-        } else {
-            setSelectedProjectIds([]);
-        }
-        setProjectTouched(true);
-    };
-
-    // Handle individual project toggle
-    const handleProjectToggle = (projectId: string) => {
-        setSelectedProjectIds(prev => {
-            if (prev.includes(projectId)) {
-                const newIds = prev.filter(id => id !== projectId);
-                setApplyToAll(false);
-                return newIds;
-            } else {
-                const newIds = [...prev, projectId];
-                if (projects && newIds.length === projects.length) {
-                    setApplyToAll(true);
-                }
-                return newIds;
-            }
-        });
-        setProjectTouched(true);
-    };
 
     // File input handlers
     const handleAuthorFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -96,17 +70,17 @@ export default function AuthorStyleDialog({
             setAuthorStyleError("Please upload at least one file.");
             return;
         }
-        
+
         if (!authorName) {
             setAuthorStyleError("Please enter an author name.");
             return;
         }
-        
-        if (selectedProjectIds.length === 0) {
-            setAuthorStyleError("Please select at least one project.");
+
+        if (!selectedProjectId) {
+            setAuthorStyleError("Please select a project.");
             return;
         }
-        
+
         // Check for duplicate name
         const existingNames = authorStyles.map(style => style.name.toLowerCase());
         if (existingNames.includes(authorName.toLowerCase())) {
@@ -119,19 +93,11 @@ export default function AuthorStyleDialog({
         // Prepare form data for submission
         const formData = new FormData();
         formData.append("author_name", authorName);
-        // For now, send the first project ID (backend stores single project_id)
-        // TODO: Update backend to support multiple projects via pivot table
-        formData.append("project_id", selectedProjectIds[0]);
+        formData.append("project_id", selectedProjectId);
         authorFiles.forEach((file, index) => {
             formData.append(`author_files[${index}]`, file);
         });
-        
-        console.log("Creating author style:", {
-            authorName,
-            projectIds: selectedProjectIds,
-            authorFiles,
-        });
-        
+
         // Submit the form to the backend
         router.post(route("workspace.files.author-styles.store", { workspace_id: workspaceId }), formData, {
             forceFormData: true,
@@ -141,14 +107,16 @@ export default function AuthorStyleDialog({
             },
             onError: (errors) => {
                 setIsProcessing(false);
+                const fileError = Object.keys(errors).find(key => key.startsWith('author_files'));
                 if (errors.author_name) {
                     setAuthorStyleError(errors.author_name);
                 } else if (errors.project_id) {
                     setAuthorStyleError(errors.project_id);
-                } else if (errors.author_files) {
-                    setAuthorStyleError(errors.author_files);
+                } else if (fileError) {
+                    setAuthorStyleError(errors[fileError]);
                 } else {
-                    setAuthorStyleError("An error occurred while creating the author style.");
+                    const firstError = Object.values(errors)[0];
+                    setAuthorStyleError(typeof firstError === 'string' ? firstError : "An error occurred while creating the author style.");
                 }
             },
         });
@@ -169,7 +137,7 @@ export default function AuthorStyleDialog({
                                 Upload documents that represent the author's writing style
                             </p>
                         </div>
-                        
+
                         <div className="border-dashed border-2 rounded-lg p-6 flex flex-col items-center justify-center gap-1 text-center relative mb-2 w-full">
                             <Input
                                 className="absolute left-0 top-0 w-full h-full opacity-0 cursor-pointer"
@@ -244,59 +212,41 @@ export default function AuthorStyleDialog({
 
                     <div className="flex flex-col justify-stretch items-start gap-2">
                         <div className="flex flex-col justify-start items-start gap-0.5">
-                            <label className="text-sm">Associated Projects</label>
+                            <label className="text-sm">Associated Project</label>
                             <p className="text-xs text-muted-foreground">
-                                Select projects where this author style can be used
+                                Select the project where this author style will be used
                             </p>
                         </div>
-                        
-                        {/* Apply to All Checkbox */}
-                        <div className="flex items-center space-x-2 py-2 px-3 bg-muted rounded-md w-full">
-                            <Checkbox 
-                                id="apply-to-all"
-                                checked={applyToAll}
-                                onCheckedChange={handleApplyToAllChange}
-                            />
-                            <Label 
-                                htmlFor="apply-to-all" 
-                                className="text-sm font-medium cursor-pointer"
-                            >
-                                Apply to all projects
-                            </Label>
-                        </div>
-                        
-                        {/* Project List */}
-                        <div className="w-full border rounded-md max-h-[150px] overflow-y-auto">
+
+                        <Select
+                            value={selectedProjectId ?? ""}
+                            onValueChange={(val) => {
+                                setSelectedProjectId(val);
+                                setProjectTouched(true);
+                                setAuthorStyleError(null);
+                            }}
+                        >
+                            <SelectTrigger className="w-full">
+                                <SelectValue placeholder="Select a project..." />
+                            </SelectTrigger>
+                            <SelectContent>
                                 {projects && projects.length > 0 ? (
                                     projects.map((project) => (
-                                    <div 
-                                        key={project.id}
-                                        className="flex items-center space-x-2 px-3 py-2 hover:bg-muted/50 cursor-pointer border-b last:border-b-0"
-                                        onClick={() => handleProjectToggle(project.id)}
-                                    >
-                                        <Checkbox 
-                                            checked={selectedProjectIds.includes(project.id)}
-                                            onCheckedChange={() => handleProjectToggle(project.id)}
-                                        />
-                                        <span className="text-sm">{project.name}</span>
-                                    </div>
+                                        <SelectItem key={project.id} value={project.id}>
+                                            {project.name}
+                                        </SelectItem>
                                     ))
                                 ) : (
-                                <div className="px-3 py-2 text-sm text-muted-foreground">
+                                    <SelectItem value="__no_project__" disabled>
                                         No projects available
-                                </div>
+                                    </SelectItem>
                                 )}
-                        </div>
-                        
-                        {selectedProjectIds.length > 0 && (
-                            <p className="text-xs text-muted-foreground">
-                                {selectedProjectIds.length} project{selectedProjectIds.length !== 1 ? 's' : ''} selected
-                            </p>
-                        )}
-                        
-                        {projectTouched && selectedProjectIds.length === 0 && (
+                            </SelectContent>
+                        </Select>
+
+                        {projectTouched && !selectedProjectId && (
                             <p className="text-xs text-destructive mt-1">
-                                At least one project must be selected.
+                                A project must be selected.
                             </p>
                         )}
                     </div>
@@ -318,7 +268,7 @@ export default function AuthorStyleDialog({
                             isProcessing ||
                             authorFiles.length === 0 ||
                             !authorName ||
-                            selectedProjectIds.length === 0
+                            !selectedProjectId
                         }
                     >
                         {isProcessing ? "Creating..." : "Create Author Style"}

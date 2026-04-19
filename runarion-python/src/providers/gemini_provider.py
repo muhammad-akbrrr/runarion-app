@@ -188,26 +188,53 @@ class GeminiProvider(BaseProvider):
                 f"{actual_max_output_tokens} (thinking_budget={thinking_budget} + desired_output={config.max_output_tokens})"
             )
                 
+        # top_k: skip for 2.5 models where it's fixed at 64 (not user-adjustable)
+        supports_top_k = "2.5" not in self.model
+        top_k_value = int(config.top_k) if supports_top_k and config.top_k > 0 else None
+
+        # Penalty params: Gemini 2.5 models reject presence_penalty/frequency_penalty entirely
+        # ("Penalty is not enabled for models/gemini-2.5-*")
+        supports_penalty = "2.5" not in self.model
+        presence_penalty = config.repetition_penalty if supports_penalty and config.repetition_penalty != 0 else None
+        frequency_penalty = config.repetition_penalty if supports_penalty and config.repetition_penalty != 0 else None
+
+        if not supports_penalty and config.repetition_penalty != 0:
+            current_app.logger.info(
+                f"Skipping penalty params for {self.model} (not supported, value was {config.repetition_penalty})"
+            )
+
+        # Build GenerateContentConfig kwargs (response_mime_type only included when set)
+        gen_config_kwargs = dict(
+            system_instruction=self.instruction or "",
+            temperature=config.temperature,
+            max_output_tokens=actual_max_output_tokens,
+            top_p=config.nucleus_sampling,
+            top_k=top_k_value,
+            stop_sequences=all_stop_sequences,
+            presence_penalty=presence_penalty,
+            frequency_penalty=frequency_penalty,
+            # Configurable thinking config - None disables thinking, otherwise uses configured budget
+            thinking_config=thinking_config,
+            # CRITICAL: Safety settings MUST be BLOCK_NONE for all categories
+            # This ensures unrestricted creative writing for all models
+            safety_settings=GEMINI_SAFETY_SETTINGS,
+        )
+
+        # Add response_mime_type when set (e.g. "application/json" for structured output)
+        # Gemini 2.5 thinking models support response_mime_type with thinking enabled
+        if config.response_mime_type:
+            gen_config_kwargs["response_mime_type"] = config.response_mime_type
+            current_app.logger.info(f"Structured output enabled: response_mime_type={config.response_mime_type}")
+
         gemini_kwargs = {
             "model": self.model,
             "contents": contents,
-            "config": GenerateContentConfig(
-                system_instruction=self.instruction or "",
-                temperature=config.temperature,
-                max_output_tokens=actual_max_output_tokens,
-                top_p=config.nucleus_sampling,
-                top_k=int(config.top_k) if config.top_k > 0 else None,
-                stop_sequences=all_stop_sequences,
-                presence_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
-                frequency_penalty=config.repetition_penalty if config.repetition_penalty != 0 else None,
-                # Configurable thinking config - None disables thinking, otherwise uses configured budget
-                thinking_config=thinking_config,
-                # CRITICAL: Safety settings MUST be BLOCK_NONE for all categories
-                # This ensures unrestricted creative writing for all models
-                safety_settings=GEMINI_SAFETY_SETTINGS
-            ),
+            "config": GenerateContentConfig(**gen_config_kwargs),
         }
-        
+
+        # Note: tail_free_sampling, top_a, min_output_tokens, phrase_bias are
+        # not supported by Gemini's GenerateContentConfig and are silently ignored
+
         return {k: v for k, v in gemini_kwargs.items() if v is not None}
         
     def generate(self, skip_quota: bool = False) -> BaseGenerationResponse:
@@ -243,11 +270,22 @@ class GeminiProvider(BaseProvider):
                 return response
 
         try:
-            # Create the model
-            raw_response = self.client.models.generate_content(**gemini_kwargs)
+            # Create the model — with graceful fallback for penalty params
+            try:
+                raw_response = self.client.models.generate_content(**gemini_kwargs)
+            except Exception as penalty_err:
+                if "penalty" in str(penalty_err).lower() or "not enabled" in str(penalty_err).lower():
+                    current_app.logger.warning(
+                        f"Model {self.model} rejected penalty params, retrying without: {penalty_err}"
+                    )
+                    self.request.generation_config.repetition_penalty = 0.0
+                    gemini_kwargs = self._build_gemini_kwargs(self.request.generation_config)
+                    raw_response = self.client.models.generate_content(**gemini_kwargs)
+                else:
+                    raise
             current_app.logger.info(f"Gemini API response: {raw_response}")
             provider_request_id = getattr(raw_response, 'response_id', "")
-            
+
             if raw_response.prompt_feedback and raw_response.prompt_feedback.block_reason:
                 reason_name = getattr(raw_response.prompt_feedback.block_reason, 'name', str(raw_response.prompt_feedback.block_reason))
                 error_message = f"Content generation blocked by Gemini. Reason: {reason_name}"
@@ -354,9 +392,20 @@ class GeminiProvider(BaseProvider):
         finish_reason = "stop"
 
         try:
-            # Streaming API call - following CoAuth's simple approach
+            # Streaming API call - with graceful fallback for penalty params
             current_app.logger.info(f"Starting Gemini streaming with model: {self.model}")
-            stream = self.client.models.generate_content_stream(**gemini_kwargs)
+            try:
+                stream = self.client.models.generate_content_stream(**gemini_kwargs)
+            except Exception as penalty_err:
+                if "penalty" in str(penalty_err).lower() or "not enabled" in str(penalty_err).lower():
+                    current_app.logger.warning(
+                        f"Model {self.model} rejected penalty params, retrying without: {penalty_err}"
+                    )
+                    self.request.generation_config.repetition_penalty = 0.0
+                    gemini_kwargs = self._build_gemini_kwargs(self.request.generation_config)
+                    stream = self.client.models.generate_content_stream(**gemini_kwargs)
+                else:
+                    raise
             
             # Check if stream is valid
             if stream is None:
