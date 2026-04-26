@@ -21,8 +21,9 @@ check_migrations() {
 check_vite() {
     local max_attempts=30
     local attempt=1
+    local vite_probe_url="http://localhost:${VITE_PORT:-5173}/@vite/client"
     while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:${VITE_PORT:-5173} > /dev/null; then
+        if curl -fsS "$vite_probe_url" > /dev/null 2>&1; then
             log "Vite server is running"
             return 0
         fi

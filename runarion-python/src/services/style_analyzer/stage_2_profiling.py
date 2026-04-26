@@ -491,6 +491,26 @@ class ProfilingStage:
             )
             raise ValueError(error_text)
 
+        # Narrative mechanics were added as hard-style signals. In practice the
+        # model can still emit explicit nulls; coerce these to empty strings so
+        # profiling degrades gracefully instead of failing the whole phase.
+        if isinstance(parsed, dict):
+            techniques = parsed.get("techniques")
+            if isinstance(techniques, dict):
+                narrative = techniques.get("narrative")
+                if isinstance(narrative, dict):
+                    for key in (
+                        "narrative_person",
+                        "narrative_distance",
+                        "chapter_break_policy",
+                        "anti_redundancy_guidance",
+                    ):
+                        value = narrative.get(key)
+                        if value is None:
+                            narrative[key] = ""
+                        elif not isinstance(value, str):
+                            narrative[key] = str(value)
+
         try:
             author_style = AuthorStyle(**parsed)
         except ValidationError:

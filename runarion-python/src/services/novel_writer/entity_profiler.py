@@ -37,8 +37,10 @@ class EntityProfilingStage(BasePipelineStage):
         draft_id = context.draft_id
         workspace_id = context.get_workspace_id(self.db_pool)
         author_style_name = context.config.get('author_style_name')
+        writing_perspective = context.config.get('writing_perspective', 'third_person_limited')
 
         story_context = StoryContext()
+        story_context.writing_perspective = writing_perspective
         conn = context.get('connection')
 
         try:

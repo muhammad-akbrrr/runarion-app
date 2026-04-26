@@ -92,7 +92,10 @@ class ManuscriptAssemblyStage(BasePipelineStage):
 
         for chapter_number, chapter in sorted(story_context.generated_chapters.items()):
             chapter_id = str(ULID())
-            cleaned_content = clean_text_for_database(chapter.content)
+            cleaned_content = clean_text_for_database(
+                chapter.content,
+                preserve_line_breaks=True,
+            )
             word_count = len(cleaned_content.split())
 
             # Get source chapter data from deconstructor
@@ -132,7 +135,12 @@ class ManuscriptAssemblyStage(BasePipelineStage):
         for chapter_number, chapter in sorted(story_context.generated_chapters.items()):
             header = f"Chapter {chapter_number}: {chapter.title}"
             manuscript_parts.append(f"\n{'=' * len(header)}\n{header}\n{'=' * len(header)}\n")
-            manuscript_parts.append(clean_text_for_database(chapter.content))
+            manuscript_parts.append(
+                clean_text_for_database(
+                    chapter.content,
+                    preserve_line_breaks=True,
+                )
+            )
 
         final_content = '\n\n'.join(manuscript_parts)
         final_word_count = len(final_content.split())
@@ -148,16 +156,20 @@ class ManuscriptAssemblyStage(BasePipelineStage):
 
         # Step 6: Insert final manuscript
         manuscript_id = str(ULID())
+        generated_by = context.get_user_id(self.db_pool)
         cursor.execute("""
             INSERT INTO final_manuscripts (id, draft_id, final_content, word_count,
                                            generated_at, generated_by, processing_summary)
             VALUES (%s, %s, %s, %s, %s, %s, %s)
         """, (
             manuscript_id, draft_id,
-            clean_text_for_database(final_content),
+            clean_text_for_database(
+                final_content,
+                preserve_line_breaks=True,
+            ),
             final_word_count,
             datetime.now(),
-            'novel_writer_pipeline',
+            generated_by,
             ensure_utf8_json(processing_summary),
         ))
 

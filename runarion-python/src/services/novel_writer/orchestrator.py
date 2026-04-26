@@ -22,6 +22,13 @@ from .stage_5_assembly import ManuscriptAssemblyStage
 
 logger = logging.getLogger(__name__)
 
+HARD_GATE_DIMENSIONS = (
+    'pov_consistency',
+    'perspective_continuity',
+    'chapter_break_integrity',
+    'redundancy_control',
+)
+
 
 class NovelWriterOrchestrator:
     """
@@ -62,7 +69,10 @@ class NovelWriterOrchestrator:
                      workspace_id: str = None,
                      target_chapter_length: int = 2500,
                      author_style_name: str = None,
+                     writing_perspective: str = "third_person_limited",
                      quality_threshold: float = 6.0,
+                     enforce_hard_quality_gate: bool = True,
+                     hard_quality_threshold: Optional[float] = None,
                      max_improvement_passes: int = 2,
                      config: Dict[str, Any] = None) -> Dict[str, Any]:
         """
@@ -77,7 +87,12 @@ class NovelWriterOrchestrator:
             workspace_id: Workspace ID
             target_chapter_length: Target word count per chapter
             author_style_name: Optional specific author style to use
+            writing_perspective: Perspective mode for prose generation
             quality_threshold: Minimum quality score (chapters below this get improved)
+            enforce_hard_quality_gate: If True, fail pipeline when hard dimensions
+                remain below threshold after improvement.
+            hard_quality_threshold: Threshold for hard quality dimensions.
+                Defaults to quality_threshold if not provided.
             max_improvement_passes: Maximum improvement iterations per chapter
             config: Additional configuration parameters
 
@@ -88,7 +103,10 @@ class NovelWriterOrchestrator:
         pipeline_config = {
             'target_chapter_length': target_chapter_length,
             'author_style_name': author_style_name,
+            'writing_perspective': writing_perspective,
             'quality_threshold': quality_threshold,
+            'enforce_hard_quality_gate': enforce_hard_quality_gate,
+            'hard_quality_threshold': hard_quality_threshold if hard_quality_threshold is not None else quality_threshold,
             'max_improvement_passes': max_improvement_passes,
             **(config or {}),
         }
@@ -151,7 +169,7 @@ class NovelWriterOrchestrator:
 
             # ── Stage 3: Quality Assessment ──
             # Non-critical: assessment failure doesn't stop the pipeline
-            self._run_stage(
+            stage_3_result = self._run_stage(
                 self.stage_3, shared_context, 3, 'quality_assessment',
                 pipeline_results, pipeline_conn, draft_id, critical=False,
             )
@@ -164,6 +182,38 @@ class NovelWriterOrchestrator:
                 pipeline_results, pipeline_conn, draft_id, critical=False,
             )
             self._update_draft_status(draft_id, DraftStatus.NW_STAGE_4_COMPLETE.value)
+
+            # ── Hard Quality Gate (optional, enabled by default) ──
+            stage_3b_result = None
+            gate_failures = []
+            hard_threshold = float(
+                shared_context.config.get('hard_quality_threshold', quality_threshold)
+            )
+            if shared_context.config.get('enforce_hard_quality_gate', True):
+                stage_3b_result = self._run_stage(
+                    self.stage_3, shared_context, "3b", 'quality_assessment_post_improvement',
+                    pipeline_results, pipeline_conn, draft_id, critical=True,
+                )
+                if stage_3b_result is None:
+                    return pipeline_results
+
+                gate_failures = self._collect_hard_quality_failures(
+                    shared_context, hard_threshold
+                )
+                if gate_failures:
+                    preview = "; ".join(
+                        f"ch{f['chapter']}[{', '.join(f['failed_dimensions'])}]"
+                        for f in gate_failures[:3]
+                    )
+                    raise RuntimeError(
+                        f"Hard quality gate failed for {len(gate_failures)} chapter(s) "
+                        f"(threshold={hard_threshold:.1f}): {preview}"
+                    )
+
+                logger.info(
+                    f"Hard quality gate passed for draft {draft_id} "
+                    f"(threshold={hard_threshold:.1f})"
+                )
 
             # ── Stage 5: Manuscript Assembly ──
             stage_5_result = self._run_stage(
@@ -182,7 +232,17 @@ class NovelWriterOrchestrator:
 
             self._update_draft_status(
                 draft_id, DraftStatus.NW_COMPLETED.value,
-                metadata={'processing_time_seconds': processing_time}
+                metadata={
+                    'processing_time_seconds': processing_time,
+                    'quality_telemetry': self._build_quality_telemetry(
+                        stage_2_result,
+                        stage_3_result,
+                        stage_3b_result,
+                        gate_failures,
+                        hard_threshold,
+                        bool(shared_context.config.get('enforce_hard_quality_gate', True)),
+                    ),
+                }
             )
 
             pipeline_results.update({
@@ -224,6 +284,93 @@ class NovelWriterOrchestrator:
         finally:
             if conn:
                 self.db_pool.putconn(conn)
+
+    def _build_quality_telemetry(
+        self,
+        stage_2_result: PipelineStageResult,
+        stage_3_result: Optional[PipelineStageResult],
+        stage_3b_result: Optional[PipelineStageResult],
+        gate_failures: list[Dict[str, Any]],
+        hard_threshold: float,
+        hard_gate_enabled: bool,
+    ) -> Dict[str, Any]:
+        """
+        Build fallback/degradation telemetry and deterministic gate outcomes for metadata.
+        """
+        telemetry = {
+            'hard_gate_enabled': hard_gate_enabled,
+            'hard_gate_threshold': hard_threshold,
+            'hard_gate_failures': gate_failures,
+            'hard_gate_passed': len(gate_failures) == 0 if hard_gate_enabled else None,
+            'prose_generation': {
+                'chapters_generated': None,
+                'chapters_failed': None,
+                'fallback_rate': None,
+            },
+            'quality_assessment': {
+                'initial': {},
+                'post_improvement': {},
+            },
+        }
+
+        stage_2_data = (stage_2_result.to_dict() if stage_2_result else {}) or {}
+        chapters_generated = stage_2_data.get('chapters_generated')
+        chapters_failed = stage_2_data.get('chapters_failed')
+        total_chapters = stage_2_data.get('total_chapters')
+        if isinstance(chapters_generated, int) and isinstance(total_chapters, int) and total_chapters > 0:
+            fallback_rate = round(max(total_chapters - chapters_generated, 0) / total_chapters, 3)
+            telemetry['prose_generation'] = {
+                'chapters_generated': chapters_generated,
+                'chapters_failed': chapters_failed,
+                'fallback_rate': fallback_rate,
+            }
+
+        def _quality_slice(stage_result: Optional[PipelineStageResult]) -> Dict[str, Any]:
+            if not stage_result:
+                return {}
+            data = stage_result.to_dict()
+            return {
+                'chapters_assessed': data.get('chapters_assessed'),
+                'chapters_needing_improvement': data.get('chapters_needing_improvement'),
+                'average_score': data.get('average_score'),
+                'degradation_report': data.get('degradation_report'),
+                'deterministic_gate_outcomes': data.get('deterministic_gate_outcomes'),
+                'deterministic_summary': data.get('deterministic_summary'),
+            }
+
+        telemetry['quality_assessment']['initial'] = _quality_slice(stage_3_result)
+        telemetry['quality_assessment']['post_improvement'] = _quality_slice(stage_3b_result)
+
+        return telemetry
+
+    def _collect_hard_quality_failures(
+        self,
+        context: PipelineStageContext,
+        threshold: float,
+    ) -> list[Dict[str, Any]]:
+        """Return chapters that fail required hard quality dimensions."""
+        assessments = context.get('quality_assessments', {}) or {}
+        failures = []
+
+        for chapter_number, assessment in sorted(assessments.items()):
+            scores = assessment.get('scores', {}) or {}
+            failed_dimensions = []
+
+            for dim in HARD_GATE_DIMENSIONS:
+                value = scores.get(dim)
+                if not isinstance(value, (int, float)):
+                    failed_dimensions.append(f"{dim}=missing")
+                elif float(value) < threshold:
+                    failed_dimensions.append(f"{dim}={float(value):.1f}")
+
+            if failed_dimensions:
+                failures.append({
+                    'chapter': chapter_number,
+                    'overall_score': assessment.get('overall_score'),
+                    'failed_dimensions': failed_dimensions,
+                })
+
+        return failures
 
     def _run_stage(self, stage, context: PipelineStageContext,
                    stage_num: int, stage_name: str,

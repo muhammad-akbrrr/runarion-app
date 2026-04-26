@@ -5,6 +5,7 @@ Includes transaction management with retry capabilities.
 """
 
 import json
+import re
 import logging
 import time
 from typing import Any, Optional, Dict, List, Union, Callable
@@ -467,12 +468,14 @@ def with_db_transaction(
     return decorator
 
 
-def clean_text_for_database(text: str) -> str:
+def clean_text_for_database(text: str, preserve_line_breaks: bool = False) -> str:
     """
     Clean text for safe database storage.
     
     Args:
         text: Input text
+        preserve_line_breaks: Keep paragraph/newline structure while still
+            removing unsafe control characters.
         
     Returns:
         Cleaned text safe for database storage
@@ -495,8 +498,28 @@ def clean_text_for_database(text: str) -> str:
     for char in control_chars:
         text = text.replace(char, '')
     
-    # Normalize whitespace
-    text = ' '.join(text.split())
+    if preserve_line_breaks:
+        # Normalize line endings first.
+        text = text.replace('\r\n', '\n').replace('\r', '\n')
+
+        # Normalize spacing within each line but preserve paragraph boundaries.
+        normalized_lines = []
+        blank_run = 0
+        for raw_line in text.split('\n'):
+            line = re.sub(r'[ \t]+', ' ', raw_line).strip()
+            if not line:
+                blank_run += 1
+                if blank_run <= 2:
+                    normalized_lines.append("")
+                continue
+
+            blank_run = 0
+            normalized_lines.append(line)
+
+        text = '\n'.join(normalized_lines).strip()
+    else:
+        # Normalize whitespace to a single-space stream for non-prose fields.
+        text = ' '.join(text.split())
     
     return text
 

@@ -27,6 +27,10 @@ EXPANSION_FACTORS = {
     'ending_impact': 1.5,
     'author_style': 1.5,
     'scene_coverage': 2.0,
+    'pov_consistency': 1.6,
+    'perspective_continuity': 1.6,
+    'chapter_break_integrity': 1.4,
+    'redundancy_control': 1.3,
 }
 
 
@@ -234,6 +238,10 @@ class SceneImprovementStage(BasePipelineStage):
                 'thematic_depth': 'literary',
                 'show_dont_tell': 'literary',
                 'author_style': 'literary',
+                'pov_consistency': 'literary',
+                'perspective_continuity': 'literary',
+                'chapter_break_integrity': 'literary',
+                'redundancy_control': 'literary',
             }
             cat = category_map.get(dim)
             if cat and cat not in weak_categories:
@@ -249,12 +257,16 @@ class SceneImprovementStage(BasePipelineStage):
 
         # Build the improvement prompt
         prompt_template = NovelWriterPrompts.get_improvement_prompt()
+        writing_perspective_instruction = NovelWriterPrompts.get_writing_perspective_instruction(
+            getattr(story_context, 'writing_perspective', 'third_person_limited')
+        )
         prompt = prompt_template.format(
             chapter_content=chapter_content,
             quality_feedback=quality_feedback,
             weak_dimensions=weak_dims_text,
             expansion_guidance=expansion_guidance,
             author_style_examples=author_style_examples,
+            writing_perspective_instruction=writing_perspective_instruction,
         )
 
         # Estimate tokens needed (chapter content + expansion)

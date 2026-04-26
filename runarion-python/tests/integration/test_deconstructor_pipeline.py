@@ -1,14 +1,13 @@
 """
 End-to-end integration test for the complete deconstructor pipeline.
 Uses real database operations, LLM providers, and file processing.
-Processes a PDF through all 7 pipeline stages and generates enhanced output.
+Processes a PDF through all 7 pipeline stages.
 """
 
 import sys
 import os
 import ulid
 from datetime import datetime
-from pathlib import Path
 
 # Add src to Python path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
@@ -34,10 +33,6 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), '../../.env'))
 # Configuration - CHANGE THIS TO USE DIFFERENT INPUT FILES
 INPUT_FILE = "short_story.pdf"
 INPUT_DIR = os.path.join(os.path.dirname(__file__), "../sample/input")
-OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "../sample/output")
-
-# Ensure output directory exists
-os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 class EndToEndPipelineTest:
     """
@@ -48,7 +43,6 @@ class EndToEndPipelineTest:
     def __init__(self):
         """Initialize test with real dependencies."""
         self.input_path = os.path.join(INPUT_DIR, INPUT_FILE)
-        self.output_dir = OUTPUT_DIR
         self.draft_id = str(ulid.ULID())  # Use full ULID format
         self.app_context = None
         
@@ -58,7 +52,6 @@ class EndToEndPipelineTest:
         
         print(f"🔄 Initializing E2E Pipeline Test")
         print(f"   Input: {self.input_path}")
-        print(f"   Output Dir: {self.output_dir}")
         print(f"   Draft ID: {self.draft_id}")
         
         # Set up Flask application context
@@ -270,85 +263,6 @@ class EndToEndPipelineTest:
             traceback.print_exc()
             raise
     
-    def generate_output_pdf(self, pipeline_results):
-        """Generate PDF output from pipeline results."""
-        print(f"📄 Generating output PDF...")
-        
-        try:
-            # Import PDF generation utility
-            from ..utils.pdf_generator import generate_enhanced_manuscript_pdf
-            
-            # Generate PDF from database results
-            output_filename = f"enhanced_{INPUT_FILE.replace('.pdf', '')}_output.pdf"
-            output_path = os.path.join(self.output_dir, output_filename)
-            
-            success = generate_enhanced_manuscript_pdf(
-                self.db_pool,
-                self.draft_id,
-                output_path
-            )
-            
-            if success:
-                print(f"✓ Output PDF generated: {output_path}")
-                return output_path
-            else:
-                print(f"❌ Failed to generate output PDF")
-                return None
-                
-        except ImportError:
-            print("⚠️ PDF generator not available - creating text summary instead")
-            return self._generate_text_summary()
-    
-    def _generate_text_summary(self):
-        """Generate a text summary of results if PDF generation unavailable."""
-        summary_path = os.path.join(self.output_dir, f"enhanced_{INPUT_FILE.replace('.pdf', '')}_summary.txt")
-        
-        with utf8_database_connection(self.db_pool) as conn:
-            cursor = conn.cursor()
-            
-            # Get processing summary
-            cursor.execute("SELECT status, metadata, processing_completed_at FROM drafts WHERE id = %s", (self.draft_id,))
-            draft_info = cursor.fetchone()
-            
-            # Get scenes count
-            cursor.execute("SELECT COUNT(*) FROM scenes WHERE draft_id = %s", (self.draft_id,))
-            scenes_count = cursor.fetchone()[0]
-            
-            # Get chunks count
-            cursor.execute("SELECT COUNT(*) FROM draft_chunks WHERE draft_id = %s", (self.draft_id,))
-            chunks_count = cursor.fetchone()[0]
-            
-            # Get plot issues count
-            cursor.execute("SELECT COUNT(*) FROM plot_issues WHERE draft_id = %s", (self.draft_id,))
-            issues_count = cursor.fetchone()[0]
-            
-            # Write summary
-            with open(summary_path, 'w', encoding='utf-8') as f:
-                f.write(f"# Enhanced Manuscript Processing Summary\n\n")
-                f.write(f"**Input File:** {INPUT_FILE}\n")
-                f.write(f"**Draft ID:** {self.draft_id}\n")
-                f.write(f"**Processing Status:** {draft_info[0] if draft_info else 'Unknown'}\n")
-                f.write(f"**Completed At:** {draft_info[2] if draft_info and draft_info[2] else 'In Progress'}\n\n")
-                
-                f.write(f"## Processing Statistics\n")
-                f.write(f"- **Chunks Created:** {chunks_count}\n")
-                f.write(f"- **Scenes Extracted:** {scenes_count}\n") 
-                f.write(f"- **Plot Issues Found:** {issues_count}\n\n")
-                
-                f.write(f"## Pipeline Stages Completed\n")
-                f.write(f"1. ✓ PDF Ingestion\n")
-                f.write(f"2. ✓ Text Cleaning\n")
-                f.write(f"3. ✓ Scene Detection\n")
-                f.write(f"4. ✓ Deep Analysis (Scene, Graph, Reports)\n")
-                f.write(f"5. ✓ Coherence Check\n")
-                f.write(f"6. ✓ Enhancement\n")
-                f.write(f"7. ✓ Chaptering\n\n")
-                
-                f.write(f"All enhanced content is stored in the database and ready for export.\n")
-        
-        print(f"✓ Text summary generated: {summary_path}")
-        return summary_path
-    
     def cleanup_test_data(self):
         """Clean up test data from database."""
         print(f"🧹 Cleaning up test data...")
@@ -413,11 +327,7 @@ class EndToEndPipelineTest:
             pipeline_results = self.run_pipeline()
             print()
             
-            # Step 3: Generate output
-            output_path = self.generate_output_pdf(pipeline_results)
-            print()
-            
-            # Step 4: Show results
+            # Step 3: Show results
             end_time = datetime.now()
             duration = (end_time - start_time).total_seconds()
             
@@ -426,7 +336,6 @@ class EndToEndPipelineTest:
             print("=" * 60)
             print(f"⏱️  Total Duration: {duration:.2f} seconds ({duration/60:.1f} minutes)")
             print(f"📊 Pipeline Success: {'✓' if pipeline_results['success'] else '❌'}")
-            print(f"📁 Output Location: {output_path}")
             print(f"🔍 Draft ID: {self.draft_id}")
             
             if pipeline_results['success']:
@@ -441,9 +350,8 @@ class EndToEndPipelineTest:
                     print(f"   {stage_num}: {stage_name.title()} ✓")
             
             print("\n💡 Next Steps:")
-            print(f"   1. Check the output file: {output_path}")
-            print(f"   2. Review database tables for detailed results")
-            print(f"   3. Use draft ID {self.draft_id} to query specific data")
+            print(f"   1. Review database tables for detailed results")
+            print(f"   2. Use draft ID {self.draft_id} to query specific data")
             print()
             
             return True

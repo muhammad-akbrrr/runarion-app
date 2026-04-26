@@ -129,6 +129,9 @@ class ChapteringStage(BasePipelineStage):
             # Titles now come from AI structure or constrained fallback - no post-processing needed
             chapters_with_titles = chapters  # Rename variable for clarity
 
+            # Validate chapter boundaries for pacing integrity (diagnostic + gate signal)
+            boundary_validation = self._validate_boundary_pacing(chapters_with_titles, scene_info)
+
             # Store chapters in database
             chapters_stored = self._store_chapters(context, chapters_with_titles)
             
@@ -143,7 +146,8 @@ class ChapteringStage(BasePipelineStage):
                 chaptering_mode=chaptering_mode,
                 target_chapter_length=target_chapter_length,
                 avg_chapter_length=total_word_count // len(chapters_with_titles) if chapters_with_titles else 0,
-                manuscript_word_count=manuscript_data['word_count']
+                manuscript_word_count=manuscript_data['word_count'],
+                boundary_validation=boundary_validation,
             )
             
         except Exception as e:
@@ -402,6 +406,7 @@ class ChapteringStage(BasePipelineStage):
                 start_scene = chapter_spec['start_scene']
                 end_scene = chapter_spec['end_scene']
                 title = chapter_spec['title']
+                rationale = chapter_spec.get('rationale', '')
 
                 self.logger.debug(
                     f"Building chapter {chapter_num}: scenes {start_scene}-{end_scene}"
@@ -457,7 +462,8 @@ class ChapteringStage(BasePipelineStage):
                     'start_scene': start_scene,
                     'end_scene': end_scene,
                     'scene_count': end_scene - start_scene + 1,
-                    'scene_titles': scene_titles
+                    'scene_titles': scene_titles,
+                    'rationale': rationale,
                 })
 
                 self.logger.info(
@@ -636,7 +642,8 @@ class ChapteringStage(BasePipelineStage):
                     'chapter_number': chapter_num,
                     'title': chapter_title,
                     'start_scene': start_scene,
-                    'end_scene': end_scene
+                    'end_scene': end_scene,
+                    'rationale': 'Constrained fallback grouped by contiguous scene ranges.',
                 })
 
                 current_scene = end_scene + 1
@@ -669,6 +676,197 @@ class ChapteringStage(BasePipelineStage):
                 },
                 self.current_context
             )
+
+    def _validate_boundary_pacing(
+        self,
+        chapters: List[Dict[str, Any]],
+        scene_info: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Heuristic validator for chapter-boundary pacing integrity.
+
+        Flags boundaries that appear to split a continuous high-kinetic sequence
+        without an explicit structural justification.
+        """
+        total_boundaries = max(0, len(chapters) - 1)
+        if total_boundaries == 0:
+            return {
+                'total_boundaries': 0,
+                'flagged_count': 0,
+                'critical_flag_count': 0,
+                'flag_ratio': 0.0,
+                'critical_ratio': 0.0,
+                'passes_gate': True,
+                'flagged_boundaries': [],
+            }
+
+        scene_lookup = {
+            int(scene.get('scene_number', 0)): scene
+            for scene in scene_info
+            if scene.get('scene_number') is not None
+        }
+
+        flagged_boundaries: List[Dict[str, Any]] = []
+        critical_flag_count = 0
+
+        for idx in range(total_boundaries):
+            left_chapter = chapters[idx]
+            right_chapter = chapters[idx + 1]
+
+            left_end_scene_num = int(left_chapter.get('end_scene', 0) or 0)
+            right_start_scene_num = int(right_chapter.get('start_scene', 0) or 0)
+
+            left_scene = scene_lookup.get(left_end_scene_num, {})
+            right_scene = scene_lookup.get(right_start_scene_num, {})
+
+            left_intensity = self._scene_action_intensity(left_scene)
+            right_intensity = self._scene_action_intensity(right_scene)
+            overlap_ratio = self._character_overlap_ratio(left_scene, right_scene)
+            same_setting = bool(left_scene.get('setting') and left_scene.get('setting') == right_scene.get('setting'))
+
+            continuity_signals: List[str] = []
+            if left_intensity >= 0.72 and right_intensity >= 0.72:
+                continuity_signals.append('high_action_on_both_sides')
+            if overlap_ratio >= 0.6:
+                continuity_signals.append('high_character_overlap')
+            if same_setting:
+                continuity_signals.append('same_setting')
+
+            if not continuity_signals:
+                continue
+
+            if self._is_boundary_justified(left_scene, right_scene, left_chapter, right_chapter):
+                continue
+
+            severity = 'critical' if (
+                left_intensity >= 0.78
+                and right_intensity >= 0.78
+                and overlap_ratio >= 0.5
+            ) else 'warning'
+
+            if severity == 'critical':
+                critical_flag_count += 1
+
+            flagged_boundaries.append({
+                'boundary_after_chapter': int(left_chapter.get('chapter_number', idx + 1)),
+                'left_scene': left_end_scene_num,
+                'right_scene': right_start_scene_num,
+                'left_intensity': round(left_intensity, 2),
+                'right_intensity': round(right_intensity, 2),
+                'character_overlap_ratio': round(overlap_ratio, 2),
+                'signals': continuity_signals,
+                'severity': severity,
+                'left_rationale': (left_chapter.get('rationale') or '')[:200],
+                'right_rationale': (right_chapter.get('rationale') or '')[:200],
+            })
+
+        flagged_count = len(flagged_boundaries)
+        flag_ratio = flagged_count / total_boundaries if total_boundaries else 0.0
+        critical_ratio = critical_flag_count / total_boundaries if total_boundaries else 0.0
+
+        # Gate policy: fail only when majority of boundaries are critically problematic.
+        passes_gate = critical_ratio <= 0.5
+
+        return {
+            'total_boundaries': total_boundaries,
+            'flagged_count': flagged_count,
+            'critical_flag_count': critical_flag_count,
+            'flag_ratio': round(flag_ratio, 2),
+            'critical_ratio': round(critical_ratio, 2),
+            'passes_gate': passes_gate,
+            'flagged_boundaries': flagged_boundaries,
+        }
+
+    def _scene_action_intensity(self, scene: Dict[str, Any]) -> float:
+        """Estimate kinetic/action intensity of a scene from descriptive signals."""
+        if not scene:
+            return 0.0
+
+        parts = [
+            str(scene.get('title', '') or ''),
+            str(scene.get('plot_function', '') or ''),
+            str(scene.get('significance', '') or ''),
+        ]
+        conflicts = scene.get('conflicts') or []
+        if isinstance(conflicts, list):
+            parts.extend(str(c) for c in conflicts)
+        else:
+            parts.append(str(conflicts))
+
+        signal_text = " ".join(parts).lower()
+        if not signal_text.strip():
+            return 0.0
+
+        action_keywords = [
+            'fight', 'battle', 'attack', 'ambush', 'gun', 'gunfire', 'shoot', 'shootout',
+            'chase', 'escape', 'pursuit', 'explode', 'explosion', 'kill', 'stab', 'strike',
+            'confront', 'violence', 'blood', 'riot', 'panic', 'crash', 'raid', 'hunt',
+        ]
+
+        matches = sum(1 for word in action_keywords if word in signal_text)
+        base = min(1.0, matches / 7.0)
+
+        # Short explicit conflict blurbs should still score non-trivially.
+        if matches > 0 and len(signal_text) < 120:
+            base = min(1.0, base + 0.08)
+
+        return round(base, 2)
+
+    def _character_overlap_ratio(
+        self,
+        left_scene: Dict[str, Any],
+        right_scene: Dict[str, Any],
+    ) -> float:
+        """Return Jaccard overlap for character sets across adjacent scenes."""
+        left_chars = left_scene.get('characters') or []
+        right_chars = right_scene.get('characters') or []
+
+        if isinstance(left_chars, str):
+            left_chars = [left_chars]
+        if isinstance(right_chars, str):
+            right_chars = [right_chars]
+
+        left_set = {str(c).strip().lower() for c in left_chars if str(c).strip()}
+        right_set = {str(c).strip().lower() for c in right_chars if str(c).strip()}
+
+        union = left_set | right_set
+        if not union:
+            return 0.0
+        return len(left_set & right_set) / len(union)
+
+    def _is_boundary_justified(
+        self,
+        left_scene: Dict[str, Any],
+        right_scene: Dict[str, Any],
+        left_chapter: Dict[str, Any],
+        right_chapter: Dict[str, Any],
+    ) -> bool:
+        """
+        Determine whether a potentially risky boundary has explicit justification.
+        """
+        rationale_text = " ".join([
+            str(left_chapter.get('rationale', '') or ''),
+            str(right_chapter.get('rationale', '') or ''),
+        ]).lower()
+
+        justification_keywords = [
+            'time jump', 'later', 'hours later', 'days later', 'aftermath', 'meanwhile',
+            'new location', 'location shift', 'perspective shift', 'flashback',
+            'interlude', 'cooldown', 'recovery', 'transition', 'thematic pivot',
+        ]
+        if any(keyword in rationale_text for keyword in justification_keywords):
+            return True
+
+        left_setting = str(left_scene.get('setting', '') or '').strip().lower()
+        right_setting = str(right_scene.get('setting', '') or '').strip().lower()
+        if left_setting and right_setting and left_setting != right_setting:
+            return True
+
+        overlap_ratio = self._character_overlap_ratio(left_scene, right_scene)
+        if overlap_ratio <= 0.2:
+            return True
+
+        return False
     
     def _find_scene_breaks_in_text(self, manuscript: str, scene_info: List[Dict[str, Any]]) -> List[int]:
         """

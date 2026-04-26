@@ -46,6 +46,13 @@ NARRATIVE VOICE
 - What sentence patterns do they use?
 - How do they control tone?
 [{instruction_for_example}]
+
+NARRATIVE MECHANICS
+- What narrative person do they consistently use (first/second/third)?
+- What narrative distance do they maintain (close, limited, omniscient, detached)?
+- How do they choose chapter break points and transitions?
+- What anti-redundancy habits keep prose precise and non-tautological?
+[{instruction_for_example}]
 """
 
 # Prompt template for obtaining raw partial author style from a single chunk
@@ -93,6 +100,12 @@ The TEXT contains unstructured analyses of an author's style. Based on the TEXT,
       "scene_structure": "how they structure scenes",
       "transitions": "how they handle transitions",
       "pacing": "how they control pacing"
+    },
+    "narrative": {
+      "narrative_person": "preferred narrative person and POV policy",
+      "narrative_distance": "preferred narrative distance and viewpoint control",
+      "chapter_break_policy": "how chapter boundaries are selected and justified",
+      "anti_redundancy_guidance": "how to avoid tautology, stacked modifiers, and repetitive phrasing"
     }
   },
   "examples": {

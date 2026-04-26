@@ -70,13 +70,18 @@ class PipelineStageContext:
         """
         Get user_id, deriving from draft data if not provided.
         """
-        if self.user_id:
-            return self.user_id
+        if self.user_id is not None:
+            return int(self.user_id)
 
         if db_pool and not self._derived_values_fetched:
             self._derive_context_from_draft(db_pool)
 
-        return self.user_id or 1
+        if self.user_id is None:
+            raise ValueError(
+                f"Unable to resolve user_id for draft {self.draft_id}"
+            )
+
+        return int(self.user_id)
 
     def get_workspace_id(self, db_pool=None) -> str:
         """

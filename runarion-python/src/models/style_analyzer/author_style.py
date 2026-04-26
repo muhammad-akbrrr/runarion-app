@@ -36,12 +36,20 @@ class LiteraryTechnique(BaseModel):
     pacing: Optional[str] = None
 
 
+class NarrativeTechnique(BaseModel):
+    narrative_person: str = ""
+    narrative_distance: str = ""
+    chapter_break_policy: str = ""
+    anti_redundancy_guidance: str = ""
+
+
 class AuthorStyleTechniques(BaseModel):
     dialogue: DialogueTechnique = DialogueTechnique()
     action: ActionTechnique = ActionTechnique()
     worldbuilding: WorldbuildingTechnique = WorldbuildingTechnique()
     descriptions: DescriptionTechnique = DescriptionTechnique()
     literary: LiteraryTechnique = LiteraryTechnique()
+    narrative: NarrativeTechnique = NarrativeTechnique()
 
 
 class AuthorStyleExamples(BaseModel):

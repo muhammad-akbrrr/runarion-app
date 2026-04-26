@@ -17,6 +17,7 @@ class NovelWriterPrompts:
 
         Placeholders:
             {author_style_instructions} - Author style techniques and guidelines
+            {writing_perspective_instruction} - Hard perspective constraints
             {previous_chapter_summaries} - Summaries of previous chapters for continuity
             {character_profiles} - Character profiles relevant to this chapter
             {location_profiles} - Location profiles relevant to this chapter
@@ -36,6 +37,9 @@ CHAPTER: {chapter_number} of {total_chapters} - "{chapter_title}"
 
 AUTHOR STYLE GUIDELINES:
 {author_style_instructions}
+
+WRITING PERSPECTIVE (HARD CONSTRAINT):
+{writing_perspective_instruction}
 
 STORY CONTINUITY (previous chapters):
 {previous_chapter_summaries}
@@ -63,6 +67,7 @@ WRITING REQUIREMENTS:
 8. Use varied sentence structure and strong verbs
 9. Build tension and emotional depth throughout
 10. Develop all key events from the source material fully
+11. Keep narrative perspective consistent with the required writing perspective
 
 CRITICAL RULES:
 - Do NOT summarize events - expand them into full scenes with dialogue, action, and description
@@ -70,6 +75,7 @@ CRITICAL RULES:
 - Do NOT add meta-commentary or section headers
 - Write continuous prose as it would appear in a published novel
 - Maintain the author's established style throughout
+- Never switch narrative person or perspective mid-chapter
 
 Write the complete chapter prose:"""
 
@@ -101,15 +107,19 @@ SUMMARY:"""
         Placeholders:
             {chapter_content} - The generated chapter content
             {author_style_reference} - Author style techniques for comparison
+            {writing_perspective_instruction} - Required perspective mode
             {scene_coverage_checklist} - List of scenes that should be covered
         """
-        return """You are a ruthlessly thorough literary quality assessor. Evaluate this chapter against 10 quality dimensions.
+        return """You are a ruthlessly thorough literary quality assessor. Evaluate this chapter against 14 quality dimensions.
 
 CHAPTER CONTENT:
 {chapter_content}
 
 AUTHOR STYLE REFERENCE:
 {author_style_reference}
+
+REQUIRED WRITING PERSPECTIVE:
+{writing_perspective_instruction}
 
 SCENE COVERAGE CHECKLIST (all must be present):
 {scene_coverage_checklist}
@@ -124,8 +134,12 @@ EVALUATE EACH DIMENSION (score 1-10 with specific feedback):
 6. ACTION_PACING: Are action sequences dynamic, detailed, and well-paced?
 7. THEMATIC_DEPTH: Are philosophical and thematic elements explored with genuine depth?
 8. SHOW_DONT_TELL: Is the prose active and experiential rather than expository?
-9. AUTHOR_STYLE: Does the writing match the author's established style and techniques?
+9. AUTHOR_STYLE: Does the writing match the author's established style and techniques? Strongly penalize POV/perspective drift from the required writing perspective.
 10. SCENE_COVERAGE: Are ALL source scenes fully developed in the prose?
+11. POV_CONSISTENCY: Does the chapter consistently maintain the required narrative person (first/second/third)?
+12. PERSPECTIVE_CONTINUITY: Does viewpoint control remain stable without unjustified drift or head-hopping?
+13. CHAPTER_BREAK_INTEGRITY: Do chapter transitions preserve momentum and avoid abrupt/illogical break points?
+14. REDUNDANCY_CONTROL: Is prose concise and non-tautological, avoiding repetitive modifiers and duplicated meaning?
 
 Return a JSON object with this EXACT structure:
 {{
@@ -139,7 +153,11 @@ Return a JSON object with this EXACT structure:
         "thematic_depth": <1-10>,
         "show_dont_tell": <1-10>,
         "author_style": <1-10>,
-        "scene_coverage": <1-10>
+        "scene_coverage": <1-10>,
+        "pov_consistency": <1-10>,
+        "perspective_continuity": <1-10>,
+        "chapter_break_integrity": <1-10>,
+        "redundancy_control": <1-10>
     }},
     "feedback": {{
         "opening_hook": "specific feedback",
@@ -151,7 +169,11 @@ Return a JSON object with this EXACT structure:
         "thematic_depth": "specific feedback",
         "show_dont_tell": "specific feedback",
         "author_style": "specific feedback",
-        "scene_coverage": "specific feedback"
+        "scene_coverage": "specific feedback",
+        "pov_consistency": "specific feedback",
+        "perspective_continuity": "specific feedback",
+        "chapter_break_integrity": "specific feedback",
+        "redundancy_control": "specific feedback"
     }},
     "overall_score": <weighted average>,
     "top_issues": ["list of 3 most critical issues to address"]
@@ -168,6 +190,7 @@ Return a JSON object with this EXACT structure:
             {weak_dimensions} - Dimensions that scored below threshold
             {expansion_guidance} - Guidance on expansion factors for weak areas
             {author_style_examples} - Relevant author style examples
+            {writing_perspective_instruction} - Required perspective mode
         """
         return """You are a master literary editor. Improve this chapter to address the specific quality issues identified.
 
@@ -186,6 +209,9 @@ EXPANSION GUIDANCE:
 AUTHOR STYLE EXAMPLES (match this voice):
 {author_style_examples}
 
+REQUIRED WRITING PERSPECTIVE:
+{writing_perspective_instruction}
+
 IMPROVEMENT REQUIREMENTS:
 1. Address EVERY issue listed in the quality feedback
 2. Expand and enrich the weakest dimensions significantly
@@ -194,6 +220,7 @@ IMPROVEMENT REQUIREMENTS:
 5. Match the author's established style throughout
 6. Do NOT reduce word count - expansions should ADD richness
 7. Show don't tell - convert any remaining expository passages to active scenes
+8. Preserve the required writing perspective without any person/perspective shifts
 
 CRITICAL RULES:
 - Do NOT remove any existing content - only enhance and expand
@@ -259,10 +286,48 @@ Return the improved chapter in its entirety:"""
         if techniques.literary.transitions:
             parts.append(f"TRANSITIONS: {techniques.literary.transitions}")
 
+        if getattr(techniques, 'narrative', None):
+            if techniques.narrative.narrative_person:
+                parts.append(f"NARRATIVE PERSON: {techniques.narrative.narrative_person}")
+            if techniques.narrative.narrative_distance:
+                parts.append(f"NARRATIVE DISTANCE: {techniques.narrative.narrative_distance}")
+            if techniques.narrative.chapter_break_policy:
+                parts.append(f"CHAPTER BREAK POLICY: {techniques.narrative.chapter_break_policy}")
+            if techniques.narrative.anti_redundancy_guidance:
+                parts.append(f"ANTI-REDUNDANCY: {techniques.narrative.anti_redundancy_guidance}")
+
         if not parts:
             return "No specific author style profile available. Write in a rich, literary style."
 
         return "\n".join(parts)
+
+    @staticmethod
+    def get_writing_perspective_instruction(writing_perspective: str) -> str:
+        """Return strict perspective guidance for the generator and evaluator."""
+        mapping = {
+            'first_person': (
+                "Use FIRST PERSON throughout (I/me/my). "
+                "The narrator is the viewpoint character. Never switch to third or second person."
+            ),
+            'second_person': (
+                "Use SECOND PERSON throughout (you/your). "
+                "Address the protagonist as 'you'. Never switch to first or third person."
+            ),
+            'third_person_limited': (
+                "Use THIRD PERSON LIMITED throughout (he/she/they). "
+                "Stay anchored to one viewpoint character's internal access at a time. "
+                "Do not shift into omniscient narration."
+            ),
+            'third_person_omniscient': (
+                "Use THIRD PERSON OMNISCIENT throughout. "
+                "Narrator may access multiple characters' internal states, "
+                "but keep tense and person stable."
+            ),
+        }
+        return mapping.get(
+            writing_perspective,
+            mapping['third_person_limited'],
+        )
 
     @staticmethod
     def get_author_style_examples(author_style, category: str, max_examples: int = 3) -> str:

@@ -145,6 +145,9 @@ class ProseGenerationStage(BasePipelineStage):
         author_style_instructions = NovelWriterPrompts.get_author_style_instruction(
             story_context.author_style
         )
+        writing_perspective_instruction = NovelWriterPrompts.get_writing_perspective_instruction(
+            getattr(story_context, 'writing_perspective', 'third_person_limited')
+        )
 
         # Previous chapter summaries
         prev_summaries = chapter_context.get('previous_summaries', [])
@@ -246,6 +249,7 @@ class ProseGenerationStage(BasePipelineStage):
             chapter_title=chapter_title,
             chapter_position_guidance=position_guidance,
             author_style_instructions=author_style_instructions,
+            writing_perspective_instruction=writing_perspective_instruction,
             previous_chapter_summaries=summaries_text,
             character_profiles=character_text,
             location_profiles=location_text,

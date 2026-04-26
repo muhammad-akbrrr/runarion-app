@@ -80,11 +80,61 @@ class PipelineStartRequest(BaseModel):
     # Novel writer options
     quality_threshold: float = 6.0
     max_improvement_passes: int = 2
+    writing_perspective: str = "third_person_limited"
+    enforce_hard_quality_gate: bool = True
+    hard_quality_threshold: Optional[float] = None
     # Style analyzer options
     style_analyzer_config: StyleAnalyzerConfig = StyleAnalyzerConfig()
+    # High-level style source selection (maps to on_exist behavior)
+    # - create_or_update -> on_exist=update
+    # - use_existing     -> on_exist=get
+    author_style_mode: Optional[str] = None
     # Whether to update the author style if it already exists
     on_exist: str = "update"
     generation_config: dict = {}
+
+
+WRITING_PERSPECTIVE_ALIASES = {
+    "first_person": "first_person",
+    "1st_person": "first_person",
+    "1st person": "first_person",
+    "first person": "first_person",
+    "second_person": "second_person",
+    "2nd_person": "second_person",
+    "2nd person": "second_person",
+    "second person": "second_person",
+    "third_person_limited": "third_person_limited",
+    "3rd_person_limited": "third_person_limited",
+    "3rd person limited": "third_person_limited",
+    "third person limited": "third_person_limited",
+    "third_person_omniscient": "third_person_omniscient",
+    "3rd_person_omniscient": "third_person_omniscient",
+    "3rd person omniscient": "third_person_omniscient",
+    "third person omniscient": "third_person_omniscient",
+}
+
+AUTHOR_STYLE_MODE_ALIASES = {
+    "create_or_update": "create_or_update",
+    "create": "create_or_update",
+    "update": "create_or_update",
+    "use_existing": "use_existing",
+    "existing": "use_existing",
+    "get": "use_existing",
+}
+
+
+def _normalize_writing_perspective(value: str) -> Optional[str]:
+    if not value:
+        return None
+    key = value.strip().lower().replace("-", "_")
+    return WRITING_PERSPECTIVE_ALIASES.get(key)
+
+
+def _normalize_author_style_mode(value: Optional[str]) -> Optional[str]:
+    if value is None:
+        return None
+    key = value.strip().lower().replace("-", "_")
+    return AUTHOR_STYLE_MODE_ALIASES.get(key)
 
 
 # ---------------------------------------------------------------------------
@@ -376,7 +426,10 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
                  project_id: str, provider: str, model: str,
                  author_style_name: Optional[str],
                  target_chapter_length: int, quality_threshold: float,
-                 max_improvement_passes: int, generation_config_dict: dict,
+                 max_improvement_passes: int, writing_perspective: str,
+                 enforce_hard_quality_gate: bool,
+                 hard_quality_threshold: Optional[float],
+                 generation_config_dict: dict,
                  db_pool: SimpleConnectionPool, run_id: str, flask_app) -> dict:
     """
     Execute Phase 3 (Novel Writer). Runs after Phases 1 & 2 have completed.
@@ -423,6 +476,9 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
                 author_style_name=author_style_name,
                 quality_threshold=quality_threshold,
                 max_improvement_passes=max_improvement_passes,
+                writing_perspective=writing_perspective,
+                enforce_hard_quality_gate=enforce_hard_quality_gate,
+                hard_quality_threshold=hard_quality_threshold,
             )
         elapsed = (datetime.now() - started).total_seconds()
         success = result.get('success', False)
@@ -600,6 +656,9 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
         target_chapter_length=data.target_chapter_length,
         quality_threshold=data.quality_threshold,
         max_improvement_passes=data.max_improvement_passes,
+        writing_perspective=data.writing_perspective,
+        enforce_hard_quality_gate=data.enforce_hard_quality_gate,
+        hard_quality_threshold=data.hard_quality_threshold,
         generation_config_dict=data.generation_config,
         db_pool=db_pool,
         run_id=run_id,
@@ -684,6 +743,10 @@ def start_novel_pipeline():
         "target_chapter_length": 2500,
         "quality_threshold": 6.0,
         "max_improvement_passes": 2,
+        "writing_perspective": "third_person_limited",
+        "enforce_hard_quality_gate": true,
+        "hard_quality_threshold": 6.5,
+        "author_style_mode": "create_or_update",
         "on_exist": "update"
     }
     """
@@ -724,10 +787,38 @@ def start_novel_pipeline():
             return validation_error({
                 'max_improvement_passes': ['Must be >= 0']
             })
+        if data.hard_quality_threshold is not None and not (1.0 <= data.hard_quality_threshold <= 10.0):
+            return validation_error({
+                'hard_quality_threshold': ['Must be between 1 and 10']
+            })
+        normalized_perspective = _normalize_writing_perspective(data.writing_perspective)
+        if normalized_perspective is None:
+            return validation_error({
+                'writing_perspective': [
+                    'Must be one of: first_person, second_person, '
+                    'third_person_limited, third_person_omniscient'
+                ]
+            })
+        data.writing_perspective = normalized_perspective
+
+        normalized_style_mode = _normalize_author_style_mode(data.author_style_mode)
+        if data.author_style_mode is not None and normalized_style_mode is None:
+            return validation_error({
+                'author_style_mode': [
+                    'Must be one of: create_or_update, use_existing'
+                ]
+            })
+        data.author_style_mode = normalized_style_mode
         if data.on_exist not in ('update', 'get', 'error'):
             return validation_error({
                 'on_exist': ['Must be "update", "get", or "error"']
             })
+
+        # Prefer the high-level style mode when provided.
+        if data.author_style_mode == 'create_or_update':
+            data.on_exist = 'update'
+        elif data.author_style_mode == 'use_existing':
+            data.on_exist = 'get'
 
         # ------------------------------------------------------------------
         # 2. Handle manuscript file upload
@@ -858,7 +949,11 @@ def start_novel_pipeline():
             'chaptering_mode': data.chaptering_mode,
             'target_chapter_length': data.target_chapter_length,
             'quality_threshold': data.quality_threshold,
+            'enforce_hard_quality_gate': data.enforce_hard_quality_gate,
+            'hard_quality_threshold': data.hard_quality_threshold,
             'max_improvement_passes': data.max_improvement_passes,
+            'writing_perspective': data.writing_perspective,
+            'author_style_mode': data.author_style_mode,
             'on_exist': data.on_exist,
             'manuscript_filename': ms_filename,
             'author_file_count': len(author_file_paths),
@@ -965,6 +1060,10 @@ def get_pipeline_status(run_id: str):
                 if not cur.fetchone():
                     return error('Access denied', error_code='FORBIDDEN', status_code=403)
 
+            # Self-heal rare stuck phase_3_running rows when final artifacts
+            # are already persisted.
+            run = _reconcile_phase_3_completion_from_artifacts(conn, run)
+
             # Fetch supplementary data from drafts table for richer progress
             draft_status = None
             draft_error = None
@@ -1045,6 +1144,75 @@ def _compute_overall_percentage(status: str, p1: str, p2: str, p3: str) -> int:
     return int(pct)
 
 
+def _reconcile_phase_3_completion_from_artifacts(conn, run: dict) -> dict:
+    """
+    Reconcile stuck phase_3_running rows when final artifacts are already persisted.
+
+    In rare cases the background thread can persist final manuscript artifacts but
+    fail to update pipeline_runs to terminal completed state. This function
+    performs a conservative self-heal so status/results endpoints remain usable.
+    """
+    if not run:
+        return run
+
+    if not (
+        run.get('status') == 'phase_3_running'
+        and run.get('phase_1_status') == 'completed'
+        and run.get('phase_2_status') == 'completed'
+        and run.get('phase_3_status') == 'running'
+    ):
+        return run
+
+    with conn.cursor() as cur:
+        cur.execute("SELECT status FROM drafts WHERE id = %s", (run['draft_id'],))
+        draft_row = cur.fetchone()
+        draft_status = draft_row[0] if draft_row else None
+
+        # Only reconcile when draft already reached a terminal completed state.
+        if draft_status not in (
+            DraftStatus.NW_COMPLETED.value,
+            DraftStatus.PIPELINE_COMPLETED.value,
+        ):
+            return run
+
+        cur.execute(
+            "SELECT COUNT(*) FROM final_manuscripts WHERE draft_id = %s",
+            (run['draft_id'],),
+        )
+        manuscript_count = int(cur.fetchone()[0] or 0)
+
+        cur.execute(
+            "SELECT COUNT(*) FROM chapters WHERE draft_id = %s",
+            (run['draft_id'],),
+        )
+        chapter_count = int(cur.fetchone()[0] or 0)
+
+        if manuscript_count > 0 and chapter_count > 0:
+            logger.warning(
+                "[Pipeline %s] Reconciling stuck phase_3_running state "
+                "(final artifacts already persisted: manuscripts=%s, chapters=%s)",
+                run['id'],
+                manuscript_count,
+                chapter_count,
+            )
+            _update_pipeline_run(
+                conn,
+                run['id'],
+                status='completed',
+                current_phase=None,
+                phase_3_status='completed',
+                completed_at=datetime.now().isoformat(),
+            )
+            cur.execute(
+                "UPDATE drafts SET status = %s WHERE id = %s",
+                (DraftStatus.PIPELINE_COMPLETED.value, run['draft_id']),
+            )
+            conn.commit()
+            return _get_pipeline_run(conn, run['id']) or run
+
+    return run
+
+
 # ---------------------------------------------------------------------------
 
 @novel_pipeline.route('/novel-pipeline/results/<run_id>', methods=['GET'])
@@ -1081,6 +1249,10 @@ def get_pipeline_results(run_id: str):
                 """, (run['workspace_id'], user_id))
                 if not cur.fetchone():
                     return error('Access denied', error_code='FORBIDDEN', status_code=403)
+
+            # Self-heal rare stuck phase_3_running rows when final artifacts
+            # are already persisted.
+            run = _reconcile_phase_3_completion_from_artifacts(conn, run)
 
             if run['status'] != 'completed':
                 return error(
