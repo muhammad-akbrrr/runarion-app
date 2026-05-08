@@ -9,7 +9,7 @@ from typing import Dict, Any, List
 from collections import defaultdict
 from .prompt_template import DeconstructorPrompts
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
-from utils.llm_retry import call_llm_with_retry
+from src.utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -644,7 +644,7 @@ class CoherenceCheckStage(BasePipelineStage):
             if response.success:
                 try:
                     # Use the robust JSON parser that handles markdown code blocks
-                    from utils.json_response_parser import JSONResponseParser
+                    from src.utils.json_response_parser import JSONResponseParser
                     analysis_result, _ = JSONResponseParser.parse_response(response, "dict", {})
                     
                     # Convert AI analysis to our issue format

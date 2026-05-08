@@ -3,17 +3,23 @@ API endpoints for the novel deconstructor service.
 Handles document upload and pipeline processing requests.
 """
 
+import json
 import os
 import uuid
 import threading
 from flask import Blueprint, request, current_app
 from werkzeug.utils import secure_filename
 
-from services.deconstructor.orchestrator import DeconstructorOrchestrator
-from services.generation_engine import GenerationEngine
-from models.request import BaseGenerationRequest, CallerInfo
-from utils.api_response import DeconstructorResponse, validation_error, internal_error, error
-from utils.logging_config import get_pipeline_logger
+from src.services.deconstructor.orchestrator import DeconstructorOrchestrator
+from src.services.generation_engine import GenerationEngine
+from src.models.request import (
+    BaseGenerationRequest,
+    CallerInfo,
+    GenerationConfig,
+    rewrite_policy_to_dict,
+)
+from src.utils.api_response import DeconstructorResponse, validation_error, internal_error, error
+from src.utils.logging_config import get_pipeline_logger
 
 logger = get_pipeline_logger(__name__)
 
@@ -34,7 +40,9 @@ def start_deconstruction():
         "workspace_id": "workspace-uuid",
         "project_id": "project-uuid",
         "chaptering_mode": "flexible",  // optional: "flexible" or "constrained"
-        "target_chapter_length": 2500   // optional: target words per chapter
+        "target_chapter_length": 2500,  // optional: target words per chapter
+        "rewrite_policy": {},           // optional
+        "generation_config": {}         // optional
     }
     """
     try:
@@ -66,6 +74,8 @@ def start_deconstruction():
         # Optional chaptering parameters
         chaptering_mode = data.get('chaptering_mode', 'flexible')
         target_chapter_length = data.get('target_chapter_length', 2500)
+        rewrite_policy = rewrite_policy_to_dict(data.get('rewrite_policy'))
+        generation_config = GenerationConfig(**(data.get('generation_config', {}) or {}))
         
         # Validate chaptering parameters
         if chaptering_mode not in ['flexible', 'constrained']:
@@ -135,8 +145,8 @@ def start_deconstruction():
                 
                 # Update draft status to processing
                 cursor.execute(
-                    "UPDATE drafts SET status = %s, processing_started_at = NOW() WHERE id = %s",
-                    ('processing', draft_id)
+                    "UPDATE drafts SET status = %s, processing_started_at = NOW(), metadata = COALESCE(metadata, '{}'::jsonb) || %s::jsonb WHERE id = %s",
+                    ('processing', json.dumps({'rewrite_policy': rewrite_policy}), draft_id)
                 )
                 conn.commit()
                 
@@ -150,8 +160,8 @@ def start_deconstruction():
                 connection_pool.putconn(conn)
         
         # Create caller object for generation engine
-        caller = QuotaCaller.from_request_data(
-            user_id=user_id,
+        caller = CallerInfo(
+            user_id=str(user_id),
             workspace_id=workspace_id,
             project_id=project_id,
             session_id=str(uuid.uuid4()),
@@ -163,7 +173,8 @@ def start_deconstruction():
             prompt="",  # Will be set by individual stages
             provider=provider,
             model=model,
-            caller=caller
+            caller=caller,
+            generation_config=generation_config,
         )
         
         # Create generation engine
@@ -178,7 +189,13 @@ def start_deconstruction():
         # Start processing in background thread with chaptering parameters
         processing_thread = threading.Thread(
             target=orchestrator.run_pipeline,
-            args=(draft_id, file_name, chaptering_mode, target_chapter_length),
+            kwargs={
+                'draft_id': draft_id,
+                'file_name': file_name,
+                'chaptering_mode': chaptering_mode,
+                'target_chapter_length': target_chapter_length,
+                'config': {'rewrite_policy': rewrite_policy},
+            },
             daemon=True
         )
         processing_thread.start()

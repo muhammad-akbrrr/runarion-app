@@ -13,7 +13,7 @@ import logging
 import json
 import re
 from typing import Dict, Any, List, Optional
-from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
+from src.services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
 logger = logging.getLogger(__name__)
 

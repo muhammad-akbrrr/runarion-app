@@ -35,6 +35,11 @@ class ProviderOutputBudgetConfig:
             "text_generation": 4096,
             "short_text": 200,
         },
+        "mock": {
+            "json_analytical": 4096,
+            "text_generation": 8192,
+            "short_text": 500,
+        },
     }
 
     _DEFAULT_BUDGET = {

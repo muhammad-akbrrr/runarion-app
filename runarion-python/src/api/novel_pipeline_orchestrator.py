@@ -33,16 +33,22 @@ from typing import Optional
 import ulid as ulid_lib
 from flask import Blueprint, current_app, jsonify, request
 from psycopg2.pool import SimpleConnectionPool
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, Field, ValidationError
 from werkzeug.utils import secure_filename
 
-from models.deconstructor.status import DraftStatus
-from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
-from services.deconstructor.orchestrator import DeconstructorOrchestrator
-from services.generation_engine import GenerationEngine
-from services.novel_writer.orchestrator import NovelWriterOrchestrator
-from services.style_analyzer import ProfilingStage, SamplingStage, StyleAnalyzerOrchestrator
-from utils.api_response import (
+from src.models.deconstructor.status import DraftStatus
+from src.models.request import (
+    BaseGenerationRequest,
+    CallerInfo,
+    GenerationConfig,
+    RewritePolicy,
+    rewrite_policy_to_dict,
+)
+from src.services.deconstructor.orchestrator import DeconstructorOrchestrator
+from src.services.generation_engine import GenerationEngine
+from src.services.novel_writer.orchestrator import NovelWriterOrchestrator
+from src.services.style_analyzer import ProfilingStage, SamplingStage, StyleAnalyzerOrchestrator
+from src.utils.api_response import (
     ApiResponse,
     error,
     internal_error,
@@ -66,7 +72,11 @@ class PipelineCallerData(BaseModel):
 class StyleAnalyzerConfig(BaseModel):
     min_success_samples: Optional[float] = None
     min_success_partial_style: Optional[float] = None
+    provider: Optional[str] = None
+    model: Optional[str] = None
     max_output_tokens: Optional[int] = None
+    generation_config: dict = Field(default_factory=dict)
+    phase_start_delay_seconds: Optional[int] = None
 
 
 class PipelineStartRequest(BaseModel):
@@ -84,14 +94,15 @@ class PipelineStartRequest(BaseModel):
     enforce_hard_quality_gate: bool = True
     hard_quality_threshold: Optional[float] = None
     # Style analyzer options
-    style_analyzer_config: StyleAnalyzerConfig = StyleAnalyzerConfig()
+    style_analyzer_config: StyleAnalyzerConfig = Field(default_factory=StyleAnalyzerConfig)
     # High-level style source selection (maps to on_exist behavior)
     # - create_or_update -> on_exist=update
     # - use_existing     -> on_exist=get
     author_style_mode: Optional[str] = None
     # Whether to update the author style if it already exists
     on_exist: str = "update"
-    generation_config: dict = {}
+    generation_config: dict = Field(default_factory=dict)
+    rewrite_policy: RewritePolicy = Field(default_factory=RewritePolicy)
 
 
 WRITING_PERSPECTIVE_ALIASES = {
@@ -135,6 +146,149 @@ def _normalize_author_style_mode(value: Optional[str]) -> Optional[str]:
         return None
     key = value.strip().lower().replace("-", "_")
     return AUTHOR_STYLE_MODE_ALIASES.get(key)
+
+
+def _build_pipeline_payload(
+    data: PipelineStartRequest,
+    manuscript_filename: str,
+    author_file_paths: list[str],
+) -> dict:
+    normalized_generation_config = GenerationConfig(
+        **(data.generation_config or {})
+    ).model_dump(mode="json")
+    style_generation_config_input = (
+        data.style_analyzer_config.generation_config or normalized_generation_config
+    )
+    normalized_style_generation_config = GenerationConfig(
+        **(style_generation_config_input or {})
+    ).model_dump(mode="json")
+
+    return {
+        "caller": {
+            "user_id": str(data.caller.user_id),
+            "workspace_id": data.caller.workspace_id,
+            "project_id": data.caller.project_id,
+        },
+        "provider": data.provider,
+        "model": data.model,
+        "author_name": data.author_name,
+        "chaptering_mode": data.chaptering_mode,
+        "target_chapter_length": data.target_chapter_length,
+        "quality_threshold": data.quality_threshold,
+        "max_improvement_passes": data.max_improvement_passes,
+        "writing_perspective": data.writing_perspective,
+        "enforce_hard_quality_gate": data.enforce_hard_quality_gate,
+        "hard_quality_threshold": data.hard_quality_threshold,
+        "author_style_mode": data.author_style_mode,
+        "on_exist": data.on_exist,
+        "generation_config": normalized_generation_config,
+        "rewrite_policy": rewrite_policy_to_dict(data.rewrite_policy),
+        "style_analyzer_config": {
+            "min_success_samples": data.style_analyzer_config.min_success_samples,
+            "min_success_partial_style": data.style_analyzer_config.min_success_partial_style,
+            "provider": data.style_analyzer_config.provider or data.provider,
+            "model": data.style_analyzer_config.model or data.model,
+            "max_output_tokens": data.style_analyzer_config.max_output_tokens,
+            "generation_config": normalized_style_generation_config,
+            "phase_start_delay_seconds": (
+                data.style_analyzer_config.phase_start_delay_seconds
+                if data.style_analyzer_config.phase_start_delay_seconds is not None
+                else PHASE_2_START_DELAY_SECONDS
+            ),
+        },
+        "manuscript_filename": manuscript_filename,
+        "author_file_paths": list(author_file_paths),
+        "author_file_count": len(author_file_paths),
+    }
+
+
+def _build_pipeline_runtime_metadata(run_id: str, draft_id: str, payload: dict) -> dict:
+    return {
+        "normalized_payload_version": 1,
+        "run_id": run_id,
+        "draft_id": draft_id,
+        "policy_snapshot": {
+            "rewrite_policy": payload.get("rewrite_policy", {}),
+            "generation_config": payload.get("generation_config", {}),
+            "provider": payload.get("provider"),
+            "model": payload.get("model"),
+            "writing_perspective": payload.get("writing_perspective"),
+        },
+        "phase_payloads": {
+            "phase_1": {
+                "draft_id": draft_id,
+                "manuscript_filename": payload.get("manuscript_filename"),
+                "chaptering_mode": payload.get("chaptering_mode"),
+                "target_chapter_length": payload.get("target_chapter_length"),
+                "provider": payload.get("provider"),
+                "model": payload.get("model"),
+                "generation_config": payload.get("generation_config", {}),
+                "rewrite_policy": payload.get("rewrite_policy", {}),
+            },
+            "phase_2": {
+                "author_name": payload.get("author_name"),
+                "author_file_count": payload.get("author_file_count"),
+                "on_exist": payload.get("on_exist"),
+                "style_analyzer_config": payload.get("style_analyzer_config", {}),
+            },
+            "phase_3": {
+                "draft_id": draft_id,
+                "author_style_name": payload.get("author_name"),
+                "target_chapter_length": payload.get("target_chapter_length"),
+                "quality_threshold": payload.get("quality_threshold"),
+                "max_improvement_passes": payload.get("max_improvement_passes"),
+                "writing_perspective": payload.get("writing_perspective"),
+                "enforce_hard_quality_gate": payload.get("enforce_hard_quality_gate"),
+                "hard_quality_threshold": payload.get("hard_quality_threshold"),
+                "provider": payload.get("provider"),
+                "model": payload.get("model"),
+                "generation_config": payload.get("generation_config", {}),
+                "rewrite_policy": payload.get("rewrite_policy", {}),
+            },
+        },
+        "phase_results": {},
+        "diagnostics": {},
+    }
+
+
+def _phase_status_field(phase_number: int) -> str:
+    return f"phase_{phase_number}_status"
+
+
+def _claim_phase_execution(conn, run_id: str, phase_number: int) -> tuple[bool, Optional[dict]]:
+    """
+    Claim execution for a phase. Completed phases are idempotently skipped.
+    Running phases are treated as already claimed elsewhere and should not run again.
+    """
+    run = _get_pipeline_run(conn, run_id)
+    if not run:
+        return False, {
+            'success': False,
+            'error': 'Pipeline run not found',
+            'timing_seconds': 0,
+            'skipped': True,
+        }
+
+    phase_field = _phase_status_field(phase_number)
+    phase_status = run.get(phase_field)
+    if phase_status == 'completed':
+        return False, {
+            'success': True,
+            'error': None,
+            'timing_seconds': 0,
+            'skipped': True,
+            'already_completed': True,
+        }
+    if phase_status == 'running':
+        return False, {
+            'success': False,
+            'error': f'Phase {phase_number} is already running',
+            'timing_seconds': 0,
+            'skipped': True,
+            'already_running': True,
+        }
+
+    return True, None
 
 
 # ---------------------------------------------------------------------------
@@ -228,6 +382,8 @@ def _get_pipeline_run(conn, run_id: str) -> Optional[dict]:
 def _run_phase_1(draft_id: str, manuscript_filename: str,
                  chaptering_mode: str, target_chapter_length: int,
                  provider: str, model: str,
+                 generation_config_dict: dict,
+                 rewrite_policy: dict,
                  user_id: str, workspace_id: str, project_id: str,
                  db_pool: SimpleConnectionPool,
                  run_id: str, flask_app) -> dict:
@@ -238,6 +394,9 @@ def _run_phase_1(draft_id: str, manuscript_filename: str,
     started = datetime.now()
     conn = db_pool.getconn()
     try:
+        should_run, skip_result = _claim_phase_execution(conn, run_id, 1)
+        if not should_run:
+            return skip_result
         _update_pipeline_run(conn, run_id, phase_1_status='running')
         conn.commit()
     finally:
@@ -257,7 +416,7 @@ def _run_phase_1(draft_id: str, manuscript_filename: str,
                 provider=provider,
                 model=model,
                 caller=caller,
-                generation_config=GenerationConfig(),
+                generation_config=GenerationConfig(**(generation_config_dict or {})),
             )
             engine = GenerationEngine(generation_request)
             orchestrator = DeconstructorOrchestrator(
@@ -269,6 +428,7 @@ def _run_phase_1(draft_id: str, manuscript_filename: str,
                 file_name=manuscript_filename,
                 chaptering_mode=chaptering_mode,
                 target_chapter_length=target_chapter_length,
+                config={"rewrite_policy": rewrite_policy},
             )
         elapsed = (datetime.now() - started).total_seconds()
 
@@ -284,6 +444,9 @@ def _run_phase_1(draft_id: str, manuscript_filename: str,
             'success': result.get('success', False),
             'error': result.get('error'),
             'timing_seconds': elapsed,
+            'diagnostics': {
+                'result': result,
+            },
         }
 
     except Exception as exc:
@@ -323,17 +486,21 @@ def _run_phase_2(author_name: str, file_paths: list,
     started = datetime.now()
     conn = db_pool.getconn()
     try:
+        should_run, skip_result = _claim_phase_execution(conn, run_id, 2)
+        if not should_run:
+            return skip_result
         _update_pipeline_run(conn, run_id, phase_2_status='running')
         conn.commit()
     finally:
         db_pool.putconn(conn)
 
-    if PHASE_2_START_DELAY_SECONDS > 0:
+    phase_start_delay_seconds = int(getattr(style_config, "phase_start_delay_seconds", 0) or 0)
+    if phase_start_delay_seconds > 0:
         logger.info(
-            f"[Pipeline {run_id}] Phase 2 delaying {PHASE_2_START_DELAY_SECONDS}s "
+            f"[Pipeline {run_id}] Phase 2 delaying {phase_start_delay_seconds}s "
             f"to stagger API calls with Phase 1"
         )
-        time.sleep(PHASE_2_START_DELAY_SECONDS)
+        time.sleep(phase_start_delay_seconds)
 
     try:
         with flask_app.app_context():
@@ -345,7 +512,10 @@ def _run_phase_2(author_name: str, file_paths: list,
                 ),
                 ProfilingStage(
                     db_pool=db_pool,
+                    provider=style_config.provider,
+                    model=style_config.model,
                     max_output_tokens=style_config.max_output_tokens,
+                    generation_config=style_config.generation_config,
                     min_success_partial_style=style_config.min_success_partial_style,
                 ),
             )
@@ -380,7 +550,8 @@ def _run_phase_2(author_name: str, file_paths: list,
                     db_pool.putconn(conn)
                 return {'success': True, 'error': None,
                         'author_style_id': author_style_id,
-                        'timing_seconds': elapsed}
+                        'timing_seconds': elapsed,
+                        'diagnostics': {'used_existing_style': True}}
 
             result = orchestrator.run_pipeline(
                 author_style_id=author_style_id,
@@ -407,6 +578,10 @@ def _run_phase_2(author_name: str, file_paths: list,
             'error': result.get('error_message') if not success else None,
             'author_style_id': style_id,
             'timing_seconds': elapsed,
+            'diagnostics': {
+                'status': result.get('status'),
+                'stored_sample_paths': result.get('stored_sample_paths'),
+            },
         }
 
     except Exception as exc:
@@ -429,6 +604,7 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
                  max_improvement_passes: int, writing_perspective: str,
                  enforce_hard_quality_gate: bool,
                  hard_quality_threshold: Optional[float],
+                 rewrite_policy: dict,
                  generation_config_dict: dict,
                  db_pool: SimpleConnectionPool, run_id: str, flask_app) -> dict:
     """
@@ -438,6 +614,9 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
     started = datetime.now()
     conn = db_pool.getconn()
     try:
+        should_run, skip_result = _claim_phase_execution(conn, run_id, 3)
+        if not should_run:
+            return skip_result
         _update_pipeline_run(conn, run_id,
                              status='phase_3_running',
                              current_phase=3,
@@ -479,6 +658,7 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
                 writing_perspective=writing_perspective,
                 enforce_hard_quality_gate=enforce_hard_quality_gate,
                 hard_quality_threshold=hard_quality_threshold,
+                config={"rewrite_policy": rewrite_policy},
             )
         elapsed = (datetime.now() - started).total_seconds()
         success = result.get('success', False)
@@ -495,6 +675,10 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
             'success': success,
             'error': result.get('error'),
             'timing_seconds': elapsed,
+            'diagnostics': {
+                'stages_completed': result.get('stages_completed'),
+                'processing_time_seconds': result.get('processing_time_seconds'),
+            },
         }
 
     except Exception as exc:
@@ -510,8 +694,7 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
 
 
 def _orchestrate_pipeline(run_id: str, draft_id: str,
-                           manuscript_filename: str, author_style_files: list,
-                           data: PipelineStartRequest, db_pool: SimpleConnectionPool,
+                           payload: dict, db_pool: SimpleConnectionPool,
                            flask_app) -> None:
     """
     Top-level background orchestration function.
@@ -523,12 +706,13 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
       4. Update final pipeline_runs status
     """
     logger.info(f"[Pipeline {run_id}] Starting orchestration for draft {draft_id}")
+    pipeline_metadata = _build_pipeline_runtime_metadata(run_id, draft_id, payload)
 
     # Build CallerInfo for Phase 2 (style analyzer needs it)
     caller = CallerInfo(
-        user_id=str(data.caller.user_id),
-        workspace_id=data.caller.workspace_id,
-        project_id=data.caller.project_id,
+        user_id=str(payload["caller"]["user_id"]),
+        workspace_id=payload["caller"]["workspace_id"],
+        project_id=payload["caller"]["project_id"],
         api_keys={},
         session_id=str(uuid.uuid4()),
     )
@@ -536,9 +720,14 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
     # Mark overall status
     conn = db_pool.getconn()
     try:
+        run = _get_pipeline_run(conn, run_id)
+        if run and run.get('status') in ('completed', 'failed'):
+            logger.info(f"[Pipeline {run_id}] Skipping orchestration because run is already terminal.")
+            return
         _update_pipeline_run(conn, run_id,
                              status='phase_1_2_running',
-                             current_phase=1)
+                             current_phase=1,
+                             metadata=pipeline_metadata)
         conn.commit()
     finally:
         db_pool.putconn(conn)
@@ -554,25 +743,27 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
         future_p1 = executor.submit(
             _run_phase_1,
             draft_id=draft_id,
-            manuscript_filename=manuscript_filename,
-            chaptering_mode=data.chaptering_mode,
-            target_chapter_length=data.target_chapter_length,
-            provider=data.provider,
-            model=data.model,
-            user_id=data.caller.user_id,
-            workspace_id=data.caller.workspace_id,
-            project_id=data.caller.project_id,
+            manuscript_filename=payload["manuscript_filename"],
+            chaptering_mode=payload["chaptering_mode"],
+            target_chapter_length=payload["target_chapter_length"],
+            provider=payload["provider"],
+            model=payload["model"],
+            generation_config_dict=payload["generation_config"],
+            rewrite_policy=payload["rewrite_policy"],
+            user_id=payload["caller"]["user_id"],
+            workspace_id=payload["caller"]["workspace_id"],
+            project_id=payload["caller"]["project_id"],
             db_pool=db_pool,
             run_id=run_id,
             flask_app=flask_app,
         )
         future_p2 = executor.submit(
             _run_phase_2,
-            author_name=data.author_name,
-            file_paths=author_style_files,
+            author_name=payload["author_name"],
+            file_paths=payload["author_file_paths"],
             caller=caller,
-            style_config=data.style_analyzer_config,
-            on_exist=data.on_exist,
+            style_config=StyleAnalyzerConfig(**payload["style_analyzer_config"]),
+            on_exist=payload["on_exist"],
             db_pool=db_pool,
             run_id=run_id,
             flask_app=flask_app,
@@ -585,6 +776,8 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
                     'success': phase_1_result['success'],
                     'error': phase_1_result.get('error'),
                     'timing_seconds': phase_1_result.get('timing_seconds'),
+                    'skipped': phase_1_result.get('skipped', False),
+                    'diagnostics': phase_1_result.get('diagnostics'),
                 }
             else:
                 phase_2_result = future.result()
@@ -593,7 +786,11 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
                     'error': phase_2_result.get('error'),
                     'author_style_id': phase_2_result.get('author_style_id'),
                     'timing_seconds': phase_2_result.get('timing_seconds'),
+                    'skipped': phase_2_result.get('skipped', False),
+                    'diagnostics': phase_2_result.get('diagnostics'),
                 }
+
+    pipeline_metadata['phase_results'].update(phase_meta)
 
     logger.info(
         f"[Pipeline {run_id}] Phase 1 {'OK' if phase_1_result.get('success') else 'FAILED'}, "
@@ -625,7 +822,7 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
                 failed_phase=failed_phase,
                 error_message=error_msg,
                 completed_at=datetime.now().isoformat(),
-                metadata=phase_meta,
+                metadata=pipeline_metadata,
             )
             # Also update draft status
             conn.cursor().execute(
@@ -643,23 +840,24 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
     author_style_id = phase_2_result.get('author_style_id')
     # Resolve the author_style_name: pass the name so the Novel Writer
     # picks the correct style from the workspace by name.
-    author_style_name = data.author_name
+    author_style_name = payload["author_name"]
 
     phase_3_result = _run_phase_3(
         draft_id=draft_id,
-        user_id=data.caller.user_id,
-        workspace_id=data.caller.workspace_id,
-        project_id=data.caller.project_id,
-        provider=data.provider,
-        model=data.model,
+        user_id=payload["caller"]["user_id"],
+        workspace_id=payload["caller"]["workspace_id"],
+        project_id=payload["caller"]["project_id"],
+        provider=payload["provider"],
+        model=payload["model"],
         author_style_name=author_style_name,
-        target_chapter_length=data.target_chapter_length,
-        quality_threshold=data.quality_threshold,
-        max_improvement_passes=data.max_improvement_passes,
-        writing_perspective=data.writing_perspective,
-        enforce_hard_quality_gate=data.enforce_hard_quality_gate,
-        hard_quality_threshold=data.hard_quality_threshold,
-        generation_config_dict=data.generation_config,
+        target_chapter_length=payload["target_chapter_length"],
+        quality_threshold=payload["quality_threshold"],
+        max_improvement_passes=payload["max_improvement_passes"],
+        writing_perspective=payload["writing_perspective"],
+        enforce_hard_quality_gate=payload["enforce_hard_quality_gate"],
+        hard_quality_threshold=payload["hard_quality_threshold"],
+        rewrite_policy=payload["rewrite_policy"],
+        generation_config_dict=payload["generation_config"],
         db_pool=db_pool,
         run_id=run_id,
         flask_app=flask_app,
@@ -668,7 +866,11 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
         'success': phase_3_result['success'],
         'error': phase_3_result.get('error'),
         'timing_seconds': phase_3_result.get('timing_seconds'),
+        'skipped': phase_3_result.get('skipped', False),
+        'diagnostics': phase_3_result.get('diagnostics'),
     }
+    pipeline_metadata['phase_results'].update(phase_meta)
+    pipeline_metadata['diagnostics']['phase_3'] = phase_3_result.get('diagnostics')
 
     # -----------------------------------------------------------------------
     # Final status
@@ -683,7 +885,7 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
                 current_phase=None,
                 author_style_id=author_style_id,
                 completed_at=datetime.now().isoformat(),
-                metadata=phase_meta,
+                metadata=pipeline_metadata,
             )
             conn.cursor().execute(
                 "UPDATE drafts SET status = %s WHERE id = %s",
@@ -705,7 +907,7 @@ def _orchestrate_pipeline(run_id: str, draft_id: str,
                 error_message=error_msg,
                 author_style_id=author_style_id,
                 completed_at=datetime.now().isoformat(),
-                metadata=phase_meta,
+                metadata=pipeline_metadata,
             )
             conn.cursor().execute(
                 "UPDATE drafts SET status = %s, error_message = %s WHERE id = %s",
@@ -875,6 +1077,12 @@ def start_novel_pipeline():
             os.remove(ms_path)
             return validation_error({'author_files': ['No valid author style files provided']})
 
+        normalized_payload = _build_pipeline_payload(
+            data=data,
+            manuscript_filename=ms_filename,
+            author_file_paths=author_file_paths,
+        )
+
         # ------------------------------------------------------------------
         # 4. Create draft record in DB
         # ------------------------------------------------------------------
@@ -924,7 +1132,12 @@ def start_novel_pipeline():
                     ms_path,
                     ms_size,
                     DraftStatus.PIPELINE_PENDING.value,
-                    json.dumps({'pipeline_run_id': run_id, 'orchestrated': True}),
+                    json.dumps({
+                        'pipeline_run_id': run_id,
+                        'orchestrated': True,
+                        'rewrite_policy': normalized_payload['rewrite_policy'],
+                        'generation_config': normalized_payload['generation_config'],
+                    }),
                 ))
 
             conn.commit()
@@ -942,22 +1155,12 @@ def start_novel_pipeline():
         # ------------------------------------------------------------------
         # 5. Create pipeline_runs record
         # ------------------------------------------------------------------
-        config_snapshot = {
-            'provider': data.provider,
-            'model': data.model,
-            'author_name': data.author_name,
-            'chaptering_mode': data.chaptering_mode,
-            'target_chapter_length': data.target_chapter_length,
-            'quality_threshold': data.quality_threshold,
-            'enforce_hard_quality_gate': data.enforce_hard_quality_gate,
-            'hard_quality_threshold': data.hard_quality_threshold,
-            'max_improvement_passes': data.max_improvement_passes,
-            'writing_perspective': data.writing_perspective,
-            'author_style_mode': data.author_style_mode,
-            'on_exist': data.on_exist,
-            'manuscript_filename': ms_filename,
-            'author_file_count': len(author_file_paths),
-        }
+        config_snapshot = normalized_payload
+        initial_runtime_metadata = _build_pipeline_runtime_metadata(
+            run_id=run_id,
+            draft_id=draft_id,
+            payload=normalized_payload,
+        )
 
         conn = db_pool.getconn()
         try:
@@ -969,6 +1172,11 @@ def start_novel_pipeline():
                 user_id=user_id,
                 author_name=data.author_name,
                 config=config_snapshot,
+            )
+            _update_pipeline_run(
+                conn,
+                run_id,
+                metadata=initial_runtime_metadata,
             )
             conn.commit()
         except Exception as exc:
@@ -990,9 +1198,7 @@ def start_novel_pipeline():
             kwargs=dict(
                 run_id=run_id,
                 draft_id=draft_id,
-                manuscript_filename=ms_filename,
-                author_style_files=author_file_paths,
-                data=data,
+                payload=normalized_payload,
                 db_pool=db_pool,
                 flask_app=flask_app,
             ),
@@ -1304,17 +1510,31 @@ def get_pipeline_results(run_id: str):
 
                 # Author style info
                 if run['author_style_id']:
-                    cur.execute("""
-                        SELECT author_name, status, total_time_ms
-                        FROM author_styles WHERE id = %s
-                    """, (run['author_style_id'],))
-                    as_row = cur.fetchone()
+                    try:
+                        cur.execute("""
+                            SELECT author_name, status, total_time_ms, schema_version
+                            FROM author_styles WHERE id = %s
+                        """, (run['author_style_id'],))
+                        as_row = cur.fetchone()
+                        schema_version = as_row[3] if as_row else None
+                    except Exception as exc:
+                        if exc.__class__.__name__ != 'UndefinedColumn':
+                            raise
+                        conn.rollback()
+                        cur = conn.cursor()
+                        cur.execute("""
+                            SELECT author_name, status, total_time_ms
+                            FROM author_styles WHERE id = %s
+                        """, (run['author_style_id'],))
+                        as_row = cur.fetchone()
+                        schema_version = 2 if as_row else None
                     if as_row:
                         results['author_style'] = {
                             'id': run['author_style_id'],
                             'author_name': as_row[0],
                             'status': as_row[1],
                             'total_time_ms': as_row[2],
+                            'schema_version': schema_version,
                         }
 
         finally:
@@ -1327,7 +1547,9 @@ def get_pipeline_results(run_id: str):
                 'author_name': run['author_name'],
                 'completed_at': run['completed_at'].isoformat() if run['completed_at'] else None,
                 'results': results,
-                'phase_timings': run['metadata'] or {},
+                'phase_results': ((run['metadata'] or {}).get('phase_results') or {}),
+                'phase_timings': ((run['metadata'] or {}).get('phase_results') or {}),
+                'diagnostics': ((run['metadata'] or {}).get('diagnostics') or {}),
             }
         )
 

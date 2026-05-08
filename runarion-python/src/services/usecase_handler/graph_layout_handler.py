@@ -1,7 +1,7 @@
 # services/usecase_handler/graph_layout_handler.py
 
-from services.usecase_handler.base_handler import UseCaseHandler
-from models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
+from src.services.usecase_handler.base_handler import UseCaseHandler
+from src.models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
 
 
 class GraphLayoutHandler(UseCaseHandler):

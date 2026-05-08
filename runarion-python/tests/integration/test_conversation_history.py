@@ -13,10 +13,9 @@ import pytest
 from datetime import datetime, timezone
 
 # Add src to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
-from services.conversation_manager import ConversationManager
-from models.story_generation.prompt_config import PromptConfig
+from src.services.conversation_manager import ConversationManager
+from src.models.story_generation.prompt_config import PromptConfig
 from psycopg2 import pool
 
 

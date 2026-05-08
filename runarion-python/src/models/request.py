@@ -1,7 +1,8 @@
 # models/request.py
 
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, List
+from typing import Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class CallerInfo(BaseModel):
@@ -10,6 +11,39 @@ class CallerInfo(BaseModel):
     project_id: str
     api_keys: Dict[str, Optional[str]]
     session_id: Optional[str] = None
+
+
+class RewritePolicy(BaseModel):
+    style_transfer_strength: Literal["low", "medium", "high"] = "medium"
+    style_source_priority: Literal[
+        "preserve_manuscript", "balanced", "favor_author"
+    ] = "balanced"
+    negative_constraints: List[str] = Field(default_factory=list, max_length=5)
+
+    @field_validator("negative_constraints", mode="before")
+    @classmethod
+    def _normalize_negative_constraints(cls, value):
+        if value is None:
+            return []
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, list):
+            raise TypeError("negative_constraints must be a list of strings")
+
+        normalized = []
+        seen = set()
+        for item in value:
+            if item is None:
+                continue
+            text = str(item).strip()
+            if not text:
+                continue
+            key = text.casefold()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(text)
+        return normalized
 
 class GenerationConfig(BaseModel):
     temperature: float = Field(0.7, ge=0.0, le=2.0)
@@ -40,3 +74,11 @@ class BaseGenerationRequest(BaseModel):
     instruction: Optional[object] = None
     generation_config: GenerationConfig
     caller: CallerInfo
+
+
+def rewrite_policy_to_dict(policy: Optional[RewritePolicy | dict]) -> dict:
+    if policy is None:
+        return RewritePolicy().model_dump(mode="json")
+    if isinstance(policy, RewritePolicy):
+        return policy.model_dump(mode="json")
+    return RewritePolicy(**policy).model_dump(mode="json")

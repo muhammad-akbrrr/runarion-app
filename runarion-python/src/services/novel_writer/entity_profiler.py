@@ -9,6 +9,7 @@ import logging
 from typing import Dict, Any, List, Optional
 
 from .base_stage import BasePipelineStage, PipelineStageContext, PipelineStageResult
+from .rewrite_policy import compile_rewrite_policy
 from .story_context import StoryContext, CharacterProfile, LocationProfile
 
 logger = logging.getLogger(__name__)
@@ -32,15 +33,48 @@ class EntityProfilingStage(BasePipelineStage):
     def __init__(self, db_pool, generation_engine=None, graph_service=None):
         super().__init__(db_pool, "EntityProfilingStage", generation_engine)
         self.graph_service = graph_service
+        self._author_styles_supports_v2_schema: Optional[bool] = None
+
+    def _supports_author_style_v2_schema(self) -> bool:
+        if self._author_styles_supports_v2_schema is not None:
+            return self._author_styles_supports_v2_schema
+
+        try:
+            from src.utils.database_utils import utf8_database_connection
+
+            with utf8_database_connection(self.db_pool) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'author_styles'
+                      AND column_name IN ('schema_version', 'adaptation_json')
+                    """
+                )
+                columns = {row[0] for row in cursor.fetchall()}
+                self._author_styles_supports_v2_schema = {
+                    'schema_version',
+                    'adaptation_json',
+                }.issubset(columns)
+        except Exception as e:
+            self.logger.warning(
+                f"Failed to inspect author_styles schema; assuming legacy layout: {e}"
+            )
+            self._author_styles_supports_v2_schema = False
+
+        return self._author_styles_supports_v2_schema
 
     def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         draft_id = context.draft_id
         workspace_id = context.get_workspace_id(self.db_pool)
         author_style_name = context.config.get('author_style_name')
         writing_perspective = context.config.get('writing_perspective', 'third_person_limited')
+        rewrite_policy = context.config.get('rewrite_policy', {})
 
         story_context = StoryContext()
         story_context.writing_perspective = writing_perspective
+        story_context.rewrite_policy = rewrite_policy
         conn = context.get('connection')
 
         try:
@@ -50,7 +84,7 @@ class EntityProfilingStage(BasePipelineStage):
                 self._load_all_data(cursor, draft_id, workspace_id, author_style_name, story_context)
                 cursor.close()
             else:
-                from utils.database_utils import utf8_database_connection
+                from src.utils.database_utils import utf8_database_connection
                 with utf8_database_connection(self.db_pool) as db_conn:
                     cursor = db_conn.cursor()
                     self._load_all_data(cursor, draft_id, workspace_id, author_style_name, story_context)
@@ -81,6 +115,11 @@ class EntityProfilingStage(BasePipelineStage):
                     f"No author style found for workspace {workspace_id}. "
                     "Generation will proceed without style guidance."
                 )
+
+            story_context.compiled_rewrite_policy = compile_rewrite_policy(
+                rewrite_policy,
+                story_context.author_style,
+            )
 
             # Store in context for downstream stages
             context.set('story_context', story_context)
@@ -241,33 +280,69 @@ class EntityProfilingStage(BasePipelineStage):
                            author_style_name: Optional[str], story_context: StoryContext) -> None:
         """Load author style profile from style analyzer."""
         try:
-            if author_style_name:
-                cursor.execute("""
-                    SELECT techniques_json, examples_json
-                    FROM author_styles
-                    WHERE workspace_id = %s AND author_name = %s
-                      AND status = 'profiling_completed'
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                """, (workspace_id, author_style_name))
+            legacy_schema = not self._supports_author_style_v2_schema()
+
+            if not legacy_schema:
+                if author_style_name:
+                    cursor.execute("""
+                        SELECT schema_version, techniques_json, examples_json, adaptation_json
+                        FROM author_styles
+                        WHERE workspace_id = %s AND author_name = %s
+                          AND status = 'profiling_completed' AND schema_version = 2
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """, (workspace_id, author_style_name))
+                else:
+                    cursor.execute("""
+                        SELECT schema_version, techniques_json, examples_json, adaptation_json
+                        FROM author_styles
+                        WHERE workspace_id = %s AND status = 'profiling_completed' AND schema_version = 2
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """, (workspace_id,))
             else:
-                cursor.execute("""
-                    SELECT techniques_json, examples_json
-                    FROM author_styles
-                    WHERE workspace_id = %s AND status = 'profiling_completed'
-                    ORDER BY updated_at DESC
-                    LIMIT 1
-                """, (workspace_id,))
+                if author_style_name:
+                    cursor.execute("""
+                        SELECT techniques_json, examples_json
+                        FROM author_styles
+                        WHERE workspace_id = %s AND author_name = %s
+                          AND status = 'profiling_completed'
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """, (workspace_id, author_style_name))
+                else:
+                    cursor.execute("""
+                        SELECT techniques_json, examples_json
+                        FROM author_styles
+                        WHERE workspace_id = %s AND status = 'profiling_completed'
+                        ORDER BY updated_at DESC
+                        LIMIT 1
+                    """, (workspace_id,))
 
             row = cursor.fetchone()
             if row:
-                techniques_json = self._parse_json_field(row[0], default={})
-                examples_json = self._parse_json_field(row[1], default={})
+                if legacy_schema:
+                    schema_version = 2
+                    techniques_json = self._parse_json_field(row[0], default={})
+                    examples_json = self._parse_json_field(row[1], default={})
+                    adaptation_json = {}
+                else:
+                    schema_version = int(row[0] or 0)
+                    if schema_version != 2:
+                        self.logger.warning(
+                            f"Author style schema_version={schema_version} is incompatible; re-profiling required."
+                        )
+                        return
+                    techniques_json = self._parse_json_field(row[1], default={})
+                    examples_json = self._parse_json_field(row[2], default={})
+                    adaptation_json = self._parse_json_field(row[3], default={})
 
-                from models.style_analyzer.author_style import AuthorStyle
+                from src.models.style_analyzer.author_style import AuthorStyle
                 story_context.author_style = AuthorStyle(
+                    schema_version=schema_version,
                     techniques=techniques_json,
                     examples=examples_json,
+                    adaptation=adaptation_json,
                 )
                 self.logger.info(f"Loaded author style for workspace {workspace_id}")
             else:

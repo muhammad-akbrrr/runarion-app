@@ -7,7 +7,7 @@ Non-transient failures (bad prompt, blocked content, JSON errors, etc.) are
 returned immediately without retrying.
 
 Usage:
-    from utils.llm_retry import call_llm_with_retry
+    from src.utils.llm_retry import call_llm_with_retry
 
     response = call_llm_with_retry(
         lambda: self.generation_engine.generate(skip_quota=True)

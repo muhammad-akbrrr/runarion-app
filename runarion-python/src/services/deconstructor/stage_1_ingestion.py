@@ -5,8 +5,8 @@ Handles document extraction and creates initial chunks for processing.
 
 import logging
 from typing import Dict, Any, List, Optional
-from utils.document_processor import Chunk, DocumentProcessor
-from utils.database_utils import clean_text_for_database
+from src.utils.document_processor import Chunk, DocumentProcessor
+from src.utils.database_utils import clean_text_for_database
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)

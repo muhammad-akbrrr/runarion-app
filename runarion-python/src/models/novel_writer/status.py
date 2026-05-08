@@ -3,7 +3,7 @@ Status constants for the novel writer pipeline.
 References the novel writer statuses added to DraftStatus.
 """
 
-from models.deconstructor.status import DraftStatus
+from src.models.deconstructor.status import DraftStatus
 
 
 class NovelWriterStatus:

@@ -18,11 +18,11 @@ import uuid
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
 from datetime import datetime
-from services.records_manager import RecordsManager
-from services.generation_engine import GenerationEngine
-from models.request import BaseGenerationRequest, GenerationConfig
-from models.quota import QuotaCaller
-from utils.json_response_parser import JSONResponseParser
+from src.services.records_manager import RecordsManager
+from src.services.generation_engine import GenerationEngine
+from src.models.request import BaseGenerationRequest, GenerationConfig
+from src.models.quota import QuotaCaller
+from src.utils.json_response_parser import JSONResponseParser
 
 logger = logging.getLogger(__name__)
 
@@ -115,7 +115,7 @@ class AuditorService:
             {'success': True} or {'error': '...', 'retry_possible': bool}
         """
         import time
-        from utils.database_utils import classify_db_error
+        from src.utils.database_utils import classify_db_error
 
         initial_delay = 0.5
         delay = initial_delay
@@ -197,7 +197,7 @@ class AuditorService:
             {'success': True, 'vertex_id': ...} or {'error': '...'}
         """
         import time
-        from utils.database_utils import classify_db_error
+        from src.utils.database_utils import classify_db_error
 
         initial_delay = 0.5
         delay = initial_delay
@@ -1888,8 +1888,8 @@ IMPORTANT:
 """
             
             # Use LLM to analyze and generate fix
-            from services.generation_engine import GenerationEngine
-            from models.request import BaseGenerationRequest, GenerationConfig
+            from src.services.generation_engine import GenerationEngine
+            from src.models.request import BaseGenerationRequest, GenerationConfig
             
             # Create caller first
             caller = self._create_caller(project_id, workspace_id)
@@ -1914,7 +1914,7 @@ IMPORTANT:
                 return {'error': 'Failed to generate story fix'}
             
             # Parse response
-            from utils.json_response_parser import JSONResponseParser
+            from src.utils.json_response_parser import JSONResponseParser
             analysis, _ = JSONResponseParser.parse_response(response.text, expected_type="dict", fallback_value={})
             
             if not analysis:
@@ -2413,7 +2413,7 @@ ANALYSIS:"""
                 'deleted_entity_id': '...'
             }
         """
-        from utils.database_utils import TransientDatabaseError, PermanentDatabaseError
+        from src.utils.database_utils import TransientDatabaseError, PermanentDatabaseError
 
         try:
             # Get both entities (read-only)
@@ -2524,7 +2524,7 @@ ANALYSIS:"""
             Success dict or raises exception
         """
         import time
-        from utils.database_utils import classify_db_error, TransientDatabaseError, PermanentDatabaseError
+        from src.utils.database_utils import classify_db_error, TransientDatabaseError, PermanentDatabaseError
 
         max_retries = 3
         initial_delay = 0.5
@@ -2655,7 +2655,7 @@ ANALYSIS:"""
         Returns:
             List of chapter dictionaries with order, chapter_name, content
         """
-        from utils.database_utils import utf8_database_connection
+        from src.utils.database_utils import utf8_database_connection
 
         # Direct database query - fetches chapters with version control content
         try:
@@ -3395,7 +3395,7 @@ OUTPUT (JSON only):"""
         Returns:
             Dictionary with system and custom collection types
         """
-        from utils.database_utils import utf8_database_connection
+        from src.utils.database_utils import utf8_database_connection
 
         try:
             with utf8_database_connection(self.db_pool, operation_name="get_collection_types") as conn:
@@ -3793,7 +3793,7 @@ EXTRACTED ENTITIES:"""
                         continue
                     
                     # Parse JSON response - use entity extraction parser that preserves ALL keys
-                    from utils.json_response_parser import parse_entity_extraction_response
+                    from src.utils.json_response_parser import parse_entity_extraction_response
                     graph_data = parse_entity_extraction_response(response)
                     
                     # Debug: Log raw response for troubleshooting

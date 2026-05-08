@@ -1,0 +1,80 @@
+{
+  "schema_version": 2,
+  "techniques": {
+    "voice": {
+      "diction": "First-person noir diction with grime-heavy cyberpunk nouns, clipped cynicism, and emotionally loaded industrial description.",
+      "syntax": "Long sensory sentences open scenes, then contract into blunt fragments when Jax is cornered or disgusted.",
+      "rhythm": "Cadence alternates between oppressive atmospheric buildup and hard, abrupt impact beats.",
+      "register": "Conversational, hard-boiled, and profane without becoming ornate.",
+      "figurative_language": "Uses tactile and bodily metaphors to translate urban decay and psychic pressure into immediate feeling."
+    },
+    "dialogue": {
+      "conversation_style": "Dialogue is terse, transactional, and edged with threat or weary sarcasm.",
+      "speaker_differentiation": "Speakers separate through social role and pressure level rather than theatrical verbal quirks.",
+      "dialogue_narration_balance": "Dialogue is interleaved with reaction beats and interior judgments that keep the first-person lens dominant."
+    },
+    "description": {
+      "description_density": "Dense but purposeful, with atmosphere layered through weather, light, smell, and body-state detail.",
+      "sensory_focus": "Visual corrosion, chemical smell, pressure in the body, and the hum or scrape of machinery.",
+      "atmosphere_strategy": "Builds dread by treating setting as a hostile pressure field that presses directly on Jax's nerves."
+    },
+    "exposition": {
+      "exposition_strategy": "Backstory appears in tightly controlled bursts when the present action brushes against old wounds.",
+      "context_integration": "Lore and world detail are folded into immediate observation instead of being explained from a distance.",
+      "terminology_handling": "Specialized terms are dropped with confidence and clarified by context rather than overt definition."
+    },
+    "pacing": {
+      "scene_tempo": "Steady scene movement punctuated by sudden spikes of violence, revelation, or psychic overload.",
+      "transition_style": "Transitions are clean and momentum-driven, usually anchored in movement or a shift in bodily state.",
+      "tension_pattern": "Tension accumulates through dread and pressure, then breaks in sharp decisive bursts."
+    },
+    "narrative": {
+      "pov_tendency": "Close first person bound to Jax's physical sensations, memory gaps, and defensive cynicism.",
+      "narrative_distance": "Very close, with observation constantly filtered through Jax's exhaustion and distrust.",
+      "redundancy_avoidance": "Repeats motifs deliberately but keeps sentence construction and sensory focus varied."
+    }
+  },
+  "examples": {
+    "voice": [
+      "The narration treats the city as something greasy, chemical, and alive enough to hate him back.",
+      "Jax judges each new detail through a mix of contempt, fatigue, and involuntary alertness."
+    ],
+    "dialogue": [
+      "Speech is short, strategic, and often feels like a price check or a threat assessment.",
+      "Bartender and fixer dialogue stays clean and cold instead of sounding ornamental."
+    ],
+    "description": [
+      "Weather, neon, grime, and bad air are used as emotional pressure rather than decorative backdrop.",
+      "Body-state details such as hangover pain, static, nausea, and tremor keep the prose embodied."
+    ],
+    "exposition": [
+      "Omni-Solutions history arrives only when the locket or encryption triggers it.",
+      "World rules are implied through tools, slang, and consequence rather than lectures."
+    ],
+    "pacing": [
+      "The prose lets dread simmer before snapping into abrupt action or revelation.",
+      "Scene changes feel motivated by pursuit, pressure, or recovered memory."
+    ]
+  },
+  "adaptation": {
+    "portable_traits": [
+      "Close first-person interiority under pressure",
+      "Industrial sensory layering that turns setting into emotional force",
+      "Terse transactional dialogue",
+      "Sharp alternation between atmospheric buildup and abrupt impact"
+    ],
+    "non_portable_markers": [
+      "Specific cyberpunk props such as Syn-Numb, mag-walks, or neural jacks",
+      "Corporate-noir jargon tied to this exact setting"
+    ],
+    "transfer_risks": [
+      "Over-copying the grime and neon vocabulary can flatten very different source material into one cyberpunk texture.",
+      "Pushing the bitterness too hard can turn controlled noir voice into melodrama."
+    ],
+    "suppression_guidance": [
+      "Do not force cyberpunk nouns into unrelated settings.",
+      "Preserve structural clarity before imitating the surface grit.",
+      "Keep the cynicism controlled so the voice stays tense rather than purple."
+    ]
+  }
+}

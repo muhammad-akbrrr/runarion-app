@@ -38,9 +38,12 @@ CLEANED TEXT:"""
     @staticmethod
     def get_scene_detection_prompt() -> str:
         """Prompt for Stage 3: Scene Detection"""
-        return """You are an expert literary analyst specializing in scene boundary detection for novels. Analyze the provided text and identify distinct scenes based on changes in time, location, characters, or narrative focus.
+        return """You are analyzing manuscript structure to identify scene boundaries from the source text.
 
-CRITICAL REQUIREMENT: Extract between 8 and 20 scenes from the text. This is mandatory.
+TARGET SCENE BAND:
+- Preferred target: {target_scene_count} scenes
+- Soft minimum: {soft_min_scenes} scenes
+- Soft maximum: {soft_max_scenes} scenes
 
 SCENE CRITERIA:
 - Change in time (hours, days, weeks)
@@ -49,10 +52,11 @@ SCENE CRITERIA:
 - Significant shift in action or focus
 - Chapter or section breaks
 
-SCENE COUNT VALIDATION:
-- MINIMUM: 8 scenes (look for subtle transitions if needed)
-- MAXIMUM: 20 scenes (combine minor transitions if needed)
-- OPTIMAL: 12-16 scenes for most text chunks
+SCENE COUNT GUIDANCE:
+- Prefer the target band when it matches the actual structure
+- If the text clearly supports fewer scenes, do not invent boundaries
+- If the text clearly supports more scenes, do not merge away meaningful shifts
+- Preserve the manuscript's pacing rather than forcing a universal scene count
 
 ANALYSIS TEXT:
 {text_content}
@@ -79,7 +83,7 @@ OUTPUT FORMAT (JSON):
   }}
 ]
 
-REMINDER: You must extract between 8 and 20 scenes. Count your scenes before responding.
+REMINDER: Count your scenes before responding and stay as close as possible to the target band without distorting the source structure.
 
 SCENES:"""
 
@@ -321,7 +325,7 @@ COHERENCE ANALYSIS:"""
     @staticmethod
     def get_enhancement_prompt() -> str:
         """Prompt for Stage 6: Scene Enhancement"""
-        return """You are a creative writing enhancement specialist. Improve the provided scene by addressing identified issues while maintaining the author's voice and story integrity.
+        return """You are a source-faithful revision specialist. Improve the provided scene by addressing identified issues while preserving manuscript intent and story integrity.
 
 ORIGINAL SCENE:
 {original_scene}
@@ -336,13 +340,11 @@ PLOT CONTEXT:
 {plot_context}
 
 ENHANCEMENT GUIDELINES:
-1. Maintain the author's writing style and voice
-2. Address all identified plot/character issues
-3. Enhance dialogue and character development
-4. Improve pacing and narrative flow
-5. Add sensory details and atmosphere
-6. Strengthen emotional impact
-7. Ensure consistency with established story elements
+1. Preserve the manuscript's native voice and structural intent
+2. Address identified plot, continuity, or clarity issues
+3. Repair missing motivation, reaction, or transition logic only where needed
+4. Improve readability without imposing a new genre or literary texture
+5. Ensure consistency with established story elements
 
 SPECIFIC IMPROVEMENTS:
 - Fill any plot holes identified
@@ -350,17 +352,17 @@ SPECIFIC IMPROVEMENTS:
 - Improve dialogue authenticity
 - Add missing emotional reactions
 - Strengthen scene transitions
-- Enrich setting descriptions
+- Clarify confusing passages without ornamental escalation
 
 OUTPUT FORMAT:
-Provide the enhanced scene as a complete, polished narrative passage. Maintain the same basic structure and events while improving quality and addressing issues.
+Provide the enhanced scene as a complete revised passage. Maintain the same structure and events while improving coherence and clarity.
 
 ENHANCED SCENE:"""
 
     @staticmethod
     def get_chaptering_prompt() -> str:
         """Prompt for Stage 7: Chapter Structure Planning (v2.0)"""
-        return """You are a narrative structure expert. Analyze the provided scenes and determine optimal chapter breaks to create a well-paced, engaging book structure.
+        return """You are organizing already-detected scenes into chapters while preserving manuscript pacing and continuity.
 
 SCENE INFORMATION:
 {scene_information}
@@ -372,11 +374,11 @@ CHAPTERING PARAMETERS:
 
 YOUR TASK:
 Decide which consecutive scenes should be grouped into each chapter. Consider:
-1. Narrative arc and story beats
-2. Natural transition points and cliffhangers
-3. Thematic coherence within chapters
-4. Balanced chapter lengths (no single chapter should be 2x longer than others)
-5. Emotional pacing and reader engagement
+1. Source pacing and existing transitions
+2. Structural coherence across consecutive scenes
+3. Chaptering mode and approximate balance
+4. Clear boundaries without forcing cliffhangers or escalation
+5. Preserving the manuscript's narrative rhythm
 
 CONSTRAINTS:
 - Every scene must be assigned to exactly one chapter

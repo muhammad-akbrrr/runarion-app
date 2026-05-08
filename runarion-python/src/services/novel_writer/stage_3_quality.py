@@ -11,7 +11,7 @@ from typing import Dict, Any, List
 from .base_stage import BasePipelineStage, PipelineStageContext, PipelineStageResult
 from .story_context import StoryContext
 from .prompt_template import NovelWriterPrompts
-from utils.llm_retry import call_llm_with_retry
+from src.utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ THIRD_PERSON_PRONOUNS = {
 }
 
 HARD_DIMENSIONS = (
+    'scene_coverage',
     'pov_consistency',
     'perspective_continuity',
     'chapter_break_integrity',
@@ -84,6 +85,7 @@ class QualityAssessmentStage(BasePipelineStage):
         llm_assessment_failures = 0
         fallback_improvement_defaults = 0
         deterministic_downgrades = {
+            'scene_coverage': 0,
             'pov_consistency': 0,
             'perspective_continuity': 0,
             'chapter_break_integrity': 0,
@@ -221,8 +223,10 @@ class QualityAssessmentStage(BasePipelineStage):
         """Assess a single chapter's quality using LLM."""
 
         # Build author style reference
+        compiled_policy = getattr(story_context, 'compiled_rewrite_policy', None)
         author_style_reference = NovelWriterPrompts.get_author_style_instruction(
-            story_context.author_style
+            story_context.author_style,
+            compiled_policy,
         )
         writing_perspective_instruction = NovelWriterPrompts.get_writing_perspective_instruction(
             getattr(story_context, 'writing_perspective', 'third_person_limited')
@@ -235,6 +239,12 @@ class QualityAssessmentStage(BasePipelineStage):
         prompt_template = NovelWriterPrompts.get_quality_assessment_prompt()
         prompt = prompt_template.format(
             chapter_content=chapter.content[:12000],  # Truncate very long chapters
+            rewrite_policy_guidance=compiled_policy.assessment_guidance if compiled_policy else (
+                "Assess against explicit structural constraints and any provided rewrite policy."
+            ),
+            negative_constraints=compiled_policy.negative_constraints_block if compiled_policy else (
+                "No explicit negative style constraints."
+            ),
             author_style_reference=author_style_reference,
             writing_perspective_instruction=writing_perspective_instruction,
             scene_coverage_checklist=scene_coverage,
@@ -243,7 +253,7 @@ class QualityAssessmentStage(BasePipelineStage):
         try:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = (
-                "You are a ruthlessly thorough literary quality assessor. "
+                "You are a policy-aware chapter assessor. "
                 "Return ONLY valid JSON with no markdown formatting."
             )
             self.generation_engine.request.generation_config.max_output_tokens = 2000
@@ -469,16 +479,108 @@ class QualityAssessmentStage(BasePipelineStage):
             chapter_number,
             chapter_content,
         )
+        scene_coverage = self._estimate_scene_coverage(
+            story_context,
+            chapter_number,
+            chapter_content,
+        )
 
         def _clamp(score: float) -> float:
             return max(1.0, min(10.0, round(score, 2)))
 
         return {
+            'scene_coverage': _clamp(scene_coverage),
             'pov_consistency': _clamp(pov_consistency),
             'perspective_continuity': _clamp(perspective_continuity),
             'chapter_break_integrity': _clamp(chapter_break_integrity),
             'redundancy_control': _clamp(redundancy_control),
         }
+
+    def _estimate_scene_coverage(
+        self,
+        story_context: StoryContext,
+        chapter_number: int,
+        chapter_content: str,
+    ) -> float:
+        """
+        Estimate whether the generated chapter still covers all source scenes.
+
+        This is intentionally conservative and uses broad anchor matching so it
+        catches likely omissions without forcing a brittle lexical copy.
+        """
+        chapter = story_context.generated_chapters.get(chapter_number)
+        if not chapter or not chapter.source_scenes:
+            return 6.5
+
+        chapter_tokens = set(re.findall(r"[a-zA-Z']+", chapter_content.lower()))
+        covered = 0
+
+        for scene_num in chapter.source_scenes:
+            scene = next(
+                (s for s in story_context.scenes if s.get('scene_number') == scene_num),
+                None,
+            )
+            if not scene:
+                continue
+
+            character_terms = self._scene_character_terms(scene)
+            anchor_terms = self._scene_anchor_terms(scene)
+
+            character_hits = sum(1 for term in character_terms if term in chapter_tokens)
+            anchor_hits = sum(1 for term in anchor_terms if term in chapter_tokens)
+            min_anchor_hits = 1 if len(anchor_terms) <= 3 else 2
+
+            if character_hits >= 1 and anchor_hits >= 1:
+                covered += 1
+            elif anchor_hits >= min_anchor_hits:
+                covered += 1
+
+        total = max(len(chapter.source_scenes), 1)
+        coverage_ratio = covered / total
+        return 1.0 + (coverage_ratio * 9.0)
+
+    def _scene_character_terms(self, scene: Dict[str, Any]) -> List[str]:
+        characters = scene.get('characters', [])
+        if isinstance(characters, str):
+            characters = [characters]
+
+        terms = set()
+        for character in characters or []:
+            for part in re.findall(r"[a-zA-Z']+", str(character).lower()):
+                if len(part) >= 3:
+                    terms.add(part)
+        return sorted(terms)
+
+    def _scene_anchor_terms(self, scene: Dict[str, Any]) -> List[str]:
+        stopwords = {
+            'the', 'and', 'for', 'with', 'that', 'this', 'from', 'into', 'onto',
+            'about', 'while', 'when', 'where', 'there', 'their', 'then', 'them',
+            'have', 'has', 'had', 'were', 'was', 'are', 'his', 'her', 'hers',
+            'your', 'yours', 'our', 'ours', 'they', 'she', 'him', 'you', 'not',
+            'but', 'out', 'over', 'under', 'after', 'before', 'through',
+            'scene', 'chapter', 'unknown', 'location',
+        }
+        fields = [
+            scene.get('title', ''),
+            scene.get('summary', ''),
+            scene.get('setting', ''),
+        ]
+        terms = []
+        for value in fields:
+            for token in re.findall(r"[a-zA-Z']+", str(value).lower()):
+                if len(token) < 4 or token in stopwords:
+                    continue
+                terms.append(token)
+
+        # Preserve stable order while deduplicating and cap the anchor set.
+        deduped = []
+        seen = set()
+        for token in terms:
+            if token in seen:
+                continue
+            seen.add(token)
+            deduped.append(token)
+        return deduped[:12]
 
     def _estimate_chapter_break_integrity(
         self,
@@ -578,6 +680,7 @@ class QualityAssessmentStage(BasePipelineStage):
     ) -> Dict[str, Any]:
         """Summarize deterministic check outcomes across assessed chapters."""
         per_dimension_values = {
+            'scene_coverage': [],
             'pov_consistency': [],
             'perspective_continuity': [],
             'chapter_break_integrity': [],

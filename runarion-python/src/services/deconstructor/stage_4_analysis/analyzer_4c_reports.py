@@ -10,10 +10,10 @@ from typing import Dict, Any, List, Optional
 from collections import Counter
 from ulid import ULID
 from ..prompt_template import DeconstructorPrompts
-from utils.database_utils import clean_text_for_database, ensure_utf8_json
-from utils.llm_retry import call_llm_with_retry
+from src.utils.database_utils import clean_text_for_database, ensure_utf8_json
+from src.utils.llm_retry import call_llm_with_retry
 from ..base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
-from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
+from src.services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
 logger = logging.getLogger(__name__)
 
@@ -500,7 +500,7 @@ class ComprehensiveReportingStage(BasePipelineStage):
             
             try:
                 # Use the robust JSON parser that handles markdown code blocks
-                from utils.json_response_parser import JSONResponseParser
+                from src.utils.json_response_parser import JSONResponseParser
                 parsed_data, _ = JSONResponseParser.parse_response(response, "dict", {})
                 return parsed_data
             except Exception as parse_error:
@@ -656,7 +656,7 @@ class ComprehensiveReportingStage(BasePipelineStage):
             
             try:
                 # Use the robust JSON parser that handles markdown code blocks
-                from utils.json_response_parser import JSONResponseParser
+                from src.utils.json_response_parser import JSONResponseParser
                 parsed_data, _ = JSONResponseParser.parse_response(response, "dict", {})
                 return parsed_data
             except Exception as parse_error:
@@ -718,7 +718,7 @@ class ComprehensiveReportingStage(BasePipelineStage):
             
             try:
                 # Use the robust JSON parser that handles markdown code blocks
-                from utils.json_response_parser import JSONResponseParser
+                from src.utils.json_response_parser import JSONResponseParser
                 parsed_data, _ = JSONResponseParser.parse_response(response, "dict", {})
                 return parsed_data
             except Exception as parse_error:
@@ -782,7 +782,7 @@ class ComprehensiveReportingStage(BasePipelineStage):
             
             try:
                 # Use the robust JSON parser that handles markdown code blocks
-                from utils.json_response_parser import JSONResponseParser
+                from src.utils.json_response_parser import JSONResponseParser
                 report_data, _ = JSONResponseParser.parse_response(response, "dict", {})
                 report_data['thread_metadata'] = plot_thread
                 return report_data

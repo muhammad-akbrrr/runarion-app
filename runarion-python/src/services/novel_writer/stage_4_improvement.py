@@ -11,26 +11,31 @@ from .base_stage import BasePipelineStage, PipelineStageContext, PipelineStageRe
 from .story_context import StoryContext, GeneratedChapter
 from .prompt_template import NovelWriterPrompts
 from .stage_3_quality import DIMENSION_WEIGHTS, ALL_DIMENSIONS
-from utils.llm_retry import call_llm_with_retry
+from src.utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
-# Expansion factors for weak dimensions
-EXPANSION_FACTORS = {
-    'dialogue_depth': 3.0,
-    'character_descriptions': 2.5,
-    'action_pacing': 2.0,
-    'location_atmosphere': 2.5,
-    'thematic_depth': 2.0,
-    'show_dont_tell': 2.0,
-    'opening_hook': 1.5,
-    'ending_impact': 1.5,
-    'author_style': 1.5,
-    'scene_coverage': 2.0,
-    'pov_consistency': 1.6,
-    'perspective_continuity': 1.6,
-    'chapter_break_integrity': 1.4,
-    'redundancy_control': 1.3,
+REVISION_ACTIONS = {
+    'dialogue_depth': "Clarify speaker differentiation, line flow, and dialogue-to-beat balance.",
+    'character_descriptions': "Restore missing character cues and sharpen distinctions without padding.",
+    'action_pacing': "Correct rushed or muddy action beats while keeping source tempo intact.",
+    'location_atmosphere': "Reinstate necessary setting anchors and atmosphere only where the source supports them.",
+    'thematic_depth': "Surface the source's existing thematic signals without forcing extra symbolism.",
+    'show_dont_tell': "Rebalance exposition and dramatized beats only where the assessment identified drift.",
+    'opening_hook': "Adjust the opening to fit chapter function and policy, not a universal dramatic ideal.",
+    'ending_impact': "Adjust the ending to fit source momentum and closure level, not a universal dramatic ideal.",
+    'author_style': "Improve portable trait transfer while suppressing non-portable markers and clash risks.",
+    'scene_coverage': "Restore omitted source beats and scene logic before making any stylistic refinements.",
+    'pov_consistency': "Repair narrative person drift and viewpoint leakage immediately.",
+    'perspective_continuity': "Stabilize viewpoint handling and remove unjustified head-hopping.",
+    'chapter_break_integrity': "Repair chapter edge logic and transition continuity without inventing new structure.",
+    'redundancy_control': "Tighten repetitive phrasing and preserve controlled prose density.",
+}
+
+REVISION_MODE_INTENTS = {
+    'preserve_and_tighten': "Prefer tightening, restoration, and local clarification over expansion.",
+    'balanced_rewrite': "Use a balanced mix of preservation, targeted expansion, and tightening.",
+    'strong_transfer_with_guardrails': "Allow stronger portable style transfer, but keep revisions targeted and structurally faithful.",
 }
 
 
@@ -213,15 +218,22 @@ class SceneImprovementStage(BasePipelineStage):
             f"{wd['dimension']} ({wd['score']}/10)" for wd in weak_dimensions
         ) if weak_dimensions else 'No specific weak dimensions identified.'
 
-        # Build expansion guidance
-        expansion_parts = []
+        # Build revision guidance keyed off the compiled policy mode
+        compiled_policy = getattr(story_context, 'compiled_rewrite_policy', None)
+        mode_name = getattr(compiled_policy, 'improvement_mode', 'balanced_rewrite')
+        mode_intent = REVISION_MODE_INTENTS.get(
+            mode_name,
+            REVISION_MODE_INTENTS['balanced_rewrite'],
+        )
+
+        expansion_parts = [f"- Mode intent: {mode_intent}"]
         for wd in weak_dimensions:
             dim = wd.get('dimension', '')
-            factor = EXPANSION_FACTORS.get(dim, 1.5)
-            expansion_parts.append(
-                f"- {dim}: Expand by ~{factor}x. "
-                f"Add significantly more detail and depth in this area."
+            action = REVISION_ACTIONS.get(
+                dim,
+                "Make the smallest revision that fully resolves the reported issue.",
             )
+            expansion_parts.append(f"- {dim}: {action}")
         expansion_guidance = '\n'.join(expansion_parts) if expansion_parts else 'Focus on overall quality improvement.'
 
         # Get author style examples for weak areas
@@ -232,16 +244,16 @@ class SceneImprovementStage(BasePipelineStage):
             # Map dimensions to style categories
             category_map = {
                 'dialogue_depth': 'dialogue',
-                'character_descriptions': 'descriptions',
-                'action_pacing': 'action',
-                'location_atmosphere': 'descriptions',
-                'thematic_depth': 'literary',
-                'show_dont_tell': 'literary',
-                'author_style': 'literary',
-                'pov_consistency': 'literary',
-                'perspective_continuity': 'literary',
-                'chapter_break_integrity': 'literary',
-                'redundancy_control': 'literary',
+                'character_descriptions': 'description',
+                'action_pacing': 'pacing',
+                'location_atmosphere': 'description',
+                'thematic_depth': 'voice',
+                'show_dont_tell': 'exposition',
+                'author_style': 'voice',
+                'pov_consistency': 'voice',
+                'perspective_continuity': 'voice',
+                'chapter_break_integrity': 'pacing',
+                'redundancy_control': 'voice',
             }
             cat = category_map.get(dim)
             if cat and cat not in weak_categories:
@@ -262,9 +274,18 @@ class SceneImprovementStage(BasePipelineStage):
         )
         prompt = prompt_template.format(
             chapter_content=chapter_content,
+            rewrite_policy_guidance=compiled_policy.improvement_guidance if compiled_policy else (
+                "Repair only identified structural and stylistic issues."
+            ),
+            negative_constraints=compiled_policy.negative_constraints_block if compiled_policy else (
+                "No explicit negative style constraints."
+            ),
             quality_feedback=quality_feedback,
             weak_dimensions=weak_dims_text,
             expansion_guidance=expansion_guidance,
+            revision_mode_guidance=compiled_policy.improvement_mode_guidance if compiled_policy else (
+                "Use BALANCED_REWRITE mode. Keep revisions targeted and structurally faithful."
+            ),
             author_style_examples=author_style_examples,
             writing_perspective_instruction=writing_perspective_instruction,
         )
@@ -276,8 +297,8 @@ class SceneImprovementStage(BasePipelineStage):
         try:
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = (
-                "You are a master literary editor. Improve the chapter to address "
-                "all quality issues. Return the complete improved chapter."
+                "Revise the chapter to satisfy the compiled rewrite policy and the listed quality issues. "
+                "Return the complete improved chapter."
             )
             self.generation_engine.request.generation_config.max_output_tokens = max_output_tokens
 
@@ -321,10 +342,12 @@ class SceneImprovementStage(BasePipelineStage):
                            story_context: StoryContext) -> float:
         """Do a lightweight overall quality score check."""
         try:
+            compiled_policy = getattr(story_context, 'compiled_rewrite_policy', None)
             prompt = (
-                "Rate this chapter's overall literary quality on a scale of 1-10. "
-                "Consider: prose quality, character depth, dialogue, pacing, "
-                "show-don't-tell, and atmospheric detail.\n\n"
+                "Rate how well this chapter satisfies the rewrite policy on a scale of 1-10. "
+                "Consider structural fidelity, policy alignment, negative-constraint compliance, "
+                "perspective stability, and controlled prose.\n\n"
+                f"REWRITE POLICY:\n{compiled_policy.assessment_guidance if compiled_policy else 'Preserve structure and explicit constraints.'}\n\n"
                 f"CHAPTER:\n{chapter_content[:8000]}\n\n"
                 "Return ONLY a single number (1-10):"
             )

@@ -6,9 +6,9 @@ from flask import current_app
 from google import genai
 from google.genai.types import GenerateContentConfig, SafetySetting, HarmCategory, HarmBlockThreshold, ThinkingConfig
 from typing import Dict, Any, Generator, List, Optional
-from providers.base_provider import BaseProvider
-from models.request import BaseGenerationRequest, GenerationConfig
-from models.response import BaseGenerationResponse
+from src.providers.base_provider import BaseProvider
+from src.models.request import BaseGenerationRequest, GenerationConfig
+from src.models.response import BaseGenerationResponse
 
 
 # Supported Gemini models with their configurations

@@ -7,10 +7,10 @@ import json
 import logging
 from typing import Dict, Any, List, Tuple
 from .prompt_template import DeconstructorPrompts
-from utils.database_utils import clean_text_for_database
+from src.utils.database_utils import clean_text_for_database
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
-from config.deconstructor_config import Stage3Config
-from utils.llm_retry import call_llm_with_retry
+from src.config.deconstructor_config import Stage3Config
+from src.utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 

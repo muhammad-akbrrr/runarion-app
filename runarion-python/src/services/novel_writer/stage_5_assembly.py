@@ -54,7 +54,7 @@ class ManuscriptAssemblyStage(BasePipelineStage):
                 )
                 cursor.close()
             else:
-                from utils.database_utils import utf8_database_connection
+                from src.utils.database_utils import utf8_database_connection
                 with utf8_database_connection(self.db_pool) as db_conn:
                     cursor = db_conn.cursor()
                     result = self._assemble_and_persist(
@@ -76,7 +76,7 @@ class ManuscriptAssemblyStage(BasePipelineStage):
                                quality_assessments: Dict[str, Any],
                                context: PipelineStageContext) -> PipelineStageResult:
         """Assemble the manuscript and write to DB."""
-        from utils.database_utils import clean_text_for_database, ensure_utf8_json
+        from src.utils.database_utils import clean_text_for_database, ensure_utf8_json
         from ulid import ULID
 
         # Step 1: Delete existing novel_writer chapters for this draft

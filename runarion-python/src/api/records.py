@@ -14,7 +14,7 @@ records = Blueprint('records', __name__)
 def get_records_manager():
     """Get RecordsManager instance from app config."""
     from flask import current_app
-    from services.records_manager import RecordsManager
+    from src.services.records_manager import RecordsManager
     db_pool = current_app.config.get('CONNECTION_POOL')
     if not db_pool:
         raise RuntimeError("Database connection pool not available")

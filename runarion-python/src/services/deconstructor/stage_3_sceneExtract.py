@@ -8,10 +8,10 @@ import logging
 import time
 from typing import Dict, Any, List, Tuple
 from .prompt_template import DeconstructorPrompts
-from utils.database_utils import clean_text_for_database
-from utils.json_response_parser import parse_scene_detection_response, JSONResponseParser
-from config.deconstructor_config import Stage3Config
-from utils.llm_retry import call_llm_with_retry
+from src.utils.database_utils import clean_text_for_database
+from src.utils.json_response_parser import parse_scene_detection_response, JSONResponseParser
+from src.config.deconstructor_config import Stage3Config
+from src.utils.llm_retry import call_llm_with_retry
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
@@ -82,7 +82,7 @@ class SceneDetectionStage(BasePipelineStage):
                 self.logger.info(f"Processing chunk {chunk_number} ({len(cleaned_text)} characters)")
                 total_text_length += len(cleaned_text)
 
-                # Process this chunk to extract 8-20 scenes
+                # Process this chunk to extract a source-faithful scene band
                 chunk_scenes = self._process_chunk(chunk_number, cleaned_text, current_scene_number)
 
                 if chunk_scenes:
@@ -248,21 +248,69 @@ class SceneDetectionStage(BasePipelineStage):
             self.logger.error(f"Failed to get chunk data for draft {draft_id}: {e}")
             raise
     
-    def _validate_scene_count(self, scene_count: int) -> bool:
+    def _get_scene_count_band(self, text_content: str) -> Dict[str, int]:
+        word_count = len((text_content or "").split())
+        target_scene_count = max(2, min(24, round(word_count / 900)))
+        soft_min = max(2, target_scene_count - 3)
+        soft_max = min(24, target_scene_count + 3)
+        return {
+            "target_scene_count": target_scene_count,
+            "soft_min_scenes": soft_min,
+            "soft_max_scenes": soft_max,
+        }
+
+    def _validate_scene_count(self, scene_count: int, band: Dict[str, int]) -> bool:
         """
-        Validate that scene count is within the required range.
+        Validate that scene count is within the preferred soft band.
         
         Args:
             scene_count: Number of scenes detected
             
         Returns:
-            True if scene count is valid (8-20), False otherwise
+            True if scene count is within the soft band, False otherwise
         """
-        return Stage3Config.validate_scene_count(scene_count)
+        return band["soft_min_scenes"] <= scene_count <= band["soft_max_scenes"]
+
+    def _boundaries_are_structurally_coherent(
+        self,
+        scenes: List[Dict[str, Any]],
+    ) -> bool:
+        """
+        Validate that scene boundaries are coherent enough to keep even when the
+        scene count lands outside the preferred soft band.
+        """
+        if not scenes:
+            return False
+
+        seen_markers = set()
+        marker_backed = 0
+        content_backed = 0
+
+        for scene in scenes:
+            title = str(scene.get('title', '') or '').strip()
+            summary = str(scene.get('summary', '') or '').strip()
+            content = str(scene.get('content', '') or '').strip()
+            start_marker = str(scene.get('start_marker', '') or '').strip()
+            end_marker = str(scene.get('end_marker', '') or '').strip()
+
+            if not title or not summary:
+                return False
+
+            if start_marker and end_marker:
+                marker_pair = (start_marker, end_marker)
+                if marker_pair in seen_markers:
+                    return False
+                seen_markers.add(marker_pair)
+                marker_backed += 1
+
+            if len(content) >= 20:
+                content_backed += 1
+
+        return (marker_backed + content_backed) >= max(1, len(scenes) // 2)
     
     def _process_chunk(self, chunk_number: int, cleaned_text: str, starting_scene_number: int) -> List[Dict[str, Any]]:
         """
-        Process a single chunk to extract 8-20 scenes with retry logic.
+        Process a single chunk to extract a source-faithful scene band with retry logic.
         
         Args:
             chunk_number: Number of the chunk being processed
@@ -273,36 +321,66 @@ class SceneDetectionStage(BasePipelineStage):
             List of scene dictionaries with global scene numbering
         """
         self.logger.info(f"Processing chunk {chunk_number} for scene extraction (starting from scene {starting_scene_number})")
+        scene_band = self._get_scene_count_band(cleaned_text)
+        best_scenes = []
+        best_distance = None
         
         # Try up to configured attempts (initial + retries)
         for attempt in range(Stage3Config.MAX_RETRY_ATTEMPTS):
             try:
                 if attempt == 0:
                     self.logger.debug(f"Chunk {chunk_number}: Initial scene detection attempt")
-                    scenes = self._detect_scenes(cleaned_text)
+                    scenes = self._detect_scenes(cleaned_text, scene_band)
                 elif attempt == 1:
                     self.logger.debug(f"Chunk {chunk_number}: Retry attempt 1 - adjusting for scene count")
-                    scenes = self._retry_scene_detection(cleaned_text, attempt, len(scenes) if 'scenes' in locals() else 0)
+                    scenes = self._retry_scene_detection(
+                        cleaned_text,
+                        attempt,
+                        len(scenes) if 'scenes' in locals() else 0,
+                        scene_band,
+                    )
                 else:
                     self.logger.debug(f"Chunk {chunk_number}: Retry attempt 2 - final attempt")
-                    scenes = self._retry_scene_detection(cleaned_text, attempt, len(scenes) if 'scenes' in locals() else 0)
+                    scenes = self._retry_scene_detection(
+                        cleaned_text,
+                        attempt,
+                        len(scenes) if 'scenes' in locals() else 0,
+                        scene_band,
+                    )
                 
                 scene_count = len(scenes)
                 self.logger.debug(f"Chunk {chunk_number}: Found {scene_count} scenes (attempt {attempt + 1})")
+
+                if scenes and self._boundaries_are_structurally_coherent(scenes):
+                    distance = abs(scene_count - scene_band["target_scene_count"])
+                    if best_distance is None or distance < best_distance:
+                        best_scenes = scenes
+                        best_distance = distance
                 
                 # Validate scene count
-                if self._validate_scene_count(scene_count):
+                if self._validate_scene_count(scene_count, scene_band):
                     self.logger.info(f"Chunk {chunk_number}: Valid scene count ({scene_count}) - applying global numbering")
                     # Apply global scene numbering
                     numbered_scenes = self._apply_global_scene_numbering(scenes, starting_scene_number)
                     return numbered_scenes
                 else:
-                    self.logger.warning(f"Chunk {chunk_number}: Invalid scene count ({scene_count}) - expected 8-20 scenes")
+                    self.logger.warning(
+                        f"Chunk {chunk_number}: Scene count {scene_count} outside preferred band "
+                        f"{scene_band['soft_min_scenes']}-{scene_band['soft_max_scenes']}"
+                    )
                     
             except Exception as e:
                 self.logger.error(f"Chunk {chunk_number}: Error in attempt {attempt + 1}: {e}")
                 continue
-        
+
+        if best_scenes and self._boundaries_are_structurally_coherent(best_scenes):
+            self.logger.warning(
+                f"Chunk {chunk_number}: Accepting structurally coherent scene boundaries "
+                f"outside preferred band {scene_band['soft_min_scenes']}-{scene_band['soft_max_scenes']} "
+                f"after retries."
+            )
+            return self._apply_global_scene_numbering(best_scenes, starting_scene_number)
+
         # All retries failed, return empty list to indicate failure
         self.logger.error(f"Chunk {chunk_number}: All AI attempts failed, chunk will contribute 0 scenes")
         return []
@@ -476,7 +554,13 @@ class SceneDetectionStage(BasePipelineStage):
                 'success_rate': 1.0
             }
     
-    def _retry_scene_detection(self, text_content: str, attempt: int, previous_scene_count: int) -> List[Dict[str, Any]]:
+    def _retry_scene_detection(
+        self,
+        text_content: str,
+        attempt: int,
+        previous_scene_count: int,
+        scene_band: Dict[str, int],
+    ) -> List[Dict[str, Any]]:
         """
         Retry scene detection with adjusted prompts based on previous results.
         
@@ -490,22 +574,38 @@ class SceneDetectionStage(BasePipelineStage):
         """
         try:
             # Determine the adjustment needed based on previous scene count
-            if previous_scene_count < 8:
+            soft_min = scene_band["soft_min_scenes"]
+            soft_max = scene_band["soft_max_scenes"]
+            target = scene_band["target_scene_count"]
+
+            if previous_scene_count < soft_min:
                 # Too few scenes, ask for more
                 adjustment = "MORE"
-                instruction = f"Previous attempt found only {previous_scene_count} scenes. Extract MORE scenes (aim for 8-20 scenes). Look for subtle scene transitions, changes in setting, time jumps, or shifts in narrative focus."
-            elif previous_scene_count > 20:
+                instruction = (
+                    f"Previous attempt found only {previous_scene_count} scenes. "
+                    f"Look for additional real transitions and aim near {target} scenes "
+                    f"(preferred band {soft_min}-{soft_max}) without inventing boundaries."
+                )
+            elif previous_scene_count > soft_max:
                 # Too many scenes, ask for fewer
                 adjustment = "FEWER"
-                instruction = f"Previous attempt found {previous_scene_count} scenes. Extract FEWER scenes (aim for 8-20 scenes). Focus on major scene transitions and combine minor transitions into longer scenes."
+                instruction = (
+                    f"Previous attempt found {previous_scene_count} scenes. "
+                    f"Merge only minor or artificial splits and aim near {target} scenes "
+                    f"(preferred band {soft_min}-{soft_max}) while preserving real transitions."
+                )
             else:
                 # This shouldn't happen since we only retry for invalid counts
                 adjustment = "OPTIMAL"
-                instruction = "Analyze the text and identify distinct scenes with their boundaries and metadata. Aim for 8-20 scenes total."
+                instruction = (
+                    f"Analyze the text and identify distinct scenes with their boundaries and metadata. "
+                    f"Aim near {target} scenes (preferred band {soft_min}-{soft_max})."
+                )
             
             # Prepare the scene detection prompt with emphasis
             base_prompt = self.prompt_template.get_scene_detection_prompt().format(
-                text_content=text_content
+                text_content=text_content,
+                **scene_band,
             )
             
             # Add retry instruction
@@ -513,7 +613,7 @@ class SceneDetectionStage(BasePipelineStage):
             
             # Update the generation request
             self.generation_engine.request.prompt = enhanced_prompt
-            self.generation_engine.request.instruction = f"Extract {adjustment} scenes to get 8-20 scenes total. {instruction}"
+            self.generation_engine.request.instruction = instruction
             
             # Set provider-aware token limit for scene detection JSON
             self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("json_analytical")
@@ -548,7 +648,7 @@ class SceneDetectionStage(BasePipelineStage):
             self.logger.error(f"Error in retry scene detection (attempt {attempt}): {e}")
             return []
     
-    def _detect_scenes(self, text_content: str) -> List[Dict[str, Any]]:
+    def _detect_scenes(self, text_content: str, scene_band: Dict[str, int]) -> List[Dict[str, Any]]:
         """
         Use AI to detect and extract scenes from the text.
         
@@ -561,12 +661,17 @@ class SceneDetectionStage(BasePipelineStage):
         try:
             # Prepare the scene detection prompt
             prompt = self.prompt_template.get_scene_detection_prompt().format(
-                text_content=text_content
+                text_content=text_content,
+                **scene_band,
             )
             
             # Update the generation request
             self.generation_engine.request.prompt = prompt
-            self.generation_engine.request.instruction = "Analyze the text and identify distinct scenes with their boundaries and metadata."
+            self.generation_engine.request.instruction = (
+                f"Analyze the text and identify source-faithful scene boundaries near "
+                f"{scene_band['target_scene_count']} scenes (preferred band "
+                f"{scene_band['soft_min_scenes']}-{scene_band['soft_max_scenes']})."
+            )
             
             # Set provider-aware token limit for scene detection JSON
             self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("json_analytical")

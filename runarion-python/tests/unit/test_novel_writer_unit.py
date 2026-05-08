@@ -12,8 +12,6 @@ import sys
 import os
 import json
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 from src.services.novel_writer.story_context import (
     StoryContext, CharacterProfile, LocationProfile, GeneratedChapter
@@ -22,7 +20,7 @@ from src.services.novel_writer.prompt_template import NovelWriterPrompts
 from src.services.novel_writer.stage_3_quality import (
     DIMENSION_WEIGHTS, ALL_DIMENSIONS, QualityAssessmentStage
 )
-from src.services.novel_writer.stage_4_improvement import EXPANSION_FACTORS
+from src.services.novel_writer.stage_4_improvement import REVISION_ACTIONS
 from src.services.novel_writer.base_stage import (
     BasePipelineStage, PipelineStageContext, PipelineStageResult
 )
@@ -328,6 +326,7 @@ def test_improvement_prompt_placeholders():
     assert '{quality_feedback}' in prompt
     assert '{weak_dimensions}' in prompt
     assert '{expansion_guidance}' in prompt
+    assert '{revision_mode_guidance}' in prompt
     assert '{author_style_examples}' in prompt
 
     print("  Improvement prompt placeholders: OK")
@@ -337,7 +336,7 @@ def test_author_style_instruction_none():
     """Test author style instruction with None returns default."""
     result = NovelWriterPrompts.get_author_style_instruction(None)
 
-    assert 'No specific author style' in result
+    assert 'No author style profile available' in result
     assert isinstance(result, str)
 
     print("  Author style instruction (None): OK")
@@ -359,7 +358,7 @@ def test_chapter_position_guidance_first():
     )
 
     assert 'OPENING' in result
-    assert 'hook' in result.lower()
+    assert 'initial cadence' in result.lower()
 
     print("  Chapter position guidance (first): OK")
 
@@ -371,7 +370,7 @@ def test_chapter_position_guidance_last():
     )
 
     assert 'FINAL' in result
-    assert 'conclusion' in result.lower()
+    assert 'ending logic' in result.lower()
 
     print("  Chapter position guidance (last): OK")
 
@@ -405,7 +404,11 @@ def test_prose_prompt_formats_cleanly():
         total_chapters=5,
         chapter_title='The Beginning',
         chapter_position_guidance='OPENING CHAPTER REQUIREMENTS...',
+        rewrite_policy_guidance='Preserve source structure.',
+        negative_constraints='- avoid melodrama',
+        author_style_weight='Use author style as a balanced surface influence.',
         author_style_instructions='Write in a literary style.',
+        writing_perspective_instruction='Use FIRST PERSON throughout.',
         previous_chapter_summaries='This is the first chapter.',
         character_profiles='- Alice: protagonist',
         location_profiles='- Castle: dark atmosphere',
@@ -423,14 +426,16 @@ def test_prose_prompt_formats_cleanly():
 # ─── Quality Assessment Logic Tests ───────────────────────────────────────────
 
 def test_quality_dimensions_complete():
-    """Test that all 10 quality dimensions are defined."""
-    assert len(ALL_DIMENSIONS) == 10
-    assert len(DIMENSION_WEIGHTS) == 10
+    """Test that all current quality dimensions are defined."""
+    assert len(ALL_DIMENSIONS) == 14
+    assert len(DIMENSION_WEIGHTS) == 14
 
     expected = {
         'opening_hook', 'ending_impact', 'character_descriptions',
         'location_atmosphere', 'dialogue_depth', 'action_pacing',
-        'thematic_depth', 'show_dont_tell', 'author_style', 'scene_coverage'
+        'thematic_depth', 'show_dont_tell', 'author_style', 'scene_coverage',
+        'pov_consistency', 'perspective_continuity', 'chapter_break_integrity',
+        'redundancy_control',
     }
     assert set(ALL_DIMENSIONS) == expected
 
@@ -446,15 +451,15 @@ def test_dimension_weights_positive():
     print("  Dimension weights positive: OK")
 
 
-def test_expansion_factors_defined():
-    """Test that expansion factors are defined for key dimensions."""
-    assert len(EXPANSION_FACTORS) > 0
+def test_revision_actions_defined():
+    """Test that policy-aware revision actions are defined for key dimensions."""
+    assert len(REVISION_ACTIONS) > 0
 
-    for dim, factor in EXPANSION_FACTORS.items():
-        assert isinstance(factor, (int, float)), f"Factor for {dim} is not numeric"
-        assert factor >= 1.0, f"Expansion factor for {dim} must be >= 1.0"
+    for dim, action in REVISION_ACTIONS.items():
+        assert isinstance(action, str), f"Revision action for {dim} is not text"
+        assert action.strip(), f"Revision action for {dim} must not be empty"
 
-    print("  Expansion factors defined: OK")
+    print("  Revision actions defined: OK")
 
 
 def test_quality_assessment_json_parsing():

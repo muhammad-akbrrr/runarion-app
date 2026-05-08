@@ -4,17 +4,17 @@ import os
 from math import ceil
 from typing import Literal, Optional, TypedDict
 
-from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
-from models.response import BaseGenerationResponse
-from models.style_analyzer import AuthorStyle
+from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
+from src.models.response import BaseGenerationResponse
+from src.models.style_analyzer import AuthorStyle
 from psycopg2.pool import SimpleConnectionPool
 from pydantic import ValidationError
-from services.generation_engine import GenerationEngine
+from src.services.generation_engine import GenerationEngine
 from ulid import ULID
-from utils.database_utils import clean_text_for_database, utf8_database_connection
-from utils.llm_retry import call_llm_with_retry
-from utils.document_processor import ChunkWithStart, DocumentProcessor
-from utils.json_response_parser import JSONResponseParser, ResponseFormat
+from src.utils.database_utils import clean_text_for_database, utf8_database_connection
+from src.utils.llm_retry import call_llm_with_retry
+from src.utils.document_processor import ChunkWithStart, DocumentProcessor
+from src.utils.json_response_parser import JSONResponseParser, ResponseFormat
 
 from .prompt_template import (
     COMBINED_AUTHOR_STYLE,
@@ -491,25 +491,81 @@ class ProfilingStage:
             )
             raise ValueError(error_text)
 
-        # Narrative mechanics were added as hard-style signals. In practice the
-        # model can still emit explicit nulls; coerce these to empty strings so
-        # profiling degrades gracefully instead of failing the whole phase.
         if isinstance(parsed, dict):
-            techniques = parsed.get("techniques")
-            if isinstance(techniques, dict):
-                narrative = techniques.get("narrative")
-                if isinstance(narrative, dict):
-                    for key in (
-                        "narrative_person",
-                        "narrative_distance",
-                        "chapter_break_policy",
-                        "anti_redundancy_guidance",
-                    ):
-                        value = narrative.get(key)
-                        if value is None:
-                            narrative[key] = ""
-                        elif not isinstance(value, str):
-                            narrative[key] = str(value)
+            parsed["schema_version"] = 2
+
+            techniques = parsed.setdefault("techniques", {})
+            for section, keys in {
+                "voice": (
+                    "diction",
+                    "syntax",
+                    "rhythm",
+                    "register",
+                    "figurative_language",
+                ),
+                "dialogue": (
+                    "conversation_style",
+                    "speaker_differentiation",
+                    "dialogue_narration_balance",
+                ),
+                "description": (
+                    "description_density",
+                    "sensory_focus",
+                    "atmosphere_strategy",
+                ),
+                "exposition": (
+                    "exposition_strategy",
+                    "context_integration",
+                    "terminology_handling",
+                ),
+                "pacing": (
+                    "scene_tempo",
+                    "transition_style",
+                    "tension_pattern",
+                ),
+                "narrative": (
+                    "pov_tendency",
+                    "narrative_distance",
+                    "redundancy_avoidance",
+                ),
+            }.items():
+                section_data = techniques.setdefault(section, {})
+                if not isinstance(section_data, dict):
+                    section_data = {}
+                    techniques[section] = section_data
+                for key in keys:
+                    value = section_data.get(key)
+                    if value is None:
+                        section_data[key] = ""
+                    elif not isinstance(value, str):
+                        section_data[key] = str(value)
+
+            examples = parsed.setdefault("examples", {})
+            for key in ("voice", "dialogue", "description", "exposition", "pacing"):
+                value = examples.get(key, [])
+                if value is None:
+                    value = []
+                elif isinstance(value, str):
+                    value = [value]
+                elif not isinstance(value, list):
+                    value = [str(value)]
+                examples[key] = [str(item).strip() for item in value if str(item).strip()]
+
+            adaptation = parsed.setdefault("adaptation", {})
+            for key in (
+                "portable_traits",
+                "non_portable_markers",
+                "transfer_risks",
+                "suppression_guidance",
+            ):
+                value = adaptation.get(key, [])
+                if value is None:
+                    value = []
+                elif isinstance(value, str):
+                    value = [value]
+                elif not isinstance(value, list):
+                    value = [str(value)]
+                adaptation[key] = [str(item).strip() for item in value if str(item).strip()]
 
         try:
             author_style = AuthorStyle(**parsed)

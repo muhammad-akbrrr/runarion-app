@@ -31,8 +31,8 @@ from typing import Dict, Any, List, Tuple, Optional
 from datetime import datetime
 from ulid import ULID
 from .prompt_template import DeconstructorPrompts
-from utils.database_utils import clean_text_for_database, ensure_utf8_json
-from utils.llm_retry import call_llm_with_retry
+from src.utils.database_utils import clean_text_for_database, ensure_utf8_json
+from src.utils.llm_retry import call_llm_with_retry
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
@@ -317,7 +317,7 @@ class ChapteringStage(BasePipelineStage):
             self.generation_engine.request.prompt = prompt
             self.generation_engine.request.instruction = (
                 f"Analyze {total_scenes} scenes and create {min_chapters}-{max_chapters} "
-                f"chapters with natural narrative breaks."
+                f"chapters while preserving source pacing and continuity."
             )
 
             # Provider-aware token limit for chaptering structure JSON
@@ -339,7 +339,7 @@ class ChapteringStage(BasePipelineStage):
             if response.success:
                 try:
                     # Parse AI response
-                    from utils.json_response_parser import JSONResponseParser
+                    from src.utils.json_response_parser import JSONResponseParser
                     ai_structure, _ = JSONResponseParser.parse_response(response, "dict", {})
 
                     # Validate structure

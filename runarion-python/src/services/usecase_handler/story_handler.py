@@ -1,9 +1,9 @@
 # services/usecase_handler/story_handler.py
 
-from services.usecase_handler.base_handler import UseCaseHandler
-from utils.story_instruction_builder import InstructionBuilder
-from models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
-from models.story_generation.prompt_config import PromptConfig
+from src.services.usecase_handler.base_handler import UseCaseHandler
+from src.utils.story_instruction_builder import InstructionBuilder
+from src.models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
+from src.models.story_generation.prompt_config import PromptConfig
 from flask import current_app
 
 class StoryHandler(UseCaseHandler):

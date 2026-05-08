@@ -9,9 +9,9 @@ import logging
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from utils.database_utils import ensure_utf8_json
-from models.deconstructor.status import DraftStatus
-from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
+from src.utils.database_utils import ensure_utf8_json
+from src.models.deconstructor.status import DraftStatus
+from src.services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
 from .base_stage import PipelineStageContext, PipelineStageResult
 from .entity_profiler import EntityProfilingStage
@@ -23,6 +23,7 @@ from .stage_5_assembly import ManuscriptAssemblyStage
 logger = logging.getLogger(__name__)
 
 HARD_GATE_DIMENSIONS = (
+    'scene_coverage',
     'pov_consistency',
     'perspective_continuity',
     'chapter_break_integrity',
@@ -572,7 +573,7 @@ class NovelWriterOrchestrator:
     def _get_nw_progress(self, cursor, draft_id: str, status: str,
                          metadata: Any) -> Dict[str, Any]:
         """Get novel writer-specific progress details."""
-        from models.novel_writer.status import NovelWriterStatus
+        from src.models.novel_writer.status import NovelWriterStatus
 
         progress = {
             'stage': 'unknown',

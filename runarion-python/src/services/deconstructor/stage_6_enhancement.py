@@ -11,7 +11,7 @@ from datetime import datetime
 from ulid import ULID
 from .prompt_template import DeconstructorPrompts
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
-from utils.llm_retry import call_llm_with_retry
+from src.utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -472,7 +472,9 @@ class EnhancementStage(BasePipelineStage):
             for validation_attempt in range(max_validation_retries + 1):
                 # Generate enhanced scene
                 self.generation_engine.request.prompt = prompt
-                self.generation_engine.request.instruction = f"Enhance scene {scene['scene_number']} while maintaining the author's voice and addressing identified issues."
+                self.generation_engine.request.instruction = (
+                    f"Revise scene {scene['scene_number']} in a source-faithful way while addressing identified issues."
+                )
 
                 # Provider-aware token limit for text generation
                 self.generation_engine.request.generation_config.max_output_tokens = self._get_output_budget("text_generation")

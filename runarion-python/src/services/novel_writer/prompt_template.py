@@ -1,41 +1,28 @@
 """
 Prompt templates for the novel writer pipeline.
-Contains specialized prompts for prose generation, quality assessment, and improvement.
 """
 
 
 class NovelWriterPrompts:
-    """
-    Collection of prompt templates for novel generation stages.
-    All methods are static and return format-string templates with {placeholders}.
-    """
-
     @staticmethod
     def get_prose_generation_prompt() -> str:
-        """
-        Prompt for Stage 2: Chapter prose generation.
-
-        Placeholders:
-            {author_style_instructions} - Author style techniques and guidelines
-            {writing_perspective_instruction} - Hard perspective constraints
-            {previous_chapter_summaries} - Summaries of previous chapters for continuity
-            {character_profiles} - Character profiles relevant to this chapter
-            {location_profiles} - Location profiles relevant to this chapter
-            {active_plot_threads} - Plot threads active in this chapter's scene range
-            {scene_content} - Enhanced scene content (source material)
-            {chapter_position_guidance} - Guidance for opening/closing chapters
-            {target_word_count} - Target word count for the chapter
-            {chapter_title} - Title of the chapter
-            {chapter_number} - Chapter number
-            {total_chapters} - Total number of chapters
-        """
-        return """You are a master novelist writing a chapter of a novel. Your task is to transform the scene analysis and summaries below into rich, immersive novel prose.
+        return """You are rewriting source material into finished chapter prose while preserving structural fidelity.
 
 CHAPTER: {chapter_number} of {total_chapters} - "{chapter_title}"
 
+CHAPTER FUNCTION GUIDANCE:
 {chapter_position_guidance}
 
-AUTHOR STYLE GUIDELINES:
+REWRITE POLICY:
+{rewrite_policy_guidance}
+
+NEGATIVE CONSTRAINTS:
+{negative_constraints}
+
+AUTHOR STYLE WEIGHT:
+{author_style_weight}
+
+AUTHOR STYLE GUIDANCE:
 {author_style_instructions}
 
 WRITING PERSPECTIVE (HARD CONSTRAINT):
@@ -57,37 +44,25 @@ SOURCE MATERIAL (scene summaries and enhanced content to transform into prose):
 {scene_content}
 
 WRITING REQUIREMENTS:
-1. Transform ALL source material into vivid, immersive novel prose
-2. Target approximately {target_word_count} words
-3. Show, don't tell - bring every moment to life through action, dialogue, and sensory detail
-4. Give each character a distinct voice and physicality
-5. Create rich atmospheric descriptions for each setting
-6. Include meaningful dialogue with subtext and character revelation
-7. Maintain perfect continuity with previous chapters
-8. Use varied sentence structure and strong verbs
-9. Build tension and emotional depth throughout
-10. Develop all key events from the source material fully
-11. Keep narrative perspective consistent with the required writing perspective
+1. Preserve all source events, scene order, and chapter boundaries.
+2. Target approximately {target_word_count} words without forcing expansion.
+3. Rewrite into cohesive prose that follows the compiled rewrite policy.
+4. Keep continuity with previous chapters and explicit story facts.
+5. Use only portable author-style traits when style transfer is requested.
+6. Obey every negative constraint.
+7. Keep narrative perspective consistent with the required writing perspective.
 
 CRITICAL RULES:
-- Do NOT summarize events - expand them into full scenes with dialogue, action, and description
-- Do NOT skip any scene from the source material
-- Do NOT add meta-commentary or section headers
-- Write continuous prose as it would appear in a published novel
-- Maintain the author's established style throughout
-- Never switch narrative person or perspective mid-chapter
+- Do NOT skip any source scene.
+- Do NOT invent new plot events, settings, or character decisions.
+- Do NOT override manuscript structure with author-style quirks.
+- Do NOT add meta-commentary or section headers.
+- Do NOT introduce forbidden style markers from the negative constraints.
 
 Write the complete chapter prose:"""
 
     @staticmethod
     def get_chapter_summary_prompt() -> str:
-        """
-        Prompt for generating a chapter summary (used for continuity context).
-
-        Placeholders:
-            {chapter_content} - The generated chapter content
-            {chapter_number} - Chapter number
-        """
         return """Summarize Chapter {chapter_number} in 3-5 sentences, capturing:
 1. Key events and plot developments
 2. Character actions and emotional arcs
@@ -101,19 +76,16 @@ SUMMARY:"""
 
     @staticmethod
     def get_quality_assessment_prompt() -> str:
-        """
-        Prompt for Stage 3: Quality assessment of generated chapters.
-
-        Placeholders:
-            {chapter_content} - The generated chapter content
-            {author_style_reference} - Author style techniques for comparison
-            {writing_perspective_instruction} - Required perspective mode
-            {scene_coverage_checklist} - List of scenes that should be covered
-        """
-        return """You are a ruthlessly thorough literary quality assessor. Evaluate this chapter against 14 quality dimensions.
+        return """You are a policy-aware chapter assessor. Evaluate this chapter against 14 dimensions using the rewrite policy and structural requirements, not generic literary defaults.
 
 CHAPTER CONTENT:
 {chapter_content}
+
+REWRITE POLICY:
+{rewrite_policy_guidance}
+
+NEGATIVE CONSTRAINTS:
+{negative_constraints}
 
 AUTHOR STYLE REFERENCE:
 {author_style_reference}
@@ -124,22 +96,26 @@ REQUIRED WRITING PERSPECTIVE:
 SCENE COVERAGE CHECKLIST (all must be present):
 {scene_coverage_checklist}
 
+SCORING MODEL:
+- HARD INVARIANTS: scene coverage, POV consistency, perspective continuity, chapter-break integrity, redundancy control
+- POLICY-ALIGNED STYLE FIT: opening/ending force, description density, dialogue depth, atmosphere, thematic depth, exposition balance, author-style transfer
+
 EVALUATE EACH DIMENSION (score 1-10 with specific feedback):
 
-1. OPENING_HOOK: Does the chapter open with an attention-grabbing hook?
-2. ENDING_IMPACT: Does the chapter end with strong impact or anticipation?
-3. CHARACTER_DESCRIPTIONS: Are characters physically described and distinct? Do they have consistent voices?
-4. LOCATION_ATMOSPHERE: Are settings vividly described with sensory detail and atmosphere?
-5. DIALOGUE_DEPTH: Does dialogue have depth, subtext, and back-and-forth flow? Are voices distinct?
-6. ACTION_PACING: Are action sequences dynamic, detailed, and well-paced?
-7. THEMATIC_DEPTH: Are philosophical and thematic elements explored with genuine depth?
-8. SHOW_DONT_TELL: Is the prose active and experiential rather than expository?
-9. AUTHOR_STYLE: Does the writing match the author's established style and techniques? Strongly penalize POV/perspective drift from the required writing perspective.
-10. SCENE_COVERAGE: Are ALL source scenes fully developed in the prose?
+1. OPENING_HOOK: Does the chapter opening suit the intended policy and chapter function, whether restrained or dramatic?
+2. ENDING_IMPACT: Does the chapter ending fit the intended policy and chapter function, whether quiet or forceful?
+3. CHARACTER_DESCRIPTIONS: Are character portrayals clear, distinct, and appropriate to the requested style balance?
+4. LOCATION_ATMOSPHERE: Are setting details clear and policy-aligned without forcing ornamental excess?
+5. DIALOGUE_DEPTH: Does dialogue fit the requested tone, clarity, and speaker differentiation?
+6. ACTION_PACING: Does scene motion fit the intended tempo without distortion?
+7. THEMATIC_DEPTH: Are themes handled at the depth appropriate for the rewrite policy and source material?
+8. SHOW_DONT_TELL: Does exposition balance with scene rendering in a policy-appropriate way?
+9. AUTHOR_STYLE: Does the surface writing follow the allowed portable author-style traits and avoid transfer risks?
+10. SCENE_COVERAGE: Are ALL source scenes fully represented in the prose?
 11. POV_CONSISTENCY: Does the chapter consistently maintain the required narrative person (first/second/third)?
 12. PERSPECTIVE_CONTINUITY: Does viewpoint control remain stable without unjustified drift or head-hopping?
-13. CHAPTER_BREAK_INTEGRITY: Do chapter transitions preserve momentum and avoid abrupt/illogical break points?
-14. REDUNDANCY_CONTROL: Is prose concise and non-tautological, avoiding repetitive modifiers and duplicated meaning?
+13. CHAPTER_BREAK_INTEGRITY: Do chapter transitions preserve source momentum and logic?
+14. REDUNDANCY_CONTROL: Is prose controlled and non-repetitive according to the rewrite policy?
 
 Return a JSON object with this EXACT structure:
 {{
@@ -181,21 +157,16 @@ Return a JSON object with this EXACT structure:
 
     @staticmethod
     def get_improvement_prompt() -> str:
-        """
-        Prompt for Stage 4: Targeted chapter improvement.
-
-        Placeholders:
-            {chapter_content} - Current chapter text
-            {quality_feedback} - Specific feedback from quality assessment
-            {weak_dimensions} - Dimensions that scored below threshold
-            {expansion_guidance} - Guidance on expansion factors for weak areas
-            {author_style_examples} - Relevant author style examples
-            {writing_perspective_instruction} - Required perspective mode
-        """
-        return """You are a master literary editor. Improve this chapter to address the specific quality issues identified.
+        return """You are revising a generated chapter to satisfy a compiled rewrite policy.
 
 CURRENT CHAPTER:
 {chapter_content}
+
+REWRITE POLICY:
+{rewrite_policy_guidance}
+
+NEGATIVE CONSTRAINTS:
+{negative_constraints}
 
 QUALITY ISSUES TO ADDRESS:
 {quality_feedback}
@@ -203,107 +174,121 @@ QUALITY ISSUES TO ADDRESS:
 WEAKEST DIMENSIONS (focus improvement here):
 {weak_dimensions}
 
-EXPANSION GUIDANCE:
+REVISION GUIDANCE:
 {expansion_guidance}
 
-AUTHOR STYLE EXAMPLES (match this voice):
+REVISION MODE:
+{revision_mode_guidance}
+
+AUTHOR STYLE EXAMPLES (portable traits only):
 {author_style_examples}
 
 REQUIRED WRITING PERSPECTIVE:
 {writing_perspective_instruction}
 
 IMPROVEMENT REQUIREMENTS:
-1. Address EVERY issue listed in the quality feedback
-2. Expand and enrich the weakest dimensions significantly
-3. Maintain all existing plot points, character actions, and story events
-4. Preserve continuity with the rest of the novel
-5. Match the author's established style throughout
-6. Do NOT reduce word count - expansions should ADD richness
-7. Show don't tell - convert any remaining expository passages to active scenes
-8. Preserve the required writing perspective without any person/perspective shifts
+1. Address the listed policy and craft issues only.
+2. Preserve all plot points, character actions, and story events.
+3. Preserve chapter structure, continuity, and perspective.
+4. Use author style only within the allowed policy boundaries.
+5. Respect every negative constraint.
+6. Tighten, preserve, or expand only as required by the feedback.
 
 CRITICAL RULES:
-- Do NOT remove any existing content - only enhance and expand
-- Do NOT change character names, settings, or plot events
-- Do NOT add meta-commentary or section markers
-- Write as continuous novel prose
+- Do NOT add ornamental prose just to sound literary.
+- Do NOT inject melodrama, archaism, or tonal escalation unless explicitly requested.
+- Do NOT remove required source content.
+- Do NOT add meta-commentary or section markers.
 
 Return the improved chapter in its entirety:"""
 
     @staticmethod
-    def get_author_style_instruction(author_style) -> str:
-        """
-        Build a system instruction from an AuthorStyle object.
-
-        Args:
-            author_style: AuthorStyle Pydantic model (or None)
-
-        Returns:
-            Formatted string incorporating technique descriptions.
-        """
+    def get_author_style_instruction(author_style, compiled_policy=None) -> str:
         if author_style is None:
-            return "No specific author style profile available. Write in a rich, literary style."
+            return (
+                "No author style profile available. Preserve manuscript-native style characteristics "
+                "instead of inventing a new default voice."
+            )
 
         techniques = author_style.techniques
         parts = []
 
+        if techniques.voice.diction:
+            parts.append(f"VOICE DICTION: {techniques.voice.diction}")
+        if techniques.voice.syntax:
+            parts.append(f"VOICE SYNTAX: {techniques.voice.syntax}")
+        if techniques.voice.rhythm:
+            parts.append(f"VOICE RHYTHM: {techniques.voice.rhythm}")
+        if techniques.voice.register:
+            parts.append(f"VOICE REGISTER: {techniques.voice.register}")
+        if techniques.voice.figurative_language:
+            parts.append(f"FIGURATIVE LANGUAGE: {techniques.voice.figurative_language}")
+
         if techniques.dialogue.conversation_style:
-            parts.append(f"DIALOGUE STYLE: {techniques.dialogue.conversation_style}")
-        if techniques.dialogue.dialogue_balance:
-            parts.append(f"DIALOGUE BALANCE: {techniques.dialogue.dialogue_balance}")
-        if techniques.dialogue.character_voices:
-            parts.append(f"CHARACTER VOICES: {techniques.dialogue.character_voices}")
+            parts.append(f"DIALOGUE STRUCTURE: {techniques.dialogue.conversation_style}")
+        if techniques.dialogue.speaker_differentiation:
+            parts.append(f"SPEAKER DIFFERENTIATION: {techniques.dialogue.speaker_differentiation}")
+        if techniques.dialogue.dialogue_narration_balance:
+            parts.append(f"DIALOGUE/NARRATION BALANCE: {techniques.dialogue.dialogue_narration_balance}")
 
-        if techniques.action.action_sequences:
-            parts.append(f"ACTION SEQUENCES: {techniques.action.action_sequences}")
-        if techniques.action.tension:
-            parts.append(f"TENSION BUILDING: {techniques.action.tension}")
-        if techniques.action.fight_scenes:
-            parts.append(f"FIGHT SCENES: {techniques.action.fight_scenes}")
+        if techniques.description.description_density:
+            parts.append(f"DESCRIPTION DENSITY: {techniques.description.description_density}")
+        if techniques.description.sensory_focus:
+            parts.append(f"SENSORY FOCUS: {techniques.description.sensory_focus}")
+        if techniques.description.atmosphere_strategy:
+            parts.append(f"ATMOSPHERE STRATEGY: {techniques.description.atmosphere_strategy}")
 
-        if techniques.worldbuilding.world_reveals:
-            parts.append(f"WORLD REVEALS: {techniques.worldbuilding.world_reveals}")
-        if techniques.worldbuilding.exposition:
-            parts.append(f"EXPOSITION STYLE: {techniques.worldbuilding.exposition}")
-        if techniques.worldbuilding.history_magic:
-            parts.append(f"HISTORY/MAGIC: {techniques.worldbuilding.history_magic}")
+        if techniques.exposition.exposition_strategy:
+            parts.append(f"EXPOSITION STRATEGY: {techniques.exposition.exposition_strategy}")
+        if techniques.exposition.context_integration:
+            parts.append(f"CONTEXT INTEGRATION: {techniques.exposition.context_integration}")
+        if techniques.exposition.terminology_handling:
+            parts.append(f"TERMINOLOGY HANDLING: {techniques.exposition.terminology_handling}")
 
-        if techniques.descriptions.character_descriptions:
-            parts.append(f"CHARACTER DESCRIPTIONS: {techniques.descriptions.character_descriptions}")
-        if techniques.descriptions.scene_painting:
-            parts.append(f"SCENE PAINTING: {techniques.descriptions.scene_painting}")
-        if techniques.descriptions.atmosphere:
-            parts.append(f"ATMOSPHERE: {techniques.descriptions.atmosphere}")
+        if techniques.pacing.scene_tempo:
+            parts.append(f"SCENE TEMPO: {techniques.pacing.scene_tempo}")
+        if techniques.pacing.transition_style:
+            parts.append(f"TRANSITION STYLE: {techniques.pacing.transition_style}")
+        if techniques.pacing.tension_pattern:
+            parts.append(f"TENSION PATTERN: {techniques.pacing.tension_pattern}")
 
-        if techniques.literary.devices:
-            parts.append(f"LITERARY DEVICES: {techniques.literary.devices}")
-        if techniques.literary.metaphors:
-            parts.append(f"METAPHORS: {techniques.literary.metaphors}")
-        if techniques.literary.pacing:
-            parts.append(f"PACING: {techniques.literary.pacing}")
-        if techniques.literary.scene_structure:
-            parts.append(f"SCENE STRUCTURE: {techniques.literary.scene_structure}")
-        if techniques.literary.transitions:
-            parts.append(f"TRANSITIONS: {techniques.literary.transitions}")
+        if techniques.narrative.pov_tendency:
+            parts.append(f"POV TENDENCY: {techniques.narrative.pov_tendency}")
+        if techniques.narrative.narrative_distance:
+            parts.append(f"NARRATIVE DISTANCE: {techniques.narrative.narrative_distance}")
+        if techniques.narrative.redundancy_avoidance:
+            parts.append(f"REDUNDANCY AVOIDANCE: {techniques.narrative.redundancy_avoidance}")
 
-        if getattr(techniques, 'narrative', None):
-            if techniques.narrative.narrative_person:
-                parts.append(f"NARRATIVE PERSON: {techniques.narrative.narrative_person}")
-            if techniques.narrative.narrative_distance:
-                parts.append(f"NARRATIVE DISTANCE: {techniques.narrative.narrative_distance}")
-            if techniques.narrative.chapter_break_policy:
-                parts.append(f"CHAPTER BREAK POLICY: {techniques.narrative.chapter_break_policy}")
-            if techniques.narrative.anti_redundancy_guidance:
-                parts.append(f"ANTI-REDUNDANCY: {techniques.narrative.anti_redundancy_guidance}")
+        if author_style.adaptation.portable_traits:
+            parts.append(
+                "PORTABLE TRAITS:\n" +
+                "\n".join(f"- {item}" for item in author_style.adaptation.portable_traits)
+            )
+        if author_style.adaptation.non_portable_markers:
+            parts.append(
+                "NON-PORTABLE MARKERS TO AVOID OVER-APPLYING:\n" +
+                "\n".join(f"- {item}" for item in author_style.adaptation.non_portable_markers)
+            )
+        if author_style.adaptation.transfer_risks:
+            parts.append(
+                "TRANSFER RISKS:\n" +
+                "\n".join(f"- {item}" for item in author_style.adaptation.transfer_risks)
+            )
+        if author_style.adaptation.suppression_guidance:
+            parts.append(
+                "SUPPRESSION GUIDANCE:\n" +
+                "\n".join(f"- {item}" for item in author_style.adaptation.suppression_guidance)
+            )
 
-        if not parts:
-            return "No specific author style profile available. Write in a rich, literary style."
+        if compiled_policy is not None:
+            parts.append(f"AUTHOR STYLE WEIGHT: {compiled_policy.author_style_weight}")
 
-        return "\n".join(parts)
+        return "\n".join(parts) if parts else (
+            "No author style profile available. Preserve manuscript-native style characteristics."
+        )
 
     @staticmethod
     def get_writing_perspective_instruction(writing_perspective: str) -> str:
-        """Return strict perspective guidance for the generator and evaluator."""
         mapping = {
             'first_person': (
                 "Use FIRST PERSON throughout (I/me/my). "
@@ -324,30 +309,14 @@ Return the improved chapter in its entirety:"""
                 "but keep tense and person stable."
             ),
         }
-        return mapping.get(
-            writing_perspective,
-            mapping['third_person_limited'],
-        )
+        return mapping.get(writing_perspective, mapping['third_person_limited'])
 
     @staticmethod
     def get_author_style_examples(author_style, category: str, max_examples: int = 3) -> str:
-        """
-        Extract relevant examples from AuthorStyle for few-shot prompting.
-
-        Args:
-            author_style: AuthorStyle Pydantic model (or None)
-            category: One of 'dialogue', 'action', 'worldbuilding', 'descriptions', 'literary'
-            max_examples: Maximum number of examples to include
-
-        Returns:
-            Formatted string with numbered examples.
-        """
         if author_style is None:
             return "No author style examples available."
 
-        examples = author_style.examples
-        category_examples = getattr(examples, category, [])
-
+        category_examples = getattr(author_style.examples, category, [])
         if not category_examples:
             return f"No {category} examples available from author style profile."
 
@@ -355,57 +324,29 @@ Return the improved chapter in its entirety:"""
         parts = [f"AUTHOR STYLE EXAMPLES ({category.upper()}):"]
         for i, example in enumerate(selected, 1):
             parts.append(f"\nExample {i}:\n{example}")
-
         return "\n".join(parts)
 
     @staticmethod
-    def get_chapter_position_guidance(is_first: bool, is_last: bool,
-                                      chapter_number: int, total_chapters: int) -> str:
-        """
-        Generate position-aware guidance for chapter generation.
-
-        Args:
-            is_first: Whether this is the first chapter
-            is_last: Whether this is the last chapter
-            chapter_number: Current chapter number
-            total_chapters: Total number of chapters
-        """
-        parts = []
-
+    def get_chapter_position_guidance(
+        is_first: bool,
+        is_last: bool,
+        chapter_number: int,
+        total_chapters: int,
+    ) -> str:
         if is_first:
-            parts.append(
-                "OPENING CHAPTER REQUIREMENTS:\n"
-                "- MUST open with an extremely strong hook that grabs the reader immediately\n"
-                "- Establish tone, atmosphere, and the central conflict early\n"
-                "- Introduce key characters with rich, memorable descriptions\n"
-                "- Ground the reader in the world with vivid sensory detail\n"
-                "- Create immediate narrative momentum"
+            return (
+                "OPENING CHAPTER: Preserve the manuscript's initial cadence and framing. "
+                "Establish only what the source material actually establishes."
             )
-        elif is_last:
-            parts.append(
-                "FINAL CHAPTER REQUIREMENTS:\n"
-                "- MUST build toward a powerful, satisfying conclusion\n"
-                "- Resolve or meaningfully address the central conflicts\n"
-                "- Provide emotional payoff for character arcs\n"
-                "- End with strong impact - a resonant final image or moment\n"
-                "- Leave a lasting impression on the reader"
+        if is_last:
+            return (
+                "FINAL CHAPTER: Preserve the manuscript's ending logic and emotional scale. "
+                "Do not force a bigger ending than the source supports."
             )
-        else:
-            position_pct = chapter_number / total_chapters
-            if position_pct < 0.3:
-                parts.append(
-                    "EARLY CHAPTER: Continue building the world, deepening characters, "
-                    "and establishing stakes. Maintain rising tension."
-                )
-            elif position_pct < 0.7:
-                parts.append(
-                    "MIDDLE CHAPTER: Escalate conflicts, deepen relationships, "
-                    "deliver on established promises. Maintain strong pacing."
-                )
-            else:
-                parts.append(
-                    "LATE CHAPTER: Build toward climax, increase tension and stakes, "
-                    "begin resolving plot threads. Maintain urgency."
-                )
 
-        return "\n".join(parts)
+        position_pct = chapter_number / max(total_chapters, 1)
+        if position_pct < 0.3:
+            return "EARLY CHAPTER: Preserve source setup and pacing without forcing extra escalation."
+        if position_pct < 0.7:
+            return "MIDDLE CHAPTER: Preserve source momentum and transitions without artificial inflation."
+        return "LATE CHAPTER: Preserve source convergence and urgency only where the material supports it."

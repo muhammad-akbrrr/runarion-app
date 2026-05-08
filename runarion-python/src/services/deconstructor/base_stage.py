@@ -7,7 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 import logging
 from datetime import datetime
-from config.provider_config import ProviderOutputBudgetConfig
+from src.config.provider_config import ProviderOutputBudgetConfig
 
 logger = logging.getLogger(__name__)
 
@@ -365,7 +365,7 @@ class BasePipelineStage(ABC):
             metadata_updates: Metadata updates to apply
         """
         try:
-            from utils.database_utils import utf8_database_connection, ensure_utf8_json
+            from src.utils.database_utils import utf8_database_connection, ensure_utf8_json
             
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()
@@ -420,7 +420,7 @@ class BasePipelineStage(ABC):
             return context.get('connection')
         else:
             # Return connection manager for non-transactional operations
-            from utils.database_utils import utf8_database_connection
+            from src.utils.database_utils import utf8_database_connection
             return utf8_database_connection(self.db_pool)
     
     def validate_required_parameters(self, context: PipelineStageContext, 

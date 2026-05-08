@@ -4,8 +4,8 @@ from typing import Optional, TypedDict
 
 from psycopg2.pool import SimpleConnectionPool
 from ulid import ULID
-from utils.database_utils import clean_text_for_database, utf8_database_connection
-from utils.document_reader import DocumentReader
+from src.utils.database_utils import clean_text_for_database, utf8_database_connection
+from src.utils.document_reader import DocumentReader
 
 logger = logging.getLogger(__name__)
 

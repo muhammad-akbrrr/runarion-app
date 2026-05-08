@@ -9,7 +9,6 @@ from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 # Add src to path for database utilities
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 try:
     from reportlab.lib import colors

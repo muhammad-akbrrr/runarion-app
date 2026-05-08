@@ -14,7 +14,7 @@ auditor = Blueprint('auditor', __name__)
 def get_auditor_service():
     """Get AuditorService instance from app config."""
     from flask import current_app
-    from services.auditor_service import AuditorService
+    from src.services.auditor_service import AuditorService
     db_pool = current_app.config.get('CONNECTION_POOL')
     if not db_pool:
         raise RuntimeError("Database connection pool not available")
@@ -933,7 +933,7 @@ def batch_fix_story_text():
 def get_sentiment_service():
     """Get SentimentAnalyzerService instance from app config."""
     from flask import current_app
-    from services.sentiment_analyzer_service import SentimentAnalyzerService
+    from src.services.sentiment_analyzer_service import SentimentAnalyzerService
     db_pool = current_app.config.get('CONNECTION_POOL')
     if not db_pool:
         raise RuntimeError("Database connection pool not available")
@@ -1145,7 +1145,7 @@ def update_chapter_analyses(edge_id: int):
         if not project_id:
             return jsonify({'error': 'project_id required'}), 400
         
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1213,7 +1213,7 @@ def get_emotional_tones(project_id: str):
     Get all emotional tones for a project (base + custom).
     """
     try:
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1275,7 +1275,7 @@ def create_emotional_tone(project_id: str):
         if not name:
             return jsonify({'error': 'Tone name required'}), 400
         
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1314,7 +1314,7 @@ def delete_emotional_tone(project_id: str, tone_id: str):
     Delete a custom emotional tone (cannot delete base tones).
     """
     try:
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1494,7 +1494,7 @@ def get_interactions():
         if not project_id:
             return jsonify({'error': 'project_id required'}), 400
         
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1538,7 +1538,7 @@ def delete_all_interactions():
     }
     """
     try:
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         
         project_id = request.args.get('project_id')
         
@@ -1582,7 +1582,7 @@ def delete_interaction(vertex_id):
         if not project_id:
             return jsonify({'error': 'project_id required'}), 400
         
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1629,7 +1629,7 @@ def update_interaction(vertex_id):
         if not project_id:
             return jsonify({'error': 'project_id required'}), 400
         
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1700,8 +1700,8 @@ def create_interaction_endpoint():
         if missing:
             return jsonify({'error': f'Missing required fields: {missing}'}), 400
         
-        from services.records_manager import RecordsManager
-        from services.sentiment_analyzer_service import SentimentAnalyzerService
+        from src.services.records_manager import RecordsManager
+        from src.services.sentiment_analyzer_service import SentimentAnalyzerService
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1793,7 +1793,7 @@ def aggregate_interactions():
         if not source_character or not target_character:
             return jsonify({'error': 'source_character and target_character required'}), 400
         
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1860,8 +1860,8 @@ def synthesize_relationship():
         if not source_character or not target_character:
             return jsonify({'error': 'source_character and target_character required'}), 400
         
-        from services.sentiment_analyzer_service import SentimentAnalyzerService
-        from services.records_manager import RecordsManager
+        from src.services.sentiment_analyzer_service import SentimentAnalyzerService
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         
         db_pool = current_app.config.get('CONNECTION_POOL')
@@ -1933,7 +1933,7 @@ def recalculate_relationship_sentiment():
         if not source_character or not target_character:
             return jsonify({'error': 'source_character and target_character required'}), 400
         
-        from services.records_manager import RecordsManager
+        from src.services.records_manager import RecordsManager
         from flask import current_app
         from datetime import datetime
         

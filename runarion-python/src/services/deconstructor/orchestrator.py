@@ -10,10 +10,10 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 from contextlib import contextmanager
 
-from utils.logging_config import get_pipeline_logger
-from utils.database_utils import ensure_utf8_json
-from models.deconstructor.status import DraftStatus
-from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
+from src.utils.logging_config import get_pipeline_logger
+from src.utils.database_utils import ensure_utf8_json
+from src.models.deconstructor.status import DraftStatus
+from src.services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
 from .stage_1_ingestion import PDFIngestionStage
 from .stage_2_cleaning import TextCleaningStage
@@ -682,7 +682,7 @@ class DeconstructorOrchestrator:
                 })
                 
                 # Store updated metadata
-                from utils.database_utils import ensure_utf8_json
+                from src.utils.database_utils import ensure_utf8_json
                 metadata_json = ensure_utf8_json(current_metadata)
                 cursor.execute(
                     "UPDATE drafts SET metadata = %s WHERE id = %s",

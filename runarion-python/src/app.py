@@ -5,14 +5,14 @@ import os
 import logging
 import sys
 from psycopg2 import pool
-from api.generation import generate
-from api.deconstructor import deconstruct
-from api.style_analyzer import analyze_style
-from api.novel_writer import rewrite_novel
-from api.novel_pipeline_orchestrator import novel_pipeline
-from api.records import records
-from api.auditor import auditor
-from api.advisor import advisor
+from src.api.generation import generate
+from src.api.deconstructor import deconstruct
+from src.api.style_analyzer import analyze_style
+from src.api.novel_writer import rewrite_novel
+from src.api.novel_pipeline_orchestrator import novel_pipeline
+from src.api.records import records
+from src.api.auditor import auditor
+from src.api.advisor import advisor
 
 load_dotenv()
 

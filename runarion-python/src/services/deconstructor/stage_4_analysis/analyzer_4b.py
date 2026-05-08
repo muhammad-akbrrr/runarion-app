@@ -8,10 +8,10 @@ import logging
 import os
 from typing import Dict, Any, List, Tuple, Optional
 from ..prompt_template import DeconstructorPrompts
-from utils.json_response_parser import parse_graph_analysis_response
-from utils.llm_retry import call_llm_with_retry
+from src.utils.json_response_parser import parse_graph_analysis_response
+from src.utils.llm_retry import call_llm_with_retry
 from ..base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
-from services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
+from src.services.graph_database_service import GraphDatabaseService, GraphDatabaseNotAvailableError
 
 logger = logging.getLogger(__name__)
 

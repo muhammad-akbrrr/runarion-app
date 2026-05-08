@@ -14,7 +14,7 @@ USAGE:
     python tests/integration/test_novel_pipeline_e2e.py
 
 PREREQUISITES:
-  1. Flask server must be running:  python src/app.py
+  1. Flask server must be running:  python -m src.app
   2. PostgreSQL must be running with migrations applied
   3. .env must be configured with DB credentials and at least one LLM API key
   4. UPLOAD_PATH directory must be writable by the Flask process
@@ -25,6 +25,7 @@ CONFIGURATION:
 """
 
 import json
+import logging
 import os
 import re
 import sys
@@ -33,17 +34,22 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+import pytest
+
 # ---------------------------------------------------------------------------
 # Path setup so we can import from src/ when run directly
 # ---------------------------------------------------------------------------
 TEST_DIR = Path(__file__).parent
 REPO_ROOT = TEST_DIR.parent.parent
-sys.path.insert(0, str(REPO_ROOT / 'src'))
+PROJECT_ROOT = REPO_ROOT.parent
 
 from dotenv import load_dotenv
+load_dotenv(dotenv_path=PROJECT_ROOT / '.env')
 load_dotenv(dotenv_path=REPO_ROOT / '.env')
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # CONFIG — edit these to match your environment
@@ -76,6 +82,11 @@ PIPELINE_CONFIG = {
     "writing_perspective": "first_person",
     "author_style_mode": "create_or_update",
     "on_exist": "update",
+    "rewrite_policy": {
+        "style_transfer_strength": "medium",
+        "style_source_priority": "balanced",
+        "negative_constraints": ["avoid melodrama", "avoid archaic dialogue"],
+    },
     "style_analyzer_config": {
         "min_success_samples": 0.5,
         "min_success_partial_style": 0.5,
@@ -85,6 +96,9 @@ PIPELINE_CONFIG = {
 # How long to poll before giving up (seconds)
 POLL_TIMEOUT = 60 * 45   # 45 minutes
 POLL_INTERVAL = 15       # check every 15 seconds
+MOCK_POLL_TIMEOUT = 90
+MOCK_POLL_INTERVAL = 1
+POLL_HEARTBEAT_SECONDS = 20
 # ---------------------------------------------------------------------------
 
 FIRST_PERSON_PRONOUNS = {"i", "me", "my", "mine", "myself", "we", "us", "our", "ours", "ourselves"}
@@ -100,6 +114,18 @@ ACTION_WORDS = {
     "strike", "kill", "blood", "panic", "explode", "explosion", "ambush", "pursuit",
 }
 
+ARCHAIC_DIALOGUE_MARKERS = {
+    "thou", "thee", "thy", "thine", "hast", "dost", "art", "wherefore",
+}
+
+MOCK_CHAPTER_ANCHORS = {
+    1: ("silver raven sigil", "omni-solutions"),
+    2: ("gutter-flow", "freight cage"),
+    3: ("silas", "veil-cove seven"),
+    4: ("veridian", "memory-locket"),
+    5: ("seventy-five thousand credits", "clasp"),
+}
+
 
 class NovelPipelineE2ETest:
     """
@@ -107,19 +133,27 @@ class NovelPipelineE2ETest:
     Sends real HTTP requests to a running Flask server.
     """
 
-    def __init__(self):
+    def __init__(self, use_mock_provider: bool = False, pytest_mode: bool = False):
         self.base_url = FLASK_BASE_URL.rstrip('/')
+        self.use_mock_provider = use_mock_provider
+        self.pytest_mode = pytest_mode
         self.pipeline_run_id: str = ''
         self.draft_id: str = ''
         self.output_pdf_path: Optional[Path] = None
         self._validate_prerequisites()
+
+    def _emit(self, message: str) -> None:
+        if message:
+            logger.info(message)
+        if not self.pytest_mode:
+            print(message, flush=True)
 
     # ------------------------------------------------------------------
     # Setup helpers
     # ------------------------------------------------------------------
 
     def _validate_prerequisites(self):
-        print("Validating prerequisites...")
+        self._emit("Validating prerequisites...")
 
         # Check sample files
         if not MANUSCRIPT_FILE.exists():
@@ -132,13 +166,14 @@ class NovelPipelineE2ETest:
         self.workspace_id, self.user_id, self.project_id = self._resolve_caller_ids()
         OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-        print(f"  Flask server : {self.base_url}")
-        print(f"  Manuscript   : {MANUSCRIPT_FILE.name}")
-        print(f"  Author files : {[f.name for f in AUTHOR_SAMPLE_FILES]}")
-        print(f"  Workspace ID : {self.workspace_id}")
-        print(f"  User ID      : {self.user_id}")
-        print(f"  Output Dir   : {OUTPUT_DIR}")
-        print()
+        self._emit(f"  Flask server : {self.base_url}")
+        self._emit(f"  Manuscript   : {MANUSCRIPT_FILE.name}")
+        self._emit(f"  Author files : {[f.name for f in AUTHOR_SAMPLE_FILES]}")
+        self._emit(f"  Workspace ID : {self.workspace_id}")
+        self._emit(f"  User ID      : {self.user_id}")
+        self._emit(f"  Mock LLM     : {self.use_mock_provider}")
+        self._emit(f"  Output Dir   : {OUTPUT_DIR}")
+        self._emit("")
 
     def _db_connect(self):
         import psycopg2
@@ -340,6 +375,16 @@ class NovelPipelineE2ETest:
                 )
             prev_end = end_scene
 
+    def _assert_negative_constraints_effective(self, full_text: str) -> None:
+        """Best-effort regression check for direct archaizing drift."""
+        tokens = re.findall(r"[a-zA-Z']+", full_text.lower())
+        archaic_hits = [token for token in tokens if token in ARCHAIC_DIALOGUE_MARKERS]
+        if len(archaic_hits) > 2:
+            raise AssertionError(
+                "Negative-constraint regression detected: archaic dialogue markers leaked into output "
+                f"({archaic_hits[:8]})"
+            )
+
     def _is_action_dense(self, text: str) -> bool:
         words = re.findall(r"[a-zA-Z']+", text.lower())
         if not words:
@@ -385,6 +430,163 @@ class NovelPipelineE2ETest:
                 "Chapter boundary integrity regression detected:\n- " + "\n- ".join(issues[:6])
             )
 
+    def _assert_mock_source_anchors(self, chapters: list[dict]) -> None:
+        failures = []
+        for ch in chapters:
+            expected_terms = MOCK_CHAPTER_ANCHORS.get(ch.get('chapter_number'))
+            if not expected_terms:
+                continue
+
+            lowered = (ch.get('content') or '').lower()
+            if not any(term in lowered for term in expected_terms):
+                failures.append(
+                    f"Chapter {ch['chapter_number']} missing expected mock anchors {expected_terms}"
+                )
+
+        if failures:
+            raise AssertionError(
+                "Mock source-anchor regression detected:\n- " + "\n- ".join(failures[:8])
+            )
+
+    def _assert_mock_phase_3_improvement(self, completed_status: dict) -> None:
+        metadata = completed_status.get('metadata', {}) if isinstance(completed_status, dict) else {}
+        diagnostics = metadata.get('diagnostics', {}) if isinstance(metadata, dict) else {}
+        phase_3 = diagnostics.get('phase_3', {}) if isinstance(diagnostics, dict) else {}
+        stages = phase_3.get('stages_completed', []) if isinstance(phase_3, dict) else []
+
+        improvement_stage = next(
+            (stage for stage in stages if stage.get('name') == 'scene_improvement'),
+            None,
+        )
+        if not improvement_stage:
+            raise AssertionError(
+                f"Mock mode expected scene_improvement stage diagnostics, got: {phase_3}"
+            )
+
+        result = improvement_stage.get('result', {}) if isinstance(improvement_stage, dict) else {}
+        if not result.get('success', False):
+            raise AssertionError(f"Mock mode expected successful scene_improvement stage, got: {result}")
+        if int(result.get('chapters_improved', 0) or 0) < 1:
+            raise AssertionError(f"Mock mode expected at least one improved chapter, got: {result}")
+
+    def _stage_success(self, stage: dict) -> bool:
+        result = stage.get('result', {}) if isinstance(stage, dict) else {}
+        if isinstance(result, dict) and 'success' in result:
+            return bool(result.get('success'))
+        return True
+
+    def _emit_phase_execution_summary(self, completed_status: dict, results_data: dict) -> None:
+        metadata = completed_status.get('metadata', {}) if isinstance(completed_status, dict) else {}
+        phase_results = (
+            results_data.get('phase_results')
+            or results_data.get('phase_timings')
+            or metadata.get('phase_results')
+            or {}
+        )
+        diagnostics = results_data.get('diagnostics') or metadata.get('diagnostics') or {}
+
+        if not phase_results:
+            return
+
+        self._emit("  Phase execution:")
+        for phase_key in ("phase_1", "phase_2", "phase_3"):
+            info = phase_results.get(phase_key, {})
+            if not isinstance(info, dict):
+                continue
+
+            ok = bool(info.get('success', False))
+            secs = info.get('timing_seconds')
+            summary = f"    {phase_key}: {'OK' if ok else 'FAIL'}"
+            if isinstance(secs, (int, float)):
+                summary += f" in {secs:.1f}s"
+            if info.get('skipped'):
+                summary += " (skipped)"
+            self._emit(summary)
+
+            if phase_key == "phase_1":
+                diag = info.get('diagnostics', {}) if isinstance(info.get('diagnostics'), dict) else {}
+                stage_rows = ((diag.get('result') or {}).get('stages_completed') or []) if isinstance(diag, dict) else []
+                for stage in stage_rows:
+                    name = stage.get('name', 'unknown_stage')
+                    stage_ok = self._stage_success(stage)
+                    self._emit(f"      - {name}: {'OK' if stage_ok else 'FAIL'}")
+            elif phase_key == "phase_2":
+                diag = info.get('diagnostics', {}) if isinstance(info.get('diagnostics'), dict) else {}
+                status = diag.get('status')
+                if status:
+                    self._emit(f"      - profiling: {status}")
+            elif phase_key == "phase_3":
+                phase_diag = diagnostics.get('phase_3', {})
+                stage_rows = (phase_diag.get('stages_completed') or []) if isinstance(phase_diag, dict) else []
+                for stage in stage_rows:
+                    name = stage.get('name', 'unknown_stage')
+                    stage_ok = self._stage_success(stage)
+                    self._emit(f"      - {name}: {'OK' if stage_ok else 'FAIL'}")
+
+    def _assert_phase_execution_details(self, completed_status: dict, results_data: dict) -> None:
+        metadata = completed_status.get('metadata', {}) if isinstance(completed_status, dict) else {}
+        phase_results = (
+            results_data.get('phase_results')
+            or results_data.get('phase_timings')
+            or metadata.get('phase_results')
+            or {}
+        )
+        diagnostics = results_data.get('diagnostics') or metadata.get('diagnostics') or {}
+
+        for phase_key in ("phase_1", "phase_2", "phase_3"):
+            info = phase_results.get(phase_key)
+            if not isinstance(info, dict):
+                raise AssertionError(f"Missing phase result details for {phase_key}: {phase_results}")
+            if info.get('success') is not True:
+                raise AssertionError(f"{phase_key} did not report success in phase results: {info}")
+            secs = info.get('timing_seconds')
+            if not isinstance(secs, (int, float)) or secs < 0:
+                raise AssertionError(f"{phase_key} missing valid timing_seconds: {info}")
+
+        phase_1_diag = ((phase_results.get('phase_1', {}).get('diagnostics') or {}).get('result') or {})
+        phase_1_stage_rows = phase_1_diag.get('stages_completed') or []
+        expected_phase_1 = {
+            'ingestion',
+            'cleaning',
+            'scene_detection',
+            'scene_analysis',
+            'graph_analysis',
+            'comprehensive_reporting',
+            'coherence_check',
+            'enhancement',
+            'chaptering',
+        }
+        phase_1_names = {stage.get('name') for stage in phase_1_stage_rows if isinstance(stage, dict)}
+        missing_phase_1 = expected_phase_1 - phase_1_names
+        if missing_phase_1:
+            raise AssertionError(f"Phase 1 diagnostics missing stages: {sorted(missing_phase_1)}")
+
+        phase_2_diag = phase_results.get('phase_2', {}).get('diagnostics') or {}
+        if phase_2_diag.get('status') != 'profiling_completed':
+            raise AssertionError(f"Phase 2 diagnostics missing profiling_completed status: {phase_2_diag}")
+
+        phase_3_diag = diagnostics.get('phase_3') or {}
+        phase_3_stage_rows = phase_3_diag.get('stages_completed') or []
+        expected_phase_3 = {
+            'entity_profiling',
+            'prose_generation',
+            'quality_assessment',
+            'scene_improvement',
+            'manuscript_assembly',
+        }
+        phase_3_names = {stage.get('name') for stage in phase_3_stage_rows if isinstance(stage, dict)}
+        missing_phase_3 = expected_phase_3 - phase_3_names
+        if missing_phase_3:
+            raise AssertionError(f"Phase 3 diagnostics missing stages: {sorted(missing_phase_3)}")
+
+        failed_stages = [
+            f"{stage.get('name')}"
+            for stage in phase_1_stage_rows + phase_3_stage_rows
+            if isinstance(stage, dict) and not self._stage_success(stage)
+        ]
+        if failed_stages:
+            raise AssertionError(f"Pipeline completed but some stages reported failure: {failed_stages}")
+
     def _run_quality_regression_assertions(self) -> dict:
         """Run craft-level regression assertions on generated prose."""
         rewritten_story = self._fetch_rewritten_story_content()
@@ -394,6 +596,9 @@ class NovelPipelineE2ETest:
         self._assert_chapter_scene_integrity(chapters)
         self._assert_pov_consistency(chapters)
         self._assert_chapter_boundary_integrity(chapters)
+        self._assert_negative_constraints_effective(rewritten_story)
+        if self.use_mock_provider:
+            self._assert_mock_source_anchors(chapters)
 
         return {
             'paragraph_blocks': len([p for p in re.split(r"\n\s*\n", rewritten_story) if p.strip()]),
@@ -471,24 +676,32 @@ class NovelPipelineE2ETest:
 
     def step_health_check(self):
         """Verify the Flask server is reachable."""
-        print("Step 1: Health check...")
+        self._emit("Step 1: Health check...")
         resp = requests.get(f"{self.base_url}/health", timeout=10)
         assert resp.status_code == 200, f"Health check failed: {resp.status_code} {resp.text}"
         body = resp.json()
         assert body.get('status') == 'healthy', f"Server not healthy: {body}"
         assert body.get('database') == 'connected', f"DB not connected: {body}"
-        print(f"  Server healthy, DB connected.")
+        self._emit("  Server healthy, DB connected.")
 
     def step_start_pipeline(self):
         """POST /api/novel-pipeline/start with multipart data."""
-        print("Step 2: Starting novel pipeline...")
+        self._emit("Step 2: Starting novel pipeline...")
 
         config = dict(PIPELINE_CONFIG)
+        config['style_analyzer_config'] = dict(PIPELINE_CONFIG.get('style_analyzer_config', {}))
         config['caller'] = {
             'user_id': self.user_id,
             'workspace_id': self.workspace_id,
             'project_id': self.project_id,
         }
+        if self.use_mock_provider:
+            config['provider'] = 'mock'
+            config['model'] = 'mock-replay-v1'
+            config['style_analyzer_config']['provider'] = 'mock'
+            config['style_analyzer_config']['model'] = 'mock-replay-v1'
+            config['style_analyzer_config']['phase_start_delay_seconds'] = 0
+            self._emit("  Mock provider enabled; disabling phase-2 start delay.")
 
         # Build multipart request
         files = []
@@ -515,9 +728,9 @@ class NovelPipelineE2ETest:
             for fh in author_handles:
                 fh.close()
 
-        print(f"  Response status: {resp.status_code}")
+        self._emit(f"  Response status: {resp.status_code}")
         if resp.status_code != 202:
-            print(f"  Response body: {resp.text}")
+            self._emit(f"  Response body: {resp.text}")
         assert resp.status_code == 202, (
             f"Expected 202, got {resp.status_code}: {resp.text}"
         )
@@ -532,28 +745,32 @@ class NovelPipelineE2ETest:
         assert self.pipeline_run_id, f"No pipeline_run_id in response: {body}"
         assert self.draft_id, f"No draft_id in response: {body}"
 
-        print(f"  Pipeline started:")
-        print(f"    pipeline_run_id = {self.pipeline_run_id}")
-        print(f"    draft_id        = {self.draft_id}")
+        self._emit("  Pipeline started:")
+        self._emit(f"    pipeline_run_id = {self.pipeline_run_id}")
+        self._emit(f"    draft_id        = {self.draft_id}")
 
     def step_poll_status(self):
         """
         Poll GET /api/novel-pipeline/status/<run_id> until completion or timeout.
         Prints progress updates as phases transition.
         """
-        print("Step 3: Polling pipeline status...")
-        print(f"  Timeout: {POLL_TIMEOUT}s, interval: {POLL_INTERVAL}s")
-        print()
+        self._emit("Step 3: Polling pipeline status...")
+        timeout = MOCK_POLL_TIMEOUT if self.use_mock_provider else POLL_TIMEOUT
+        interval = MOCK_POLL_INTERVAL if self.use_mock_provider else POLL_INTERVAL
+        self._emit(f"  Timeout: {timeout}s, interval: {interval}s")
+        self._emit("")
 
         start = time.time()
         last_status = None
         last_phases = {}
+        last_progress_at = start
+        last_heartbeat_at = start
 
         while True:
             elapsed = time.time() - start
-            if elapsed > POLL_TIMEOUT:
+            if elapsed > timeout:
                 raise TimeoutError(
-                    f"Pipeline did not complete within {POLL_TIMEOUT}s. "
+                    f"Pipeline did not complete within {timeout}s. "
                     f"Last status: {last_status}"
                 )
 
@@ -576,16 +793,27 @@ class NovelPipelineE2ETest:
             phase_statuses = {k: v.get('status') for k, v in phases.items()}
             if status != last_status or phase_statuses != last_phases:
                 ts = datetime.now().strftime('%H:%M:%S')
-                print(f"  [{ts}] {status:25s} {pct:3d}%  |  "
-                      f"P1={phase_statuses.get('phase_1','?'):10s}  "
-                      f"P2={phase_statuses.get('phase_2','?'):10s}  "
-                      f"P3={phase_statuses.get('phase_3','?'):10s}")
+                self._emit(
+                    f"  [{ts}] {status:25s} {pct:3d}%  |  "
+                    f"P1={phase_statuses.get('phase_1','?'):10s}  "
+                    f"P2={phase_statuses.get('phase_2','?'):10s}  "
+                    f"P3={phase_statuses.get('phase_3','?'):10s}"
+                )
                 last_status = status
                 last_phases = phase_statuses
+                last_progress_at = time.time()
+
+            if (time.time() - last_heartbeat_at) >= POLL_HEARTBEAT_SECONDS:
+                stalled_for = time.time() - last_progress_at
+                self._emit(
+                    f"  Waiting... elapsed={elapsed:.1f}s, current_status={status}, "
+                    f"unchanged_for={stalled_for:.1f}s"
+                )
+                last_heartbeat_at = time.time()
 
             if status == 'completed':
-                print()
-                print(f"  Pipeline completed in {elapsed:.1f}s")
+                self._emit("")
+                self._emit(f"  Pipeline completed in {elapsed:.1f}s")
                 return data
 
             if status == 'failed':
@@ -596,11 +824,11 @@ class NovelPipelineE2ETest:
                     f"Full status: {json.dumps(data, indent=2, default=str)}"
                 )
 
-            time.sleep(POLL_INTERVAL)
+            time.sleep(interval)
 
     def step_validate_results(self, completed_status: dict):
         """GET /api/novel-pipeline/results/<run_id> and validate output."""
-        print("Step 4: Fetching and validating results...")
+        self._emit("Step 4: Fetching and validating results...")
 
         resp = requests.get(
             f"{self.base_url}/api/novel-pipeline/results/{self.pipeline_run_id}",
@@ -637,37 +865,33 @@ class NovelPipelineE2ETest:
         assert author_style, f"No author_style in results: {results}"
         assert author_style.get('author_name') == PIPELINE_CONFIG['author_name']
 
-        print(f"  Results validated:")
-        print(f"    Chapters      : {chapter_count}")
-        print(f"    Word count    : {manuscript.get('word_count')}")
-        print(f"    Scene count   : {results.get('scene_count', 0)}")
-        print(f"    Plot issues   : {results.get('plot_issues', {})}")
-        print(f"    Author style  : {author_style.get('author_name')} ({author_style.get('status')})")
+        self._emit("  Results validated:")
+        self._emit(f"    Chapters      : {chapter_count}")
+        self._emit(f"    Word count    : {manuscript.get('word_count')}")
+        self._emit(f"    Scene count   : {results.get('scene_count', 0)}")
+        self._emit(f"    Plot issues   : {results.get('plot_issues', {})}")
+        self._emit(f"    Author style  : {author_style.get('author_name')} ({author_style.get('status')})")
 
-        # Print phase timings if available
-        timings = data.get('phase_timings', {})
-        if timings:
-            print(f"\n  Phase timings:")
-            for phase, info in timings.items():
-                secs = info.get('timing_seconds', 0)
-                ok = info.get('success', False)
-                print(f"    {phase}: {'OK' if ok else 'FAIL'} in {secs:.1f}s")
+        self._assert_phase_execution_details(completed_status, data)
+        self._emit_phase_execution_summary(completed_status, data)
 
         quality_stats = self._run_quality_regression_assertions()
-        print(f"\n  Craft quality assertions passed:")
-        print(f"    Paragraphs    : {quality_stats['paragraph_blocks']}")
-        print(f"    POV expected  : {quality_stats['expected_pov']}")
-        print(f"    Chapters check: {quality_stats['chapters_checked']}")
+        if self.use_mock_provider:
+            self._assert_mock_phase_3_improvement(completed_status)
+        self._emit("  Craft quality assertions passed:")
+        self._emit(f"    Paragraphs    : {quality_stats['paragraph_blocks']}")
+        self._emit(f"    POV expected  : {quality_stats['expected_pov']}")
+        self._emit(f"    Chapters check: {quality_stats['chapters_checked']}")
 
         return data
 
     def step_export_rewritten_story_pdf(self):
         """Fetch rewritten story from DB and export as PDF artifact."""
-        print("Step 5: Exporting rewritten story to PDF...")
+        self._emit("Step 5: Exporting rewritten story to PDF...")
         rewritten_story = self._fetch_rewritten_story_content()
         output_path = self._export_rewritten_story_pdf(rewritten_story)
         self.output_pdf_path = output_path
-        print(f"  Rewritten PDF : {output_path}")
+        self._emit(f"  Rewritten PDF : {output_path}")
 
     # ------------------------------------------------------------------
     # Negative / edge-case tests
@@ -687,7 +911,7 @@ class NovelPipelineE2ETest:
 
     def step_test_invalid_run_id(self):
         """Test that a bogus run_id returns 404."""
-        print("Step 6: Testing error handling (invalid run_id)...")
+        self._emit("Step 6: Testing error handling (invalid run_id)...")
         fake_id = "01JNOTALIDULID0000000000000"
         resp = requests.get(
             f"{self.base_url}/api/novel-pipeline/status/{fake_id}",
@@ -697,11 +921,11 @@ class NovelPipelineE2ETest:
         assert resp.status_code == 404, (
             f"Expected 404 for unknown run_id, got {resp.status_code}"
         )
-        print(f"  404 returned for unknown run_id — correct.")
+        self._emit("  404 returned for unknown run_id — correct.")
 
     def step_test_missing_files(self):
         """Test that omitting required files returns 400."""
-        print("Step 7: Testing validation (missing manuscript_file)...")
+        self._emit("Step 7: Testing validation (missing manuscript_file)...")
         config = dict(PIPELINE_CONFIG)
         config['caller'] = {
             'user_id': self.user_id,
@@ -717,11 +941,11 @@ class NovelPipelineE2ETest:
         assert resp.status_code in (400, 422), (
             f"Expected 400/422 for missing files, got {resp.status_code}: {resp.text}"
         )
-        print(f"  {resp.status_code} returned for missing manuscript — correct.")
+        self._emit(f"  {resp.status_code} returned for missing manuscript — correct.")
 
     def step_test_missing_data(self):
         """Test that omitting the data field returns 400."""
-        print("Step 8: Testing validation (missing data field)...")
+        self._emit("Step 8: Testing validation (missing data field)...")
         with open(MANUSCRIPT_FILE, 'rb') as fh:
             resp = requests.post(
                 f"{self.base_url}/api/novel-pipeline/start",
@@ -731,7 +955,7 @@ class NovelPipelineE2ETest:
         assert resp.status_code in (400, 422), (
             f"Expected 400/422 for missing data, got {resp.status_code}: {resp.text}"
         )
-        print(f"  {resp.status_code} returned for missing data — correct.")
+        self._emit(f"  {resp.status_code} returned for missing data — correct.")
 
     # ------------------------------------------------------------------
     # Main runner
@@ -748,57 +972,57 @@ class NovelPipelineE2ETest:
         """
         start_time = datetime.now()
 
-        print("=" * 70)
-        print("  RUNARION — NOVEL PIPELINE ORCHESTRATOR — E2E INTEGRATION TEST")
-        print("=" * 70)
-        print()
+        self._emit("=" * 70)
+        self._emit("  RUNARION — NOVEL PIPELINE ORCHESTRATOR — E2E INTEGRATION TEST")
+        self._emit("=" * 70)
+        self._emit("")
 
         try:
             self.step_health_check()
-            print()
+            self._emit("")
+
+            if skip_pipeline:
+                self._emit("Skipping full pipeline run (skip_pipeline=True).")
+            else:
+                self.step_start_pipeline()
+                self._emit("")
+                completed_status = self.step_poll_status()
+                self._emit("")
+                self.step_validate_results(completed_status)
+                self._emit("")
+                self.step_export_rewritten_story_pdf()
+                self._emit("")
 
             # Validation / negative tests (fast, no LLM calls)
             self.step_test_invalid_run_id()
-            print()
+            self._emit("")
             self.step_test_missing_files()
-            print()
+            self._emit("")
             self.step_test_missing_data()
-            print()
-
-            if skip_pipeline:
-                print("Skipping full pipeline run (skip_pipeline=True).")
-            else:
-                self.step_start_pipeline()
-                print()
-                completed_status = self.step_poll_status()
-                print()
-                self.step_validate_results(completed_status)
-                print()
-                self.step_export_rewritten_story_pdf()
-                print()
+            self._emit("")
 
             elapsed = (datetime.now() - start_time).total_seconds()
-            print("=" * 70)
-            print(f"  ALL TESTS PASSED  ({elapsed:.1f}s / {elapsed/60:.1f}min)")
-            print("=" * 70)
+            self._emit("=" * 70)
+            self._emit(f"  ALL TESTS PASSED  ({elapsed:.1f}s / {elapsed/60:.1f}min)")
+            self._emit("=" * 70)
 
             if self.pipeline_run_id:
-                print()
-                print("Useful IDs for manual inspection:")
-                print(f"  pipeline_run_id = {self.pipeline_run_id}")
-                print(f"  draft_id        = {self.draft_id}")
+                self._emit("")
+                self._emit("Useful IDs for manual inspection:")
+                self._emit(f"  pipeline_run_id = {self.pipeline_run_id}")
+                self._emit(f"  draft_id        = {self.draft_id}")
                 if self.output_pdf_path:
-                    print(f"  rewritten_pdf   = {self.output_pdf_path}")
+                    self._emit(f"  rewritten_pdf   = {self.output_pdf_path}")
 
             return True
 
         except (AssertionError, TimeoutError, Exception) as exc:
             elapsed = (datetime.now() - start_time).total_seconds()
-            print()
-            print("=" * 70)
-            print(f"  TEST FAILED  ({elapsed:.1f}s)")
-            print("=" * 70)
-            print(f"  Error: {exc}")
+            self._emit("")
+            self._emit("=" * 70)
+            self._emit(f"  TEST FAILED  ({elapsed:.1f}s)")
+            self._emit("=" * 70)
+            self._emit(f"  Error: {exc}")
             import traceback
             traceback.print_exc()
             return False
@@ -822,14 +1046,30 @@ def main():
         default=None,
         help=f'Flask server base URL (default: {FLASK_BASE_URL})',
     )
+    parser.add_argument(
+        '--mock-llm-provider',
+        action='store_true',
+        help='Use the internal mock provider instead of external LLM APIs.',
+    )
     args = parser.parse_args()
 
     if args.url:
         FLASK_BASE_URL = args.url
 
-    test = NovelPipelineE2ETest()
+    test = NovelPipelineE2ETest(use_mock_provider=args.mock_llm_provider)
     success = test.run(skip_pipeline=args.skip_pipeline)
     sys.exit(0 if success else 1)
+
+
+@pytest.mark.integration
+@pytest.mark.database
+@pytest.mark.slow
+def test_novel_pipeline_e2e(pytestconfig):
+    test = NovelPipelineE2ETest(
+        use_mock_provider=bool(pytestconfig.getoption("--mock-llm-provider")),
+        pytest_mode=True,
+    )
+    assert test.run(skip_pipeline=False) is True
 
 
 if __name__ == '__main__':

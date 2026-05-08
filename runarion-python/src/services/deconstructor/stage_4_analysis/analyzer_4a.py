@@ -7,9 +7,9 @@ import json
 import logging
 from typing import Dict, Any, List, Tuple
 from ..prompt_template import DeconstructorPrompts
-from utils.database_utils import ensure_utf8_json
-from utils.llm_retry import call_llm_with_retry
-from utils.json_response_parser import parse_scene_analysis_response
+from src.utils.database_utils import ensure_utf8_json
+from src.utils.llm_retry import call_llm_with_retry
+from src.utils.json_response_parser import parse_scene_analysis_response
 from ..base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)

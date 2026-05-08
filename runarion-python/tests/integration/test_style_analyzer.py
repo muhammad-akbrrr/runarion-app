@@ -7,8 +7,6 @@ import os
 import sys
 
 # Add src to Python path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
 from dotenv import load_dotenv
 from psycopg2 import pool
@@ -255,6 +253,8 @@ class StyleAnalyzerTest:
             author_style, "techniques"
         ), "Author style should have techniques"
         assert hasattr(author_style, "examples"), "Author style should have examples"
+        assert author_style.schema_version == 2, "Author style should use schema v2"
+        assert hasattr(author_style, "adaptation"), "Author style should include adaptation guidance"
 
         print("Profiling completed")
         print(f"  Techniques: {len(vars(author_style.techniques))} categories")
@@ -298,6 +298,7 @@ class StyleAnalyzerTest:
         ), f"Pipeline should complete successfully, got: {result.get('status')}"
         assert result["author_style"] is not None, "Author style should be generated"
         assert result["author_style_id"] is not None, "Author style ID should exist"
+        assert result["author_style"].schema_version == 2, "Pipeline should persist schema v2 styles"
 
         print(f"Pipeline completed in {result['total_time_ms']}ms")
         print(f"  Status: {result['status']}")

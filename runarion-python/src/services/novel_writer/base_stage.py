@@ -261,7 +261,7 @@ class BasePipelineStage(ABC):
         if context.get('connection'):
             return context.get('connection')
         else:
-            from utils.database_utils import utf8_database_connection
+            from src.utils.database_utils import utf8_database_connection
             return utf8_database_connection(self.db_pool)
 
     def get_draft_metadata(self, draft_id: str) -> Dict[str, Any]:
@@ -297,7 +297,7 @@ class BasePipelineStage(ABC):
     def update_draft_metadata(self, draft_id: str, metadata_updates: Dict[str, Any]) -> None:
         """Update draft metadata in database."""
         try:
-            from utils.database_utils import utf8_database_connection, ensure_utf8_json
+            from src.utils.database_utils import utf8_database_connection, ensure_utf8_json
 
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()

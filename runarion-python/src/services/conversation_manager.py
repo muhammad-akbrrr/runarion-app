@@ -11,7 +11,7 @@ import logging
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 from contextlib import contextmanager
-from models.story_generation.prompt_config import PromptConfig
+from src.models.story_generation.prompt_config import PromptConfig
 
 logger = logging.getLogger(__name__)
 
@@ -400,7 +400,7 @@ class ConversationManager:
         """
         Initialize conversation history for a project.
         
-        If prompt_config is provided, builds system instruction from config.
+        If prompt_config is provided, builds system instruction from src.config.
         If empty, uses initial_prompt from user's editor.
         Retrieves existing content from project_content table if project already has chapters.
         

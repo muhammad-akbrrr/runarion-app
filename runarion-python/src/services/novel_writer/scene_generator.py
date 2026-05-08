@@ -11,7 +11,7 @@ from typing import Dict, Any
 from .base_stage import BasePipelineStage, PipelineStageContext, PipelineStageResult
 from .story_context import StoryContext, GeneratedChapter
 from .prompt_template import NovelWriterPrompts
-from utils.llm_retry import call_llm_with_retry
+from src.utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -142,8 +142,10 @@ class ProseGenerationStage(BasePipelineStage):
         position = chapter_context.get('chapter_position', {})
 
         # Author style instructions
+        compiled_policy = getattr(story_context, 'compiled_rewrite_policy', None)
         author_style_instructions = NovelWriterPrompts.get_author_style_instruction(
-            story_context.author_style
+            story_context.author_style,
+            compiled_policy,
         )
         writing_perspective_instruction = NovelWriterPrompts.get_writing_perspective_instruction(
             getattr(story_context, 'writing_perspective', 'third_person_limited')
@@ -248,6 +250,15 @@ class ProseGenerationStage(BasePipelineStage):
             total_chapters=total_chapters,
             chapter_title=chapter_title,
             chapter_position_guidance=position_guidance,
+            rewrite_policy_guidance=compiled_policy.generation_guidance if compiled_policy else (
+                "Preserve manuscript structure and follow any explicit rewrite constraints."
+            ),
+            negative_constraints=compiled_policy.negative_constraints_block if compiled_policy else (
+                "No explicit negative style constraints."
+            ),
+            author_style_weight=compiled_policy.author_style_weight if compiled_policy else (
+                "Use author style only when it does not conflict with manuscript structure."
+            ),
             author_style_instructions=author_style_instructions,
             writing_perspective_instruction=writing_perspective_instruction,
             previous_chapter_summaries=summaries_text,
@@ -268,8 +279,8 @@ class ProseGenerationStage(BasePipelineStage):
             try:
                 self.generation_engine.request.prompt = prompt
                 self.generation_engine.request.instruction = (
-                    "You are a master novelist. Write immersive, vivid novel prose. "
-                    "Show, don't tell. Use varied sentence structure and strong verbs."
+                    "Rewrite the source material into coherent chapter prose while preserving structure "
+                    "and obeying the compiled rewrite policy."
                 )
                 self.generation_engine.request.generation_config.max_output_tokens = max_output_tokens
 

@@ -8,10 +8,15 @@ import threading
 import logging
 from flask import Blueprint, request, current_app
 
-from services.novel_writer.orchestrator import NovelWriterOrchestrator
-from services.generation_engine import GenerationEngine
-from models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
-from utils.api_response import DeconstructorResponse, validation_error, internal_error, error
+from src.services.novel_writer.orchestrator import NovelWriterOrchestrator
+from src.services.generation_engine import GenerationEngine
+from src.models.request import (
+    BaseGenerationRequest,
+    CallerInfo,
+    GenerationConfig,
+    rewrite_policy_to_dict,
+)
+from src.utils.api_response import DeconstructorResponse, validation_error, internal_error, error
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +40,10 @@ def start_novel_generation():
         "target_chapter_length": 2500,             // optional
         "quality_threshold": 6.0,                  // optional
         "max_improvement_passes": 2,               // optional
+        "writing_perspective": "third_person_limited", // optional
+        "enforce_hard_quality_gate": true,         // optional
+        "hard_quality_threshold": 6.0,             // optional
+        "rewrite_policy": {},                      // optional
         "generation_config": {}                    // optional
     }
     """
@@ -67,6 +76,10 @@ def start_novel_generation():
         target_chapter_length = data.get('target_chapter_length', 2500)
         quality_threshold = data.get('quality_threshold', 6.0)
         max_improvement_passes = data.get('max_improvement_passes', 2)
+        writing_perspective = data.get('writing_perspective', 'third_person_limited')
+        enforce_hard_quality_gate = bool(data.get('enforce_hard_quality_gate', True))
+        hard_quality_threshold = data.get('hard_quality_threshold')
+        request_rewrite_policy = data.get('rewrite_policy')
 
         # Validate optional parameters
         if not isinstance(target_chapter_length, int) or target_chapter_length < 500:
@@ -83,6 +96,12 @@ def start_novel_generation():
             field_errors['max_improvement_passes'] = [
                 'max_improvement_passes must be a non-negative integer'
             ]
+        if hard_quality_threshold is not None and (
+            not isinstance(hard_quality_threshold, (int, float)) or not (1 <= hard_quality_threshold <= 10)
+        ):
+            field_errors['hard_quality_threshold'] = [
+                'hard_quality_threshold must be a number between 1 and 10'
+            ]
 
         if field_errors:
             return validation_error(field_errors)
@@ -94,11 +113,12 @@ def start_novel_generation():
 
         # Validate draft ownership and that deconstruction is complete
         conn = None
+        draft_metadata = {}
         try:
             conn = connection_pool.getconn()
             with conn.cursor() as cursor:
                 cursor.execute("""
-                    SELECT d.id, d.workspace_id, d.user_id, d.status
+                    SELECT d.id, d.workspace_id, d.user_id, d.status, d.metadata
                     FROM drafts d
                     INNER JOIN workspace_members wm ON d.workspace_id = wm.workspace_id
                     WHERE d.id = %s AND wm.user_id = %s
@@ -113,6 +133,9 @@ def start_novel_generation():
                     return error('Workspace ID mismatch', error_code='WORKSPACE_MISMATCH')
 
                 draft_status = draft_result[3]
+                draft_metadata = draft_result[4] if len(draft_result) > 4 else {}
+                if not isinstance(draft_metadata, dict):
+                    draft_metadata = {}
 
                 # Verify deconstruction is complete
                 valid_start_statuses = ['completed', 'nw_failed', 'nw_completed']
@@ -162,6 +185,9 @@ def start_novel_generation():
         )
 
         generation_engine = GenerationEngine(generation_request)
+        rewrite_policy = rewrite_policy_to_dict(
+            request_rewrite_policy or draft_metadata.get('rewrite_policy')
+        )
 
         # Create orchestrator
         orchestrator = NovelWriterOrchestrator(
@@ -180,6 +206,12 @@ def start_novel_generation():
                 'author_style_name': author_style_name,
                 'quality_threshold': quality_threshold,
                 'max_improvement_passes': max_improvement_passes,
+                'writing_perspective': writing_perspective,
+                'enforce_hard_quality_gate': enforce_hard_quality_gate,
+                'hard_quality_threshold': hard_quality_threshold,
+                'config': {
+                    'rewrite_policy': rewrite_policy,
+                },
             },
             daemon=True,
         )

@@ -1,6 +1,6 @@
 # utils/story_instruction_builder.py
 
-from models.story_generation.prompt_config import PromptConfig
+from src.models.story_generation.prompt_config import PromptConfig
 from typing import List, Optional
 
 

@@ -82,6 +82,8 @@ class StoryContext:
         # From style analyzer (optional)
         self.author_style = None  # AuthorStyle Pydantic model or None
         self.writing_perspective: str = "third_person_limited"
+        self.rewrite_policy: Dict[str, Any] = {}
+        self.compiled_rewrite_policy = None
 
         # Built during Stage 2 (Prose Generation)
         self.generated_chapters: Dict[int, GeneratedChapter] = {}

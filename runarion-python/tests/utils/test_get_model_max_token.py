@@ -2,8 +2,6 @@ import os
 import sys
 
 # Add src to Python path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
 import pytest
 from src.utils.get_model_max_token import get_safe_model_max_tokens

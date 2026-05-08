@@ -7,6 +7,11 @@ from dotenv import load_dotenv
 from transformers import AutoTokenizer
 from vertexai.preview import tokenization
 from vertexai.tokenization._tokenizers import PreviewTokenizer
+from src.utils.get_model_max_token import (
+    gemini_model_max_tokens_fallback,
+    huggingface_model_max_tokens_fallback,
+    mock_model_max_tokens,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -14,6 +19,15 @@ CHARS_PER_TOKEN_ESTIMATE = 4  # Approximate character-to-token ratio
 TIKTOKEN_FALLBACK_ENCODING = (
     "cl100k_base"  # Fallback to cl100k_base encoding (used by GPT-4, GPT-3.5-turbo)
 )
+
+
+class _EstimatedTokenizer:
+    pass
+
+
+class _UnavailableGeminiTokenizer:
+    def __init__(self, model: str):
+        self.model = model
 
 
 class TokenCounter:
@@ -36,20 +50,38 @@ class TokenCounter:
         if provider == "openai":
             try:
                 self.tokenizer = tiktoken.encoding_for_model(model)
-            except KeyError:
+            except Exception:
                 logger.warning(
-                    f"Model {model} not found in tiktoken. Falling back to {TIKTOKEN_FALLBACK_ENCODING} encoding."
+                    f"Model {model} not available in local tiktoken data. Falling back to local estimation."
                 )
-                self.tokenizer = tiktoken.get_encoding(TIKTOKEN_FALLBACK_ENCODING)
+                self.tokenizer = _EstimatedTokenizer()
         elif provider == "gemini":
             try:
                 self.tokenizer = tokenization.get_tokenizer_for_model(model)
             except ValueError:
-                load_dotenv()
-                GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-                genai.configure(api_key=GEMINI_API_KEY)  # type: ignore
-                self.tokenizer = genai.GenerativeModel(model)  # type: ignore
+                if model in gemini_model_max_tokens_fallback:
+                    logger.warning(
+                        f"Vertex tokenizer unavailable for {model}. Falling back to local estimation."
+                    )
+                    self.tokenizer = _EstimatedTokenizer()
+                else:
+                    logger.warning(
+                        f"Gemini model {model} unavailable. Using unavailable-model sentinel."
+                    )
+                    self.tokenizer = _UnavailableGeminiTokenizer(model)
+        elif provider == "mock":
+            if model not in mock_model_max_tokens:
+                logger.warning(
+                    f"Mock model {model} not explicitly configured. Falling back to local estimation."
+                )
+            self.tokenizer = _EstimatedTokenizer()
         else:
+            if model in huggingface_model_max_tokens_fallback:
+                logger.warning(
+                    f"Hugging Face model {model} not loaded locally. Falling back to local estimation."
+                    )
+                self.tokenizer = _EstimatedTokenizer()
+                return
             try:
                 self.tokenizer = AutoTokenizer.from_pretrained(model)
             except Exception:
@@ -65,6 +97,8 @@ class TokenCounter:
             return self.tokenizer.count_tokens(text).total_tokens
         elif isinstance(self.tokenizer, genai.GenerativeModel):  # type: ignore
             return self.tokenizer.count_tokens(text).total_tokens
+        elif isinstance(self.tokenizer, _UnavailableGeminiTokenizer):
+            raise ValueError(f"Gemini tokenizer unavailable for model {self.tokenizer.model}")
         elif isinstance(self.tokenizer, AutoTokenizer):
             return len(self.tokenizer.encode(text, add_special_tokens=False))  # type: ignore
         else:

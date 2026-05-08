@@ -8,8 +8,6 @@ import sys
 import os
 import json
 
-sys.path.append(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../../src'))
 
 
 # ─── Import Tests ─────────────────────────────────────────────────────────────

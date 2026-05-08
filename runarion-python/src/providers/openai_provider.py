@@ -6,9 +6,9 @@ import openai
 from flask import current_app
 from openai import OpenAI
 from typing import Dict, Generator
-from providers.base_provider import BaseProvider
-from models.response import BaseGenerationResponse
-from models.request import BaseGenerationRequest, GenerationConfig
+from src.providers.base_provider import BaseProvider
+from src.models.response import BaseGenerationResponse
+from src.models.request import BaseGenerationRequest, GenerationConfig
 
 class OpenAIProvider(BaseProvider):
     def __init__(self, request: BaseGenerationRequest):
