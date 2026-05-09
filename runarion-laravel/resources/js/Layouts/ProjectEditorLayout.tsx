@@ -47,7 +47,8 @@ import { Button } from "@/Components/ui/button";
 import LoadingOverlay from "@/Components/LoadingOverlay";
 import { Project } from "@/types";
 import OnboardingDialog from "./Partials/OnboardingDialog";
-import type { AuthorStyle } from "./Partials/OnboardingDialog"; // adjust path if needed
+import type { AuthorStyle } from "@/types/files";
+import type { PipelineLock } from "@/types/project";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -262,8 +263,11 @@ export default function ProjectEditorLayout({
         force_project_editor_loader,
         project_completed_onboarding,
         authorStyles: rawAuthorStyles,
+        projectPipelineLock: rawProjectPipelineLock,
     } = usePage().props;
     const authorStyles = rawAuthorStyles as AuthorStyle[];
+    const projectPipelineLock =
+        (rawProjectPipelineLock as PipelineLock | null | undefined) ?? null;
     const [showLoader, setShowLoader] = React.useState(
         Boolean(workspace_switching) ||
             Boolean(project_switching) ||
@@ -273,8 +277,17 @@ export default function ProjectEditorLayout({
     const [completedSteps, setCompletedSteps] = React.useState(0);
     const progress = (completedSteps / TOTAL_STEPS) * 100;
     const [onboardingOpen, setOnboardingOpen] = React.useState(
-        !project_completed_onboarding
+        !project_completed_onboarding && !projectPipelineLock?.isLocked
     );
+
+    React.useEffect(() => {
+        if (project_completed_onboarding) {
+            setOnboardingOpen(false);
+            return;
+        }
+
+        setOnboardingOpen(!projectPipelineLock?.isLocked);
+    }, [project_completed_onboarding, projectPipelineLock?.isLocked]);
 
     // Only trigger loader when a switch flag or force flag is true
     React.useEffect(() => {

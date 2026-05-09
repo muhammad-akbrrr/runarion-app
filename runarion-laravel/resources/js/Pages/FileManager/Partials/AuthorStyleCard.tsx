@@ -35,6 +35,7 @@ function getStatusInfo(status: string) {
         animate: true,
       };
     case 'sampling_failed':
+    case 'init_failed':
     case 'profiling_failed':
       return {
         icon: AlertCircle,

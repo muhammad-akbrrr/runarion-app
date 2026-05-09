@@ -6,6 +6,8 @@ use App\Jobs\AuthorStyleJob;
 use App\Models\Projects;
 use App\Models\AuthorStyle;
 use App\Models\Workspace;
+use App\Services\AuthorStyleFormatter;
+use App\Services\ProjectPipelineStateService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +17,12 @@ use Inertia\Inertia;
 
 class FileManagerController extends Controller
 {
+    public function __construct(
+        private readonly AuthorStyleFormatter $authorStyleFormatter,
+        private readonly ProjectPipelineStateService $pipelineStateService,
+    ) {
+    }
+
     /**
      * Display the file manager page.
      *
@@ -92,6 +100,12 @@ class FileManagerController extends Controller
                 'workspace_id' => $workspace_id,
             ]);
             return back()->withErrors(['project_id' => 'The selected project does not belong to this workspace.'])->withInput();
+        }
+
+        if ($this->pipelineStateService->getProjectLock($workspace_id, $project->id)) {
+            return back()->withErrors([
+                'project_id' => 'This project is currently locked while the novel pipeline is processing.',
+            ])->withInput();
         }
         
         // Store the uploaded files
@@ -255,6 +269,14 @@ class FileManagerController extends Controller
                 }
                 return back()->withErrors(['error' => 'Author style not found.']);
             }
+
+            if ($authorStyle->project_id && $this->pipelineStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'This author style is attached to a project that is currently processing.'], 423);
+                }
+
+                return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
+            }
             
             // Clean up related data in Python's tables
             DB::table('author_styles_to_samples')
@@ -315,6 +337,14 @@ class FileManagerController extends Controller
                 }
                 return back()->withErrors(['error' => 'Author style not found.']);
             }
+
+            if ($authorStyle->project_id && $this->pipelineStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'This author style is attached to a project that is currently processing.'], 423);
+                }
+
+                return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
+            }
             
             // Update allowed fields
             $updateData = [];
@@ -339,9 +369,13 @@ class FileManagerController extends Controller
             if ($request->has('techniques_json')) {
                 $updateData['techniques_json'] = $request->techniques_json;
             }
-            
+
             if ($request->has('examples_json')) {
                 $updateData['examples_json'] = $request->examples_json;
+            }
+
+            if ($request->has('adaptation_json')) {
+                $updateData['adaptation_json'] = $request->adaptation_json;
             }
             
             if ($request->has('project_ids')) {
@@ -364,7 +398,7 @@ class FileManagerController extends Controller
                 return response()->json([
                     'success' => true, 
                     'message' => 'Author style updated successfully.',
-                    'author_style' => $this->formatAuthorStyleForFrontend($authorStyle),
+                    'author_style' => $this->authorStyleFormatter->format($authorStyle->fresh()),
                 ]);
             }
             
@@ -404,38 +438,8 @@ class FileManagerController extends Controller
         }
         
         return response()->json([
-            'author_style' => $this->formatAuthorStyleForFrontend($authorStyle, true),
+            'author_style' => $this->authorStyleFormatter->format($authorStyle, true),
         ]);
-    }
-    
-    /**
-     * Format a single author style for frontend consumption.
-     *
-     * @param  \App\Models\AuthorStyle  $style
-     * @param  bool  $includeFullData
-     * @return array
-     */
-    private function formatAuthorStyleForFrontend(AuthorStyle $style, bool $includeFullData = false): array
-    {
-        $colors = ['bg-blue-100', 'bg-purple-100', 'bg-green-100', 'bg-pink-100', 'bg-amber-100', 'bg-cyan-100'];
-        $colorIndex = crc32($style->id) % count($colors);
-        
-        $result = [
-            'id' => $style->id,
-            'name' => $style->author_name,
-            'fileCount' => 1, // For now, one project per style
-            'avatar' => strtoupper(substr($style->author_name, 0, 1)),
-            'color' => $colors[$colorIndex],
-            'status' => $style->status ?? 'init_completed',
-            'projectIds' => [$style->project_id],
-        ];
-        
-        if ($includeFullData || $style->status === 'profiling_completed') {
-            $result['techniques'] = $style->techniques_json;
-            $result['examples'] = $style->examples_json;
-        }
-        
-        return $result;
     }
     
     /**
@@ -446,16 +450,9 @@ class FileManagerController extends Controller
      */
     private function getAuthorStyles($workspace_id)
     {
-        $authorStyles = AuthorStyle::where('workspace_id', $workspace_id)
-            ->get();
-        
-        $result = [];
-        
-        foreach ($authorStyles as $style) {
-            $result[] = $this->formatAuthorStyleForFrontend($style);
-        }
-        
-        return $result;
+        return $this->authorStyleFormatter->formatCollection(
+            AuthorStyle::where('workspace_id', $workspace_id)->get()
+        );
     }
     
     /**
@@ -468,8 +465,13 @@ class FileManagerController extends Controller
     {
         $projects = Projects::where('workspace_id', $workspace_id)
             ->where('is_active', true)
-            ->select('id', 'name', 'created_at', 'access', 'saved_in')
+            ->select('id', 'name', 'created_at', 'updated_at', 'access', 'saved_in')
             ->get();
+
+        $locks = $this->pipelineStateService->getLocksForProjects(
+            $workspace_id,
+            $projects->pluck('id')->all(),
+        );
         
         $result = [];
         
@@ -504,6 +506,7 @@ class FileManagerController extends Controller
                 'createdAt' => $project->created_at->format('Y-m-d'),
                 'sharedWith' => $sharedWith,
                 'savedIn' => $savedIn,
+                'pipelineLock' => $locks[$project->id] ?? null,
             ];
         }
         

@@ -1,6 +1,7 @@
 import { Link, router } from "@inertiajs/react";
 import { Ellipsis } from "lucide-react";
 import { Badge } from "@/Components/ui/badge";
+import type { PipelineLock } from "@/types/project";
 import {
     DropdownMenu,
     DropdownMenuTrigger,
@@ -21,6 +22,7 @@ interface ProjectItem {
     updated_at: string;
     author?: { id: number; name: string } | null;
     category?: string | null;
+    pipelineLock?: PipelineLock | null;
 }
 
 type ItemCardProps =
@@ -110,18 +112,26 @@ export default function ItemCard(props: ItemCardProps) {
             workspace_id: workspaceId,
             project_id: item.id,
         });
+        const isLocked = Boolean(item.pipelineLock?.isLocked);
+        const lockLabel = item.pipelineLock
+            ? item.pipelineLock.phase.replaceAll("_", " ")
+            : null;
 
         return (
-            <div className="p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 hover:bg-gray-50 transition relative group">
-                <Link href={editorUrl} className="absolute inset-0 z-0" />
+            <div className={`p-4 rounded-md flex flex-col items-stretch justify-between gap-8 bg-white border border-gray-300 transition relative group ${isLocked ? "opacity-80" : "hover:bg-gray-50"}`}>
+                {!isLocked && <Link href={editorUrl} className="absolute inset-0 z-0" />}
                 <div className="flex flex-row gap-2 justify-between items-start relative z-10">
                     <div className="flex flex-col justify-start items-start gap-1 flex-1">
-                        <Link
-                            href={editorUrl}
-                            className="text-base font-medium hover:underline"
-                        >
-                            {item.name}
-                        </Link>
+                        {isLocked ? (
+                            <span className="text-base font-medium">{item.name}</span>
+                        ) : (
+                            <Link
+                                href={editorUrl}
+                                className="text-base font-medium hover:underline"
+                            >
+                                {item.name}
+                            </Link>
+                        )}
                         <p className="text-xs text-gray-500">
                             Created by {item.author?.name ?? "Unknown"}
                         </p>
@@ -141,6 +151,7 @@ export default function ItemCard(props: ItemCardProps) {
                             onClick={(e) => e.stopPropagation()}
                         >
                             <DropdownMenuItem
+                                disabled={isLocked}
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -150,6 +161,7 @@ export default function ItemCard(props: ItemCardProps) {
                                 <span>Delete project</span>
                             </DropdownMenuItem>
                             <DropdownMenuItem
+                                disabled={isLocked}
                                 onClick={(e) => {
                                     e.preventDefault();
                                     e.stopPropagation();
@@ -163,11 +175,18 @@ export default function ItemCard(props: ItemCardProps) {
                 </div>
                 <div className="flex flex-row gap-2 justify-between items-center relative z-10">
                     <p className="text-sm">{formatTimeAgo(item.updated_at)}</p>
-                    {item.category && (
-                        <Badge variant="secondary" className="capitalize">
-                            {item.category}
-                        </Badge>
-                    )}
+                    <div className="flex items-center gap-2">
+                        {item.category && (
+                            <Badge variant="secondary" className="capitalize">
+                                {item.category}
+                            </Badge>
+                        )}
+                        {lockLabel && (
+                            <Badge variant="outline">
+                                {lockLabel}
+                            </Badge>
+                        )}
+                    </div>
                 </div>
             </div>
         );

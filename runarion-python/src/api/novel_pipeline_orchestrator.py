@@ -296,23 +296,23 @@ def _claim_phase_execution(conn, run_id: str, phase_number: int) -> tuple[bool, 
 # ---------------------------------------------------------------------------
 
 def _create_pipeline_run(conn, run_id: str, draft_id: str, workspace_id: str,
-                          user_id: str, author_name: str, config: dict) -> None:
+                          project_id: str, user_id: str, author_name: str, config: dict) -> None:
     """Insert a new pipeline_runs row."""
     with conn.cursor() as cur:
         cur.execute("""
             INSERT INTO pipeline_runs (
-                id, draft_id, workspace_id, user_id,
+                id, draft_id, workspace_id, project_id, user_id,
                 author_name, status,
                 phase_1_status, phase_2_status, phase_3_status,
                 config, started_at, created_at, updated_at
             ) VALUES (
-                %s, %s, %s, %s,
+                %s, %s, %s, %s, %s,
                 %s, %s,
                 %s, %s, %s,
                 %s, NOW(), NOW(), NOW()
             )
         """, (
-            run_id, draft_id, workspace_id, user_id,
+            run_id, draft_id, workspace_id, project_id, user_id,
             author_name, 'pending',
             'pending', 'pending', 'pending',
             json.dumps(config),
@@ -354,7 +354,7 @@ def _get_pipeline_run(conn, run_id: str) -> Optional[dict]:
     """Fetch a pipeline_runs row as a dict."""
     with conn.cursor() as cur:
         cur.execute("""
-            SELECT id, draft_id, workspace_id, user_id,
+            SELECT id, draft_id, workspace_id, project_id, user_id,
                    author_style_id, author_name, status, current_phase,
                    phase_1_status, phase_2_status, phase_3_status,
                    config, error_message, failed_phase,
@@ -366,7 +366,7 @@ def _get_pipeline_run(conn, run_id: str) -> Optional[dict]:
     if not row:
         return None
     keys = [
-        'id', 'draft_id', 'workspace_id', 'user_id',
+        'id', 'draft_id', 'workspace_id', 'project_id', 'user_id',
         'author_style_id', 'author_name', 'status', 'current_phase',
         'phase_1_status', 'phase_2_status', 'phase_3_status',
         'config', 'error_message', 'failed_phase',
@@ -928,8 +928,9 @@ def start_novel_pipeline():
     Start the full 3-phase novel pipeline.
 
     Expects multipart/form-data with:
-      manuscript_file  : The source manuscript (PDF or TXT). Required.
-      author_files     : One or more author voice sample files (PDF/TXT/DOCX). Required.
+      manuscript_file  : The source manuscript (PDF/TXT/DOC/DOCX). Required.
+      author_files     : One or more author voice sample files (PDF/TXT/DOC/DOCX).
+                         Required only for author_style_mode=create_or_update.
       data             : JSON string matching PipelineStartRequest schema. Required.
 
     Returns 202 Accepted immediately; the pipeline runs in the background.
@@ -1033,9 +1034,9 @@ def start_novel_pipeline():
             return validation_error({'manuscript_file': ['Manuscript file has no filename']})
 
         ms_ext = os.path.splitext(manuscript.filename)[1].lower()
-        if ms_ext not in ('.pdf', '.txt'):
+        if ms_ext not in ('.pdf', '.txt', '.doc', '.docx'):
             return validation_error({
-                'manuscript_file': ['Only PDF and TXT files are supported for the manuscript']
+                'manuscript_file': ['Only PDF, TXT, DOC, and DOCX files are supported for the manuscript']
             })
 
         ms_filename = f"{ulid_lib.ULID()}_{secure_filename(manuscript.filename)}"
@@ -1056,26 +1057,53 @@ def start_novel_pipeline():
         # ------------------------------------------------------------------
         # 3. Handle author style file uploads
         # ------------------------------------------------------------------
-        author_files = request.files.getlist('author_files')
-        if not author_files or all(not f.filename for f in author_files):
-            os.remove(ms_path)
-            return validation_error({'author_files': ['At least one author style file is required']})
-
-        author_samples_dir = os.path.join(upload_path, 'author_samples')
-        os.makedirs(author_samples_dir, exist_ok=True)
-
         author_file_paths = []
-        for af in author_files:
-            if not af.filename:
-                continue
-            af_filename = f"{ulid_lib.ULID()}_{secure_filename(af.filename)}"
-            af_path = os.path.join(author_samples_dir, af_filename)
-            af.save(af_path)
-            author_file_paths.append(af_path)
+        author_files = request.files.getlist('author_files')
+        requires_author_files = data.author_style_mode != 'use_existing'
+        if requires_author_files:
+            if not author_files or all(not f.filename for f in author_files):
+                os.remove(ms_path)
+                return validation_error({'author_files': ['At least one author style file is required']})
 
-        if not author_file_paths:
-            os.remove(ms_path)
-            return validation_error({'author_files': ['No valid author style files provided']})
+            author_samples_dir = os.path.join(upload_path, 'author_samples')
+            os.makedirs(author_samples_dir, exist_ok=True)
+
+            for af in author_files:
+                if not af.filename:
+                    continue
+
+                af_ext = os.path.splitext(af.filename)[1].lower()
+                if af_ext not in ('.pdf', '.txt', '.doc', '.docx'):
+                    os.remove(ms_path)
+                    for p in author_file_paths:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    return validation_error({
+                        'author_files': ['Only PDF, TXT, DOC, and DOCX files are supported for author samples']
+                    })
+
+                af_filename = f"{ulid_lib.ULID()}_{secure_filename(af.filename)}"
+                af_path = os.path.join(author_samples_dir, af_filename)
+                af.save(af_path)
+
+                af_size = os.path.getsize(af_path)
+                if af_size > 100 * 1024 * 1024:
+                    os.remove(ms_path)
+                    os.remove(af_path)
+                    for p in author_file_paths:
+                        if os.path.exists(p):
+                            os.remove(p)
+                    return validation_error({
+                        'author_files': [
+                            f'Author sample file size ({af_size / (1024*1024):.1f} MB) exceeds 100 MB limit'
+                        ]
+                    })
+
+                author_file_paths.append(af_path)
+
+            if not author_file_paths:
+                os.remove(ms_path)
+                return validation_error({'author_files': ['No valid author style files provided']})
 
         normalized_payload = _build_pipeline_payload(
             data=data,
@@ -1089,6 +1117,7 @@ def start_novel_pipeline():
         draft_id = str(ulid_lib.ULID())
         run_id = str(ulid_lib.ULID())
         workspace_id = data.caller.workspace_id
+        project_id = data.caller.project_id
         user_id = data.caller.user_id
 
         conn = db_pool.getconn()
@@ -1169,6 +1198,7 @@ def start_novel_pipeline():
                 run_id=run_id,
                 draft_id=draft_id,
                 workspace_id=workspace_id,
+                project_id=project_id,
                 user_id=user_id,
                 author_name=data.author_name,
                 config=config_snapshot,

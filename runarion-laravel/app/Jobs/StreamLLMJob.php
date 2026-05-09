@@ -397,71 +397,89 @@ class StreamLLMJob implements ShouldQueue
             $techniques = $authorStyle->techniques_json;
             if (!empty($techniques)) {
                 $styleDna[] = "WRITING TECHNIQUES:";
-                
-                // Dialogue techniques
+
+                if (!empty($techniques['voice'])) {
+                    $voice = $techniques['voice'];
+                    if (!empty($voice['diction'])) {
+                        $styleDna[] = "- Diction: {$voice['diction']}";
+                    }
+                    if (!empty($voice['syntax'])) {
+                        $styleDna[] = "- Syntax: {$voice['syntax']}";
+                    }
+                    if (!empty($voice['rhythm'])) {
+                        $styleDna[] = "- Rhythm: {$voice['rhythm']}";
+                    }
+                    if (!empty($voice['register'])) {
+                        $styleDna[] = "- Register: {$voice['register']}";
+                    }
+                    if (!empty($voice['figurative_language'])) {
+                        $styleDna[] = "- Figurative Language: {$voice['figurative_language']}";
+                    }
+                }
+
                 if (!empty($techniques['dialogue'])) {
                     $d = $techniques['dialogue'];
                     if (!empty($d['conversation_style'])) {
                         $styleDna[] = "- Dialogue Style: {$d['conversation_style']}";
                     }
-                    if (!empty($d['dialogue_balance'])) {
-                        $styleDna[] = "- Dialogue Balance: {$d['dialogue_balance']}";
+                    if (!empty($d['speaker_differentiation'])) {
+                        $styleDna[] = "- Speaker Differentiation: {$d['speaker_differentiation']}";
                     }
-                    if (!empty($d['character_voices'])) {
-                        $styleDna[] = "- Character Voices: {$d['character_voices']}";
-                    }
-                }
-                
-                // Action techniques
-                if (!empty($techniques['action'])) {
-                    $a = $techniques['action'];
-                    if (!empty($a['action_sequences'])) {
-                        $styleDna[] = "- Action Sequences: {$a['action_sequences']}";
-                    }
-                    if (!empty($a['tension'])) {
-                        $styleDna[] = "- Tension Building: {$a['tension']}";
+                    if (!empty($d['dialogue_narration_balance'])) {
+                        $styleDna[] = "- Dialogue-Narration Balance: {$d['dialogue_narration_balance']}";
                     }
                 }
+
                 
-                // Worldbuilding techniques
-                if (!empty($techniques['worldbuilding'])) {
-                    $w = $techniques['worldbuilding'];
-                    if (!empty($w['world_reveals'])) {
-                        $styleDna[] = "- World Reveals: {$w['world_reveals']}";
+                if (!empty($techniques['description'])) {
+                    $description = $techniques['description'];
+                    if (!empty($description['description_density'])) {
+                        $styleDna[] = "- Description Density: {$description['description_density']}";
                     }
-                    if (!empty($w['exposition'])) {
-                        $styleDna[] = "- Exposition Style: {$w['exposition']}";
+                    if (!empty($description['sensory_focus'])) {
+                        $styleDna[] = "- Sensory Focus: {$description['sensory_focus']}";
+                    }
+                    if (!empty($description['atmosphere_strategy'])) {
+                        $styleDna[] = "- Atmosphere Strategy: {$description['atmosphere_strategy']}";
                     }
                 }
-                
-                // Description techniques
-                if (!empty($techniques['descriptions'])) {
-                    $desc = $techniques['descriptions'];
-                    if (!empty($desc['character_descriptions'])) {
-                        $styleDna[] = "- Character Descriptions: {$desc['character_descriptions']}";
+
+                if (!empty($techniques['exposition'])) {
+                    $exposition = $techniques['exposition'];
+                    if (!empty($exposition['exposition_strategy'])) {
+                        $styleDna[] = "- Exposition Strategy: {$exposition['exposition_strategy']}";
                     }
-                    if (!empty($desc['scene_painting'])) {
-                        $styleDna[] = "- Scene Painting: {$desc['scene_painting']}";
+                    if (!empty($exposition['context_integration'])) {
+                        $styleDna[] = "- Context Integration: {$exposition['context_integration']}";
                     }
-                    if (!empty($desc['atmosphere'])) {
-                        $styleDna[] = "- Atmosphere: {$desc['atmosphere']}";
+                    if (!empty($exposition['terminology_handling'])) {
+                        $styleDna[] = "- Terminology Handling: {$exposition['terminology_handling']}";
                     }
                 }
-                
-                // Literary techniques
-                if (!empty($techniques['literary'])) {
-                    $l = $techniques['literary'];
-                    if (!empty($l['devices'])) {
-                        $styleDna[] = "- Literary Devices: {$l['devices']}";
+
+                if (!empty($techniques['pacing'])) {
+                    $pacing = $techniques['pacing'];
+                    if (!empty($pacing['scene_tempo'])) {
+                        $styleDna[] = "- Scene Tempo: {$pacing['scene_tempo']}";
                     }
-                    if (!empty($l['metaphors'])) {
-                        $styleDna[] = "- Metaphor Usage: {$l['metaphors']}";
+                    if (!empty($pacing['transition_style'])) {
+                        $styleDna[] = "- Transition Style: {$pacing['transition_style']}";
                     }
-                    if (!empty($l['pacing'])) {
-                        $styleDna[] = "- Pacing: {$l['pacing']}";
+                    if (!empty($pacing['tension_pattern'])) {
+                        $styleDna[] = "- Tension Pattern: {$pacing['tension_pattern']}";
                     }
-                    if (!empty($l['scene_structure'])) {
-                        $styleDna[] = "- Scene Structure: {$l['scene_structure']}";
+                }
+
+                if (!empty($techniques['narrative'])) {
+                    $narrative = $techniques['narrative'];
+                    if (!empty($narrative['pov_tendency'])) {
+                        $styleDna[] = "- POV Tendency: {$narrative['pov_tendency']}";
+                    }
+                    if (!empty($narrative['narrative_distance'])) {
+                        $styleDna[] = "- Narrative Distance: {$narrative['narrative_distance']}";
+                    }
+                    if (!empty($narrative['redundancy_avoidance'])) {
+                        $styleDna[] = "- Redundancy Avoidance: {$narrative['redundancy_avoidance']}";
                     }
                 }
             }
@@ -478,8 +496,29 @@ class StreamLLMJob implements ShouldQueue
                 }
                 
                 // Add description examples
-                if (!empty($examples['descriptions']) && count($examples['descriptions']) > 0) {
-                    $styleDna[] = "Description Example: \"{$examples['descriptions'][0]}\"";
+                if (!empty($examples['description']) && count($examples['description']) > 0) {
+                    $styleDna[] = "Description Example: \"{$examples['description'][0]}\"";
+                }
+
+                if (!empty($examples['voice']) && count($examples['voice']) > 0) {
+                    $styleDna[] = "Voice Example: \"{$examples['voice'][0]}\"";
+                }
+
+                $adaptation = $authorStyle->adaptation_json;
+                if (!empty($adaptation['portable_traits'])) {
+                    $styleDna[] = "";
+                    $styleDna[] = "PORTABLE STYLE TRAITS:";
+                    foreach (array_slice($adaptation['portable_traits'], 0, 5) as $trait) {
+                        $styleDna[] = "- {$trait}";
+                    }
+                }
+
+                if (!empty($adaptation['suppression_guidance'])) {
+                    $styleDna[] = "";
+                    $styleDna[] = "SUPPRESSION GUIDANCE:";
+                    foreach (array_slice($adaptation['suppression_guidance'], 0, 5) as $guidance) {
+                        $styleDna[] = "- {$guidance}";
+                    }
                 }
             }
 

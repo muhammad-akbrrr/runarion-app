@@ -3,6 +3,8 @@ import { Head, usePage, router } from "@inertiajs/react";
 import AuthenticatedLayout, { BreadcrumbItem } from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
 import { FileManagerProps, AuthorStyle } from "@/types/files";
+import { toast } from "sonner";
+import { useWorkspacePipelineEvents } from "@/hooks/useWorkspacePipelineEvents";
 
 // Import partials
 import StorageCards from "./Partials/StorageCards";
@@ -13,7 +15,7 @@ import AuthorStyleEditDialog from "./Partials/AuthorStyleEditDialog";
 import AuthorStyleDeleteDialog from "./Partials/AuthorStyleDeleteDialog";
 
 export default function FileManager() {
-  const { workspaceId, workspaceName, storageProviders, authorStyles, projects } = usePage<PageProps<FileManagerProps>>().props;
+  const { workspaceId, workspaceName, storageProviders, authorStyles, projects, flash } = usePage<PageProps<FileManagerProps>>().props;
   const [isAuthorStyleDialogOpen, setIsAuthorStyleDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -35,6 +37,18 @@ export default function FileManager() {
       return () => clearInterval(interval);
     }
   }, [authorStyles]);
+
+  useEffect(() => {
+    if (flash?.success) toast.success(flash.success);
+    if (flash?.error) toast.error(flash.error);
+    if (flash?.info) toast.info(flash.info);
+    if (flash?.warning) toast.warning(flash.warning);
+  }, [flash?.success, flash?.error, flash?.info, flash?.warning]);
+
+  useWorkspacePipelineEvents({
+    workspaceId,
+    reloadOnly: ["projects", "authorStyles"],
+  });
 
   const handleEditClick = (style: AuthorStyle) => {
     setSelectedStyle(style);

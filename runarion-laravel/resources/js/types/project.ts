@@ -25,6 +25,18 @@ export interface ProjectAccess {
     role: ProjectRole;
 }
 
+export interface PipelineLock {
+    isLocked: boolean;
+    runId: string;
+    draftId?: string | null;
+    authorStyleId?: string | null;
+    status: string;
+    phase: string;
+    errorMessage?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+}
+
 export interface GenerationVersion {
     index: number;
     content: string;
@@ -108,6 +120,7 @@ export interface Project {
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
+    pipelineLock?: PipelineLock | null;
     author?: {
         id: number;
         name: string;
@@ -173,7 +186,8 @@ export interface SidebarSettingsProps {
     onSettingChange: (key: keyof ProjectSettings, value: any) => void;
     workspaceId?: string;
     projectId?: string;
-    authorStyles?: Array<{ id: string; name: string; status?: string }>; // Available author styles from workspace
+    authorStyles?: Array<{ id: string; name: string; status?: string; schemaVersion?: number }>;
+    projectPipelineLock?: PipelineLock | null;
     onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>; // Callback to apply story fixes, returns success/failure
     onSavingChange?: (isSaving: boolean) => void; // Callback to signal saving state changes (for save indicator)
 }

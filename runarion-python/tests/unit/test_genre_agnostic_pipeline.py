@@ -1,5 +1,6 @@
 import os
 import sys
+import logging
 from io import BytesIO
 
 
@@ -29,6 +30,14 @@ from src.services.novel_writer.prompt_template import NovelWriterPrompts
 from src.services.novel_writer.rewrite_policy import compile_rewrite_policy
 from src.services.style_analyzer.orchestrator import StyleAnalyzerOrchestrator
 from src.services.style_analyzer.stage_2_profiling import ProfilingStage
+
+
+@pytest.fixture(autouse=True)
+def _silence_expected_logs(set_logger_level):
+    set_logger_level("src.services.style_analyzer.orchestrator", logging.WARNING)
+    set_logger_level("src.api.deconstructor", logging.WARNING)
+    set_logger_level("src.api.novel_writer", logging.WARNING)
+    set_logger_level("test.scene", logging.CRITICAL)
 
 
 def test_rewrite_policy_deduplicates_constraints():
@@ -93,7 +102,7 @@ def test_style_analyzer_structured_parser_normalizes_v2_shape():
     raw = """
     {
       "techniques": {
-        "voice": {"diction": "plain", "syntax": null},
+        "voice": {"diction": "plain", "syntax": null, "register": "conversational"},
         "dialogue": {"conversation_style": "terse", "speaker_differentiation": "clear", "dialogue_narration_balance": "balanced"},
         "description": {"description_density": "sparse", "sensory_focus": "visual", "atmosphere_strategy": "restrained"},
         "exposition": {"exposition_strategy": "direct", "context_integration": "inline", "terminology_handling": "light"},
@@ -108,6 +117,8 @@ def test_style_analyzer_structured_parser_normalizes_v2_shape():
     parsed = ProfilingStage._parse_structured_response(stage, raw)
     assert parsed.schema_version == 2
     assert parsed.techniques.voice.syntax == ""
+    assert parsed.techniques.voice.voice_register == "conversational"
+    assert parsed.model_dump()["techniques"]["voice"]["register"] == "conversational"
     assert parsed.examples.voice == ["short sample"]
     assert parsed.adaptation.portable_traits == ["plain diction"]
 
@@ -121,6 +132,7 @@ def test_style_analyzer_rejects_schema_v1_on_get():
         {},
         {},
     )
+    orchestrator._mark_reprofile_status = lambda *args, **kwargs: None
 
     with pytest.raises(ValueError, match="schema_version"):
         orchestrator.check_and_clean(
@@ -132,7 +144,7 @@ def test_style_analyzer_rejects_schema_v1_on_get():
 
 def test_scene_detection_accepts_structurally_coherent_out_of_band_output():
     stage = SceneDetectionStage.__new__(SceneDetectionStage)
-    stage.logger = __import__("logging").getLogger("test.scene")
+    stage.logger = logging.getLogger("test.scene")
     stage._get_scene_count_band = lambda text: {
         "target_scene_count": 5,
         "soft_min_scenes": 4,
@@ -150,7 +162,9 @@ def test_scene_detection_accepts_structurally_coherent_out_of_band_output():
             "end_marker": "The courier never arrived",
         }
     ]
-    stage._retry_scene_detection = stage._detect_scenes
+    stage._retry_scene_detection = (
+        lambda text, attempt, previous_scene_count, band: stage._detect_scenes(text, band)
+    )
 
     scenes = stage._process_chunk(1, "word " * 4500, 10)
 
@@ -202,7 +216,7 @@ def test_pipeline_payload_round_trips_for_queue_rehydration():
 def test_phase_claim_is_idempotent_for_completed_and_running_states():
     completed_conn = _FakeConnection(fetches=[
         (
-            "run-1", "draft-1", "ws-1", "1", None, "Author", "running", 1,
+            "run-1", "draft-1", "ws-1", "proj-1", "1", None, "Author", "running", 1,
             "completed", "pending", "pending", {}, None, None, None, None, {},
         )
     ])
@@ -213,7 +227,7 @@ def test_phase_claim_is_idempotent_for_completed_and_running_states():
 
     running_conn = _FakeConnection(fetches=[
         (
-            "run-1", "draft-1", "ws-1", "1", None, "Author", "running", 2,
+            "run-1", "draft-1", "ws-1", "proj-1", "1", None, "Author", "running", 2,
             "completed", "running", "pending", {}, None, None, None, None, {},
         )
     ])

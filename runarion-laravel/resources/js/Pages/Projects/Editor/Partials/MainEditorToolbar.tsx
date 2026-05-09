@@ -44,6 +44,7 @@ interface EditorToolbarProps {
     workspaceId?: string;
     projectId?: string;
     onBeforeNavigate?: () => Promise<void>;
+    isLocked?: boolean;
 }
 
 export function EditorToolbar({
@@ -56,6 +57,7 @@ export function EditorToolbar({
     workspaceId,
     projectId,
     onBeforeNavigate,
+    isLocked = false,
 }: EditorToolbarProps) {
     const [isButtonDisabled, setIsButtonDisabled] = useState(false);
 
@@ -72,7 +74,7 @@ export function EditorToolbar({
     }, [isGenerating]);
 
     const handleSendClick = () => {
-        if (onSend && !isButtonDisabled) {
+        if (onSend && !isButtonDisabled && !isLocked) {
             setIsButtonDisabled(true);
             onSend();
         }
@@ -82,7 +84,8 @@ export function EditorToolbar({
         if (
             versionControl?.onRegenerate &&
             !isButtonDisabled &&
-            versionControl.canRegenerate
+            versionControl.canRegenerate &&
+            !isLocked
         ) {
             setIsButtonDisabled(true);
             versionControl.onRegenerate();
@@ -110,12 +113,15 @@ export function EditorToolbar({
     };
 
     const handleVersionSwitch = (versionIndex: number) => {
-        if (versionControl?.onSwitchVersion && !versionControl.isLoading) {
+        if (versionControl?.onSwitchVersion && !versionControl.isLoading && !isLocked) {
             versionControl.onSwitchVersion(versionIndex);
         }
     };
 
     const handleNavigateToMultiPrompt = async () => {
+        if (isLocked) {
+            return;
+        }
         if (onBeforeNavigate) {
             await onBeforeNavigate();
         }
@@ -150,7 +156,7 @@ export function EditorToolbar({
             <div className="flex items-center justify-between">
                 {/* Left side - Controls */}
                 <div className="flex items-center space-x-2">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isLocked}>
                         <SlidersHorizontal className="h-4 w-4" />
                     </Button>
                     <span className="text-sm text-gray-500">
@@ -166,6 +172,7 @@ export function EditorToolbar({
                                 isColorCoded ? "bg-blue-50 text-blue-700" : ""
                             }`}
                             onClick={onToggleColorCoding}
+                            disabled={isLocked}
                             title={
                                 isColorCoded
                                     ? "Disable color coding"
@@ -179,7 +186,7 @@ export function EditorToolbar({
                     {/* Auto dropdown - opens upward */}
                     <DropdownMenu>
                         <DropdownMenuTrigger>
-                            <Button variant="ghost" size="sm" className="h-8">
+                            <Button variant="ghost" size="sm" className="h-8" disabled={isLocked}>
                                 Auto
                                 <ChevronUp className="h-3 w-3" />
                             </Button>
@@ -205,7 +212,8 @@ export function EditorToolbar({
                         disabled={
                             !versionControl?.canUndo ||
                             versionControl?.isLoading ||
-                            isGenerating
+                            isGenerating ||
+                            isLocked
                         }
                         title="Undo to previous step"
                     >
@@ -225,7 +233,8 @@ export function EditorToolbar({
                         disabled={
                             !versionControl?.canRedo ||
                             versionControl?.isLoading ||
-                            isGenerating
+                            isGenerating ||
+                            isLocked
                         }
                         title={
                             !versionControl?.canRedo
@@ -243,14 +252,15 @@ export function EditorToolbar({
                     {/* Version Dropdown */}
                     <DropdownMenu>
                         <DropdownMenuTrigger
-                            disabled={versionControl?.isLoading || isGenerating}
+                            disabled={versionControl?.isLoading || isGenerating || isLocked}
                         >
                             <span
                                 className={`
                                     text-lg h-8 w-8 flex items-center justify-center rounded-md 
                                     ${
                                         versionControl?.isLoading ||
-                                        isGenerating
+                                        isGenerating ||
+                                        isLocked
                                             ? "text-gray-400 cursor-not-allowed"
                                             : "hover:bg-gray-100 cursor-pointer"
                                     }
@@ -301,7 +311,8 @@ export function EditorToolbar({
                         disabled={
                             !versionControl?.canRegenerate ||
                             isButtonDisabled ||
-                            versionControl?.isLoading
+                            versionControl?.isLoading ||
+                            isLocked
                         }
                         title="Regenerate current step"
                     >
@@ -316,7 +327,7 @@ export function EditorToolbar({
                     <Button
                         size="sm"
                         onClick={handleSendClick}
-                        disabled={isButtonDisabled || versionControl?.isLoading}
+                        disabled={isButtonDisabled || versionControl?.isLoading || isLocked}
                         className={isGenerating ? "animate-pulse" : ""}
                     >
                         {isGenerating ? (

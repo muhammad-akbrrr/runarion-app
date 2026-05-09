@@ -9,22 +9,16 @@ import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Textarea } from "@/Components/ui/textarea";
 import { Label } from "@/Components/ui/label";
-import {
-    Tabs,
-    TabsContent,
-    TabsList,
-    TabsTrigger,
-} from "@/Components/ui/tabs";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import {
     Accordion,
     AccordionContent,
     AccordionItem,
     AccordionTrigger,
 } from "@/Components/ui/accordion";
-import { router, usePage } from "@inertiajs/react";
+import { router } from "@inertiajs/react";
 import { Save, X } from "lucide-react";
 import { AuthorStyle } from "@/types/files";
-import { PageProps } from "@/types";
 
 interface AuthorStyleEditDialogProps {
     open: boolean;
@@ -33,45 +27,82 @@ interface AuthorStyleEditDialogProps {
     workspaceId: string;
 }
 
-type TechniqueCategory = 'dialogue' | 'action' | 'literary' | 'descriptions' | 'worldbuilding';
+type TechniqueCategory =
+    | "voice"
+    | "dialogue"
+    | "description"
+    | "exposition"
+    | "pacing"
+    | "narrative";
 
-const TECHNIQUE_FIELDS: Record<TechniqueCategory, { key: string; label: string }[]> = {
+const TECHNIQUE_FIELDS: Record<
+    TechniqueCategory,
+    { key: string; label: string }[]
+> = {
+    voice: [
+        { key: "diction", label: "Diction" },
+        { key: "syntax", label: "Syntax" },
+        { key: "rhythm", label: "Rhythm" },
+        { key: "register", label: "Register" },
+        { key: "figurative_language", label: "Figurative Language" },
+    ],
     dialogue: [
-        { key: 'conversation_style', label: 'Conversation Style' },
-        { key: 'dialogue_balance', label: 'Dialogue Balance' },
-        { key: 'character_voices', label: 'Character Voices' },
+        { key: "conversation_style", label: "Conversation Style" },
+        { key: "speaker_differentiation", label: "Speaker Differentiation" },
+        { key: "dialogue_narration_balance", label: "Dialogue-Narration Balance" },
     ],
-    action: [
-        { key: 'action_sequences', label: 'Action Sequences' },
-        { key: 'fight_scenes', label: 'Fight Scenes' },
-        { key: 'tension', label: 'Tension Building' },
+    description: [
+        { key: "description_density", label: "Description Density" },
+        { key: "sensory_focus", label: "Sensory Focus" },
+        { key: "atmosphere_strategy", label: "Atmosphere Strategy" },
     ],
-    literary: [
-        { key: 'devices', label: 'Literary Devices' },
-        { key: 'metaphors', label: 'Metaphors & Similes' },
-        { key: 'pacing', label: 'Pacing' },
-        { key: 'transitions', label: 'Transitions' },
-        { key: 'word_patterns', label: 'Word Patterns' },
-        { key: 'scene_structure', label: 'Scene Structure' },
+    exposition: [
+        { key: "exposition_strategy", label: "Exposition Strategy" },
+        { key: "context_integration", label: "Context Integration" },
+        { key: "terminology_handling", label: "Terminology Handling" },
     ],
-    descriptions: [
-        { key: 'atmosphere', label: 'Atmosphere' },
-        { key: 'scene_painting', label: 'Scene Painting' },
-        { key: 'character_descriptions', label: 'Character Descriptions' },
+    pacing: [
+        { key: "scene_tempo", label: "Scene Tempo" },
+        { key: "transition_style", label: "Transition Style" },
+        { key: "tension_pattern", label: "Tension Pattern" },
     ],
-    worldbuilding: [
-        { key: 'world_reveals', label: 'World Reveals' },
-        { key: 'exposition', label: 'Exposition' },
-        { key: 'history_magic', label: 'History & Magic' },
+    narrative: [
+        { key: "pov_tendency", label: "POV Tendency" },
+        { key: "narrative_distance", label: "Narrative Distance" },
+        { key: "redundancy_avoidance", label: "Redundancy Avoidance" },
     ],
 };
 
 const CATEGORY_LABELS: Record<TechniqueCategory, string> = {
-    dialogue: 'Dialogue',
-    action: 'Action & Combat',
-    literary: 'Literary Techniques',
-    descriptions: 'Descriptions',
-    worldbuilding: 'Worldbuilding',
+    voice: "Voice",
+    dialogue: "Dialogue",
+    description: "Description",
+    exposition: "Exposition",
+    pacing: "Pacing",
+    narrative: "Narrative",
+};
+
+type AdaptationField =
+    | "portable_traits"
+    | "non_portable_markers"
+    | "transfer_risks"
+    | "suppression_guidance";
+
+const ADAPTATION_FIELDS: { key: AdaptationField; label: string }[] = [
+    { key: "portable_traits", label: "Portable Traits" },
+    { key: "non_portable_markers", label: "Non-Portable Markers" },
+    { key: "transfer_risks", label: "Transfer Risks" },
+    { key: "suppression_guidance", label: "Suppression Guidance" },
+];
+
+type ExampleCategory = "voice" | "dialogue" | "description" | "exposition" | "pacing";
+
+const EXAMPLE_CATEGORY_LABELS: Record<ExampleCategory, string> = {
+    voice: "Voice",
+    dialogue: "Dialogue",
+    description: "Description",
+    exposition: "Exposition",
+    pacing: "Pacing",
 };
 
 export default function AuthorStyleEditDialog({
@@ -82,8 +113,13 @@ export default function AuthorStyleEditDialog({
 }: AuthorStyleEditDialogProps) {
     const [isProcessing, setIsProcessing] = React.useState(false);
     const [authorName, setAuthorName] = React.useState("");
-    const [techniques, setTechniques] = React.useState<AuthorStyle['techniques']>({});
-    const [examples, setExamples] = React.useState<AuthorStyle['examples']>({});
+    const [techniques, setTechniques] = React.useState<
+        AuthorStyle["techniques"]
+    >({});
+    const [examples, setExamples] = React.useState<AuthorStyle["examples"]>({});
+    const [adaptation, setAdaptation] = React.useState<
+        AuthorStyle["adaptation"]
+    >({});
     const [error, setError] = React.useState<string | null>(null);
 
     // Load data when dialog opens
@@ -92,13 +128,18 @@ export default function AuthorStyleEditDialog({
             setAuthorName(authorStyle.name);
             setTechniques(authorStyle.techniques || {});
             setExamples(authorStyle.examples || {});
+            setAdaptation(authorStyle.adaptation || {});
             setError(null);
         }
     }, [open, authorStyle]);
 
     // Update a technique field
-    const updateTechnique = (category: TechniqueCategory, field: string, value: string) => {
-        setTechniques(prev => ({
+    const updateTechnique = (
+        category: TechniqueCategory,
+        field: string,
+        value: string,
+    ) => {
+        setTechniques((prev) => ({
             ...prev,
             [category]: {
                 ...(prev?.[category] || {}),
@@ -108,36 +149,49 @@ export default function AuthorStyleEditDialog({
     };
 
     // Update examples for a category
-    const updateExamples = (category: TechniqueCategory, value: string) => {
+    const updateExamples = (category: ExampleCategory, value: string) => {
         // Split by newlines to create array
-        const examplesArray = value.split('\n').filter(line => line.trim());
-        setExamples(prev => ({
+        const examplesArray = value.split("\n").filter((line) => line.trim());
+        setExamples((prev) => ({
             ...prev,
             [category]: examplesArray,
         }));
     };
 
     // Get examples as string for textarea
-    const getExamplesString = (category: TechniqueCategory): string => {
-        return examples?.[category]?.join('\n') || '';
+    const getExamplesString = (category: ExampleCategory): string => {
+        return examples?.[category]?.join("\n") || "";
+    };
+
+    const updateAdaptation = (field: AdaptationField, value: string) => {
+        const lines = value.split("\n").filter((line) => line.trim());
+        setAdaptation((prev) => ({
+            ...prev,
+            [field]: lines,
+        }));
+    };
+
+    const getAdaptationString = (field: AdaptationField): string => {
+        return adaptation?.[field]?.join("\n") || "";
     };
 
     // Handle save
     const handleSave = () => {
         if (!authorStyle) return;
-        
+
         setIsProcessing(true);
         setError(null);
 
         router.patch(
-            route("workspace.files.author-styles.update", { 
-                workspace_id: workspaceId, 
-                author_style_id: authorStyle.id 
+            route("workspace.files.author-styles.update", {
+                workspace_id: workspaceId,
+                author_style_id: authorStyle.id,
             }),
             {
                 author_name: authorName,
                 techniques_json: techniques,
                 examples_json: examples,
+                adaptation_json: adaptation,
             },
             {
                 preserveScroll: true,
@@ -148,9 +202,13 @@ export default function AuthorStyleEditDialog({
                 onError: (errors) => {
                     setIsProcessing(false);
                     const firstError = Object.values(errors)[0];
-                    setError(typeof firstError === 'string' ? firstError : 'Failed to update author style.');
+                    setError(
+                        typeof firstError === "string"
+                            ? firstError
+                            : "Failed to update author style.",
+                    );
                 },
-            }
+            },
         );
     };
 
@@ -177,34 +235,63 @@ export default function AuthorStyleEditDialog({
                     </div>
 
                     <Tabs defaultValue="techniques" className="w-full">
-                        <TabsList className="grid w-full grid-cols-2">
-                            <TabsTrigger value="techniques">Techniques</TabsTrigger>
+                        <TabsList className="grid w-full grid-cols-3">
+                            <TabsTrigger value="techniques">
+                                Techniques
+                            </TabsTrigger>
                             <TabsTrigger value="examples">Examples</TabsTrigger>
+                            <TabsTrigger value="adaptation">Adaptation</TabsTrigger>
                         </TabsList>
 
                         {/* Techniques Tab */}
                         <TabsContent value="techniques" className="mt-4">
-                            <Accordion type="multiple" className="w-full" defaultValue={['dialogue']}>
-                                {(Object.keys(TECHNIQUE_FIELDS) as TechniqueCategory[]).map((category) => (
-                                    <AccordionItem key={category} value={category}>
+                            <Accordion
+                                type="multiple"
+                                className="w-full"
+                                defaultValue={["voice"]}
+                            >
+                                {(
+                                    Object.keys(
+                                        TECHNIQUE_FIELDS,
+                                    ) as TechniqueCategory[]
+                                ).map((category) => (
+                                    <AccordionItem
+                                        key={category}
+                                        value={category}
+                                    >
                                         <AccordionTrigger className="text-sm font-medium">
                                             {CATEGORY_LABELS[category]}
                                         </AccordionTrigger>
                                         <AccordionContent>
                                             <div className="space-y-4 pt-2">
-                                                {TECHNIQUE_FIELDS[category].map((field) => (
-                                                    <div key={field.key}>
-                                                        <Label className="text-xs text-muted-foreground">
-                                                            {field.label}
-                                                        </Label>
-                                                        <Textarea
-                                                            value={techniques?.[category]?.[field.key as keyof typeof techniques[typeof category]] || ''}
-                                                            onChange={(e) => updateTechnique(category, field.key, e.target.value)}
-                                                            placeholder={`Describe ${field.label.toLowerCase()}...`}
-                                                            className="mt-1 text-sm min-h-[80px]"
-                                                        />
-                                                    </div>
-                                                ))}
+                                                {TECHNIQUE_FIELDS[category].map(
+                                                    (field) => (
+                                                        <div key={field.key}>
+                                                            <Label className="text-xs text-muted-foreground">
+                                                                {field.label}
+                                                            </Label>
+                                                            <Textarea
+                                                                value={
+                                                                    techniques?.[
+                                                                        category
+                                                                    ]?.[
+                                                                        field.key as keyof (typeof techniques)[typeof category]
+                                                                    ] || ""
+                                                                }
+                                                                onChange={(e) =>
+                                                                    updateTechnique(
+                                                                        category,
+                                                                        field.key,
+                                                                        e.target
+                                                                            .value,
+                                                                    )
+                                                                }
+                                                                placeholder={`Describe ${field.label.toLowerCase()}...`}
+                                                                className="mt-1 text-sm min-h-20"
+                                                            />
+                                                        </div>
+                                                    ),
+                                                )}
                                             </div>
                                         </AccordionContent>
                                     </AccordionItem>
@@ -214,11 +301,22 @@ export default function AuthorStyleEditDialog({
 
                         {/* Examples Tab */}
                         <TabsContent value="examples" className="mt-4">
-                            <Accordion type="multiple" className="w-full" defaultValue={['dialogue']}>
-                                {(Object.keys(CATEGORY_LABELS) as TechniqueCategory[]).map((category) => (
-                                    <AccordionItem key={category} value={category}>
+                            <Accordion
+                                type="multiple"
+                                className="w-full"
+                                defaultValue={["voice"]}
+                            >
+                                {(
+                                    Object.keys(
+                                        EXAMPLE_CATEGORY_LABELS,
+                                    ) as ExampleCategory[]
+                                ).map((category) => (
+                                    <AccordionItem
+                                        key={category}
+                                        value={category}
+                                    >
                                         <AccordionTrigger className="text-sm font-medium">
-                                            {CATEGORY_LABELS[category]} Examples
+                                            {EXAMPLE_CATEGORY_LABELS[category]} Examples
                                         </AccordionTrigger>
                                         <AccordionContent>
                                             <div className="pt-2">
@@ -226,9 +324,16 @@ export default function AuthorStyleEditDialog({
                                                     Enter one example per line
                                                 </p>
                                                 <Textarea
-                                                    value={getExamplesString(category)}
-                                                    onChange={(e) => updateExamples(category, e.target.value)}
-                                                    placeholder={`Enter ${CATEGORY_LABELS[category].toLowerCase()} examples, one per line...`}
+                                                    value={getExamplesString(
+                                                        category,
+                                                    )}
+                                                    onChange={(e) =>
+                                                        updateExamples(
+                                                            category,
+                                                            e.target.value,
+                                                        )
+                                                    }
+                                                    placeholder={`Enter ${EXAMPLE_CATEGORY_LABELS[category].toLowerCase()} examples, one per line...`}
                                                     className="text-sm min-h-[120px]"
                                                 />
                                             </div>
@@ -236,6 +341,29 @@ export default function AuthorStyleEditDialog({
                                     </AccordionItem>
                                 ))}
                             </Accordion>
+                        </TabsContent>
+
+                        <TabsContent value="adaptation" className="mt-4">
+                            <div className="space-y-4">
+                                {ADAPTATION_FIELDS.map((field) => (
+                                    <div key={field.key}>
+                                        <Label className="text-xs text-muted-foreground">
+                                            {field.label}
+                                        </Label>
+                                        <p className="text-xs text-muted-foreground mb-2">
+                                            Enter one item per line
+                                        </p>
+                                        <Textarea
+                                            value={getAdaptationString(field.key)}
+                                            onChange={(e) =>
+                                                updateAdaptation(field.key, e.target.value)
+                                            }
+                                            placeholder={`Enter ${field.label.toLowerCase()}...`}
+                                            className="text-sm min-h-[120px]"
+                                        />
+                                    </div>
+                                ))}
+                            </div>
                         </TabsContent>
                     </Tabs>
                 </div>
@@ -250,7 +378,10 @@ export default function AuthorStyleEditDialog({
                         <X className="h-4 w-4 mr-1" />
                         Cancel
                     </Button>
-                    <Button onClick={handleSave} disabled={isProcessing || !authorName}>
+                    <Button
+                        onClick={handleSave}
+                        disabled={isProcessing || !authorName}
+                    >
                         <Save className="h-4 w-4 mr-1" />
                         {isProcessing ? "Saving..." : "Save Changes"}
                     </Button>
@@ -259,4 +390,3 @@ export default function AuthorStyleEditDialog({
         </Dialog>
     );
 }
-

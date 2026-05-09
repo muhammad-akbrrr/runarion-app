@@ -14,8 +14,10 @@ return [
     |
     */
 
-    'deconstructor' => [
-        'url' => env('PYTHON_SERVICE_URL') . '/api/story-rewrite',
+    'python' => [
+        'url' => env('PYTHON_SERVICE_URL', 'http://python-app:5000'),
+        'novel_pipeline_test_provider' => env('PYTHON_NOVEL_PIPELINE_TEST_PROVIDER'),
+        'novel_pipeline_test_model' => env('PYTHON_NOVEL_PIPELINE_TEST_MODEL', 'mock-replay-v1'),
     ],
 
     'postmark' => [

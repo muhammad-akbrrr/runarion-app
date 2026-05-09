@@ -61,6 +61,10 @@ services:
       - type: volume
         source: npm_cache
         target: /tmp/npm-cache
+      - type: bind
+        source: ./runarion-python/tests/sample/input
+        target: /var/www/python-test-samples/input
+        read_only: true
     networks:
       - runarion-network
     depends_on:

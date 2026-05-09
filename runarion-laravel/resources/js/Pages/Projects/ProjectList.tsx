@@ -13,9 +13,9 @@ import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
-import { Head, router } from "@inertiajs/react";
+import { Head, router, usePage } from "@inertiajs/react";
 import { Badge } from "@/Components/ui/badge";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Link } from "@inertiajs/react";
 import AddFolderDialog from "./Partials/AddFolderDialog";
 import DeleteFolderDialog from "./Partials/DeleteFolderDialog";
@@ -23,6 +23,8 @@ import AddProjectDialog from "./Partials/AddProjectDialog";
 import DeleteProjectDialog from "./Partials/DeleteProjectDialog";
 import { Project } from "@/types/project";
 import ItemCard from "./Partials/ItemCard";
+import { toast } from "sonner";
+import { useWorkspacePipelineEvents } from "@/hooks/useWorkspacePipelineEvents";
 
 const formatTimeAgo = (dateString: string): string => {
     const date = new Date(dateString);
@@ -78,6 +80,7 @@ export default function ProjectList({
         author?: { id: number; name: string };
     } | null;
 }>) {
+    const { flash } = usePage<PageProps>().props;
     const [open, setOpen] = useState(false);
     const [folderName, setFolderName] = useState("");
     const [loading, setLoading] = useState(false);
@@ -257,6 +260,18 @@ export default function ProjectList({
             })
         );
     };
+
+    useEffect(() => {
+        if (flash?.success) toast.success(flash.success);
+        if (flash?.error) toast.error(flash.error);
+        if (flash?.info) toast.info(flash.info);
+        if (flash?.warning) toast.warning(flash.warning);
+    }, [flash?.success, flash?.error, flash?.info, flash?.warning]);
+
+    useWorkspacePipelineEvents({
+        workspaceId,
+        reloadOnly: ["projects"],
+    });
 
     return (
         isResultsActive ? (

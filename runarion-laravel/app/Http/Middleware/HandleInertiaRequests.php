@@ -47,6 +47,12 @@ class HandleInertiaRequests extends Middleware
                 'csrf_token' => csrf_token(),
             ],
             'workspaces' => $workspaces,
+            'flash' => [
+                'success' => fn () => $request->session()->get('success'),
+                'error' => fn () => $request->session()->get('error'),
+                'info' => fn () => $request->session()->get('info'),
+                'warning' => fn () => $request->session()->get('warning'),
+            ],
         ]);
 
         try {

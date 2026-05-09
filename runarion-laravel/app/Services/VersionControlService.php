@@ -18,9 +18,9 @@ class VersionControlService
     /**
      * Initialize version control for a chapter
      */
-    public function initializeChapter(string $projectId, int $chapterOrder, string $content): string
+    public function initializeChapter(string $projectId, int $chapterOrder, string $content, bool $isUserGenerated = true): string
     {
-        return DB::transaction(function () use ($projectId, $chapterOrder, $content) {
+        return DB::transaction(function () use ($projectId, $chapterOrder, $content, $isUserGenerated) {
             // Create initial node
             $node = ContentNode::create([
                 'project_id' => $projectId,
@@ -29,7 +29,7 @@ class VersionControlService
                 'parent_version_index' => null,
                 'content' => $content,
                 'generation_settings' => [],
-                'is_user_generated' => true,
+                'is_user_generated' => $isUserGenerated,
             ]);
 
             // Create initial version

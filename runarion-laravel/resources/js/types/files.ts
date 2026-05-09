@@ -1,3 +1,5 @@
+import type { PipelineLock } from "./project";
+
 // Define the storage provider type
 export interface StorageProvider {
   id: string;
@@ -14,47 +16,59 @@ export interface StorageProvider {
 export interface AuthorStyle {
   id: string;
   name: string;
+  author_name?: string;
   fileCount: number;
   avatar: string;
   color: string;
-  status: 'init_completed' | 'sampling_completed' | 'sampling_failed' | 'profiling_completed' | 'profiling_failed';
+  status: 'init_completed' | 'init_failed' | 'sampling_completed' | 'sampling_failed' | 'profiling_completed' | 'profiling_failed';
+  schemaVersion: number;
   projectIds: string[];
   techniques?: {
+    voice?: {
+      diction?: string;
+      syntax?: string;
+      rhythm?: string;
+      register?: string;
+      figurative_language?: string;
+    };
     dialogue?: {
       conversation_style?: string;
-      dialogue_balance?: string;
-      character_voices?: string;
+      speaker_differentiation?: string;
+      dialogue_narration_balance?: string;
     };
-    action?: {
-      action_sequences?: string;
-      fight_scenes?: string;
-      tension?: string;
+    description?: {
+      description_density?: string;
+      sensory_focus?: string;
+      atmosphere_strategy?: string;
     };
-    literary?: {
-      devices?: string;
-      metaphors?: string;
-      pacing?: string;
-      transitions?: string;
-      word_patterns?: string;
-      scene_structure?: string;
+    exposition?: {
+      exposition_strategy?: string;
+      context_integration?: string;
+      terminology_handling?: string;
     };
-    descriptions?: {
-      atmosphere?: string;
-      scene_painting?: string;
-      character_descriptions?: string;
+    pacing?: {
+      scene_tempo?: string;
+      transition_style?: string;
+      tension_pattern?: string;
     };
-    worldbuilding?: {
-      world_reveals?: string;
-      exposition?: string;
-      history_magic?: string;
+    narrative?: {
+      pov_tendency?: string;
+      narrative_distance?: string;
+      redundancy_avoidance?: string;
     };
   };
   examples?: {
+    voice?: string[];
     dialogue?: string[];
-    action?: string[];
-    literary?: string[];
-    descriptions?: string[];
-    worldbuilding?: string[];
+    description?: string[];
+    exposition?: string[];
+    pacing?: string[];
+  };
+  adaptation?: {
+    portable_traits?: string[];
+    non_portable_markers?: string[];
+    transfer_risks?: string[];
+    suppression_guidance?: string[];
   };
 }
 
@@ -66,6 +80,7 @@ export interface Project {
   createdAt: string;
   sharedWith: string[];
   savedIn: string;
+  pipelineLock?: PipelineLock | null;
 }
 
 // Define the props type for the main component

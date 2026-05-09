@@ -219,8 +219,8 @@ Return the improved chapter in its entirety:"""
             parts.append(f"VOICE SYNTAX: {techniques.voice.syntax}")
         if techniques.voice.rhythm:
             parts.append(f"VOICE RHYTHM: {techniques.voice.rhythm}")
-        if techniques.voice.register:
-            parts.append(f"VOICE REGISTER: {techniques.voice.register}")
+        if techniques.voice.voice_register:
+            parts.append(f"VOICE REGISTER: {techniques.voice.voice_register}")
         if techniques.voice.figurative_language:
             parts.append(f"FIGURATIVE LANGUAGE: {techniques.voice.figurative_language}")
 

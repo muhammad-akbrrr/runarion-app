@@ -6,27 +6,33 @@ use Illuminate\Http\Request;
 use App\Models\Projects;
 use App\Models\ProjectContent;
 use App\Http\Controllers\Controller;
+use App\Models\AuthorStyle;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use App\Jobs\ManuscriptDeconstructionJob;
 use App\Jobs\StreamLLMJob;
 use App\Events\ProjectContentUpdated;
 use App\Events\LLMStreamCompleted;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use App\Services\AuthorStyleFormatter;
+use App\Services\NovelPipelineOrchestratorService;
+use App\Services\ProjectPipelineStateService;
 use App\Services\VersionControlService;
 use App\Events\OperationStateChanged;
-use App\Models\AuthorStyle;
 
 class MainEditorController extends Controller
 {
     protected VersionControlService $versionControl;
 
-    public function __construct(VersionControlService $versionControl)
-    {
+    public function __construct(
+        VersionControlService $versionControl,
+        private readonly AuthorStyleFormatter $authorStyleFormatter,
+        private readonly NovelPipelineOrchestratorService $novelPipelineOrchestrator,
+        private readonly ProjectPipelineStateService $projectPipelineStateService,
+    ) {
         $this->versionControl = $versionControl;
     }
     /**
@@ -73,20 +79,10 @@ class MainEditorController extends Controller
                 }
             }
 
-            // Get author styles for this workspace
-            $authorStyles = AuthorStyle::where('workspace_id', $workspace_id)
-                ->get()
-                ->map(function ($style) {
-                    $colors = ['bg-blue-100', 'bg-purple-100', 'bg-green-100', 'bg-pink-100', 'bg-amber-100', 'bg-cyan-100'];
-                    $colorIndex = crc32($style->id) % count($colors);
-                    return [
-                        'id' => $style->id,
-                        'name' => $style->author_name,
-                        'status' => $style->status ?? 'init_completed',
-                        'avatar' => strtoupper(substr($style->author_name, 0, 1)),
-                        'color' => $colors[$colorIndex],
-                    ];
-                });
+            $authorStyles = $this->authorStyleFormatter->formatCollection(
+                AuthorStyle::where('workspace_id', $workspace_id)->get()
+            );
+            $projectPipelineLock = $this->projectPipelineStateService->getProjectLock($workspace_id, $project_id);
 
             return Inertia::render('Projects/Editor/Main', [
                 'workspaceId' => $workspace_id,
@@ -94,6 +90,7 @@ class MainEditorController extends Controller
                 'project' => $project,
                 'chapters' => $chapters,
                 'authorStyles' => $authorStyles,
+                'projectPipelineLock' => $projectPipelineLock,
             ]);
         } catch (\Exception $e) {
             Log::error('Error loading editor', [
@@ -140,91 +137,43 @@ class MainEditorController extends Controller
             $project->completed_onboarding = true;
             $project->save();
 
-            // Get chapters from ProjectContent (where Chapter 1 is stored)
-            $projectContent = ProjectContent::where('project_id', $project_id)->first();
-            $chapters = [];
-            if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
-                $chapters = $projectContent->content;
-            }
-
-            // Get author styles for this workspace
-            $authorStyles = AuthorStyle::where('workspace_id', $workspace_id)
-                ->get()
-                ->map(function ($style) {
-                    $colors = ['bg-blue-100', 'bg-purple-100', 'bg-green-100', 'bg-pink-100', 'bg-amber-100', 'bg-cyan-100'];
-                    $colorIndex = crc32($style->id) % count($colors);
-                    return [
-                        'id' => $style->id,
-                        'name' => $style->author_name,
-                        'status' => $style->status ?? 'init_completed',
-                        'avatar' => strtoupper(substr($style->author_name, 0, 1)),
-                        'color' => $colors[$colorIndex],
-                    ];
-                });
-
-            return Inertia::render('Projects/Editor/Main', [
-                'workspaceId' => $workspace_id,
-                'projectId' => $project_id,
-                'project' => $project,
-                'chapters' => $chapters,
-                'authorStyles' => $authorStyles,
-            ]);
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ])->with('success', 'Project onboarding completed.');
         }
 
         if ($method === 'draft') {
             $user = Auth::user();
             $validated = $request->validate([
-                'draft_file' => 'required|file|mimes:pdf|max:102400',
+                'draft_file' => 'required|file|mimes:pdf,txt,doc,docx|max:102400',
                 'author_style_type' => 'required|in:existing,new',
                 'writing_perspective' => 'required|string',
                 'selectedAuthorStyle' => 'required_if:author_style_type,existing',
                 'newAuthorFiles' => 'required_if:author_style_type,new|array|sometimes',
-                'newAuthorFiles.*' => 'file|mimes:pdf|max:102400|sometimes',
+                'newAuthorFiles.*' => 'file|mimes:pdf,txt,doc,docx|max:102400|sometimes',
                 'newAuthorName' => 'required_if:author_style_type,new|sometimes|string',
             ]);
 
-            // Store draft file
-            $draftFile = $request->file('draft_file');
-            $draftPath = $draftFile->store('drafts', 'local');
-            $draftFullPath = storage_path('app/' . $draftPath);
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
 
-            // Add file existence check and log
-            if (!file_exists($draftFullPath)) {
-                throw new \Exception('Draft file missing after store: ' . $draftFullPath);
-            }
-
-            $authorStyleType = $validated['author_style_type'];
-            $authorStyleId = null;
-            $authorSamplePaths = [];
-            $newAuthorName = null;
-
-            if ($authorStyleType === 'existing') {
-                $authorStyleId = $validated['selectedAuthorStyle'];
-            } else if ($authorStyleType === 'new') {
-                $newAuthorName = $validated['newAuthorName'];
-                $newAuthorFiles = $request->file('newAuthorFiles', []);
-                foreach ($newAuthorFiles as $idx => $file) {
-                    $path = $file->store('author_samples', 'local');
-                    $authorSamplePaths[] = storage_path('app/' . $path);
-                }
-            }
-
-            $writingPerspective = $validated['writing_perspective'];
-
-            // Dispatch the job
-            ManuscriptDeconstructionJob::dispatch(
-                $user ? $user->id : null,
-                $workspace_id,
-                $project_id,
-                $draftFullPath,
-                $authorStyleType,
-                $authorStyleId,
-                $authorSamplePaths,
-                $newAuthorName,
-                $writingPerspective
+            $this->novelPipelineOrchestrator->startProjectPipeline(
+                $project,
+                $user,
+                $request->file('draft_file'),
+                [
+                    'author_style_type' => $validated['author_style_type'],
+                    'selected_author_style' => $validated['selectedAuthorStyle'] ?? null,
+                    'new_author_name' => $validated['newAuthorName'] ?? null,
+                    'new_author_files' => $request->file('newAuthorFiles', []),
+                    'writing_perspective' => $validated['writing_perspective'],
+                ],
             );
 
-            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
+                ->with('success', 'Novel pipeline processing started. Your project will unlock once the rewritten manuscript is ready.');
         }
         return response()->json(['error' => 'Invalid method'], 400);
     }

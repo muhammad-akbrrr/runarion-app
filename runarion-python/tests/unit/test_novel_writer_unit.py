@@ -11,6 +11,9 @@ Tests pure logic with no database or LLM dependencies:
 import sys
 import os
 import json
+import logging
+
+import pytest
 
 
 from src.services.novel_writer.story_context import (
@@ -26,6 +29,11 @@ from src.services.novel_writer.base_stage import (
 )
 from src.models.novel_writer.status import NovelWriterStatus
 from src.models.deconstructor.status import DraftStatus
+
+
+@pytest.fixture(autouse=True)
+def _silence_expected_test_logs(set_logger_level):
+    set_logger_level("test", logging.ERROR)
 
 
 # ─── StoryContext Tests ────────────────────────────────────────────────────────

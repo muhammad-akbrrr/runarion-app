@@ -25,6 +25,8 @@ import {
 } from "@/Components/ui/dialog";
 import { Edit, Trash2 } from "lucide-react";
 import { PageProps, Project, ProjectChapter } from "@/types";
+import type { AuthorStyle } from "@/types/files";
+import type { PipelineLock } from "@/types/project";
 import AddChapterDialog from "./Partials/AddChapterDialog";
 import { useProjectEditor } from "./hooks";
 import { PendingEditsProvider } from "./contexts/PendingEditsContext";
@@ -40,9 +42,7 @@ import {
     extractTextFromNode,
 } from "./utils/lexicalTextExtract";
 import { toast } from "sonner";
-
-// Import Echo for WebSocket connection
-import "@/echo";
+import { useWorkspacePipelineEvents } from "@/hooks/useWorkspacePipelineEvents";
 
 /**
  * Calculate word count from content (handles both Lexical JSON and plain text)
@@ -83,19 +83,25 @@ export default function ProjectEditorPage({
     project: Project;
     chapters?: ProjectChapter[];
 }>) {
-    const { errors, authorStyles: rawAuthorStyles } = usePage().props;
+    const {
+        errors,
+        authorStyles: rawAuthorStyles,
+        projectPipelineLock: rawProjectPipelineLock,
+        flash,
+    } = usePage().props;
+    const projectPipelineLock =
+        (rawProjectPipelineLock as PipelineLock | null | undefined) ?? null;
+    const isPipelineLocked = Boolean(projectPipelineLock?.isLocked);
 
     // Get author styles from page props (provided by controller)
-    // Controller sends: { id, name, status, avatar, color }
     const authorStyles =
         (
-            rawAuthorStyles as
-                | Array<{ id: string; name: string; status?: string }>
-                | undefined
+            rawAuthorStyles as AuthorStyle[] | undefined
         )?.map((style) => ({
             id: style.id,
             name: style.name,
             status: style.status,
+            schemaVersion: style.schemaVersion,
         })) ?? [];
 
     // Ref to store Lexical editor instance for migration (must be declared before useProjectEditor)
@@ -170,6 +176,25 @@ export default function ProjectEditorPage({
         };
     }, [isExternalSavingRaw]);
 
+    useEffect(() => {
+        if (flash?.success) toast.success(flash.success);
+        if (flash?.error) toast.error(flash.error);
+        if (flash?.info) toast.info(flash.info);
+        if (flash?.warning) toast.warning(flash.warning);
+    }, [flash?.success, flash?.error, flash?.info, flash?.warning]);
+
+    useWorkspacePipelineEvents({
+        workspaceId,
+        projectId,
+        reloadOnly: [
+            "chapters",
+            "projectPipelineLock",
+            "project_completed_onboarding",
+            "authorStyles",
+            "project",
+        ],
+    });
+
     // Callback for external saving changes (passed to AdvisorTab)
     const handleExternalSavingChange = useCallback((saving: boolean) => {
         setIsExternalSavingRaw(saving);
@@ -234,12 +259,13 @@ export default function ProjectEditorPage({
             hasSelectedChapter: !!selectedChapter,
             isInteracting,
             isStreaming,
+            isPipelineLocked,
             contentLength: (content ?? "").length, // Handle null content
         });
-        if (selectedChapter && !isInteracting && !isStreaming) {
+        if (selectedChapter && !isInteracting && !isStreaming && !isPipelineLocked) {
             smartSave(selectedChapter.order, content, "manual");
         }
-    }, [selectedChapter, content, smartSave, isInteracting, isStreaming]);
+    }, [selectedChapter, content, smartSave, isInteracting, isStreaming, isPipelineLocked]);
 
     // Add Chapter Dialog state
     const [addChapterDialogOpen, setAddChapterDialogOpen] = useState(false);
@@ -249,6 +275,10 @@ export default function ProjectEditorPage({
 
     // Handler for adding a new chapter
     const handleAddChapterClick = async () => {
+        if (isPipelineLocked) {
+            toast.error("This project is locked while the novel pipeline is processing.");
+            return;
+        }
         if (!newChapterName.trim()) return;
 
         // Clear previous errors
@@ -315,6 +345,10 @@ export default function ProjectEditorPage({
     };
 
     const handleSaveChapterEdit = async () => {
+        if (isPipelineLocked) {
+            toast.error("This project is locked while the novel pipeline is processing.");
+            return;
+        }
         if (!editingChapter || !editingChapterName.trim()) return;
 
         setEditChapterError("");
@@ -360,6 +394,10 @@ export default function ProjectEditorPage({
 
     // Handle delete chapter
     const handleDeleteChapter = async (chapter: ProjectChapter) => {
+        if (isPipelineLocked) {
+            toast.error("This project is locked while the novel pipeline is processing.");
+            return;
+        }
         if (
             !confirm(
                 `Are you sure you want to delete "${chapter.chapter_name}"? This cannot be undone.`,
@@ -409,26 +447,10 @@ export default function ProjectEditorPage({
         onRedo: versionControl.redo,
         onSwitchVersion: versionControl.switchVersion,
         onRegenerate: () => {
-            // Pass current settings to regenerate function
-            const currentSettings = {
-                currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || "gemini-2.5-flash",
-                memory: settings.memory || "",
-                storyGenre: settings.storyGenre || "",
-                storyTone: settings.storyTone || "",
-                storyPov: settings.storyPov || "",
-                temperature: settings.temperature || 1.0,
-                repetitionPenalty: settings.repetitionPenalty || 0.0,
-                outputLength: settings.outputLength || 300,
-                minOutputToken: settings.minOutputToken || 50,
-                topP: settings.topP || 0.85,
-                tailFree: settings.tailFree || 0.85,
-                topA: settings.topA || 0.85,
-                topK: settings.topK || 0.85,
-                phraseBias: settings.phraseBias || [],
-                bannedPhrases: settings.bannedPhrases || [],
-                stopSequences: settings.stopSequences || [],
-            };
+            if (isPipelineLocked) {
+                toast.error("This project is locked while the novel pipeline is processing.");
+                return;
+            }
             handleRegenerateText();
         },
     };
@@ -545,9 +567,16 @@ export default function ProjectEditorPage({
                     workspaceId={workspaceId}
                     projectId={projectId}
                     authorStyles={authorStyles}
+                    projectPipelineLock={projectPipelineLock}
                     onApplyStoryFix={handleApplyStoryFix}
                     onSavingChange={handleExternalSavingChange}
                 >
+                    {projectPipelineLock?.isLocked && (
+                        <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                            Novel pipeline is processing this project. Phase:{" "}
+                            {projectPipelineLock.phase.replaceAll("_", " ")}.
+                        </div>
+                    )}
                     <div className="flex items-center justify-between">
                         {/* Left side - Menu items */}
                         <div
@@ -579,7 +608,7 @@ export default function ProjectEditorPage({
                                     <Button
                                         variant="outline"
                                         className="flex flex-row justify-between items-center w-50 overflow-hidden"
-                                        disabled={isGenerating}
+                                        disabled={isGenerating || isPipelineLocked}
                                     >
                                         <p className="truncate">
                                             {selectedChapter
@@ -609,7 +638,7 @@ export default function ProjectEditorPage({
                                                         <DropdownMenuRadioItem
                                                             value={chapter.order.toString()}
                                                             disabled={
-                                                                isGenerating
+                                                                isGenerating || isPipelineLocked
                                                             }
                                                             className="flex items-center justify-between"
                                                         >
@@ -638,7 +667,7 @@ export default function ProjectEditorPage({
                                                                         );
                                                                     }}
                                                                     disabled={
-                                                                        isGenerating
+                                                                        isGenerating || isPipelineLocked
                                                                     }
                                                                 >
                                                                     <Edit className="h-3 w-3" />
@@ -662,7 +691,7 @@ export default function ProjectEditorPage({
                                                                         );
                                                                     }}
                                                                     disabled={
-                                                                        isGenerating
+                                                                        isGenerating || isPipelineLocked
                                                                     }
                                                                 >
                                                                     <Trash2 className="h-3 w-3" />
@@ -683,7 +712,7 @@ export default function ProjectEditorPage({
 
                             <Button
                                 onClick={() => setAddChapterDialogOpen(true)}
-                                disabled={isGenerating}
+                                disabled={isGenerating || isPipelineLocked}
                             >
                                 New Chapter
                             </Button>
@@ -806,10 +835,17 @@ export default function ProjectEditorPage({
                             onApplyEdit={handleInlineApplyEdit}
                             editorRef={editorRef}
                         />
+                        {projectPipelineLock?.isLocked && (
+                            <div className="absolute inset-0 z-20 cursor-not-allowed bg-white/35" />
+                        )}
 
                         <div className="absolute left-0 bottom-0 w-full p-4">
                             <EditorToolbar
                                 onSend={() => {
+                                    if (isPipelineLocked) {
+                                        toast.error("This project is locked while the novel pipeline is processing.");
+                                        return;
+                                    }
                                     // Get current editor content directly before generating
                                     const currentEditorContent =
                                         getCurrentEditorContentRef.current?.() ??
@@ -829,6 +865,7 @@ export default function ProjectEditorPage({
                                 projectId={projectId}
                                 wordCount={getWordCount(content)}
                                 onBeforeNavigate={flushSettingsBeforeNavigation}
+                                isLocked={isPipelineLocked}
                             />
                         </div>
                     </div>

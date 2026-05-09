@@ -11,12 +11,18 @@ use App\Models\Projects;
 use App\Models\Workspace;
 use App\Models\ProjectContent;
 use App\Models\ProjectNodeEditor;
+use App\Services\ProjectPipelineStateService;
 use Illuminate\Support\Str;
 use App\Models\WorkspaceMember;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
+    public function __construct(
+        private readonly ProjectPipelineStateService $pipelineStateService,
+    ) {
+    }
+
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $folders = Folder::where('workspace_id', $workspace_id)
@@ -27,13 +33,20 @@ class ProjectController extends Controller
         $projects = Projects::where('workspace_id', $workspace_id)
             ->where('is_active', true)
             ->with(['author:id,name'])
-            ->get()
-            ->map(function ($project) {
+            ->get();
+
+        $locks = $this->pipelineStateService->getLocksForProjects(
+            $workspace_id,
+            $projects->pluck('id')->all(),
+        );
+
+        $projects = $projects->map(function ($project) use ($locks) {
                 if ($project->folder_id) {
                     $project->folder = Folder::where('id', $project->folder_id)
                         ->where('is_active', true)
                         ->first(['id', 'name']);
                 }
+                $project->pipelineLock = $locks[$project->id] ?? null;
                 return $project;
             });
 
@@ -66,6 +79,16 @@ class ProjectController extends Controller
             ->where('is_active', true)
             ->with(['author:id,name'])
             ->get();
+
+        $locks = $this->pipelineStateService->getLocksForProjects(
+            $workspace_id,
+            $projects->pluck('id')->all(),
+        );
+
+        $projects = $projects->map(function ($project) use ($locks) {
+            $project->pipelineLock = $locks[$project->id] ?? null;
+            return $project;
+        });
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
@@ -185,6 +208,8 @@ class ProjectController extends Controller
                     'order' => 0,
                     'chapter_name' => 'Chapter 1',
                     'content' => '',
+                    'summary' => null,
+                    'plot_points' => [],
                 ]
             ];
             $projectContent->metadata = [

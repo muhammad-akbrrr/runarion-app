@@ -1,45 +1,49 @@
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
-class VoiceTechnique(BaseModel):
+class StyleBaseModel(BaseModel):
+    model_config = ConfigDict(populate_by_name=True, serialize_by_alias=True)
+
+
+class VoiceTechnique(StyleBaseModel):
     diction: str = ""
     syntax: str = ""
     rhythm: str = ""
-    register: str = ""
+    voice_register: str = Field(default="", alias="register")
     figurative_language: str = ""
 
 
-class DialogueTechnique(BaseModel):
+class DialogueTechnique(StyleBaseModel):
     conversation_style: str = ""
     speaker_differentiation: str = ""
     dialogue_narration_balance: str = ""
 
 
-class DescriptionTechnique(BaseModel):
+class DescriptionTechnique(StyleBaseModel):
     description_density: str = ""
     sensory_focus: str = ""
     atmosphere_strategy: str = ""
 
 
-class ExpositionTechnique(BaseModel):
+class ExpositionTechnique(StyleBaseModel):
     exposition_strategy: str = ""
     context_integration: str = ""
     terminology_handling: str = ""
 
 
-class PacingTechnique(BaseModel):
+class PacingTechnique(StyleBaseModel):
     scene_tempo: str = ""
     transition_style: str = ""
     tension_pattern: str = ""
 
 
-class NarrativeTechnique(BaseModel):
+class NarrativeTechnique(StyleBaseModel):
     pov_tendency: str = ""
     narrative_distance: str = ""
     redundancy_avoidance: str = ""
 
 
-class AuthorStyleTechniques(BaseModel):
+class AuthorStyleTechniques(StyleBaseModel):
     voice: VoiceTechnique = Field(default_factory=VoiceTechnique)
     dialogue: DialogueTechnique = Field(default_factory=DialogueTechnique)
     description: DescriptionTechnique = Field(default_factory=DescriptionTechnique)
@@ -48,7 +52,7 @@ class AuthorStyleTechniques(BaseModel):
     narrative: NarrativeTechnique = Field(default_factory=NarrativeTechnique)
 
 
-class AuthorStyleExamples(BaseModel):
+class AuthorStyleExamples(StyleBaseModel):
     voice: list[str] = Field(default_factory=list)
     dialogue: list[str] = Field(default_factory=list)
     description: list[str] = Field(default_factory=list)
@@ -56,14 +60,14 @@ class AuthorStyleExamples(BaseModel):
     pacing: list[str] = Field(default_factory=list)
 
 
-class AuthorStyleAdaptation(BaseModel):
+class AuthorStyleAdaptation(StyleBaseModel):
     portable_traits: list[str] = Field(default_factory=list)
     non_portable_markers: list[str] = Field(default_factory=list)
     transfer_risks: list[str] = Field(default_factory=list)
     suppression_guidance: list[str] = Field(default_factory=list)
 
 
-class AuthorStyle(BaseModel):
+class AuthorStyle(StyleBaseModel):
     schema_version: int = 2
     techniques: AuthorStyleTechniques = Field(default_factory=AuthorStyleTechniques)
     examples: AuthorStyleExamples = Field(default_factory=AuthorStyleExamples)

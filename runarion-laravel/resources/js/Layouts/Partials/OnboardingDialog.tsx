@@ -1,10 +1,5 @@
 import * as React from "react";
-import {
-    Dialog,
-    DialogContent,
-    DialogHeader,
-    DialogTitle,
-} from "@/Components/ui/dialog";
+import { Dialog, DialogHeader, DialogTitle } from "@/Components/ui/dialog";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import {
@@ -19,6 +14,7 @@ import { X, File, FileText, CloudUpload, Plus } from "lucide-react";
 import { Switch } from "@/Components/ui/switch";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { cn } from "@/Lib/utils";
+import type { AuthorStyle } from "@/types/files";
 
 // Custom DialogContent without close button
 function NonClosableDialogContent({
@@ -31,14 +27,14 @@ function NonClosableDialogContent({
             <DialogPrimitive.Overlay
                 data-slot="dialog-overlay"
                 className={cn(
-                    "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50"
+                    "data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 fixed inset-0 z-50 bg-black/50",
                 )}
             />
             <DialogPrimitive.Content
                 data-slot="dialog-content"
                 className={cn(
                     "bg-background data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border p-6 shadow-lg duration-200 sm:max-w-lg",
-                    className
+                    className,
                 )}
                 {...props}
             >
@@ -48,34 +44,29 @@ function NonClosableDialogContent({
     );
 }
 
-// Types for author styles and writing perspectives
-export interface AuthorStyle {
-    id: string;
-    author_name: string;
-    status?: 'init_completed' | 'sampling_completed' | 'sampling_failed' | 'profiling_completed' | 'profiling_failed';
-}
-
-// Add LocalAuthorStyle type
 interface LocalAuthorStyle {
     id: string;
-    author_name: string;
+    name: string;
     files: File[];
+    status?: AuthorStyle["status"];
 }
 
-function getStatusLabel(status?: AuthorStyle['status']): string | null {
+function getStatusLabel(status?: AuthorStyle["status"]): string | null {
     switch (status) {
-        case 'init_completed':
-            return 'Initializing...';
-        case 'sampling_completed':
-            return 'Profiling...';
-        case 'sampling_failed':
-            return 'Sampling failed';
-        case 'profiling_failed':
-            return 'Profiling failed';
-        case 'profiling_completed':
+        case "init_completed":
+            return "Initializing...";
+        case "init_failed":
+            return "Initialization failed";
+        case "sampling_completed":
+            return "Profiling...";
+        case "sampling_failed":
+            return "Sampling failed";
+        case "profiling_failed":
+            return "Profiling failed";
+        case "profiling_completed":
             return null;
         default:
-            return 'Processing...';
+            return "Processing...";
     }
 }
 
@@ -142,7 +133,7 @@ export default function OnboardingDialog({
         }
     };
     const handleNewAuthorFilesChange = (
-        e: React.ChangeEvent<HTMLInputElement>
+        e: React.ChangeEvent<HTMLInputElement>,
     ) => {
         if (e.target.files) {
             const files = Array.from(e.target.files).slice(0, 5);
@@ -184,7 +175,7 @@ export default function OnboardingDialog({
                 onError: (errors: any) => {
                     setIsProcessing(false);
                 },
-            }
+            },
         );
     };
 
@@ -196,7 +187,6 @@ export default function OnboardingDialog({
             draft_file: form.draftFile,
             author_style_type: form.authorStyleType,
             writing_perspective: form.writingPerspective,
-            summarize: form.summarize,
         };
 
         if (form.authorStyleType === "existing") {
@@ -215,12 +205,12 @@ export default function OnboardingDialog({
             form.selectedAuthorStyle.startsWith("local-")
         ) {
             const local = localAuthorStyles.find(
-                (s) => s.id === form.selectedAuthorStyle
+                (s) => s.id === form.selectedAuthorStyle,
             );
             if (local) {
                 data.author_style_type = "new";
                 data.newAuthorFiles = local.files;
-                data.newAuthorName = local.author_name;
+                data.newAuthorName = local.name;
                 delete data.selectedAuthorStyle;
             }
         }
@@ -237,12 +227,11 @@ export default function OnboardingDialog({
                 forceFormData: true,
                 onSuccess: () => {
                     setIsProcessing(false);
-                    window.location.reload();
                 },
                 onError: (errors: any) => {
                     setIsProcessing(false);
                 },
-            }
+            },
         );
     };
 
@@ -265,7 +254,7 @@ export default function OnboardingDialog({
                         <div className="grid grid-cols-2 gap-4">
                             <Button
                                 variant="ghost"
-                                className="p-6 border !w-auto !h-auto"
+                                className="p-6 border w-auto! h-auto!"
                                 onClick={() => {
                                     setForm((prev) => ({
                                         ...prev,
@@ -288,7 +277,7 @@ export default function OnboardingDialog({
 
                             <Button
                                 variant="ghost"
-                                className="p-6 border !w-auto !h-auto"
+                                className="p-6 border w-auto! h-auto!"
                                 onClick={() => {
                                     setForm((prev) => ({
                                         ...prev,
@@ -324,7 +313,7 @@ export default function OnboardingDialog({
                         <div className="border-dashed border-2 rounded-lg p-8 flex flex-col items-center justify-center gap-1 text-center relative mb-2">
                             <Input
                                 type="file"
-                                accept=".pdf"
+                                accept=".pdf,.txt,.doc,.docx"
                                 onChange={handleDraftFileChange}
                                 className="absolute left-0 top-0 w-full h-full opacity-0 cursor-pointer"
                             />
@@ -372,9 +361,9 @@ export default function OnboardingDialog({
                                     <label className="text-sm">
                                         Author Profile
                                     </label>
-                                    <p className="text-xs text-muted-foreground">
-                                        Select your existing profile or create
-                                        one
+                                <p className="text-xs text-muted-foreground">
+                                        Select a completed author style or stage
+                                        a new one
                                     </p>
                                 </div>
                                 <div className="flex flex-row gap-2 items-center w-full">
@@ -392,7 +381,7 @@ export default function OnboardingDialog({
                                             }));
                                         }}
                                     >
-                                        <SelectTrigger className="w-full flex-grow">
+                                        <SelectTrigger className="w-full grow">
                                             <SelectValue placeholder="Select one..." />
                                         </SelectTrigger>
                                         <SelectContent>
@@ -411,18 +400,31 @@ export default function OnboardingDialog({
                                                     ...authorStyles,
                                                     ...localAuthorStyles,
                                                 ].map((style) => {
-                                                    const statusLabel = getStatusLabel(style.status);
-                                                    const isIncomplete = style.status !== undefined && style.status !== 'profiling_completed';
+                                                    const statusLabel =
+                                                        getStatusLabel(
+                                                            style.status,
+                                                        );
+                                                    const isIncomplete =
+                                                        style.status !==
+                                                            undefined &&
+                                                        style.status !==
+                                                            "profiling_completed";
                                                     return (
                                                         <SelectItem
                                                             key={style.id}
                                                             value={style.id}
-                                                            disabled={isIncomplete}
+                                                            disabled={
+                                                                isIncomplete
+                                                            }
                                                         >
-                                                            {style.author_name}
+                                                            {style.name}
                                                             {statusLabel && (
                                                                 <span className="ml-2 text-xs text-muted-foreground">
-                                                                    ({statusLabel})
+                                                                    (
+                                                                    {
+                                                                        statusLabel
+                                                                    }
+                                                                    )
                                                                 </span>
                                                             )}
                                                         </SelectItem>
@@ -435,7 +437,7 @@ export default function OnboardingDialog({
                                         variant="outline"
                                         onClick={() =>
                                             setShowAddAuthorStyle(
-                                                (prev) => !prev
+                                                (prev) => !prev,
                                             )
                                         }
                                         className="h-9 w-9"
@@ -449,7 +451,7 @@ export default function OnboardingDialog({
                                             <Input
                                                 className="absolute left-0 top-0 w-full h-full opacity-0 cursor-pointer"
                                                 type="file"
-                                                accept=".pdf"
+                                                accept=".pdf,.txt,.doc,.docx"
                                                 multiple
                                                 onChange={
                                                     handleNewAuthorFilesChange
@@ -476,7 +478,7 @@ export default function OnboardingDialog({
                                                             {file.name}
                                                         </p>
                                                         <Button
-                                                            className="!p-0 w-auto h-auto"
+                                                            className="p-0! w-auto h-auto"
                                                             variant="ghost"
                                                             onClick={() =>
                                                                 setForm(
@@ -486,19 +488,19 @@ export default function OnboardingDialog({
                                                                             prev.newAuthorFiles.filter(
                                                                                 (
                                                                                     _,
-                                                                                    i
+                                                                                    i,
                                                                                 ) =>
                                                                                     i !==
-                                                                                    idx
+                                                                                    idx,
                                                                             ),
-                                                                    })
+                                                                    }),
                                                                 )
                                                             }
                                                         >
                                                             <X className="h-2 w-2" />
                                                         </Button>
                                                     </div>
-                                                )
+                                                ),
                                             )}
                                         </div>
 
@@ -508,7 +510,7 @@ export default function OnboardingDialog({
                                             </label>
                                             <div className="flex flex-row items-stretch justify-between gap-2 w-full">
                                                 <Input
-                                                    className="w-full flex-grow"
+                                                    className="w-full grow"
                                                     placeholder="Save Author as..."
                                                     value={form.newAuthorName}
                                                     onChange={(e) => {
@@ -518,15 +520,15 @@ export default function OnboardingDialog({
                                                                 e.target.value,
                                                         }));
                                                         setAuthorNameTouched(
-                                                            true
+                                                            true,
                                                         );
                                                         setAuthorStyleError(
-                                                            null
+                                                            null,
                                                         );
                                                     }}
                                                     onBlur={() =>
                                                         setAuthorNameTouched(
-                                                            true
+                                                            true,
                                                         )
                                                     }
                                                 />
@@ -537,7 +539,7 @@ export default function OnboardingDialog({
                                                                 .length === 0
                                                         ) {
                                                             setAuthorStyleError(
-                                                                "Please upload at least one file."
+                                                                "Please upload at least one file.",
                                                             );
                                                             return;
                                                         }
@@ -545,30 +547,30 @@ export default function OnboardingDialog({
                                                             !form.newAuthorName
                                                         ) {
                                                             setAuthorStyleError(
-                                                                "Please enter an author name."
+                                                                "Please enter an author name.",
                                                             );
                                                             return;
                                                         }
                                                         // Check for duplicate name
                                                         const allNames = [
                                                             ...authorStyles,
-                                                            ...localAuthorStyles.map(
-                                                                (s) => ({
-                                                                    id: s.id,
-                                                                    author_name:
-                                                                        s.author_name,
-                                                                })
-                                                            ),
-                                                        ].map((s) =>
-                                                            s.author_name.toLowerCase()
+                                                                    ...localAuthorStyles.map(
+                                                                        (s) => ({
+                                                                            id: s.id,
+                                                                            name:
+                                                                                s.name,
+                                                                        }),
+                                                                    ),
+                                                                ].map((s) =>
+                                                            s.name.toLowerCase(),
                                                         );
                                                         if (
                                                             allNames.includes(
-                                                                form.newAuthorName.toLowerCase()
+                                                                form.newAuthorName.toLowerCase(),
                                                             )
                                                         ) {
                                                             setAuthorStyleError(
-                                                                "An author with this name already exists."
+                                                                "An author with this name already exists.",
                                                             );
                                                             return;
                                                         }
@@ -577,7 +579,7 @@ export default function OnboardingDialog({
                                                         const newStyle: LocalAuthorStyle =
                                                             {
                                                                 id: newId,
-                                                                author_name:
+                                                                name:
                                                                     form.newAuthorName,
                                                                 files: form.newAuthorFiles,
                                                             };
@@ -585,7 +587,7 @@ export default function OnboardingDialog({
                                                             (prev) => [
                                                                 ...prev,
                                                                 newStyle,
-                                                            ]
+                                                            ],
                                                         );
                                                         setForm((prev) => ({
                                                             ...prev,
@@ -597,13 +599,13 @@ export default function OnboardingDialog({
                                                             newAuthorName: "",
                                                         }));
                                                         setShowAddAuthorStyle(
-                                                            false
+                                                            false,
                                                         );
                                                         setAuthorStyleError(
-                                                            null
+                                                            null,
                                                         );
                                                         setAuthorNameTouched(
-                                                            false
+                                                            false,
                                                         );
                                                     }}
                                                     disabled={
@@ -636,7 +638,7 @@ export default function OnboardingDialog({
                                 )}
                             </div>
 
-                            <div className="w-full h-[1px] bg-gray-200 rounded-[1px]"></div>
+                            <div className="w-full h-px bg-gray-200 rounded-[1px]"></div>
 
                             <div className="flex flex-col justify-stretch items-start gap-2">
                                 <div className="flex flex-col justify-start items-start gap-0.5">
@@ -681,7 +683,7 @@ export default function OnboardingDialog({
                                     )}
                             </div>
 
-                            <div className="w-full h-[1px] bg-gray-200 rounded-[1px]"></div>
+                            <div className="w-full h-px bg-gray-200 rounded-[1px]"></div>
 
                             <div className="flex flex-col justify-stretch items-start gap-2">
                                 <div className="flex flex-row items-center justify-between gap-2 w-full">
