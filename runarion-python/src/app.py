@@ -17,14 +17,20 @@ from src.api.advisor import advisor
 load_dotenv()
 
 # Configure logging for all modules
+log_level_name = os.getenv(
+    'APP_LOG_LEVEL',
+    'DEBUG' if os.getenv('FLASK_DEBUG', '').lower() in {'1', 'true', 'yes'} else 'INFO'
+).upper()
+log_level = getattr(logging, log_level_name, logging.INFO)
+
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=log_level,
     format='[%(asctime)s] %(levelname)s in %(module)s: %(message)s',
     stream=sys.stdout
 )
 # Ensure all loggers output to stdout
 for handler in logging.root.handlers:
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(log_level)
 
 app = Flask(__name__)
 
@@ -33,9 +39,27 @@ app.config['MAX_CONTENT_LENGTH'] = 50 * 1024 * 1024  # 50MB
 
 # --- CORS Configuration ---
 
+
+def parse_allowed_origins():
+    raw_origins = os.getenv('CORS_ALLOWED_ORIGINS')
+    if not raw_origins:
+        return ["http://localhost:8000", "http://localhost:5173"]
+
+    origins = [origin.strip() for origin in raw_origins.split(',') if origin.strip()]
+    if not origins:
+        return ["http://localhost:8000", "http://localhost:5173"]
+
+    if len(origins) == 1 and origins[0] == '*':
+        return '*'
+
+    return origins
+
+
+cors_allowed_origins = parse_allowed_origins()
+
 CORS(app, resources={
     r"/*": {
-        "origins": ["http://localhost:8000", "http://localhost:5173"],
+        "origins": cors_allowed_origins,
         "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
         "allow_headers": ["Content-Type", "Authorization"]
     }
@@ -59,8 +83,8 @@ if missing_vars:
 
 try:
     connection_pool = pool.SimpleConnectionPool(
-        minconn=2,
-        maxconn=50,  # Increased to 50 to handle concurrent summarization and entity extraction operations
+        minconn=int(os.getenv('DB_POOL_MIN_CONN', '2')),
+        maxconn=int(os.getenv('DB_POOL_MAX_CONN', '50')),
         host=os.getenv('DB_HOST'),
         port=os.getenv('DB_PORT'),
         database=os.getenv('DB_DATABASE'),
@@ -146,4 +170,5 @@ def root():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    debug_mode = os.getenv('FLASK_DEBUG', '').lower() in {'1', 'true', 'yes'}
+    app.run(host='0.0.0.0', port=5000, debug=debug_mode)

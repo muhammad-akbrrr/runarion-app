@@ -1,0 +1,76 @@
+FROM composer:2 AS composer-deps
+
+WORKDIR /app
+
+COPY composer.json composer.lock ./
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts \
+  --ignore-platform-req=php \
+  --ignore-platform-req=ext-*
+
+FROM node:20-bookworm-slim AS frontend
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY . .
+COPY --from=composer-deps /app/vendor /app/vendor
+RUN npm run build
+
+FROM php:8.4-fpm
+
+RUN apt-get update && apt-get install -y \
+  git \
+  curl \
+  libonig-dev \
+  libxml2-dev \
+  libpq-dev \
+  zip \
+  unzip \
+  libssl-dev \
+  libfreetype6-dev \
+  libjpeg62-turbo-dev \
+  libpng-dev \
+  libwebp-dev \
+  libzip-dev \
+  libicu-dev \
+  libgmp-dev \
+  libhiredis-dev \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN docker-php-ext-configure gd --with-freetype --with-jpeg --with-webp \
+  && docker-php-ext-install -j"$(nproc)" \
+    pdo_pgsql \
+    mbstring \
+    exif \
+    pcntl \
+    bcmath \
+    gd \
+    zip \
+    intl \
+    gmp
+
+RUN pecl install redis \
+  && docker-php-ext-enable redis
+
+COPY php.ini /usr/local/etc/php/conf.d/uploads.ini
+COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
+
+WORKDIR /srv
+
+COPY . .
+COPY --from=frontend /app/public/build /srv/public/build
+COPY docker-entrypoint.staging.sh /usr/local/bin/laravel-entrypoint
+
+RUN chmod +x /usr/local/bin/laravel-entrypoint \
+  && find /srv/bootstrap/cache -maxdepth 1 -type f ! -name '.gitignore' -delete \
+  && composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts \
+  && mkdir -p /srv/storage/app/public /srv/bootstrap/cache \
+  && chown -R www-data:www-data /srv/storage /srv/bootstrap/cache \
+  && chmod -R ug+rwx /srv/storage /srv/bootstrap/cache \
+  && ln -sfn ../storage/app/public /srv/public/storage
+
+ENTRYPOINT ["/usr/local/bin/laravel-entrypoint"]
+CMD ["php-fpm", "-F"]

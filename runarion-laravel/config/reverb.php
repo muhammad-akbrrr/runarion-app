@@ -1,5 +1,14 @@
 <?php
 
+$reverbAllowedOrigins = array_values(array_filter(array_map(
+    static fn (string $origin): string => trim($origin),
+    explode(',', (string) env('REVERB_ALLOWED_ORIGINS', '*'))
+), static fn (string $origin): bool => $origin !== ''));
+
+if ($reverbAllowedOrigins === []) {
+    $reverbAllowedOrigins = ['*'];
+}
+
 return [
 
     /*
@@ -81,7 +90,7 @@ return [
                 'port' => env('REVERB_PORT'),
                 'scheme' => env('REVERB_SCHEME'),
             ],
-            'allowed_origins' => ['*'],
+            'allowed_origins' => $reverbAllowedOrigins,
             'ping_interval' => env('REVERB_APP_PING_INTERVAL', 30),
             'activity_timeout' => env('REVERB_ACTIVITY_TIMEOUT', 120),
             'max_message_size' => env('REVERB_APP_MAX_MESSAGE_SIZE', 100000), // 100KB - allows for long generations
