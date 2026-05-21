@@ -1,9 +1,9 @@
 # services/usecase_handler/story_handler.py
 
-from services.usecase_handler.base_handler import UseCaseHandler
-from utils.story_instruction_builder import InstructionBuilder
-from models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
-from models.story_generation.prompt_config import PromptConfig
+from src.services.usecase_handler.base_handler import UseCaseHandler
+from src.utils.story_instruction_builder import InstructionBuilder
+from src.models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
+from src.models.story_generation.prompt_config import PromptConfig
 from flask import current_app
 
 class StoryHandler(UseCaseHandler):
@@ -20,11 +20,14 @@ class StoryHandler(UseCaseHandler):
             builder = InstructionBuilder(config=prompt_config)
             prompt = raw_json.get("prompt", "")
             
+            # Extract writing guidance from request (backward compatible - defaults to empty list)
+            writing_guidance = raw_json.get("writing_guidance", [])
+            
             # Determine if this is a continuation or a new story
             if prompt:
-                instruction = builder.build()
+                instruction = builder.build(writing_guidance=writing_guidance)
             else:
-                instruction = builder.build_from_scratch()
+                instruction = builder.build_from_scratch(writing_guidance=writing_guidance)
 
             # Extract generation config with defaults
             generation_config_data = raw_json.get("generation_config", {})
@@ -38,7 +41,7 @@ class StoryHandler(UseCaseHandler):
             # Create the request
             return BaseGenerationRequest(
                 usecase=raw_json.get("usecase", "story"),
-                provider=raw_json.get("provider", "openai"),
+                provider=raw_json.get("provider", "gemini"),
                 model=raw_json.get("model"),
                 prompt=prompt,
                 instruction=instruction,

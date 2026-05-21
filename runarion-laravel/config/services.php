@@ -14,8 +14,10 @@ return [
     |
     */
 
-    'deconstructor' => [
-        'url' => env('PYTHON_SERVICE_URL') . '/api/story-rewrite',
+    'python' => [
+        'url' => env('PYTHON_SERVICE_URL', 'http://python-app:5000'),
+        'novel_pipeline_test_provider' => env('PYTHON_NOVEL_PIPELINE_TEST_PROVIDER'),
+        'novel_pipeline_test_model' => env('PYTHON_NOVEL_PIPELINE_TEST_MODEL', 'mock-replay-v1'),
     ],
 
     'postmark' => [
@@ -60,6 +62,16 @@ return [
             'files.metadata.read',
             'files.content.read',
             'files.content.write',
+        ],
+    ],
+
+    'onedrive' => [
+        'client_id' => env('ONEDRIVE_CLIENT_ID'),
+        'client_secret' => env('ONEDRIVE_CLIENT_SECRET'),
+        'redirect_uri' => env('ONEDRIVE_REDIRECT_URI'),
+        'scopes' => [
+            'Files.ReadWrite',
+            'Files.ReadWrite.All',
         ],
     ],
 

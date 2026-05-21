@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.staging.example
 
 # Docker
 .docker/
@@ -10,6 +11,8 @@ docker-compose.override.yml
 # IDE and Editor files
 .idea/
 .vscode/
+.claude/
+.cursor/
 *.swp
 *.swo
 *~

@@ -2,18 +2,20 @@
 
 import time
 from typing import Type, Generator
-from models.request import BaseGenerationRequest
-from models.response import BaseGenerationResponse
-from providers.openai_provider import OpenAIProvider
-from providers.gemini_provider import GeminiProvider
-# from providers.deepseek_provider import DeepSeekProvider  # to be implemented
-from providers.base_provider import BaseProvider
+from src.models.request import BaseGenerationRequest
+from src.models.response import BaseGenerationResponse
+from src.providers.openai_provider import OpenAIProvider
+from src.providers.gemini_provider import GeminiProvider
+from src.providers.mock_provider import MockProvider
+# from src.providers.deepseek_provider import DeepSeekProvider  # to be implemented
+from src.providers.base_provider import BaseProvider
 
 
 class GenerationEngine:
     _provider_registry: dict[str, Type[BaseProvider]] = {
         "openai": OpenAIProvider,
         "gemini": GeminiProvider,
+        "mock": MockProvider,
         # "deepseek": DeepSeekProvider,
     }
 

@@ -12,7 +12,9 @@ return new class extends Migration {
             $table->ulid('draft_id');
             $table->bigInteger('affected_scene_id');
             $table->string('issue_type');
-            $table->string('description');
+            $table->longText('description');
+            $table->string('severity')->default('medium'); // low, medium, high
+            $table->longText('suggested_fix')->nullable();
             $table->timestamps();
             $table->softDeletes();
 

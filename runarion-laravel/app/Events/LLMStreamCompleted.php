@@ -7,10 +7,11 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class LLMStreamCompleted implements ShouldBroadcast
+class LLMStreamCompleted implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -21,6 +22,7 @@ class LLMStreamCompleted implements ShouldBroadcast
     public string $fullText;
     public bool $success;
     public ?string $error;
+    public ?string $errorType;
 
     /**
      * Create a new event instance.
@@ -32,7 +34,8 @@ class LLMStreamCompleted implements ShouldBroadcast
         string $sessionId,
         string $fullText,
         bool $success,
-        ?string $error = null
+        ?string $error = null,
+        ?string $errorType = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
@@ -41,6 +44,7 @@ class LLMStreamCompleted implements ShouldBroadcast
         $this->fullText = $fullText;
         $this->success = $success;
         $this->error = $error;
+        $this->errorType = $errorType;
     }
 
     /**
@@ -51,7 +55,7 @@ class LLMStreamCompleted implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("project.{$this->workspaceId}.{$this->projectId}"),
+            new Channel("project.{$this->workspaceId}.{$this->projectId}"),
         ];
     }
 
@@ -68,14 +72,17 @@ class LLMStreamCompleted implements ShouldBroadcast
      */
     public function broadcastWith(): array
     {
+        // Don't send full_text in completion event - frontend already has it from chunks
+        // This prevents "payload too large" errors for long generations (>10KB Pusher limit)
         return [
             'workspace_id' => $this->workspaceId,
             'project_id' => $this->projectId,
             'chapter_order' => $this->chapterOrder,
             'session_id' => $this->sessionId,
-            'full_text' => $this->fullText,
+            'full_text' => '', // Empty - frontend already has full text from streamed chunks
             'success' => $this->success,
             'error' => $this->error,
+            'error_type' => $this->errorType,
             'timestamp' => now()->toISOString(),
         ];
     }

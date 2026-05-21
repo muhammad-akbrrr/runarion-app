@@ -78,6 +78,15 @@ return [
             'authorization_token' => null, // dynamically injected per workspace
         ],
 
+        'onedrive' => [
+            'driver' => 'onedrive',
+            'client_id' => env('ONEDRIVE_CLIENT_ID'),
+            'client_secret' => env('ONEDRIVE_CLIENT_SECRET'),
+            'access_token' => null, // dynamically injected per workspace
+            'throw' => false,
+            'report' => false,
+        ],
+
     ],
 
     /*

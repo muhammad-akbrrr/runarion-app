@@ -1,18 +1,18 @@
-import { Link } from "@inertiajs/react";
 import {
     SidebarGroup,
     SidebarGroupContent,
     SidebarGroupLabel,
     SidebarMenu,
-    SidebarMenuItem,
     SidebarMenuButton,
+    SidebarMenuItem,
 } from "@/Components/ui/sidebar";
+import { Link } from "@inertiajs/react";
 import {
+    Activity,
+    Database,
+    LucideProps,
     Settings,
     Shield,
-    Database,
-    Activity,
-    LucideProps,
 } from "lucide-react";
 import { RouteParams } from "../../../../vendor/tightenco/ziggy/src/js";
 
@@ -26,7 +26,7 @@ interface SidebarItem {
 }
 
 interface ProjectSettingsSidebarProps {
-    workspaceId: string;
+    workspaceId: string | null;
     projectId: string;
 }
 
@@ -51,10 +51,17 @@ export default function ProjectSettingsSidebar({
             icon: Activity,
             path: "workspace.projects.edit.activity",
         },
-    ].map((item) => ({
-        ...item,
-        param: { project_id: projectId, workspace_id: workspaceId },
-    }));
+    ].map((item) =>
+        workspaceId
+            ? {
+                  ...item,
+                  param: { project_id: projectId, workspace_id: workspaceId },
+              }
+            : {
+                  ...item,
+                  path: "raw." + item.path,
+              }
+    );
 
     const renderSidebarGroup = (name: string, items: SidebarItem[]) => (
         <SidebarGroup>

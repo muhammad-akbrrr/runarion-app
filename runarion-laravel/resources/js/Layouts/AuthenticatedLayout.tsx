@@ -1,3 +1,4 @@
+import LoadingOverlay from "@/Components/LoadingOverlay";
 import { Avatar, AvatarFallback, AvatarImage } from "@/Components/ui/avatar";
 import {
     Breadcrumb,
@@ -42,9 +43,8 @@ import {
 } from "lucide-react";
 import React, { PropsWithChildren } from "react";
 import { RouteParams } from "../../../vendor/tightenco/ziggy/src/js";
-import LoadingOverlay from "@/Components/LoadingOverlay";
-import SettingsSidebar from "./Partials/SettingsSidebar";
 import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
+import SettingsSidebar from "./Partials/SettingsSidebar";
 
 export interface BreadcrumbItem {
     label: string;
@@ -72,9 +72,10 @@ export default function AuthenticatedLayout({
     const workspaceId = user.last_workspace_id;
     const projectId = route().params.project_id as string | undefined;
 
-    const workspaceName = workspaces.find(
+    const currentWorkspace = workspaces.find(
         (workspace) => workspace.id === workspaceId
-    )?.name;
+    );
+    const workspaceName = currentWorkspace?.name;
 
     const [loading, setLoading] = React.useState(false);
     const [completedSteps, setCompletedSteps] = React.useState(0);
@@ -108,7 +109,7 @@ export default function AuthenticatedLayout({
     }, [workspace_switching]);
 
     const handleWorkspaceSelect = (id: string) => {
-        if (id === workspaceId) return;
+        if (id === workspaceId || !workspaceId) return;
         const path = window.location.pathname;
         const newPath = path.replace(workspaceId, id);
         router.get(newPath);
@@ -126,21 +127,28 @@ export default function AuthenticatedLayout({
             label: "Home",
             icon: Home,
             path: "workspace.dashboard",
-            param: { id: workspaceId },
         },
         {
             label: "Projects",
             icon: Library,
             path: "workspace.projects",
-            param: { id: workspaceId },
         },
-        { 
-            label: "File Manager", 
-            icon: Folder, 
+        {
+            label: "File Manager",
+            icon: Folder,
             path: "workspace.files",
-            param: { id: workspaceId },
         },
-    ];
+    ].map((item) =>
+        workspaceId
+            ? {
+                  ...item,
+                  param: { workspace_id: workspaceId },
+              }
+            : {
+                  ...item,
+                  path: "raw." + item.path,
+              }
+    );
 
     const dummyFavoriteItems: SidebarItem[] = [
         { label: "The Three Musketeers" },
@@ -233,12 +241,12 @@ export default function AuthenticatedLayout({
                                 <div className="w-full h-12 rounded flex items-center gap-2 px-2 cursor-pointer hover:bg-gray-100">
                                     <Avatar>
                                         <AvatarImage
-                                            src={user.avatar_url || undefined}
-                                            alt={user.name}
+                                            src={currentWorkspace?.cover_image_url || undefined}
+                                            alt={workspaceName}
                                             className="object-cover object-center"
                                         />
                                         <AvatarFallback>
-                                            {userInitials}
+                                            {workspaceName?.substring(0, 2).toUpperCase()}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 overflow-hidden text-left">
@@ -300,9 +308,13 @@ export default function AuthenticatedLayout({
                             <SidebarMenuItem>
                                 <SidebarMenuButton asChild>
                                     <Link
-                                        href={route("workspace.edit", {
-                                            workspace_id: workspaceId,
-                                        })}
+                                        href={
+                                            workspaceId
+                                                ? route("workspace.edit", {
+                                                      workspace_id: workspaceId,
+                                                  })
+                                                : route("raw.workspace.edit")
+                                        }
                                     >
                                         <Settings className="h-4 w-4" />
                                         <span>Settings</span>

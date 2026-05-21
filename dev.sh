@@ -1,482 +1,615 @@
 #!/bin/bash
 
-# Function to load environment variables from .env file
-load_env() {
-    if [ -f .env ]; then
-        echo "Loading environment variables from .env file..."
-        # Fix line endings for .env file if dos2unix is available
-        if command -v dos2unix >/dev/null 2>&1; then
-            dos2unix .env
-        fi
-        # Use a more robust way to read the .env file
-        while IFS='=' read -r key value || [ -n "$key" ]; do
-            # Skip comments and empty lines
-            [[ $key =~ ^#.*$ ]] && continue
-            [[ -z $key ]] && continue
-            
-            # Remove any carriage returns and trim whitespace
-            value=$(echo "$value" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
-            
-            # Export the variable if it's not empty
-            if [ -n "$value" ]; then
-                export "$key=$value"
-            fi
-        done < .env
-    else
-        echo "Error: .env file not found"
-        exit 1
-    fi
+set -euo pipefail
+
+COMPOSE_FILE="docker-compose.dev.yml"
+ENV_FILE=".env"
+
+REQUIRED_ENV_VARS=(
+    REGISTRY
+    TAG
+    DOCKER_STACK_NAME
+    DOCKER_COMPOSE_FILE
+    DB_CONNECTION
+    DB_HOST
+    DB_PORT
+    DB_DATABASE
+    DB_USER
+    DB_PASSWORD
+    POSTGRES_HOST_AUTH_METHOD
+    AGE_ENABLED
+    AGE_GRAPH_NAME
+    GEMINI_API_KEY
+    OPENAI_API_KEY
+    DEEPSEEK_API_KEY
+    GEMINI_MODEL_NAME
+    DEEPSEEK_MODEL_NAME
+    OPENAI_MODEL_NAME
+    APP_URL
+    PYTHON_SERVICE_URL
+    VITE_SERVICE_URL
+    SD_SERVICE_URL
+    LARAVEL_PORT
+    PYTHON_PORT
+    VITE_PORT
+    SD_API_PORT
+    LARAVEL_MEMORY_LIMIT
+    LARAVEL_MEMORY_RESERVATION
+    PYTHON_MEMORY_LIMIT
+    PYTHON_MEMORY_RESERVATION
+    POSTGRES_MEMORY_LIMIT
+    POSTGRES_MEMORY_RESERVATION
+    LOG_DRIVER
+    LOG_MAX_SIZE
+    LOG_MAX_FILE
+    VITE_HOST
+    VITE_APP_NAME
+    PHP_CLI_SERVER_WORKERS
+    BCRYPT_ROUNDS
+    APP_LOCALE
+    APP_FALLBACK_LOCALE
+    APP_FAKER_LOCALE
+    NODE_OPTIONS
+    NPM_CONFIG_CACHE
+    CHOKIDAR_USEPOLLING
+    WATCHPACK_POLLING
+    FLASK_ENV
+    FLASK_DEBUG
+    PYTHON_PYTHONPATH
+    PYTHON_PYTHONDONTWRITEBYTECODE
+    PYTHON_PYTHONUNBUFFERED
+    PYTHON_UPLOAD_PATH
+    TEST_DATABASE_URL
+    NVIDIA_VISIBLE_DEVICES
+    NVIDIA_DRIVER_CAPABILITIES
+    SD_PYTHONPATH
+    SD_PYTHONDONTWRITEBYTECODE
+    SD_PYTHONUNBUFFERED
+    SD_DIR_PERMISSIONS
+    BROADCAST_CONNECTION
+    REVERB_APP_ID
+    REVERB_APP_KEY
+    REVERB_APP_SECRET
+    REVERB_HOST
+    REVERB_PORT
+    REVERB_SCHEME
+    VITE_REVERB_APP_KEY
+    VITE_REVERB_HOST
+    VITE_REVERB_CLIENT_HOST
+    VITE_REVERB_PORT
+    VITE_REVERB_SCHEME
+    NETWORK_DRIVER
+    NETWORK_ATTACHABLE
+    VOLUME_DRIVER
+)
+
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
 }
 
-# Load environment variables
-load_env
+load_env() {
+    if [ ! -f "$ENV_FILE" ]; then
+        echo "Error: $ENV_FILE file not found"
+        exit 1
+    fi
 
-# Function to check if Docker is running
+    echo "Loading environment variables from $ENV_FILE..."
+
+    if command_exists dos2unix; then
+        dos2unix "$ENV_FILE" >/dev/null 2>&1 || true
+    fi
+
+    while IFS='=' read -r key value || [ -n "$key" ]; do
+        [[ $key =~ ^#.*$ ]] && continue
+        [[ -z $key ]] && continue
+
+        value=$(echo "$value" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')
+        [ -n "$value" ] && export "$key=$value"
+    done < "$ENV_FILE"
+}
+
+detect_python_bin() {
+    if command_exists python3; then
+        echo "python3"
+        return 0
+    fi
+
+    if command_exists python; then
+        echo "python"
+        return 0
+    fi
+
+    return 1
+}
+
+ensure_test_database_url() {
+    if [ -n "${TEST_DATABASE_URL:-}" ]; then
+        return 0
+    fi
+
+    local py_bin encoded_password
+    py_bin="$(detect_python_bin || true)"
+
+    if [ -n "$py_bin" ]; then
+        encoded_password="$(DB_PASSWORD_RAW="${DB_PASSWORD:-}" "$py_bin" -c "import os, urllib.parse; print(urllib.parse.quote_plus(os.getenv('DB_PASSWORD_RAW', '')))")"
+    else
+        echo "Warning: python/python3 not found. TEST_DATABASE_URL password may not be URL-encoded."
+        encoded_password="${DB_PASSWORD:-}"
+    fi
+
+    export TEST_DATABASE_URL="postgresql://${DB_USER:-postgres}:${encoded_password}@${DB_HOST:-postgres-db}:${DB_PORT:-5432}/${DB_DATABASE:-runarion}"
+}
+
+dc() {
+    docker compose -f "$COMPOSE_FILE" "$@"
+}
+
+run_with_timeout() {
+    local timeout_seconds="$1"
+    shift
+
+    if command_exists timeout; then
+        timeout "$timeout_seconds" "$@"
+        return $?
+    fi
+
+    if command_exists gtimeout; then
+        gtimeout "$timeout_seconds" "$@"
+        return $?
+    fi
+
+    local tmp_out tmp_err pid start now rc
+
+    tmp_out="$(mktemp)"
+    tmp_err="$(mktemp)"
+
+    (
+        "$@" >"$tmp_out" 2>"$tmp_err"
+    ) &
+    pid=$!
+    start="$(date +%s)"
+
+    while kill -0 "$pid" 2>/dev/null; do
+        now="$(date +%s)"
+        if [ $((now - start)) -ge "$timeout_seconds" ]; then
+            kill "$pid" 2>/dev/null || true
+            sleep 1
+            kill -9 "$pid" 2>/dev/null || true
+            wait "$pid" 2>/dev/null || true
+            cat "$tmp_out"
+            cat "$tmp_err" >&2
+            rm -f "$tmp_out" "$tmp_err"
+            return 124
+        fi
+        sleep 1
+    done
+
+    wait "$pid"
+    rc=$?
+    cat "$tmp_out"
+    cat "$tmp_err" >&2
+    rm -f "$tmp_out" "$tmp_err"
+    return "$rc"
+}
+
+escape_sql_literal() {
+    local value="$1"
+    echo "${value//\'/\'\'}"
+}
+
+get_service_container_id() {
+    dc ps -q "$1"
+}
+
+run_db_query() {
+    local sql="$1"
+    local timeout_seconds="${2:-8}"
+    local postgres_cid
+
+    postgres_cid="$(get_service_container_id postgres-db)"
+    if [ -z "$postgres_cid" ]; then
+        echo "postgres-db container not found" >&2
+        return 1
+    fi
+
+    run_with_timeout "$timeout_seconds" \
+        docker exec -e PGPASSWORD="${DB_PASSWORD}" "$postgres_cid" \
+        psql -U "${DB_USER:-postgres}" -d "${DB_DATABASE:-runarion}" -Atqc "$sql"
+}
+
 check_docker() {
-    if ! docker info > /dev/null 2>&1; then
+    if ! docker info >/dev/null 2>&1; then
         echo "Docker is not running. Please start Docker and try again."
         exit 1
     fi
 }
 
-# Function to check if required environment variables are set
 check_env_vars() {
-    local required_vars=(
-        # Docker Configuration
-        "REGISTRY"
-        "TAG"
-        "DOCKER_STACK_NAME"
-        "DOCKER_COMPOSE_FILE"
-        
-        # Database Configuration
-        "DB_CONNECTION"
-        "DB_HOST"
-        "DB_PORT"
-        "DB_DATABASE"
-        "DB_USER"
-        "DB_PASSWORD"
-        "POSTGRES_HOST_AUTH_METHOD"
-        
-        # Apache AGE Configuration
-        "AGE_ENABLED"
-        "AGE_GRAPH_NAME"
-        
-        # API Keys
-        "GEMINI_API_KEY"
-        "OPENAI_API_KEY"
-        "DEEPSEEK_API_KEY"
+    local var
 
-        # Default Model
-        "GEMINI_MODEL_NAME"
-        "DEEPSEEK_MODEL_NAME"
-        "OPENAI_MODEL_NAME"
-        
-        # Application URLs
-        "APP_URL"
-        "PYTHON_SERVICE_URL"
-        "VITE_SERVICE_URL"
-        "SD_SERVICE_URL"
-        
-        # Service Ports
-        "LARAVEL_PORT"
-        "PYTHON_PORT"
-        "VITE_PORT"
-        "SD_API_PORT"
-        
-        # Resource Limits
-        "LARAVEL_MEMORY_LIMIT"
-        "LARAVEL_MEMORY_RESERVATION"
-        "PYTHON_MEMORY_LIMIT"
-        "PYTHON_MEMORY_RESERVATION"
-        "POSTGRES_MEMORY_LIMIT"
-        "POSTGRES_MEMORY_RESERVATION"
-        
-        # Logging Configuration
-        "LOG_DRIVER"
-        "LOG_MAX_SIZE"
-        "LOG_MAX_FILE"
-        
-        # Development Settings
-        "VITE_HOST"
-        "VITE_APP_NAME"
-        
-        # PHP Settings
-        "PHP_CLI_SERVER_WORKERS"
-        "BCRYPT_ROUNDS"
-        
-        # Locale Settings
-        "APP_LOCALE"
-        "APP_FALLBACK_LOCALE"
-        "APP_FAKER_LOCALE"
-        
-        # Node.js Settings
-        "NODE_OPTIONS"
-        "NPM_CONFIG_CACHE"
-        "CHOKIDAR_USEPOLLING"
-        "WATCHPACK_POLLING"
-        
-        # Flask Settings
-        "FLASK_ENV"
-        "FLASK_DEBUG"
-        
-        # Python Settings
-        "PYTHON_PYTHONPATH"
-        "PYTHON_PYTHONDONTWRITEBYTECODE"
-        "PYTHON_PYTHONUNBUFFERED"
-        "PYTHON_UPLOAD_PATH"
-        
-        # Stable Diffusion Settings
-        "NVIDIA_VISIBLE_DEVICES"
-        "NVIDIA_DRIVER_CAPABILITIES"
-        "SD_PYTHONPATH"
-        "SD_PYTHONDONTWRITEBYTECODE"
-        "SD_PYTHONUNBUFFERED"
-        "SD_DIR_PERMISSIONS"
-
-        # Reverb Settings
-        "BROADCAST_CONNECTION"
-
-        "REVERB_APP_ID"
-        "REVERB_APP_KEY"
-        "REVERB_APP_SECRET"
-        "REVERB_HOST"
-        "REVERB_PORT"
-        "REVERB_SCHEME"
-
-        "VITE_REVERB_APP_KEY"
-        "VITE_REVERB_HOST"
-        "VITE_REVERB_CLIENT_HOST"
-        "VITE_REVERB_PORT"
-        "VITE_REVERB_SCHEME"
-        
-        # Network Configuration
-        "NETWORK_DRIVER"
-        "NETWORK_ATTACHABLE"
-        
-        # Volume Configuration
-        "VOLUME_DRIVER"
-    )
-
-    # Optional variables that can be empty
-    local optional_vars=(
-        # PostgreSQL Advanced Configuration
-        "POSTGRES_INITDB_WALDIR"
-        "POSTGRES_INITDB_ARGS"
-        "PG_MAJOR"
-        "PGDATA"
-        "POSTGRES_GID"
-        "POSTGRES_UID"
-        "GOSU_VERSION"
-        "LANG"
-    )
-
-    # Check required variables
-    for var in "${required_vars[@]}"; do
-        if [ -z "${!var}" ]; then
+    for var in "${REQUIRED_ENV_VARS[@]}"; do
+        if [ -z "${!var:-}" ]; then
             echo "Error: $var is not set. Please set it in your .env file."
             exit 1
         fi
     done
 
-    # Set default values for optional variables if they're not set
-    for var in "${optional_vars[@]}"; do
-        if [ -z "${!var}" ]; then
-            case $var in
-                "POSTGRES_INITDB_WALDIR") export POSTGRES_INITDB_WALDIR="" ;;
-                "POSTGRES_INITDB_ARGS") export POSTGRES_INITDB_ARGS="" ;;
-                "PG_MAJOR") export PG_MAJOR="17" ;;
-                "PGDATA") export PGDATA="/var/lib/postgresql/data" ;;
-                "POSTGRES_GID") export POSTGRES_GID="999" ;;
-                "POSTGRES_UID") export POSTGRES_UID="999" ;;
-                "GOSU_VERSION") export GOSU_VERSION="1.17" ;;
-                "LANG") export LANG="en_US.utf8" ;;
-            esac
-        fi
-    done
+    export POSTGRES_INITDB_WALDIR="${POSTGRES_INITDB_WALDIR:-}"
+    export POSTGRES_INITDB_ARGS="${POSTGRES_INITDB_ARGS:-}"
+    export PG_MAJOR="${PG_MAJOR:-16}"
+    export PGDATA="${PGDATA:-/var/lib/postgresql/data}"
+    export POSTGRES_GID="${POSTGRES_GID:-999}"
+    export POSTGRES_UID="${POSTGRES_UID:-999}"
+    export GOSU_VERSION="${GOSU_VERSION:-1.17}"
+    export LANG="${LANG:-en_US.utf8}"
 }
 
-# Function to check if ports are available
+port_in_use() {
+    local port="$1"
+
+    if command_exists lsof; then
+        lsof -i :"$port" >/dev/null 2>&1
+        return $?
+    fi
+
+    if command_exists ss; then
+        ss -ltn "( sport = :$port )" 2>/dev/null | tail -n +2 | grep -q .
+        return $?
+    fi
+
+    return 1
+}
+
 check_ports() {
-    local ports=("8000" "5000" "5432" "5173" "7860")
+    local ports=(8000 5000 5432 5173 8080 7860)
+    local port
+
     for port in "${ports[@]}"; do
-        if lsof -i :$port > /dev/null 2>&1; then
+        if port_in_use "$port"; then
             echo "Warning: Port $port is already in use. Please free up the port and try again."
             exit 1
         fi
     done
 }
 
-# Function to ensure entrypoint scripts are executable
-make_scripts_executable() {
+normalize_dev_files() {
+    local files=(
+        "$ENV_FILE"
+        "docker-entrypoint.sh"
+        "docker-ensure-initdb.sh"
+        "runarion-laravel/docker-entrypoint.sh"
+        "runarion-python/docker-entrypoint.sh"
+    )
+
     echo "Making entrypoint scripts executable..."
-    # Fix line endings for entrypoint scripts and env file
-    if command -v dos2unix >/dev/null 2>&1; then
+
+    if command_exists dos2unix; then
         echo "Fixing line endings in entrypoint scripts and env file..."
-        dos2unix .env
-        dos2unix docker-entrypoint.sh
-        dos2unix docker-ensure-initdb.sh
-        dos2unix runarion-laravel/docker-entrypoint.sh
-        dos2unix runarion-python/docker-entrypoint.sh
-        dos2unix runarion-stable-diffusion/docker-entrypoint.sh
+        dos2unix "${files[@]}" >/dev/null 2>&1 || true
     else
         echo "Warning: dos2unix not found. Line endings may not be fixed properly."
     fi
-    chmod +x docker-entrypoint.sh
-    chmod +x docker-ensure-initdb.sh
-    chmod +x runarion-laravel/docker-entrypoint.sh
-    chmod +x runarion-python/docker-entrypoint.sh
-    chmod +x runarion-stable-diffusion/docker-entrypoint.sh
+
+    chmod +x \
+        docker-entrypoint.sh \
+        docker-ensure-initdb.sh \
+        runarion-laravel/docker-entrypoint.sh \
+        runarion-python/docker-entrypoint.sh
 }
 
-# Function to wait for database to be ready
-wait_for_db() {
-    echo "Waiting for database to be ready..."
-    until docker compose -f docker-compose.dev.yml exec postgres-db pg_isready -U postgres; do
-        echo "Database is unavailable - sleeping"
-        sleep 1
-    done
-    echo "Database is ready!"
-}
+fix_storage_permissions() {
+    local storage_app_dir="runarion-laravel/storage/app"
+    local problem_dirs=""
 
-# Function to verify Apache AGE extension
-check_age_extension() {
-    if [ "${AGE_ENABLED:-true}" = "true" ]; then
-        echo "Verifying Apache AGE extension..."
-        
-        # Use a simpler approach with timeout - check the initialization logs
-        local age_logs=$(docker compose -f docker-compose.dev.yml logs postgres-db 2>/dev/null | grep -E "(AGE INITIALIZATION COMPLETE|Ready for graph operations)" | wc -l)
-        
-        if [ "$age_logs" -ge 1 ]; then
-            echo "Apache AGE extension is installed and ready!"
-            echo "AGE initialization logs confirmed successful setup"
-            echo "Graph 'novel_pipeline_graph' is available for operations"
-        else
-            echo "⚠️  Apache AGE extension verification inconclusive"
-            echo "   Checking if extension exists in database..."
-            
-            # Fallback: try a quick extension check with timeout
-            if timeout 5 docker compose -f docker-compose.dev.yml exec postgres-db bash -c "PGPASSWORD='${DB_PASSWORD}' psql -U postgres -d '${DB_DATABASE:-runarion}' -c '\\dx age'" 2>/dev/null | grep -q "age"; then
-                echo "Apache AGE extension found in database"
-            else
-                echo "Apache AGE extension not found - graph functionality may be disabled"
-            fi
-        fi
-    else
-        echo "Apache AGE extension disabled via AGE_ENABLED=false"
+    echo "Fixing storage directory permissions for Docker build context..."
+
+    if [ ! -d "$storage_app_dir" ]; then
+        echo "Creating storage/app directory structure..."
+        mkdir -p "$storage_app_dir"
+        return 0
     fi
+
+    problem_dirs="$(find "$storage_app_dir" -type d ! -perm -o+rx 2>/dev/null || true)"
+    if [ -z "$problem_dirs" ]; then
+        echo "Storage permissions are OK."
+        return 0
+    fi
+
+    echo "Found directories with restrictive permissions, fixing..."
+    sudo chown -R "$USER:$USER" "$storage_app_dir" 2>/dev/null || true
+    sudo chmod -R 755 "$storage_app_dir" 2>/dev/null || true
+    echo "Storage permissions fixed."
 }
 
-# Function to wait for Vite server to be ready
-wait_for_vite() {
-    echo "Waiting for Vite server to be ready..."
-    local max_attempts=30
+set_permissions() {
+    echo "Setting proper permissions..."
+    dc exec -T laravel-app chown -R www-data:www-data storage bootstrap/cache
+}
+
+print_postgres_diagnostics() {
+    echo "=== PostgreSQL diagnostics (postgres-db) ==="
+    dc ps postgres-db || true
+    echo
+    dc logs --tail 120 postgres-db || true
+}
+
+wait_for_db() {
+    local max_attempts="${DB_READY_MAX_ATTEMPTS:-120}"
     local attempt=1
-    while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:5173 > /dev/null; then
-            echo "Vite server is ready!"
+
+    echo "Waiting for database to be ready..."
+
+    while [ "$attempt" -le "$max_attempts" ]; do
+        local postgres_cid health_status
+
+        postgres_cid="$(get_service_container_id postgres-db)"
+        if [ -z "$postgres_cid" ]; then
+            echo "Database container not found yet (attempt $attempt/$max_attempts)"
+            sleep 1
+            attempt=$((attempt + 1))
+            continue
+        fi
+
+        health_status="$(docker inspect --format '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' "$postgres_cid" 2>/dev/null || echo "unknown")"
+        if [ "$health_status" = "healthy" ]; then
+            echo "Database is ready!"
             return 0
         fi
+
+        echo "Database is not ready yet (status: $health_status, attempt $attempt/$max_attempts)"
+        sleep 1
+        attempt=$((attempt + 1))
+    done
+
+    echo "Error: Database did not become ready in time."
+    print_postgres_diagnostics
+    return 1
+}
+
+check_age_extension() {
+    local max_attempts="${AGE_VERIFY_MAX_ATTEMPTS:-20}"
+    local timeout_seconds="${AGE_VERIFY_TIMEOUT_SECONDS:-8}"
+    local attempt=1
+    local graph_name_escaped
+
+    if [ "${AGE_ENABLED:-true}" != "true" ]; then
+        echo "Apache AGE extension disabled via AGE_ENABLED=false"
+        return 0
+    fi
+
+    echo "Verifying Apache AGE extension..."
+    graph_name_escaped="$(escape_sql_literal "${AGE_GRAPH_NAME:-novel_pipeline_graph}")"
+
+    while [ "$attempt" -le "$max_attempts" ]; do
+        local raw availability installed graph_exists cypher_exists
+        local rc_avail rc_installed rc_graph rc_cypher
+
+        raw="$(run_db_query "SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_available_extensions WHERE name = 'age') THEN 1 ELSE 0 END;" "$timeout_seconds" 2>/dev/null || true)"
+        rc_avail=$?
+        availability="$(echo "$raw" | tr -d '[:space:]')"
+
+        raw="$(run_db_query "SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'age') THEN 1 ELSE 0 END;" "$timeout_seconds" 2>/dev/null || true)"
+        rc_installed=$?
+        installed="$(echo "$raw" | tr -d '[:space:]')"
+
+        raw="$(run_db_query "SELECT CASE WHEN to_regnamespace('ag_catalog') IS NULL THEN 0 WHEN EXISTS (SELECT 1 FROM ag_catalog.ag_graph WHERE name = '${graph_name_escaped}') THEN 1 ELSE 0 END;" "$timeout_seconds" 2>/dev/null || true)"
+        rc_graph=$?
+        graph_exists="$(echo "$raw" | tr -d '[:space:]')"
+
+        raw="$(run_db_query "SELECT CASE WHEN EXISTS (SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'ag_catalog' AND p.proname = 'cypher') THEN 1 ELSE 0 END;" "$timeout_seconds" 2>/dev/null || true)"
+        rc_cypher=$?
+        cypher_exists="$(echo "$raw" | tr -d '[:space:]')"
+
+        if [ "$rc_avail" -eq 0 ] && [ "$rc_installed" -eq 0 ] && [ "$rc_graph" -eq 0 ] && [ "$rc_cypher" -eq 0 ] \
+            && [ "$availability" = "1" ] && [ "$installed" = "1" ] && [ "$graph_exists" = "1" ] && [ "$cypher_exists" = "1" ]; then
+            echo "Apache AGE extension verified successfully."
+            echo "Graph '${AGE_GRAPH_NAME:-novel_pipeline_graph}' is available and ready."
+            return 0
+        fi
+
+        echo "AGE verification pending (attempt $attempt/$max_attempts): available=${availability:-n/a}, installed=${installed:-n/a}, graph=${graph_exists:-n/a}, cypher=${cypher_exists:-n/a}"
+        sleep 2
+        attempt=$((attempt + 1))
+    done
+
+    echo "Error: Apache AGE verification failed after $max_attempts attempts."
+    echo "AGE is enabled and required for startup."
+    echo "Troubleshooting commands:"
+    echo "  docker compose -f $COMPOSE_FILE logs --tail 200 postgres-db"
+    echo "  docker compose -f $COMPOSE_FILE exec -T postgres-db psql -U ${DB_USER:-postgres} -d ${DB_DATABASE:-runarion} -c \"SELECT * FROM pg_extension WHERE extname = 'age';\""
+    echo "  docker compose -f $COMPOSE_FILE exec -T postgres-db psql -U ${DB_USER:-postgres} -d ${DB_DATABASE:-runarion} -c \"SELECT * FROM ag_catalog.ag_graph;\""
+    print_postgres_diagnostics
+    return 1
+}
+
+wait_for_vite() {
+    local max_attempts="${VITE_READY_MAX_ATTEMPTS:-30}"
+    local attempt=1
+    local host_port="${VITE_PORT:-5173}"
+    local vite_probe_path="/@vite/client"
+    local logs_since laravel_cid
+
+    echo "Waiting for Vite server to be ready..."
+    logs_since="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+    while [ "$attempt" -le "$max_attempts" ]; do
+        if curl -fsS "http://127.0.0.1:${host_port}${vite_probe_path}" >/dev/null 2>&1; then
+            echo "Vite server is ready (host probe)."
+            return 0
+        fi
+
+        laravel_cid="$(get_service_container_id laravel-app)"
+        if [ -n "$laravel_cid" ] && run_with_timeout 5 docker exec "$laravel_cid" curl -fsS "http://127.0.0.1:${host_port}${vite_probe_path}" >/dev/null 2>&1; then
+            echo "Vite server is ready inside laravel-app (host probe not required)."
+            return 0
+        fi
+
+        if dc logs --since "$logs_since" laravel-app 2>&1 | grep -qE "Vite server is running|VITE v[[:space:]]+[0-9]"; then
+            echo "Vite server readiness confirmed from laravel-app logs."
+            return 0
+        fi
+
         echo "Waiting for Vite server... (attempt $attempt/$max_attempts)"
         sleep 2
         attempt=$((attempt + 1))
     done
-    echo "Warning: Vite server did not become ready in time"
+
+    echo "Error: Vite server did not become ready in time"
+    dc logs --tail 80 laravel-app || true
     return 1
 }
 
-# Function to check if NVIDIA GPU is available
-check_gpu() {
-    echo "Checking NVIDIA GPU availability..."
-    
-    # Test CUDA availability using a test container
-    if ! docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi &> /dev/null; then
-        echo "Error: CUDA is not properly configured in Docker."
-        echo "Please ensure the NVIDIA Container Toolkit is properly installed and configured."
-        exit 1
-    fi
-    
-    # Get GPU information from the container
-    local gpu_info
-    gpu_info=$(docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv,noheader)
-    
-    # Extract memory information (assumes memory is in MiB)
-    local gpu_memory
-    gpu_memory=$(echo "$gpu_info" | awk -F', ' '{print $2}' | sed 's/ MiB//')
-    
-    if [ -n "$gpu_memory" ] && [ "$gpu_memory" -lt 8000 ]; then
-        echo "Warning: GPU memory is less than 8GB. Stable Diffusion may not perform optimally."
-        read -p "Do you want to continue anyway? (y/n) " -n 1 -r
-        echo
-        if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-            exit 1
-        fi
-    fi
-    
-    echo "NVIDIA GPU detected and available in Docker."
-    echo "GPU Information:"
-    echo "$gpu_info"
-}
-
-# Function to wait for Stable Diffusion service to be ready
-wait_for_sd() {
-    echo "Waiting for Stable Diffusion service to be ready..."
-    local max_attempts=60
-    local attempt=1
-    while [ $attempt -le $max_attempts ]; do
-        local health_response
-        health_response=$(curl -s http://localhost:7860/health)
-        
-        if echo "$health_response" | grep -q '"status":"healthy"'; then
-            echo "Stable Diffusion service is ready and initialized!"
-            return 0
-        else
-            echo "Waiting for Stable Diffusion service to respond... (attempt $attempt/$max_attempts)"
-        fi
-        sleep 5
-        attempt=$((attempt + 1))
-    done
-    echo "Warning: Stable Diffusion service did not become ready in time"
-    echo "Last health check response:"
-    curl -s http://localhost:7860/health || echo "No response from health endpoint"
-    return 1
-}
-
-# Function to download Stable Diffusion model
-download_sd_model() {
-    local model_dir="runarion-stable-diffusion/models/stable-diffusion-v1-5"
-    if [ ! -f "$model_dir/model_index.json" ]; then
-        echo "Downloading Stable Diffusion model..."
-        cd runarion-stable-diffusion && ./download_models.sh && cd ..
-    fi
-}
-
-# Function to download ControlNet model
-download_controlnet_model() {
-    local model_dir="runarion-stable-diffusion/models/controlnet"
-    if [ ! -f "$model_dir/model_index.json" ]; then
-        echo "Downloading ControlNet model..."
-        cd runarion-stable-diffusion && ./download_models.sh && cd ..
-    fi
-}
-
-# Function to setup Stable Diffusion
-setup_stable_diffusion() {
-    echo "Setting up Stable Diffusion..."
-    
-    # Ensure model directories exist
-    mkdir -p runarion-stable-diffusion/{models,outputs,inputs,cache}
-    
-    # Set proper permissions
-    chmod -R ${SD_DIR_PERMISSIONS:-755} runarion-stable-diffusion/{models,outputs,inputs,cache}
-    
-    # Create and activate virtual environment if it doesn't exist
-    if [ ! -d "runarion-stable-diffusion/venv" ]; then
-        echo "Creating virtual environment..."
-        cd runarion-stable-diffusion
-        if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-            python -m venv venv --clear
-        else
-            python3 -m venv venv --clear
-        fi
-        cd ..
-    fi
-    
-    # Activate virtual environment and install dependencies
-    echo "Installing dependencies in virtual environment..."
-    cd runarion-stable-diffusion
-    
-    # OS-specific virtual environment activation
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
-        source venv/Scripts/activate
-    else
-        source venv/bin/activate
-    fi
-    
-    python -m pip install --no-cache-dir huggingface_hub
-    
-    # Download models if needed
-    ./download_models.sh
-    
-    cd ..
-    
-    echo "Stable Diffusion setup complete."
-}
-
-# Function to setup Laravel
 setup_laravel() {
+    local has_key
+
     echo "Setting up Laravel..."
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan key:generate --force
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan migrate:fresh --seed --force
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan config:cache
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan route:cache
-    docker compose -f docker-compose.dev.yml exec laravel-app php artisan view:cache
+
+    has_key="$(dc exec -T laravel-app grep -c "APP_KEY=base64:" .env 2>/dev/null || echo "0")"
+    if [ "$has_key" -eq "0" ]; then
+        echo "Generating application key..."
+        dc exec -T laravel-app php artisan key:generate --force
+    else
+        echo "Application key already exists, skipping generation to avoid Vite restart"
+    fi
+
+    if dc exec -T laravel-app test ! -f storage/migrations_ran; then
+        echo "Running fresh migrations..."
+        dc exec -T laravel-app php artisan migrate:fresh --seed --force
+    else
+        echo "Migrations already ran, skipping to avoid data loss"
+    fi
+
+    echo "Skipping cache commands in development mode"
 }
 
-# Function to install frontend dependencies
-install_frontend_deps() {
-    echo "Installing frontend dependencies..."
-    docker compose -f docker-compose.dev.yml exec laravel-app npm install --verbose --legacy-peer-deps
-    docker compose -f docker-compose.dev.yml exec laravel-app npm run build
-}
-
-# Function to set proper permissions
-set_permissions() {
-    echo "Setting proper permissions..."
-    docker compose -f docker-compose.dev.yml exec laravel-app chown -R www-data:www-data storage bootstrap/cache
-}
-
-# Function to cleanup development environment
-cleanup() {
+cleanup_environment() {
     echo "Cleaning up development environment..."
-    docker compose -f docker-compose.dev.yml down -v
+    dc down -v
     rm -f runarion-laravel/storage/migrations_ran
     echo "Cleanup complete!"
 }
 
-# Function to handle script interruption
 handle_interrupt() {
-    echo -e "\nInterrupted by user. Cleaning up..."
-    cleanup
-    exit 1
+    echo
+    echo "Interrupted by user. Exiting..."
+    exit 130
 }
 
-# Set up trap for script interruption
+run_readiness_checks() {
+    wait_for_db || return 1
+    check_age_extension || return 1
+    wait_for_vite || return 1
+    return 0
+}
+
+run_common_preflight() {
+    load_env
+    ensure_test_database_url
+    check_docker
+    check_env_vars
+}
+
+print_ready_urls() {
+    echo "Development environment is ready!"
+    echo "Laravel frontend: http://localhost:8000"
+    echo "Python service: http://python-app:5000"
+    echo "Database: localhost:5432"
+    echo "Vite HMR: http://localhost:5173"
+}
+
+start_environment() {
+    echo "Starting development environment setup..."
+    run_common_preflight
+    normalize_dev_files
+    check_ports
+    fix_storage_permissions
+
+    echo "Building and starting containers..."
+    dc up -d --build
+
+    if ! run_readiness_checks; then
+        echo "Startup failed during readiness checks."
+        exit 1
+    fi
+
+    setup_laravel
+    set_permissions
+    print_ready_urls
+
+    echo "Showing logs (press Ctrl+C to stop)..."
+    dc logs -f
+}
+
+restart_environment() {
+    echo "Restarting development environment..."
+    run_common_preflight
+
+    dc restart
+
+    if ! run_readiness_checks; then
+        echo "Restart failed during readiness checks."
+        exit 1
+    fi
+
+    echo "Restart complete and all readiness checks passed."
+    echo "Laravel frontend: http://localhost:8000"
+    echo "Database: localhost:5432"
+    echo "Vite HMR: http://localhost:5173"
+}
+
+doctor_environment() {
+    echo "Running development environment diagnostics..."
+    run_common_preflight
+
+    dc ps || true
+
+    if [ -z "$(dc ps --status running -q postgres-db)" ]; then
+        echo "Error: postgres-db is not running. Start or restart the stack first."
+        dc ps postgres-db || true
+        exit 1
+    fi
+
+    run_readiness_checks
+    echo "Doctor check complete: DB, AGE, and Vite are healthy."
+}
+
+usage() {
+    cat <<USAGE
+Usage: ./dev.sh [command]
+
+Commands:
+  start    Build and start services, then run readiness checks (default)
+  restart  Restart services, then run the same readiness checks
+  doctor   Run readiness/diagnostic checks without mutating containers
+  cleanup  Stop services and remove volumes
+  help     Show this help message
+USAGE
+}
+
 trap handle_interrupt SIGINT SIGTERM
 
-# Main execution
-echo "Starting development environment setup..."
+COMMAND="${1:-start}"
 
-# Check prerequisites
-check_docker
-check_env_vars
-check_ports
-check_gpu
-make_scripts_executable
-
-# Setup Stable Diffusion
-setup_stable_diffusion
-
-# Build and start containers
-echo "Building and starting containers..."
-docker compose -f docker-compose.dev.yml up -d --build
-
-# Wait for services to be ready
-wait_for_db
-check_age_extension
-wait_for_vite
-wait_for_sd
-
-# Setup services
-setup_laravel
-set_permissions
-
-echo "Development environment is ready!"
-echo "Laravel frontend: http://localhost:8000"
-echo "Python service: http://python-app:5000"
-echo "Database: localhost:5432"
-echo "Vite HMR: http://localhost:5173"
-echo "Stable Diffusion: http://stable-diffusion:7860 (internal network only)"
-
-# Show logs
-echo "Showing logs (press Ctrl+C to stop)..."
-docker compose -f docker-compose.dev.yml logs -f
+case "$COMMAND" in
+    start)
+        start_environment
+        ;;
+    restart)
+        restart_environment
+        ;;
+    doctor)
+        doctor_environment
+        ;;
+    cleanup)
+        run_common_preflight
+        cleanup_environment
+        ;;
+    help|-h|--help)
+        usage
+        ;;
+    *)
+        echo "Unknown command: $COMMAND"
+        usage
+        exit 1
+        ;;
+esac

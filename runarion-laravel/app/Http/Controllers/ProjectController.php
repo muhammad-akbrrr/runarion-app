@@ -11,12 +11,18 @@ use App\Models\Projects;
 use App\Models\Workspace;
 use App\Models\ProjectContent;
 use App\Models\ProjectNodeEditor;
+use App\Services\ProjectPipelineStateService;
 use Illuminate\Support\Str;
 use App\Models\WorkspaceMember;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
+    public function __construct(
+        private readonly ProjectPipelineStateService $pipelineStateService,
+    ) {
+    }
+
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $folders = Folder::where('workspace_id', $workspace_id)
@@ -25,14 +31,22 @@ class ProjectController extends Controller
             ->get();
 
         $projects = Projects::where('workspace_id', $workspace_id)
+            ->where('is_active', true)
             ->with(['author:id,name'])
-            ->get()
-            ->map(function ($project) {
+            ->get();
+
+        $locks = $this->pipelineStateService->getLocksForProjects(
+            $workspace_id,
+            $projects->pluck('id')->all(),
+        );
+
+        $projects = $projects->map(function ($project) use ($locks) {
                 if ($project->folder_id) {
                     $project->folder = Folder::where('id', $project->folder_id)
                         ->where('is_active', true)
                         ->first(['id', 'name']);
                 }
+                $project->pipelineLock = $locks[$project->id] ?? null;
                 return $project;
             });
 
@@ -62,8 +76,19 @@ class ProjectController extends Controller
         }
         $projects = Projects::where('workspace_id', $workspace_id)
             ->where('folder_id', $folder_id)
+            ->where('is_active', true)
             ->with(['author:id,name'])
             ->get();
+
+        $locks = $this->pipelineStateService->getLocksForProjects(
+            $workspace_id,
+            $projects->pluck('id')->all(),
+        );
+
+        $projects = $projects->map(function ($project) use ($locks) {
+            $project->pipelineLock = $locks[$project->id] ?? null;
+            return $project;
+        });
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
@@ -115,94 +140,107 @@ class ProjectController extends Controller
      */
     public function storeProject(Request $request, string $workspace_id)
     {
-        $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'folder_id' => 'nullable|string|exists:folders,id',
-        ]);
+        try {
+            $validated = $request->validate([
+                'name' => 'required|string|max:255',
+                'folder_id' => 'nullable|string|exists:folders,id',
+            ]);
 
-        // Check if user is a member of the workspace
-        $isMember = WorkspaceMember::where('workspace_id', $workspace_id)
-            ->where('user_id', $request->user()->id)
-            ->exists();
+            // Check if user is a member of the workspace
+            $isMember = WorkspaceMember::where('workspace_id', $workspace_id)
+                ->where('user_id', $request->user()->id)
+                ->exists();
 
-        if (!$isMember) {
-            return back()->withErrors(['name' => 'You must be a member of this workspace to create projects.']);
-        }
-
-        // If folder_id is provided and not 'none', verify it exists and belongs to the workspace
-        if (!empty($validated['folder_id']) && $validated['folder_id'] !== null) {
-            $folder = Folder::where('id', $validated['folder_id'])
-                ->where('workspace_id', $workspace_id)
-                ->where('is_active', true)
-                ->first();
-
-            if (!$folder) {
-                return back()->withErrors(['folder_id' => 'Invalid folder selected.']);
+            if (!$isMember) {
+                return back()->withErrors(['name' => 'You must be a member of this workspace to create projects.']);
             }
+
+            // If folder_id is provided and not 'none', verify it exists and belongs to the workspace
+            if (!empty($validated['folder_id']) && $validated['folder_id'] !== null) {
+                $folder = Folder::where('id', $validated['folder_id'])
+                    ->where('workspace_id', $workspace_id)
+                    ->where('is_active', true)
+                    ->first();
+
+                if (!$folder) {
+                    return back()->withErrors(['folder_id' => 'Invalid folder selected.']);
+                }
+            }
+
+            $project = new Projects();
+            $project->workspace_id = $workspace_id;
+            $project->name = $validated['name'];
+            $project->slug = Str::slug($validated['name']);
+            $project->original_author = $request->user()->id;
+            $project->folder_id = empty($validated['folder_id']) || $validated['folder_id'] === null ? null : $validated['folder_id'];
+            $project->saved_in = '01'; // Default to server storage
+            $project->completed_onboarding = false; // Show onboarding dialog for new projects
+            $project->is_active = true; // Ensure project is active
+
+            // Add initial access entry for the creator
+            $project->access = [
+                [
+                    'user' => [
+                        'id' => (string) $request->user()->id,
+                        'name' => $request->user()->name,
+                        'email' => $request->user()->email,
+                        'avatar_url' => $request->user()->profile_photo_url ?? null,
+                    ],
+                    'role' => 'admin'
+                ]
+            ];
+
+            // Validate using model rules
+            $rules = Projects::rules();
+            $rules['workspace_id'] = ['required', 'ulid', 'exists:workspaces,id'];
+            $validator = \Validator::make($project->toArray(), $rules);
+            if ($validator->fails()) {
+                return back()->withErrors($validator->errors());
+            }
+
+            $project->save();
+
+            // Create associated ProjectContent record
+            $projectContent = new ProjectContent();
+            $projectContent->project_id = $project->id;
+            $projectContent->content = [
+                [
+                    'order' => 0,
+                    'chapter_name' => 'Chapter 1',
+                    'content' => '',
+                    'summary' => null,
+                    'plot_points' => [],
+                ]
+            ];
+            $projectContent->metadata = [
+                'total_words' => 0,
+                'total_chapters' => 1,
+                'average_words_per_chapter' => 0,
+                'created_at' => now()->toISOString(),
+                'last_modified' => now()->toISOString(),
+            ];
+            $projectContent->last_edited_by = $request->user()->id;
+            $projectContent->last_edited_at = now();
+            $projectContent->save();
+
+            // Create associated ProjectNodeEditor record
+            $projectNodeEditor = new ProjectNodeEditor();
+            $projectNodeEditor->project_id = $project->id;
+            $projectNodeEditor->save();
+
+            // Redirect to the editor page for the new project
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project->id,
+            ]);
+        } catch (\Exception $e) {
+            \Log::error('Error creating project', [
+                'workspace_id' => $workspace_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return back()->withErrors(['name' => 'Failed to create project: ' . $e->getMessage()]);
         }
-
-        $project = new Projects();
-        $project->workspace_id = $workspace_id;
-        $project->name = $validated['name'];
-        $project->slug = Str::slug($validated['name']);
-        $project->original_author = $request->user()->id;
-        $project->folder_id = empty($validated['folder_id']) || $validated['folder_id'] === null ? null : $validated['folder_id'];
-        $project->saved_in = '01'; // Default to server storage
-
-        // Add initial access entry for the creator
-        $project->access = [
-            [
-                'user' => [
-                    'id' => (string) $request->user()->id,
-                    'name' => $request->user()->name,
-                    'email' => $request->user()->email,
-                    'avatar_url' => $request->user()->profile_photo_url ?? null,
-                ],
-                'role' => 'admin'
-            ]
-        ];
-
-        // Validate using model rules
-        $rules = Projects::rules();
-        $rules['workspace_id'] = ['required', 'ulid', 'exists:workspaces,id'];
-        $validator = \Validator::make($project->toArray(), $rules);
-        if ($validator->fails()) {
-            return back()->withErrors($validator->errors());
-        }
-
-        $project->save();
-
-        // Create associated ProjectContent record
-        $projectContent = new ProjectContent();
-        $projectContent->project_id = $project->id;
-        $projectContent->content = [
-            [
-                'order' => 0,
-                'chapter_name' => 'Chapter 1',
-                'content' => '',
-            ]
-        ];
-        $projectContent->metadata = [
-            'total_words' => 0,
-            'total_chapters' => 1,
-            'average_words_per_chapter' => 0,
-            'created_at' => now()->toISOString(),
-            'last_modified' => now()->toISOString(),
-        ];
-        $projectContent->last_edited_by = $request->user()->id;
-        $projectContent->last_edited_at = now();
-        $projectContent->save();
-
-        // Create associated ProjectNodeEditor record
-        $projectNodeEditor = new ProjectNodeEditor();
-        $projectNodeEditor->project_id = $project->id;
-        $projectNodeEditor->save();
-
-        // Redirect to the editor page for the new project
-        return redirect()->route('workspace.projects.editor', [
-            'workspace_id' => $workspace_id,
-            'project_id' => $project->id,
-        ]);
     }
 
     /**

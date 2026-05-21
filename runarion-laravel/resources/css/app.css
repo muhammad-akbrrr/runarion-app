@@ -259,3 +259,21 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Color coding for user vs AI-generated text */
+@layer components {
+  /* When color coding is enabled */
+  .editor-content.color-coded .user-text {
+    color: #1e40af !important; /* blue-800 - user text */
+  }
+  
+  .editor-content.color-coded .ai-text {
+    color: #6b7280 !important; /* gray-500 - AI text */
+  }
+  
+  /* When color coding is disabled, all text is black */
+  .editor-content:not(.color-coded) .user-text,
+  .editor-content:not(.color-coded) .ai-text {
+    color: inherit !important;
+  }
+}

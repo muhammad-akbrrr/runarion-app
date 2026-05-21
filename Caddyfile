@@ -1,0 +1,10 @@
+{$STAGING_DOMAIN} {
+    encode zstd gzip
+
+    @reverb path /app* /apps*
+    reverse_proxy @reverb laravel-reverb:8080
+
+    root * /srv/public
+    php_fastcgi laravel-php:9000
+    file_server
+}

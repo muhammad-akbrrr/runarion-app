@@ -7,6 +7,7 @@ interface StreamingLLMState {
     streamingText: string;
     error: string | null;
     sessionId: string | null;
+    isRegenerating: boolean;
 }
 
 interface UseStreamingLLMProps {
@@ -29,11 +30,24 @@ export function useStreamingLLM({
         streamingText: '',
         error: null,
         sessionId: null,
+        isRegenerating: false,
     });
 
     const channelRef = useRef<any>(null);
     const streamingTextRef = useRef<string>('');
     const currentSessionRef = useRef<string | null>(null);
+
+    // Refs for callbacks to avoid stale closures in WebSocket listeners
+    const onStreamCompleteRef = useRef(onStreamComplete);
+    const onStreamErrorRef = useRef(onStreamError);
+
+    useEffect(() => {
+        onStreamCompleteRef.current = onStreamComplete;
+    }, [onStreamComplete]);
+
+    useEffect(() => {
+        onStreamErrorRef.current = onStreamError;
+    }, [onStreamError]);
 
     // Setup WebSocket listeners
     useEffect(() => {
@@ -51,14 +65,27 @@ export function useStreamingLLM({
                 Echo.leave(channelName);
             }
             
-            // Join private channel
-            channelRef.current = Echo.private(channelName);
+            // Join public channel
+            channelRef.current = Echo.channel(channelName);
+            
+            // Listen for subscription success
+            channelRef.current.subscribed(() => {
+                console.log('✅ Successfully subscribed to channel:', channelName);
+            });
+            
+            // Listen for any error
+            channelRef.current.error((error: any) => {
+                console.error('❌ WebSocket channel error:', error);
+            });
             
             // Listen for stream started event
             channelRef.current.listen('.llm.stream.started', (data: any) => {
-                console.log('Stream started:', data);
+                console.log('✅ Stream started event received:', data);
                 
-                if (data.chapter_order === chapterOrder) {
+                // Security: Only process events for current workspace/project/chapter
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder) {
                     currentSessionRef.current = data.session_id;
                     streamingTextRef.current = '';
                     
@@ -68,15 +95,19 @@ export function useStreamingLLM({
                         streamingText: '',
                         error: null,
                         sessionId: data.session_id,
+                        isRegenerating: data.is_regenerate || false,
                     }));
                 }
             });
 
             // Listen for stream chunks
             channelRef.current.listen('.llm.stream.chunk', (data: any) => {
-                console.log('Stream chunk received:', data);
+                console.log('✅ Stream chunk received:', data);
                 
-                if (data.chapter_order === chapterOrder && 
+                // Security: Only process events for current workspace/project/chapter/session
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder && 
                     data.session_id === currentSessionRef.current) {
                     
                     streamingTextRef.current += data.chunk;
@@ -90,22 +121,31 @@ export function useStreamingLLM({
 
             // Listen for stream completion
             channelRef.current.listen('.llm.stream.completed', (data: any) => {
-                console.log('Stream completed:', data);
+                console.log('✅ Stream completed event received:', data);
                 
-                if (data.chapter_order === chapterOrder && 
+                // Security: Only process events for current workspace/project/chapter/session
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder && 
                     data.session_id === currentSessionRef.current) {
                     
                     setState(prev => ({
                         ...prev,
                         isStreaming: false,
                         sessionId: null,
+                        isRegenerating: false,
                         error: data.success ? null : (data.error || 'Stream failed'),
                     }));
 
                     if (data.success) {
-                        onStreamComplete(data.full_text || streamingTextRef.current);
+                        onStreamCompleteRef.current(data.full_text || streamingTextRef.current);
                     } else {
-                        onStreamError(data.error || 'Stream failed');
+                        // Handle different error types
+                        if (data.error_type === 'quota_exceeded') {
+                            onStreamErrorRef.current('Generation quota exceeded. Please try again later.');
+                        } else {
+                            onStreamErrorRef.current(data.error || 'Stream failed');
+                        }
                     }
 
                     // Reset refs
@@ -118,12 +158,14 @@ export function useStreamingLLM({
             channelRef.current.listen('.project.content.updated', (data: any) => {
                 console.log('Content updated:', data);
                 
-                // Handle content updates from other sources if needed
-                if (data.chapter_order === chapterOrder && 
+                // Security: Only process events for current workspace/project/chapter
+                if (data.workspace_id === workspaceId && 
+                    data.project_id === projectId && 
+                    data.chapter_order === chapterOrder && 
                     data.trigger === 'llm_generation' &&
                     !state.isStreaming) {
                     // This is a completed generation update
-                    // We might want to refresh the content
+                    // The parent component will handle updating the content
                 }
             });
             
@@ -173,6 +215,7 @@ export function useStreamingLLM({
             setState(prev => ({
                 ...prev,
                 isStreaming: false,
+                isRegenerating: false,
                 error: 'Generation cancelled by user',
             }));
             
@@ -185,6 +228,7 @@ export function useStreamingLLM({
         streamingText: state.streamingText,
         error: state.error,
         sessionId: state.sessionId,
+        isRegenerating: state.isRegenerating,
         cancelStream,
     };
 }

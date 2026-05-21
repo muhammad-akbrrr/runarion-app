@@ -7,10 +7,11 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class LLMStreamStarted implements ShouldBroadcast
+class LLMStreamStarted implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -18,6 +19,7 @@ class LLMStreamStarted implements ShouldBroadcast
     public string $projectId;
     public int $chapterOrder;
     public string $sessionId;
+    public bool $isRegenerate;
 
     /**
      * Create a new event instance.
@@ -26,12 +28,14 @@ class LLMStreamStarted implements ShouldBroadcast
         string $workspaceId,
         string $projectId,
         int $chapterOrder,
-        string $sessionId
+        string $sessionId,
+        bool $isRegenerate = false
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
         $this->chapterOrder = $chapterOrder;
         $this->sessionId = $sessionId;
+        $this->isRegenerate = $isRegenerate;
     }
 
     /**
@@ -42,7 +46,7 @@ class LLMStreamStarted implements ShouldBroadcast
     public function broadcastOn(): array
     {
         return [
-            new PrivateChannel("project.{$this->workspaceId}.{$this->projectId}"),
+            new Channel("project.{$this->workspaceId}.{$this->projectId}"),
         ];
     }
 
@@ -64,6 +68,7 @@ class LLMStreamStarted implements ShouldBroadcast
             'project_id' => $this->projectId,
             'chapter_order' => $this->chapterOrder,
             'session_id' => $this->sessionId,
+            'is_regenerate' => $this->isRegenerate,
             'timestamp' => now()->toISOString(),
         ];
     }

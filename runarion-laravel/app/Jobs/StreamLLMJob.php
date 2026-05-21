@@ -6,8 +6,10 @@ use App\Events\LLMStreamChunk;
 use App\Events\LLMStreamCompleted;
 use App\Events\LLMStreamStarted;
 use App\Events\ProjectContentUpdated;
+use App\Models\AuthorStyle;
 use App\Models\ProjectContent;
 use App\Models\Projects;
+use App\Services\VersionControlService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -15,6 +17,9 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Redis;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class StreamLLMJob implements ShouldQueue
@@ -28,8 +33,13 @@ class StreamLLMJob implements ShouldQueue
     public array $settings;
     public string $sessionId;
     public int $userId;
-    public int $timeout = 180; // 3 minutes timeout
-    public int $tries = 1; // No retries for streaming jobs
+    public bool $isRegenerate;
+    public ?string $regenerateNodeId;
+    public ?string $chapterName;
+    public int $timeout = 180;
+    public int $tries = 1;
+    
+    private const REDIS_BUFFER_TTL = 300;
 
     /**
      * Create a new job instance.
@@ -41,7 +51,10 @@ class StreamLLMJob implements ShouldQueue
         string $prompt,
         array $settings,
         int $userId,
-        ?string $sessionId = null
+        ?string $sessionId = null,
+        bool $isRegenerate = false,
+        ?string $regenerateNodeId = null,
+        ?string $chapterName = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
@@ -50,6 +63,9 @@ class StreamLLMJob implements ShouldQueue
         $this->settings = $settings;
         $this->sessionId = $sessionId ?? Str::uuid()->toString();
         $this->userId = $userId;
+        $this->isRegenerate = $isRegenerate;
+        $this->regenerateNodeId = $regenerateNodeId;
+        $this->chapterName = $chapterName ?? 'Untitled';
     }
 
     /**
@@ -63,78 +79,138 @@ class StreamLLMJob implements ShouldQueue
                 'workspace_id' => $this->workspaceId,
                 'project_id' => $this->projectId,
                 'chapter_order' => $this->chapterOrder,
+                'is_regenerate' => $this->isRegenerate,
+                'attempt' => $this->attempts(),
             ]);
 
             // Broadcast stream started event
-            broadcast(new LLMStreamStarted(
-                $this->workspaceId,
-                $this->projectId,
-                $this->chapterOrder,
-                $this->sessionId
-            ));
-
-            // Get current chapter content for context
-            $currentChapterContent = $this->getCurrentChapterContent();
-
-            // Prepare request data for Python service
-            $requestData = $this->prepareRequestData($currentChapterContent);
-
-            // Make streaming request to Python service
-            $this->streamFromPythonService($requestData);
-
-        } catch (\Exception $e) {
-            Log::error('LLM streaming job failed', [
-                'session_id' => $this->sessionId,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString(),
-            ]);
-
-            // Broadcast error event
-            broadcast(new LLMStreamCompleted(
+            $event = new LLMStreamStarted(
                 $this->workspaceId,
                 $this->projectId,
                 $this->chapterOrder,
                 $this->sessionId,
-                '',
-                false,
-                $e->getMessage()
-            ));
+                $this->isRegenerate
+            );
+            
+            broadcast($event);
+            
+            Log::info('LLMStreamStarted event broadcasted', [
+                'channel' => "project.{$this->workspaceId}.{$this->projectId}",
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'workspace_id' => $this->workspaceId,
+                'project_id' => $this->projectId,
+            ]);
+
+            $requestData = $this->prepareRequestData();
+            $this->streamFromPythonService($requestData);
+
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Connection error in LLM streaming job', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'attempt' => $this->attempts(),
+            ]);
+
+            $this->handleStreamingError($e, 'connection_error', 
+                'Failed to connect to AI service. Please check your connection and try again.');
+
+        } catch (\Illuminate\Http\Client\RequestException $e) {
+            Log::error('Request error in LLM streaming job', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'status' => $e->response?->status(),
+                'attempt' => $this->attempts(),
+            ]);
+
+            $errorType = 'generation_failed';
+            $errorMessage = 'AI service request failed. Please try again.';
+            
+            if ($e->response) {
+                $status = $e->response->status();
+                
+                if ($status === 429) {
+                    $errorType = 'quota_exceeded';
+                    $errorMessage = 'Generation quota exceeded. Please try again later.';
+                } elseif ($status === 401 || $status === 403) {
+                    $errorType = 'authentication_error';
+                    $errorMessage = 'AI service authentication failed. Please check your API keys.';
+                } elseif ($status === 400) {
+                    $errorType = 'invalid_request';
+                    $errorMessage = 'Invalid generation request. Please check your settings.';
+                } elseif ($status >= 500) {
+                    $errorType = 'service_error';
+                    $errorMessage = 'AI service is temporarily unavailable. Please try again later.';
+                }
+            }
+
+            $this->handleStreamingError($e, $errorType, $errorMessage);
+
+        } catch (\Exception $e) {
+            Log::error('Unexpected error in LLM streaming job', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'type' => get_class($e),
+                'trace' => $e->getTraceAsString(),
+                'attempt' => $this->attempts(),
+            ]);
+
+            $errorType = 'generation_failed';
+            $errorMessage = $e->getMessage();
+            
+            // Categorize common errors
+            if (str_contains($errorMessage, 'quota') || str_contains($errorMessage, 'limit') || str_contains($errorMessage, '429')) {
+                $errorType = 'quota_exceeded';
+                $errorMessage = 'Generation quota exceeded. Please try again later.';
+            } elseif (str_contains($errorMessage, 'timeout')) {
+                $errorType = 'timeout_error';
+                $errorMessage = 'Generation timed out. Please try again with shorter content or lower output length.';
+            } elseif (str_contains($errorMessage, 'memory') || str_contains($errorMessage, 'out of memory')) {
+                $errorType = 'memory_error';
+                $errorMessage = 'Insufficient memory for generation. Please try with shorter content.';
+            } elseif (str_contains($errorMessage, 'token')) {
+                $errorType = 'token_limit_error';
+                $errorMessage = 'Content exceeds token limit. Please reduce the input size.';
+            }
+
+            $this->handleStreamingError($e, $errorType, $errorMessage);
         }
     }
 
     /**
-     * Get current chapter content for context
+     * Handle streaming errors with proper logging and broadcasting
      */
-    private function getCurrentChapterContent(): string
+    private function handleStreamingError(\Exception $e, string $errorType, string $errorMessage): void
     {
-        $projectContent = ProjectContent::where('project_id', $this->projectId)->first();
-        
-        if (!$projectContent) {
-            return '';
-        }
-
-        $chapters = $projectContent->content ?? [];
-        foreach ($chapters as $chapter) {
-            if (isset($chapter['order']) && $chapter['order'] === $this->chapterOrder) {
-                return $chapter['content'] ?? '';
-            }
-        }
-
-        return '';
+        broadcast(new LLMStreamCompleted(
+            $this->workspaceId,
+            $this->projectId,
+            $this->chapterOrder,
+            $this->sessionId,
+            '',
+            false,
+            $errorMessage,
+            $errorType
+        ));
     }
 
     /**
      * Prepare request data for Python service
      */
-    private function prepareRequestData(string $currentChapterContent): array
+    private function prepareRequestData(): array
     {
+        // Process writing guidance from the prompt
+        $processedPrompt = $this->processWritingGuidance($this->prompt);
+        
         return [
             'usecase' => 'story',
             'provider' => $this->determineProvider(),
-            'model' => $this->settings['aiModel'] ?? 'gpt-4o-mini',
-            'prompt' => $this->prompt,
-            'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice.',
-            'stream' => true, // Enable streaming
+            'model' => $this->settings['aiModel'] ?? 'gemini-2.5-flash',
+            'prompt' => $processedPrompt['baseContent'],
+            'writing_guidance' => $processedPrompt['guidance'],
+            'chapter_order' => $this->chapterOrder, // Include chapter_order for conversation history
+            'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice. Return the continuation exclusively in Markdown format with no HTML escaping or wrappers.',
+            'stream' => true,
             'generation_config' => [
                 'temperature' => $this->settings['temperature'] ?? 1,
                 'max_output_tokens' => $this->settings['outputLength'] ?? 300,
@@ -147,17 +223,18 @@ class StreamLLMJob implements ShouldQueue
                 'phrase_bias' => $this->settings['phraseBias'] ?? [],
                 'banned_tokens' => $this->settings['bannedPhrases'] ?? [],
                 'stop_sequences' => $this->settings['stopSequences'] ?? [],
+                // Gemini thinking config - only for thinking models
+                // null uses model-specific defaults, 0 to disable, positive value for custom budget
+                'thinking_budget' => $this->shouldIncludeThinkingBudget()
+                    ? ($this->settings['thinkingBudget'] ?? null)
+                    : null,
+                'include_thinking' => $this->settings['includeThinking'] ?? false,
             ],
-            'prompt_config' => [
-                'context' => $currentChapterContent,
-                'genre' => $this->settings['storyGenre'] ?? '',
-                'tone' => $this->settings['storyTone'] ?? '',
-                'pov' => $this->settings['storyPov'] ?? '',
-            ],
+            'prompt_config' => $this->buildPromptConfig(),
             'caller' => [
                 'user_id' => (string)$this->userId,
                 'workspace_id' => $this->workspaceId,
-                'project_id' => $this->projectId,
+                'project_id' => $this->projectId, // Required for conversation history
                 'session_id' => $this->sessionId,
                 'api_keys' => [
                     'openai' => env('OPENAI_API_KEY', ''),
@@ -169,13 +246,64 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
+     * Process writing guidance from content.
+     * Extracts text within parentheses ((), [], {}) as guidance instructions for the AI.
+     * Returns both the base content (without markers) for AI processing and the guidance array.
+     * 
+     * NOTE: The guidance markers are NOT removed from the editor content - they remain visible.
+     * This method only extracts them for sending to the AI as separate instructions.
+     * 
+     * @param string $content The content to process
+     * @return array Array with 'baseContent' (for AI) and 'guidance' keys
+     */
+    private function processWritingGuidance(string $content): array
+    {
+        $guidance = [];
+        $baseContent = $content;
+        
+        // Match all types of parentheses: (), [], {}
+        // This regex captures text within any type of bracket
+        $pattern = '/[\(\[\{]([^\)\]\}]+)[\)\]\}]/';
+        
+        // Extract all guidance instructions
+        if (preg_match_all($pattern, $content, $matches)) {
+            if (!empty($matches[1])) {
+                $guidance = $matches[1];
+                
+                // Remove guidance markers from base content FOR AI PROCESSING ONLY
+                // The original content in the editor remains unchanged
+                $baseContent = preg_replace($pattern, '', $content);
+                
+                // Clean up extra whitespace that may result from removal
+                $baseContent = preg_replace('/\s+/', ' ', $baseContent);
+                $baseContent = trim($baseContent);
+            }
+        }
+        
+        Log::info('Processed writing guidance', [
+            'session_id' => $this->sessionId,
+            'original_length' => strlen($content),
+            'base_content_length' => strlen($baseContent),
+            'guidance_count' => count($guidance),
+            'guidance' => $guidance,
+        ]);
+        
+        return [
+            'baseContent' => $baseContent,
+            'guidance' => $guidance,
+        ];
+    }
+
+    /**
      * Determine AI provider based on model
      */
     private function determineProvider(): string
     {
-        $model = $this->settings['aiModel'] ?? 'gpt-4o-mini';
+        $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
         
-        if (stripos($model, 'gpt') !== false) {
+        if (stripos($model, 'gemini') !== false) {
+            return 'gemini';
+        } elseif (stripos($model, 'gpt') !== false) {
             return 'openai';
         } elseif (stripos($model, 'gemini') !== false) {
             return 'gemini';
@@ -183,7 +311,236 @@ class StreamLLMJob implements ShouldQueue
             return 'deepseek';
         }
         
-        return 'openai';
+        return 'gemini';
+    }
+
+    /**
+     * Check if the current model supports thinking (internal reasoning).
+     *
+     * @return bool
+     */
+    private function shouldIncludeThinkingBudget(): bool
+    {
+        $thinkingModels = [
+            'gemini-2.5-pro',
+            'gemini-2.5-flash',
+            'gemini-3-pro-preview'
+        ];
+
+        $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
+        return in_array($model, $thinkingModels);
+    }
+
+    /**
+     * Build the prompt configuration with logging.
+     *
+     * @return array
+     */
+    private function buildPromptConfig(): array
+    {
+        $authorProfileId = $this->settings['authorProfile'] ?? null;
+        $authorStyleDna = $this->getFormattedAuthorStyle($authorProfileId);
+        
+        Log::info('Building prompt_config for generation', [
+            'author_profile_id' => $authorProfileId,
+            'author_style_found' => !empty($authorStyleDna),
+            'author_style_length' => strlen($authorStyleDna),
+            'preset' => $this->settings['currentPreset'] ?? 'none',
+            'genre' => $this->settings['storyGenre'] ?? 'none',
+            'tone' => $this->settings['storyTone'] ?? 'none',
+            'pov' => $this->settings['storyPov'] ?? 'none',
+            'session_id' => $this->sessionId,
+        ]);
+        
+        return [
+            'current_preset' => $this->settings['currentPreset'] ?? '',
+            'context' => $this->settings['memory'] ?? '',
+            'genre' => $this->settings['storyGenre'] ?? '',
+            'tone' => $this->settings['storyTone'] ?? '',
+            'pov' => $this->settings['storyPov'] ?? '',
+            'author_profile' => $authorStyleDna,
+            'chapter_name' => $this->chapterName,
+        ];
+    }
+
+    /**
+     * Look up and format AuthorStyle data from the database.
+     * 
+     * The AuthorStyle contains techniques_json and examples_json which need to be
+     * formatted into a readable style DNA text for the AI prompt.
+     * 
+     * @param string|null $authorProfileId The AuthorStyle ID from the sidebar selection
+     * @return string Formatted style DNA text, or empty string if not found
+     */
+    private function getFormattedAuthorStyle(?string $authorProfileId): string
+    {
+        if (empty($authorProfileId)) {
+            return '';
+        }
+
+        try {
+            $authorStyle = AuthorStyle::find($authorProfileId);
+            
+            if (!$authorStyle || $authorStyle->status !== 'profiling_completed') {
+                Log::warning('AuthorStyle not found or not completed', [
+                    'author_profile_id' => $authorProfileId,
+                    'session_id' => $this->sessionId,
+                ]);
+                return '';
+            }
+
+            $styleDna = [];
+            $styleDna[] = "AUTHOR STYLE: {$authorStyle->author_name}";
+            $styleDna[] = "";
+
+            // Format techniques
+            $techniques = $authorStyle->techniques_json;
+            if (!empty($techniques)) {
+                $styleDna[] = "WRITING TECHNIQUES:";
+
+                if (!empty($techniques['voice'])) {
+                    $voice = $techniques['voice'];
+                    if (!empty($voice['diction'])) {
+                        $styleDna[] = "- Diction: {$voice['diction']}";
+                    }
+                    if (!empty($voice['syntax'])) {
+                        $styleDna[] = "- Syntax: {$voice['syntax']}";
+                    }
+                    if (!empty($voice['rhythm'])) {
+                        $styleDna[] = "- Rhythm: {$voice['rhythm']}";
+                    }
+                    if (!empty($voice['register'])) {
+                        $styleDna[] = "- Register: {$voice['register']}";
+                    }
+                    if (!empty($voice['figurative_language'])) {
+                        $styleDna[] = "- Figurative Language: {$voice['figurative_language']}";
+                    }
+                }
+
+                if (!empty($techniques['dialogue'])) {
+                    $d = $techniques['dialogue'];
+                    if (!empty($d['conversation_style'])) {
+                        $styleDna[] = "- Dialogue Style: {$d['conversation_style']}";
+                    }
+                    if (!empty($d['speaker_differentiation'])) {
+                        $styleDna[] = "- Speaker Differentiation: {$d['speaker_differentiation']}";
+                    }
+                    if (!empty($d['dialogue_narration_balance'])) {
+                        $styleDna[] = "- Dialogue-Narration Balance: {$d['dialogue_narration_balance']}";
+                    }
+                }
+
+                
+                if (!empty($techniques['description'])) {
+                    $description = $techniques['description'];
+                    if (!empty($description['description_density'])) {
+                        $styleDna[] = "- Description Density: {$description['description_density']}";
+                    }
+                    if (!empty($description['sensory_focus'])) {
+                        $styleDna[] = "- Sensory Focus: {$description['sensory_focus']}";
+                    }
+                    if (!empty($description['atmosphere_strategy'])) {
+                        $styleDna[] = "- Atmosphere Strategy: {$description['atmosphere_strategy']}";
+                    }
+                }
+
+                if (!empty($techniques['exposition'])) {
+                    $exposition = $techniques['exposition'];
+                    if (!empty($exposition['exposition_strategy'])) {
+                        $styleDna[] = "- Exposition Strategy: {$exposition['exposition_strategy']}";
+                    }
+                    if (!empty($exposition['context_integration'])) {
+                        $styleDna[] = "- Context Integration: {$exposition['context_integration']}";
+                    }
+                    if (!empty($exposition['terminology_handling'])) {
+                        $styleDna[] = "- Terminology Handling: {$exposition['terminology_handling']}";
+                    }
+                }
+
+                if (!empty($techniques['pacing'])) {
+                    $pacing = $techniques['pacing'];
+                    if (!empty($pacing['scene_tempo'])) {
+                        $styleDna[] = "- Scene Tempo: {$pacing['scene_tempo']}";
+                    }
+                    if (!empty($pacing['transition_style'])) {
+                        $styleDna[] = "- Transition Style: {$pacing['transition_style']}";
+                    }
+                    if (!empty($pacing['tension_pattern'])) {
+                        $styleDna[] = "- Tension Pattern: {$pacing['tension_pattern']}";
+                    }
+                }
+
+                if (!empty($techniques['narrative'])) {
+                    $narrative = $techniques['narrative'];
+                    if (!empty($narrative['pov_tendency'])) {
+                        $styleDna[] = "- POV Tendency: {$narrative['pov_tendency']}";
+                    }
+                    if (!empty($narrative['narrative_distance'])) {
+                        $styleDna[] = "- Narrative Distance: {$narrative['narrative_distance']}";
+                    }
+                    if (!empty($narrative['redundancy_avoidance'])) {
+                        $styleDna[] = "- Redundancy Avoidance: {$narrative['redundancy_avoidance']}";
+                    }
+                }
+            }
+
+            // Format examples (include a few key examples)
+            $examples = $authorStyle->examples_json;
+            if (!empty($examples)) {
+                $styleDna[] = "";
+                $styleDna[] = "STYLE EXAMPLES:";
+                
+                // Add dialogue examples
+                if (!empty($examples['dialogue']) && count($examples['dialogue']) > 0) {
+                    $styleDna[] = "Dialogue Example: \"{$examples['dialogue'][0]}\"";
+                }
+                
+                // Add description examples
+                if (!empty($examples['description']) && count($examples['description']) > 0) {
+                    $styleDna[] = "Description Example: \"{$examples['description'][0]}\"";
+                }
+
+                if (!empty($examples['voice']) && count($examples['voice']) > 0) {
+                    $styleDna[] = "Voice Example: \"{$examples['voice'][0]}\"";
+                }
+
+                $adaptation = $authorStyle->adaptation_json;
+                if (!empty($adaptation['portable_traits'])) {
+                    $styleDna[] = "";
+                    $styleDna[] = "PORTABLE STYLE TRAITS:";
+                    foreach (array_slice($adaptation['portable_traits'], 0, 5) as $trait) {
+                        $styleDna[] = "- {$trait}";
+                    }
+                }
+
+                if (!empty($adaptation['suppression_guidance'])) {
+                    $styleDna[] = "";
+                    $styleDna[] = "SUPPRESSION GUIDANCE:";
+                    foreach (array_slice($adaptation['suppression_guidance'], 0, 5) as $guidance) {
+                        $styleDna[] = "- {$guidance}";
+                    }
+                }
+            }
+
+            $result = implode("\n", $styleDna);
+            
+            Log::info('Formatted AuthorStyle for generation', [
+                'author_profile_id' => $authorProfileId,
+                'author_name' => $authorStyle->author_name,
+                'style_dna_length' => strlen($result),
+                'session_id' => $this->sessionId,
+            ]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error('Failed to format AuthorStyle', [
+                'author_profile_id' => $authorProfileId,
+                'error' => $e->getMessage(),
+                'session_id' => $this->sessionId,
+            ]);
+            return '';
+        }
     }
 
     /**
@@ -198,64 +555,170 @@ class StreamLLMJob implements ShouldQueue
         Log::info('Making streaming request to Python service', [
             'session_id' => $this->sessionId,
             'url' => $pythonServiceUrl . '/api/stream',
+            'model' => $requestData['model'] ?? 'unknown',
+            'provider' => $requestData['provider'] ?? 'unknown',
         ]);
 
-        // Create HTTP client with streaming support
-        $response = Http::timeout($this->timeout)
-            ->withHeaders([
-                'Content-Type' => 'application/json',
-                'Accept' => 'text/event-stream',
-            ])
-            ->withOptions([
-                'stream' => true,
-                'read_timeout' => $this->timeout,
-            ])
-            ->post($pythonServiceUrl . '/api/stream', $requestData);
+        try {
+            $response = Http::timeout($this->timeout)
+                ->retry(2, 1000, function ($exception, $request) {
+                    // Retry on connection errors and 5xx errors
+                    if ($exception instanceof \Illuminate\Http\Client\ConnectionException) {
+                        Log::warning('Connection error, retrying...', [
+                            'session_id' => $this->sessionId,
+                            'error' => $exception->getMessage()
+                        ]);
+                        return true;
+                    }
+                    
+                    if ($exception instanceof \Illuminate\Http\Client\RequestException) {
+                        $status = $exception->response?->status();
+                        if ($status && $status >= 500 && $status < 600) {
+                            Log::warning('Server error, retrying...', [
+                                'session_id' => $this->sessionId,
+                                'status' => $status
+                            ]);
+                            return true;
+                        }
+                    }
+                    
+                    return false;
+                })
+                ->withHeaders([
+                    'Content-Type' => 'application/json',
+                    'Accept' => 'text/event-stream',
+                    'Connection' => 'keep-alive',
+                ])
+                ->withOptions([
+                    'stream' => true,
+                    'read_timeout' => $this->timeout,
+                    'connect_timeout' => 30,
+                ])
+                ->post($pythonServiceUrl . '/api/stream', $requestData);
 
-        if (!$response->successful()) {
-            throw new \Exception('Failed to connect to Python service: ' . $response->body());
+            if (!$response->successful()) {
+                $statusCode = $response->status();
+                $body = $response->body();
+                
+                Log::error('Python service returned error', [
+                    'session_id' => $this->sessionId,
+                    'status' => $statusCode,
+                    'body' => $body
+                ]);
+                
+                // Provide specific error messages based on status code
+                if ($statusCode === 429) {
+                    throw new \Exception('Generation quota exceeded. Please try again later.');
+                } elseif ($statusCode === 401 || $statusCode === 403) {
+                    throw new \Exception('AI service authentication failed. Please check your API keys.');
+                } elseif ($statusCode === 400) {
+                    throw new \Exception('Invalid generation request: ' . $body);
+                } elseif ($statusCode >= 500) {
+                    throw new \Exception('AI service is temporarily unavailable. Please try again later.');
+                } else {
+                    throw new \Exception('Failed to connect to Python service (HTTP ' . $statusCode . '): ' . $body);
+                }
+            }
+
+            $body = $response->getBody();
+            $buffer = '';
+
+            while (!$body->eof()) {
+                $chunk = $body->read(1024);
+                $buffer .= $chunk;
+
+                while (($pos = strpos($buffer, "\n\n")) !== false) {
+                    $line = substr($buffer, 0, $pos);
+                    $buffer = substr($buffer, $pos + 2);
+
+                    $this->processStreamLine($line, $fullText, $chunkIndex);
+                }
+            }
+
+            if (!empty($buffer)) {
+                $this->processStreamLine($buffer, $fullText, $chunkIndex);
+            }
+
+            $this->updateProjectContentOptimized($fullText);
+
+            broadcast(new LLMStreamCompleted(
+                $this->workspaceId,
+                $this->projectId,
+                $this->chapterOrder,
+                $this->sessionId,
+                $fullText,
+                true
+            ));
+
+            Log::info('LLM streaming completed successfully', [
+                'session_id' => $this->sessionId,
+                'total_chunks' => $chunkIndex,
+                'total_length' => strlen($fullText),
+                'is_regenerate' => $this->isRegenerate,
+            ]);
+
+        } catch (\Illuminate\Http\Client\ConnectionException $e) {
+            Log::error('Connection error during streaming', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'url' => $pythonServiceUrl
+            ]);
+            throw new \Exception('Failed to connect to AI service. Please check your connection and try again.');
+
+        } catch (\Exception $e) {
+            Log::error('Streaming error', [
+                'session_id' => $this->sessionId,
+                'error' => $e->getMessage(),
+                'type' => get_class($e),
+                'chunks_received' => $chunkIndex,
+                'text_length' => strlen($fullText)
+            ]);
+            throw $e;
         }
+    }
 
-        // Process streaming response
-        $body = $response->getBody();
-        $buffer = '';
+    /**
+     * Split text into individual words for smooth streaming.
+     * Each chunk is a word + its trailing whitespace.
+     * This creates a typewriter effect for real-time generation.
+     *
+     * @param string $text The text to split
+     * @return array Array of text chunks (one word + whitespace each)
+     */
+    private function chunkTextByWords(string $text): array
+    {
+        // Split on whitespace while preserving it
+        $tokens = preg_split('/(\s+)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
 
-        while (!$body->eof()) {
-            $chunk = $body->read(1024);
-            $buffer .= $chunk;
+        $chunks = [];
+        $currentWord = '';
 
-            // Process complete lines
-            while (($pos = strpos($buffer, "\n\n")) !== false) {
-                $line = substr($buffer, 0, $pos);
-                $buffer = substr($buffer, $pos + 2);
-
-                $this->processStreamLine($line, $fullText, $chunkIndex);
+        foreach ($tokens as $token) {
+            if (preg_match('/^\s+$/', $token)) {
+                // Whitespace: attach to current word and flush
+                if (!empty($currentWord)) {
+                    $chunks[] = $currentWord . $token;
+                    $currentWord = '';
+                } else {
+                    // Standalone whitespace (edge case)
+                    $chunks[] = $token;
+                }
+            } else {
+                // Word token: start new word
+                if (!empty($currentWord)) {
+                    // Previous word had no trailing space
+                    $chunks[] = $currentWord;
+                }
+                $currentWord = $token;
             }
         }
 
-        // Process any remaining buffer
-        if (!empty($buffer)) {
-            $this->processStreamLine($buffer, $fullText, $chunkIndex);
+        // Flush remaining word
+        if (!empty($currentWord)) {
+            $chunks[] = $currentWord;
         }
 
-        // Update project content with final text
-        $this->updateProjectContent($fullText);
-
-        // Broadcast completion event
-        broadcast(new LLMStreamCompleted(
-            $this->workspaceId,
-            $this->projectId,
-            $this->chapterOrder,
-            $this->sessionId,
-            $fullText,
-            true
-        ));
-
-        Log::info('LLM streaming completed successfully', [
-            'session_id' => $this->sessionId,
-            'total_chunks' => $chunkIndex,
-            'total_length' => strlen($fullText),
-        ]);
+        return array_filter($chunks); // Remove empty strings
     }
 
     /**
@@ -269,7 +732,7 @@ class StreamLLMJob implements ShouldQueue
             return;
         }
 
-        $data = substr($line, 6); // Remove 'data: ' prefix
+        $data = substr($line, 6);
         
         if ($data === '[DONE]') {
             return;
@@ -286,7 +749,6 @@ class StreamLLMJob implements ShouldQueue
                 return;
             }
 
-            // Check for error
             if (isset($decoded['error'])) {
                 Log::error('Error in stream', [
                     'session_id' => $this->sessionId,
@@ -295,23 +757,31 @@ class StreamLLMJob implements ShouldQueue
                 throw new \Exception($decoded['error']);
             }
 
-            // Extract text chunk - assuming Flask always returns in the same format with 'chunk' field
             $textChunk = $decoded['chunk'] ?? '';
             
             if (!empty($textChunk)) {
                 $fullText .= $textChunk;
-                
-                // Broadcast chunk event
-                broadcast(new LLMStreamChunk(
-                    $this->workspaceId,
-                    $this->projectId,
-                    $this->chapterOrder,
-                    $this->sessionId,
-                    $textChunk,
-                    $chunkIndex
-                ));
-                
-                $chunkIndex++;
+
+                // Split into word-level chunks for smoother frontend streaming display
+                $wordChunks = $this->chunkTextByWords($textChunk);
+
+                foreach ($wordChunks as $wordChunk) {
+                    // Broadcast each word chunk
+                    broadcast(new LLMStreamChunk(
+                        $this->workspaceId,
+                        $this->projectId,
+                        $this->chapterOrder,
+                        $this->sessionId,
+                        $wordChunk,
+                        $chunkIndex
+                    ));
+
+                    $chunkIndex++;
+
+                    // Small delay for visual smoothness (10ms between word chunks)
+                    // This prevents overwhelming the frontend with rapid updates
+                    usleep(10000);
+                }
             }
         } catch (\Exception $e) {
             Log::warning('Error processing stream chunk', [
@@ -324,62 +794,112 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
-     * Update project content with generated text
+     * Update project content with generated text using optimized version control
      */
-    private function updateProjectContent(string $generatedText): void
+    private function updateProjectContentOptimized(string $generatedText): void
     {
         if (empty($generatedText)) {
-            return;
-        }
-
-        $projectContent = ProjectContent::where('project_id', $this->projectId)->first();
-        
-        if (!$projectContent) {
-            Log::error('Project content not found', [
+            Log::warning('Attempted to save empty generated text', [
                 'session_id' => $this->sessionId,
-                'project_id' => $this->projectId,
+                'chapter_order' => $this->chapterOrder
             ]);
             return;
         }
 
-        $chapters = $projectContent->content ?? [];
-        $updatedContent = '';
-        
-        foreach ($chapters as &$chapter) {
-            if (isset($chapter['order']) && $chapter['order'] === $this->chapterOrder) {
-                $existingContent = $chapter['content'] ?? '';
+        try {
+            DB::transaction(function () use ($generatedText) {
+                $versionControlService = app(VersionControlService::class);
                 
-                // Add space if needed
-                if ($existingContent !== '' && 
-                    substr($existingContent, -1) !== ' ' && 
-                    substr($generatedText, 0, 1) !== ' ') {
-                    $existingContent .= ' ';
+                // Keep the original prompt content intact (including guidance markers)
+                // The guidance was already extracted and sent to the AI, but we don't remove it from the editor
+                $baseContent = $this->prompt;
+                $finalContent = $baseContent;
+                
+                if ($baseContent !== '') {
+                    if (!str_ends_with($baseContent, "\n") && !str_starts_with($generatedText, "\n")) {
+                        if (!str_ends_with($baseContent, " ")) {
+                            $finalContent .= " ";
+                        }
+                    }
                 }
                 
-                $chapter['content'] = $existingContent . $generatedText;
-                $updatedContent = $chapter['content'];
-                break;
-            }
+                $finalContent .= $generatedText;
+
+                if ($this->isRegenerate && $this->regenerateNodeId) {
+                    // Add new version to the specified node (not current state)
+                    $versionIndex = $versionControlService->addVersion($this->regenerateNodeId, $finalContent);
+
+                    Log::info('Added new version to regenerate node', [
+                        'session_id' => $this->sessionId,
+                        'chapter_order' => $this->chapterOrder,
+                        'node_id' => $this->regenerateNodeId,
+                        'version_index' => $versionIndex,
+                        'final_content_length' => strlen($finalContent),
+                    ]);
+                } else {
+                    // Create new node with current node as parent
+                    $currentState = $versionControlService->getCurrentState($this->projectId, $this->chapterOrder);
+                    $parentNodeId = $currentState ? $currentState['node_id'] : null;
+                    $parentVersionIndex = $currentState ? $currentState['version_index'] : null;
+                    
+                    $nodeId = $versionControlService->createNode(
+                        $this->projectId,
+                        $this->chapterOrder,
+                        $finalContent,
+                        $this->settings,
+                        $parentNodeId,
+                        $parentVersionIndex
+                    );
+                    
+                    Log::info('Created new generation node', [
+                        'session_id' => $this->sessionId,
+                        'chapter_order' => $this->chapterOrder,
+                        'node_id' => $nodeId,
+                        'parent_node_id' => $parentNodeId,
+                        'parent_version_index' => $parentVersionIndex,
+                        'final_content_length' => strlen($finalContent),
+                    ]);
+                }
+
+                // Clear cache to ensure fresh data
+                $this->clearCache($this->projectId, $this->chapterOrder);
+            });
+
+            // Broadcast content updated event after transaction
+            broadcast(new ProjectContentUpdated(
+                $this->workspaceId,
+                $this->projectId,
+                $this->chapterOrder,
+                $generatedText, // Send only the generated part for streaming
+                $this->isRegenerate ? 'llm_regeneration' : 'llm_generation'
+            ));
+
+        } catch (\Illuminate\Database\QueryException $e) {
+            Log::error('Database error saving generated content', [
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'error' => $e->getMessage(),
+                'code' => $e->getCode()
+            ]);
+            
+            throw new \Exception('Failed to save generated content to database. Please try again.');
+
+        } catch (\Exception $e) {
+            Log::error('Error saving generated content', [
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'error' => $e->getMessage(),
+                'type' => get_class($e)
+            ]);
+            
+            throw new \Exception('Failed to save generated content: ' . $e->getMessage());
         }
-        
-        $projectContent->content = $chapters;
-        $projectContent->updateLastEdited($this->userId);
-        $projectContent->save();
+    }
 
-        // Broadcast content updated event
-        broadcast(new ProjectContentUpdated(
-            $this->workspaceId,
-            $this->projectId,
-            $this->chapterOrder,
-            $updatedContent,
-            'llm_generation'
-        ));
-
-        Log::info('Project content updated', [
-            'session_id' => $this->sessionId,
-            'chapter_order' => $this->chapterOrder,
-            'generated_length' => strlen($generatedText),
-        ]);
+    private function clearCache(string $projectId, int $chapterOrder): void
+    {
+        Cache::forget("content:{$projectId}:{$chapterOrder}");
+        Cache::forget("navigation:{$projectId}:{$chapterOrder}");
     }
 
     /**
@@ -387,11 +907,56 @@ class StreamLLMJob implements ShouldQueue
      */
     public function failed(\Throwable $exception): void
     {
-        Log::error('StreamLLMJob failed', [
+        Log::error('StreamLLMJob failed permanently', [
             'session_id' => $this->sessionId,
+            'workspace_id' => $this->workspaceId,
+            'project_id' => $this->projectId,
+            'chapter_order' => $this->chapterOrder,
             'error' => $exception->getMessage(),
+            'type' => get_class($exception),
             'trace' => $exception->getTraceAsString(),
+            'attempts' => $this->attempts(),
         ]);
+
+        // Determine error type and provide user-friendly message
+        $errorType = 'generation_failed';
+        $errorMessage = 'Generation failed after multiple attempts. Please try again.';
+        
+        if ($exception instanceof \Illuminate\Http\Client\ConnectionException) {
+            $errorType = 'connection_error';
+            $errorMessage = 'Failed to connect to AI service. Please check your connection and try again.';
+        } elseif ($exception instanceof \Illuminate\Http\Client\RequestException) {
+            $status = $exception->response?->status();
+            
+            if ($status === 429) {
+                $errorType = 'quota_exceeded';
+                $errorMessage = 'Generation quota exceeded. Please try again later.';
+            } elseif ($status === 401 || $status === 403) {
+                $errorType = 'authentication_error';
+                $errorMessage = 'AI service authentication failed. Please check your API keys.';
+            } elseif ($status === 400) {
+                $errorType = 'invalid_request';
+                $errorMessage = 'Invalid generation request. Please check your settings.';
+            } elseif ($status >= 500) {
+                $errorType = 'service_error';
+                $errorMessage = 'AI service is temporarily unavailable. Please try again later.';
+            }
+        } elseif (str_contains($exception->getMessage(), 'quota') || str_contains($exception->getMessage(), 'limit')) {
+            $errorType = 'quota_exceeded';
+            $errorMessage = 'Generation quota exceeded. Please try again later.';
+        } elseif (str_contains($exception->getMessage(), 'timeout')) {
+            $errorType = 'timeout_error';
+            $errorMessage = 'Generation timed out. Please try again with shorter content or lower output length.';
+        } elseif (str_contains($exception->getMessage(), 'memory')) {
+            $errorType = 'memory_error';
+            $errorMessage = 'Insufficient memory for generation. Please try with shorter content.';
+        } elseif (str_contains($exception->getMessage(), 'token')) {
+            $errorType = 'token_limit_error';
+            $errorMessage = 'Content exceeds token limit. Please reduce the input size.';
+        } elseif (str_contains($exception->getMessage(), 'database') || str_contains($exception->getMessage(), 'Database')) {
+            $errorType = 'database_error';
+            $errorMessage = 'Failed to save generated content. Please try again.';
+        }
 
         // Broadcast error event
         broadcast(new LLMStreamCompleted(
@@ -401,7 +966,8 @@ class StreamLLMJob implements ShouldQueue
             $this->sessionId,
             '',
             false,
-            'Job failed: ' . $exception->getMessage()
+            $errorMessage,
+            $errorType
         ));
     }
 }

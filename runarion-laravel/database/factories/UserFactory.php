@@ -21,6 +21,27 @@ class UserFactory extends Factory
     protected static ?string $password;
     protected $model = User::class;
 
+    public function configure(): static
+    {
+        return $this->afterCreating(function (User $user) {
+            if ($user->last_workspace_id) {
+                return;
+            }
+
+            $workspace = Workspace::factory()->create();
+
+            WorkspaceMember::query()->create([
+                'workspace_id' => $workspace->id,
+                'user_id' => $user->id,
+                'role' => 'owner',
+            ]);
+
+            $user->forceFill([
+                'last_workspace_id' => $workspace->id,
+            ])->saveQuietly();
+        });
+    }
+
     /**
      * Define the model's default state.
      * 
@@ -39,7 +60,7 @@ class UserFactory extends Factory
             'name' => $name,
             'email' => $email,
             'email_verified_at' => now(),
-            'password' => static::$password ??= Hash::make('password123'),
+            'password' => static::$password ??= Hash::make('password'),
             'avatar_url' => $avatarUrl,
             'last_workspace_id' => null,
             'settings' => null,

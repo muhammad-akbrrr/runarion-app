@@ -55,7 +55,7 @@ class ProfileController extends Controller
 
         $validated = $request->validate($validationRules);
 
-        if ($request->user()->isDirty('email')) {
+        if (($validated['email'] ?? null) !== $request->user()->email) {
             $validated['email_verified_at'] = null;
         }
 

@@ -21,8 +21,9 @@ check_migrations() {
 check_vite() {
     local max_attempts=30
     local attempt=1
+    local vite_probe_url="http://localhost:${VITE_PORT:-5173}/@vite/client"
     while [ $attempt -le $max_attempts ]; do
-        if curl -s http://localhost:${VITE_PORT:-5173} > /dev/null; then
+        if curl -fsS "$vite_probe_url" > /dev/null 2>&1; then
             log "Vite server is running"
             return 0
         fi
@@ -72,11 +73,25 @@ start_vite() {
 
 # Function to start Reverb server
 start_reverb() {
-    log "Starting Reverb WebSocket server..."
-    php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080} --debug || {
-        log "Error: Reverb server failed to start"
-        exit 1
-    }
+    log "Starting Reverb WebSocket server (with auto-restart)..."
+    while true; do
+        php artisan reverb:start --host=0.0.0.0 --port=${REVERB_PORT:-8080} || {
+            log "Warning: Reverb server crashed, restarting in 5 seconds..."
+            sleep 5
+        }
+    done
+}
+
+# Function to start queue worker with auto-restart
+start_queue_worker() {
+    log "Starting queue worker (with auto-restart)..."
+    while true; do
+        # AuthorStyleJob needs longer timeout (up to 15 min for multiple LLM calls)
+        php artisan queue:work --tries=2 --timeout=900 --max-jobs=500 --max-time=3600 --sleep=3 --rest=0 || {
+            log "Warning: Queue worker crashed, restarting in 5 seconds..."
+            sleep 5
+        }
+    done
 }
 
 # Function to handle shutdown
@@ -107,6 +122,10 @@ VITE_PID=$!
 # Start Reverb WebSocket server (background)
 start_reverb &
 REVERB_PID=$!
+
+# Start queue worker (background)
+start_queue_worker &
+QUEUE_PID=$!
 
 # Wait for services to be ready
 check_vite || exit 1

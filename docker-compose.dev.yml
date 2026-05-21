@@ -17,6 +17,9 @@ services:
       DB_DATABASE: ${DB_DATABASE}
       DB_USERNAME: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: ${REDIS_PORT:-6379}
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       PYTHON_SERVICE_URL: ${PYTHON_SERVICE_URL}
       APP_LOCALE: ${APP_LOCALE}
       APP_FALLBACK_LOCALE: ${APP_FALLBACK_LOCALE}
@@ -41,7 +44,7 @@ services:
       AGE_ENABLED: ${AGE_ENABLED:-true}
       AGE_GRAPH_NAME: ${AGE_GRAPH_NAME:-novel_pipeline_graph}
       NODE_OPTIONS: ${NODE_OPTIONS:-"--max_old_space_size=2048"}
-      npm_config_cache: ${NPM_CONFIG_CACHE:-"/tmp/npm-cache"}
+      NPM_CONFIG_CACHE: "/tmp/npm-cache"
       CHOKIDAR_USEPOLLING: ${CHOKIDAR_USEPOLLING:-"true"}
       WATCHPACK_POLLING: ${WATCHPACK_POLLING:-"true"}
     volumes:
@@ -55,13 +58,22 @@ services:
       - type: volume
         source: vendor
         target: /var/www/html/vendor
+      - type: volume
+        source: npm_cache
+        target: /tmp/npm-cache
+      - type: bind
+        source: ./runarion-python/tests/sample/input
+        target: /var/www/python-test-samples/input
+        read_only: true
     networks:
       - runarion-network
     depends_on:
       postgres-db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${LARAVEL_PORT:-8000}/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:${LARAVEL_PORT:-8000}/up"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -78,12 +90,23 @@ services:
         reservations:
           memory: ${LARAVEL_MEMORY_RESERVATION}
     command: >
-      sh -c "npm install --verbose --legacy-peer-deps &&
-             php artisan key:generate --force &&
-             php artisan config:cache &&
-             php artisan route:cache &&
-             php artisan view:cache &&
-             /bin/bash /var/www/html/docker-entrypoint.sh"
+      sh -c "
+        echo '[Startup] Checking dependencies...' &&
+        if [ ! -d 'node_modules/.vite' ] || [ 'package-lock.json' -nt 'node_modules/.package-lock.json' ]; then
+          echo '[Startup] Installing npm dependencies...' &&
+          npm install --legacy-peer-deps --prefer-offline --no-audit;
+        else
+          echo '[Startup] npm dependencies are up to date';
+        fi &&
+        if ! grep -q 'APP_KEY=base64:' .env 2>/dev/null; then
+          echo '[Startup] Generating application key...' &&
+          php artisan key:generate --force;
+        else
+          echo '[Startup] Application key already exists';
+        fi &&
+        echo '[Startup] Starting services...' &&
+        /bin/bash /var/www/html/docker-entrypoint.sh
+      "
              
   python-app:
     build:
@@ -110,6 +133,7 @@ services:
       PYTHONDONTWRITEBYTECODE: ${PYTHON_PYTHONDONTWRITEBYTECODE:-1}
       PYTHONUNBUFFERED: ${PYTHON_PYTHONUNBUFFERED:-1}
       UPLOAD_PATH: ${PYTHON_UPLOAD_PATH:-/app/uploads}
+      TEST_DATABASE_URL: ${TEST_DATABASE_URL:-}
       AGE_ENABLED: ${AGE_ENABLED:-true}
       AGE_GRAPH_NAME: ${AGE_GRAPH_NAME:-novel_pipeline_graph}
     volumes:
@@ -140,6 +164,41 @@ services:
         reservations:
           memory: ${PYTHON_MEMORY_RESERVATION}
     command: ["/bin/bash", "/app/docker-entrypoint.sh"]
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    volumes:
+      - redis_data:/data
+    networks:
+      - runarion-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: ${REDIS_MEMORY_LIMIT:-256M}
+        reservations:
+          memory: ${REDIS_MEMORY_RESERVATION:-128M}
+    logging:
+      driver: ${LOG_DRIVER}
+      options:
+        max-size: ${LOG_MAX_SIZE}
+        max-file: ${LOG_MAX_FILE}
+    command: >
+      sh -c "
+        if [ -n \"$$REDIS_PASSWORD\" ]; then
+          redis-server --requirepass $$REDIS_PASSWORD --maxmemory 200m --maxmemory-policy allkeys-lru
+        else
+          redis-server --maxmemory 200m --maxmemory-policy allkeys-lru
+        fi
+      "
           
   postgres-db:
     build:
@@ -152,8 +211,8 @@ services:
       - POSTGRES_HOST_AUTH_METHOD=${POSTGRES_HOST_AUTH_METHOD:-scram-sha-256}
       - POSTGRES_INITDB_WALDIR=${POSTGRES_INITDB_WALDIR:-}
       - POSTGRES_INITDB_ARGS=${POSTGRES_INITDB_ARGS:-}
-      - PG_MAJOR=${PG_MAJOR:-17}
-      - PG_VERSION=${PG_VERSION:-17.4-1.pgdg120+2}
+      - PG_MAJOR=${PG_MAJOR:-16}
+      - PG_VERSION=${PG_VERSION:-16.10-1.pgdg120+1}
       - PGDATA=${PGDATA:-/var/lib/postgresql/data}
       - POSTGRES_GID=${POSTGRES_GID:-999}
       - POSTGRES_UID=${POSTGRES_UID:-999}
@@ -161,6 +220,7 @@ services:
       - LANG=${LANG:-en_US.utf8}
       - AGE_ENABLED=${AGE_ENABLED:-true}
       - AGE_GRAPH_NAME=${AGE_GRAPH_NAME:-novel_pipeline_graph}
+      - POSTGRES_SHARED_PRELOAD_LIBRARIES=age
     ports:
       - "${DB_PORT:-5432}:5432"
     volumes:
@@ -180,50 +240,63 @@ services:
       retries: 5
       start_period: 10s
 
-  stable-diffusion:
-    build:
-      context: ./runarion-stable-diffusion
-      dockerfile: dockerfile
-    ports:
-      - "${SD_API_PORT:-7860}:7860"
-    env_file:
-      - ./runarion-stable-diffusion/.env
-    environment:
-      - NVIDIA_VISIBLE_DEVICES=${NVIDIA_VISIBLE_DEVICES:-all}
-      - NVIDIA_DRIVER_CAPABILITIES=${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
-      - PYTHONPATH=${SD_PYTHONPATH:-/app/src}
-      - PYTHONDONTWRITEBYTECODE=${SD_PYTHONDONTWRITEBYTECODE:-1}
-      - PYTHONUNBUFFERED=${SD_PYTHONUNBUFFERED:-1}
-    volumes:
-      - ./runarion-stable-diffusion/models:/app/models
-      - ./runarion-stable-diffusion/outputs:/app/outputs
-      - ./runarion-stable-diffusion/inputs:/app/inputs
-      - ./runarion-stable-diffusion/cache:/app/cache
-      - sd_venv:/app/venv
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [gpu]
-    networks:
-      - runarion-network
-    depends_on:
-      postgres-db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:${SD_API_PORT:-7860}/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
-    logging:
-      driver: ${LOG_DRIVER}
-      options:
-        max-size: ${LOG_MAX_SIZE}
-        max-file: ${LOG_MAX_FILE}
-    runtime: nvidia
+  # stable-diffusion:
+  #   build:
+  #     context: ./runarion-stable-diffusion
+  #     dockerfile: dockerfile
+  #   ports:
+  #     - "${SD_API_PORT:-7860}:7860"
+  #   environment:
+  #     NVIDIA_VISIBLE_DEVICES: ${NVIDIA_VISIBLE_DEVICES:-all}
+  #     NVIDIA_DRIVER_CAPABILITIES: ${NVIDIA_DRIVER_CAPABILITIES:-compute,utility}
+  #     PYTHONPATH: ${SD_PYTHONPATH:-/app/src}
+  #     PYTHONDONTWRITEBYTECODE: ${SD_PYTHONDONTWRITEBYTECODE:-1}
+  #     PYTHONUNBUFFERED: ${SD_PYTHONUNBUFFERED:-1}
+  #     MODELS_DIR: ${SD_MODELS_DIR:-/app/models}
+  #     CONTROLNET_MODEL_PATH: ${SD_CONTROLNET_MODEL_PATH:-controlnet}
+  #     STABLE_DIFFUSION_MODEL_PATH: ${SD_STABLE_DIFFUSION_MODEL_PATH:-stable-diffusion-v1-5}
+  #     USE_SAFETENSORS: ${SD_USE_SAFETENSORS:-true}
+  #     ENABLE_MODEL_CACHING: ${SD_ENABLE_MODEL_CACHING:-true}
+  #     CACHE_DIR: ${SD_CACHE_DIR:-/app/cache}
+  #     ALLOWED_ORIGINS: ${SD_ALLOWED_ORIGINS:-http://localhost:8000,http://python-app:5000}
+  #     NUM_INFERENCE_STEPS: ${SD_NUM_INFERENCE_STEPS:-20}
+  #     GUIDANCE_SCALE: ${SD_GUIDANCE_SCALE:-7.5}
+  #     USE_CUDA: ${SD_USE_CUDA:-true}
+  #     ENABLE_XFORMERS: ${SD_ENABLE_XFORMERS:-true}
+  #     ENABLE_SEQUENTIAL_CPU_OFFLOAD: ${SD_ENABLE_SEQUENTIAL_CPU_OFFLOAD:-true}
+  #     ENABLE_ATTENTION_SLICING: ${SD_ENABLE_ATTENTION_SLICING:-true}
+  #     ENABLE_VAE_TILING: ${SD_ENABLE_VAE_TILING:-true}
+  #     ENABLE_GRADIENT_CHECKPOINTING: ${SD_ENABLE_GRADIENT_CHECKPOINTING:-true}
+  #   volumes:
+  #     - ./runarion-stable-diffusion/models:/app/models
+  #     - ./runarion-stable-diffusion/outputs:/app/outputs
+  #     - ./runarion-stable-diffusion/inputs:/app/inputs
+  #     - ./runarion-stable-diffusion/cache:/app/cache
+  #     - sd_venv:/app/venv
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+  #   networks:
+  #     - runarion-network
+  #   depends_on:
+  #     postgres-db:
+  #       condition: service_healthy
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-f", "http://localhost:${SD_API_PORT:-7860}/health"]
+  #     interval: 30s
+  #     timeout: 10s
+  #     retries: 3
+  #     start_period: 10s
+  #   logging:
+  #     driver: ${LOG_DRIVER}
+  #     options:
+  #       max-size: ${LOG_MAX_SIZE}
+  #       max-file: ${LOG_MAX_FILE}
+  #   runtime: nvidia
 
 networks:
   runarion-network:
@@ -231,8 +304,10 @@ networks:
 
 volumes:
   postgres_data:
+  redis_data:
   node_modules:
   vendor:
+  npm_cache:
   python_venv:
-  sd_venv:
   python_uploads:
+  # sd_venv:

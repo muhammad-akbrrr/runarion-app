@@ -1,0 +1,30 @@
+FROM composer:2 AS composer-deps
+
+WORKDIR /app/runarion-laravel
+
+COPY runarion-laravel/composer.json runarion-laravel/composer.lock ./
+RUN composer install --no-dev --no-interaction --prefer-dist --optimize-autoloader --no-scripts \
+  --ignore-platform-req=php \
+  --ignore-platform-req=ext-*
+
+FROM node:20-bookworm-slim AS frontend
+
+WORKDIR /app/runarion-laravel
+
+COPY runarion-laravel/package.json runarion-laravel/package-lock.json ./
+RUN npm ci --legacy-peer-deps
+
+COPY runarion-laravel ./
+COPY --from=composer-deps /app/runarion-laravel/vendor /app/runarion-laravel/vendor
+RUN npm run build
+
+FROM caddy:2-alpine
+
+WORKDIR /srv
+
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY runarion-laravel/public /srv/public
+COPY --from=frontend /app/runarion-laravel/public/build /srv/public/build
+
+RUN mkdir -p /srv/storage/app/public \
+  && ln -sfn ../storage/app/public /srv/public/storage

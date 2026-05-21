@@ -64,37 +64,12 @@ coverage.xml
 .pytest_cache/
 cover/
 
+# Ignore all files and subdirectories in outputs/{directory}, but keep the directories itself
+tests/sample/output/
+!tests/sample/output/.gitkeep
+
 # Jupyter Notebook
 .ipynb_checkpoints
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
 
 # Security
 *.pem
@@ -104,9 +79,6 @@ coverage.xml
 *.srl
 *.p12
 *.pfx
-*.env
-.env.*
-!.env.example
 
 # Local development
 *.local

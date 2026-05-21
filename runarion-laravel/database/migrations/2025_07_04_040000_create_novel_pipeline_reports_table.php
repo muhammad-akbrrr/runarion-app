@@ -21,6 +21,8 @@ return new class extends Migration {
             $table->foreign('draft_id')->references('id')->on('drafts')->onDelete('cascade');
             $table->foreign('generated_by')->references('id')->on('users')->onDelete('cascade');
             $table->index(['draft_id', 'report_type']);
+            // Add unique constraint for ON CONFLICT operations
+            $table->unique(['draft_id', 'report_type', 'report_subject'], 'analysis_reports_draft_type_subject_unique');
         });
     }
 

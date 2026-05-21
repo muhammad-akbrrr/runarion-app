@@ -15,7 +15,7 @@ class WorkspaceDiskManager
     protected array $providers = [
         'google_drive' => \App\Services\GoogleDriveService::class,
         'dropbox' => \App\Services\DropboxService::class,
-        // 'onedrive' => \App\Services\OneDriveService::class,
+        'onedrive' => \App\Services\OneDriveService::class,
     ];
 
     /**

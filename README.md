@@ -272,17 +272,22 @@ Then start the development environment:
 ```bash
 # Start development environment
 ./dev.sh
+# or explicitly:
+./dev.sh start
 
 # Rebuild containers (when needed)
 docker compose -f docker-compose.dev.yml down
 docker compose -f docker-compose.dev.yml up --build -d
 
-# Quick restart
-docker compose -f docker-compose.dev.yml restart
+# Quick restart with strict readiness checks
+./dev.sh restart
+
+# Diagnostics only (no container mutation)
+./dev.sh doctor
 
 # Cleanup and restart
 ./dev.sh cleanup
-./dev.sh
+./dev.sh start
 
 # Access container to execute commands
 docker exec -it <CONTAINER_ID> bash
