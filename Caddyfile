@@ -1,10 +1,19 @@
-{$STAGING_DOMAIN} {
-    encode zstd gzip
+(runarion_app) {
+	encode zstd gzip
 
-    @reverb path /app* /apps*
-    reverse_proxy @reverb laravel-reverb:8080
+	@reverb path /app* /apps*
+	reverse_proxy @reverb laravel-reverb:8080
 
-    root * /srv/public
-    php_fastcgi laravel-php:9000
-    file_server
+	root * /srv/public
+	php_fastcgi laravel-php:9000
+	file_server
+}
+
+http://{$STAGING_DOMAIN} {
+	@non_acme not path /.well-known/acme-challenge/*
+	redir @non_acme https://{host}{uri} 308
+}
+
+https://{$STAGING_DOMAIN} {
+	import runarion_app
 }
