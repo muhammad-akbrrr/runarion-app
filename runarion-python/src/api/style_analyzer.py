@@ -3,10 +3,10 @@ import os
 from typing import Literal, Optional
 
 from flask import Blueprint, current_app, jsonify, request
-from models.request import CallerInfo
+from src.models.request import CallerInfo
 from psycopg2.pool import SimpleConnectionPool
-from pydantic import BaseModel, ValidationError
-from services.style_analyzer import (
+from pydantic import BaseModel, Field, ValidationError
+from src.services.style_analyzer import (
     ProfilingStage,
     SamplingStage,
     StyleAnalyzerOrchestrator,
@@ -34,7 +34,7 @@ class AuthorStyleRequest(BaseModel):
     author_name: str
     on_exist: Literal["update", "get", "error"] = "error"
     config: ConfigData = ConfigData()
-    generation_config: dict = {}
+    generation_config: dict = Field(default_factory=dict)
 
 
 analyze_style = Blueprint("analyze_style", __name__)
@@ -114,6 +114,7 @@ def analyze_author_style():
                 provider=data.config.provider,
                 model=data.config.model,
                 max_output_tokens=data.config.max_output_tokens,
+                generation_config=data.generation_config,
                 min_success_partial_style=data.config.min_success_partial_style,
             ),
         )

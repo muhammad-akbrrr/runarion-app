@@ -1,9 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { router } from '@inertiajs/react';
-import { Project, ProjectChapter } from '@/types';
+import { Project, ProjectChapter } from '@/types/project';
+import { THINKING_MODELS } from '@/types/project';
 import { useUnifiedSave } from './useUnifiedSave';
 import { useStreamingLLM } from './useStreamingLLM';
 import { useOptimizedVersionControl } from './useOptimizedVersionControl';
+import { migrateAiRangesToMetadata, needsMigration } from '../utils/migrateAiRanges';
 import Echo from '@/echo';
 
 interface UseProjectEditorProps {
@@ -11,6 +13,131 @@ interface UseProjectEditorProps {
     projectId: string;
     project: Project;
     initialChapters: ProjectChapter[];
+    editorRef?: React.MutableRefObject<any>;
+}
+
+/**
+ * Check if content is valid Lexical JSON format
+ */
+function isLexicalJSON(content: string): boolean {
+    if (!content?.trim().startsWith('{')) return false;
+    try {
+        const parsed = JSON.parse(content);
+        return parsed.root?.type === 'root';
+    } catch {
+        return false;
+    }
+}
+
+/**
+ * Extract plain text from a Lexical JSON node recursively
+ */
+function extractTextFromLexicalNode(node: any): string {
+    if (!node) return '';
+
+    // Text node - return its text content
+    // Handle both regular TextNode ('text') and OriginTextNode ('origin-text')
+    if (node.type === 'text' || node.type === 'origin-text') {
+        return node.text || '';
+    }
+
+    // For paragraph nodes, add newline after (except for the last one)
+    if (node.type === 'paragraph' && node.children) {
+        const text = node.children.map((child: any) => extractTextFromLexicalNode(child)).join('');
+        return text;
+    }
+
+    // For root and other container nodes, process children
+    if (node.children && Array.isArray(node.children)) {
+        return node.children.map((child: any, index: number) => {
+            const text = extractTextFromLexicalNode(child);
+            // Add newline between paragraphs
+            if (child.type === 'paragraph' && index < node.children.length - 1) {
+                return text + '\n\n';
+            }
+            return text;
+        }).join('');
+    }
+
+    return '';
+}
+
+/**
+ * Extract plain text from Lexical JSON
+ */
+function getPlainTextFromJSON(jsonContent: string): string {
+    try {
+        const parsed = JSON.parse(jsonContent);
+        return extractTextFromLexicalNode(parsed.root);
+    } catch {
+        return '';
+    }
+}
+
+/**
+ * Calculate plain text length from content (Lexical JSON or plain text)
+ * This matches what textContent returns from DOM elements
+ */
+function getPlainTextLength(content: string): number {
+    if (!content) return 0;
+    return getPlainText(content).length;
+}
+
+/**
+ * Get plain text from content (handles both Lexical JSON and plain text)
+ */
+function getPlainText(content: string): string {
+    if (!content) return '';
+
+    // Check if it's Lexical JSON
+    if (isLexicalJSON(content)) {
+        return getPlainTextFromJSON(content);
+    }
+
+    // Otherwise treat as plain text (or legacy markdown)
+    return content
+        .replace(/\*\*([^*]+)\*\*/g, '$1')
+        .replace(/\*([^*]+)\*/g, '$1')
+        .replace(/`([^`]+)`/g, '$1')
+        .replace(/#{1,6}\s+/g, '')
+        .replace(/^\s*[-*+]\s+/gm, '')
+        .replace(/^\s*\d+\.\s+/gm, '')
+        .replace(/^>\s+/gm, '')
+        .replace(/~~([^~]+)~~/g, '$1');
+}
+
+/**
+ * Build generation settings object with consistent defaults
+ * This ensures generate and regenerate use the EXACT SAME settings
+ */
+function buildGenerationSettings(settings: any) {
+    const aiModel = settings.aiModel || 'gemini-2.5-flash';
+    const isThinkingModel = THINKING_MODELS.includes(aiModel);
+
+    return {
+        currentPreset: settings.currentPreset || "story-telling",
+        authorProfile: settings.authorProfile || '',
+        aiModel: aiModel,
+        memory: settings.memory || '',
+        storyGenre: settings.storyGenre || '',
+        storyTone: settings.storyTone || '',
+        storyPov: settings.storyPov || '',
+        temperature: settings.temperature || 1.0,
+        repetitionPenalty: settings.repetitionPenalty || 0.0,
+        outputLength: settings.outputLength || 300,
+        minOutputToken: settings.minOutputToken || 50,
+        topP: settings.topP || 0.85,
+        tailFree: settings.tailFree || 0.85,
+        topA: settings.topA || 0.85,
+        topK: settings.topK || 0.85,
+        phraseBias: settings.phraseBias || [],
+        bannedPhrases: settings.bannedPhrases || [],
+        stopSequences: settings.stopSequences || [],
+        // Only include thinkingBudget for thinking models
+        ...(isThinkingModel && {
+            thinkingBudget: settings.thinkingBudget || 4096,
+        }),
+    };
 }
 
 export function useProjectEditor({
@@ -18,6 +145,7 @@ export function useProjectEditor({
     projectId,
     project,
     initialChapters,
+    editorRef,
 }: UseProjectEditorProps) {
     // Core state
     const [isGenerating, setIsGenerating] = useState(false);
@@ -32,6 +160,26 @@ export function useProjectEditor({
     const originalContent = useRef<string>('');
     const originalSettings = useRef<any>({});
 
+    // Track whether stream completion save is in progress (guards against race condition)
+    const streamCompletionInProgressRef = useRef(false);
+
+    // Safety timeout ref to reset stuck generating state
+    const safetyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    
+    // Track the last chapter order to detect actual chapter switches vs content updates
+    const lastChapterOrderRef = useRef<number | null>(null);
+    
+    // Base content for streaming (user text before generation starts)
+    const [baseContent, setBaseContent] = useState<string>('');
+    const baseContentRef = useRef<string>('');
+    
+    // Color coding toggle (default: enabled)
+    // Color coding now uses OriginTextNode metadata instead of position-based aiRanges
+    const [isColorCoded, setIsColorCoded] = useState<boolean>(true);
+    
+    // Refs to access current values inside callbacks (avoid stale closure)
+    const selectedChapterRef = useRef<ProjectChapter | null>(null);
+
     // Unified save hook
     const {
         saveContent,
@@ -40,6 +188,7 @@ export function useProjectEditor({
         debouncedSaveSettings,
         forceSave,
         cancelPendingSaves,
+        isProcessing: isSaving,
     } = useUnifiedSave({
         workspaceId,
         projectId,
@@ -65,6 +214,9 @@ export function useProjectEditor({
         },
     });
 
+    // Keep refs updated for use inside callbacks
+    selectedChapterRef.current = selectedChapter;
+
     // Streaming LLM hook
     const {
         isStreaming,
@@ -79,41 +231,111 @@ export function useProjectEditor({
         onStreamComplete: (generatedText) => {
             console.log('Stream completed', {
                 isRegenerating,
-                generatedTextLength: generatedText.length
+                generatedTextLength: generatedText.length,
+                baseContentRefLength: baseContentRef.current?.length || 0,
+                baseContentPreview: baseContentRef.current?.substring(0, 50) || '(empty)'
             });
             setIsGenerating(false);
-            
-            // Update the content state with the final content (base + generated)
-            const baseContent = originalContent.current;
-            let separator = '';
-            
-            if (baseContent && !baseContent.endsWith('\n') && !baseContent.endsWith(' ') && 
-                !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
-                separator = ' ';
+
+            // Clear safety timeout since stream completed successfully
+            if (safetyTimeoutRef.current) {
+                clearTimeout(safetyTimeoutRef.current);
+                safetyTimeoutRef.current = null;
             }
-            
-            const finalContent = baseContent + separator + generatedText;
-            setContent(finalContent);
-            originalContent.current = finalContent;
-            
-            // Force refresh navigation info after generation
+
+            // Mark stream completion in progress to prevent race condition with .project.content.updated
+            streamCompletionInProgressRef.current = true;
+
+            // CRITICAL: Wait for editor to finalize streaming content, then get Lexical JSON
+            // The editor has the correct OriginTextNode metadata (user vs ai origin)
+            // We MUST save the Lexical JSON, not plain text, to preserve this metadata
             setTimeout(() => {
+                const currentChapter = selectedChapterRef.current;
+                let savedSuccessfully = false;
+
+                // Try to get Lexical JSON from editor (preserves origin metadata)
+                if (editorRef?.current) {
+                    try {
+                        const editorState = editorRef.current.getEditorState();
+                        const lexicalJSON = JSON.stringify(editorState.toJSON());
+
+                        console.log('Stream complete - saving Lexical JSON with origin metadata:', {
+                            lexicalJSONLength: lexicalJSON.length,
+                            preview: lexicalJSON.substring(0, 100)
+                        });
+
+                        // Save Lexical JSON (preserves OriginTextNode metadata)
+                        if (currentChapter) {
+                            saveContent(currentChapter.order, lexicalJSON, 'llm_generation');
+                        }
+
+                        // Update content state with Lexical JSON
+                        setContent(lexicalJSON);
+                        originalContent.current = lexicalJSON;
+
+                        // Cache the newly generated version for instant switching
+                        if (currentChapter?.navigation_info) {
+                            const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
+                            versionControl.cacheVersion(newVersionIndex, lexicalJSON);
+                        }
+
+                        savedSuccessfully = true;
+                    } catch (error) {
+                        console.error('Failed to get Lexical JSON from editor, falling back to plain text:', error);
+                    }
+                }
+
+                if (!savedSuccessfully) {
+                    // FALLBACK: If editor ref not available, compose plain text (origin metadata will be lost)
+                    // This should rarely happen, but we keep it for safety
+                    const baseContentRaw = baseContentRef.current || '';
+                    const userPlainText = getPlainText(baseContentRaw);
+
+                    let separator = '';
+                    if (userPlainText && !userPlainText.endsWith('\n') && !userPlainText.endsWith(' ') &&
+                        !generatedText.startsWith('\n') && !generatedText.startsWith(' ')) {
+                        separator = ' ';
+                    }
+
+                    const finalContent = userPlainText + separator + generatedText;
+
+                    console.log('FALLBACK: Final content composed as plain text (origin metadata lost):', {
+                        userPlainTextLength: userPlainText.length,
+                        finalContentLength: finalContent.length
+                    });
+
+                    if (currentChapter) {
+                        saveContent(currentChapter.order, finalContent, 'llm_generation');
+                    }
+
+                    setContent(finalContent);
+                    originalContent.current = finalContent;
+
+                    if (currentChapter?.navigation_info) {
+                        const newVersionIndex = currentChapter.navigation_info.currentVersionIndex + 1;
+                        versionControl.cacheVersion(newVersionIndex, finalContent);
+                    }
+                }
+
+                // After save completes, refresh navigation info and clear the flag
+                streamCompletionInProgressRef.current = false;
+                console.log('Stream completion save done, refreshing navigation info');
                 router.reload({ only: ['chapters'] });
-            }, 500);
-            
-            console.log('Updated content state after streaming completion:', {
-                baseContentLength: baseContent.length,
-                generatedTextLength: generatedText.length,
-                finalContentLength: finalContent.length
-            });
+            }, 150); // Wait for StreamingPlugin to finalize content rendering
         },
         onStreamError: (error) => {
             console.error('Stream error:', error);
             setIsGenerating(false);
-            
+
+            // Clear safety timeout since we got a response (error)
+            if (safetyTimeoutRef.current) {
+                clearTimeout(safetyTimeoutRef.current);
+                safetyTimeoutRef.current = null;
+            }
+
             // Show error alert
             alert(error);
-            
+
             // On error during regeneration, restore the original chapter content
             if (isRegenerating && selectedChapter) {
                 setContent(selectedChapter.content || '');
@@ -127,6 +349,7 @@ export function useProjectEditor({
         workspaceId,
         projectId,
         chapterOrder: selectedChapter?.order ?? 0,
+        currentNodeId: selectedChapter?.navigation_info?.currentNodeId, // Pass currentNodeId for cache context
         initialNavigationInfo: selectedChapter?.navigation_info,
         onContentUpdate: (newContent) => {
             setContent(newContent);
@@ -138,7 +361,7 @@ export function useProjectEditor({
     // Update local chapters when prop changes
     useEffect(() => {
         setLocalChapters(initialChapters);
-        
+
         // Restore preserved chapter after generation
         if (preservedChapterOrder !== null) {
             const chapterToRestore = initialChapters.find(ch => ch.order === preservedChapterOrder);
@@ -149,36 +372,115 @@ export function useProjectEditor({
                 return;
             }
         }
-        
-        // Update selected chapter if it exists in new chapters
+
+        // Update or reset selected chapter based on whether it still exists
         if (selectedChapter) {
             const updatedChapter = initialChapters.find(ch => ch.order === selectedChapter.order);
-            if (updatedChapter && updatedChapter.content !== selectedChapter.content) {
-                console.log('Chapter content updated from server');
-                setSelectedChapter(updatedChapter);
+            if (updatedChapter) {
+                // Check if navigation_info changed (compare JSON to handle object equality)
+                const navigationChanged = JSON.stringify(updatedChapter.navigation_info) !==
+                                          JSON.stringify(selectedChapter.navigation_info);
+
+                // Chapter still exists - update if content, name, or navigation_info changed
+                if (updatedChapter.content !== selectedChapter.content ||
+                    updatedChapter.chapter_name !== selectedChapter.chapter_name ||
+                    navigationChanged) {
+                    console.log('Chapter updated from server:', {
+                        contentChanged: updatedChapter.content !== selectedChapter.content,
+                        nameChanged: updatedChapter.chapter_name !== selectedChapter.chapter_name,
+                        navigationChanged
+                    });
+                    setSelectedChapter(updatedChapter);
+                }
+            } else {
+                // Chapter was deleted - reset to first available chapter or null
+                console.log('Selected chapter was deleted, selecting first available chapter');
+                
+                // Clear the lastChapterOrderRef so the chapter switch useEffect treats this as a new switch
+                lastChapterOrderRef.current = null;
+                
+                if (initialChapters.length > 0) {
+                    const newChapter = initialChapters[0];
+                    console.log('Switching to chapter:', newChapter.chapter_name, 'with content length:', newChapter.content?.length || 0);
+                    
+                    // Clear localStorage of deleted chapter reference
+                    const storageKey = `lastChapter_${projectId}`;
+                    localStorage.setItem(storageKey, newChapter.order.toString());
+                    
+                    // Set the new chapter - the useEffect watching selectedChapter will load content
+                    setSelectedChapter(newChapter);
+                } else {
+                    setSelectedChapter(null);
+                    // Only clear content if there are no chapters at all
+                    setContent("");
+                    originalContent.current = "";
+                }
             }
         }
-    }, [initialChapters, preservedChapterOrder]);
+    }, [initialChapters, preservedChapterOrder, projectId]);
 
     // Initialize content when chapter changes
     useEffect(() => {
         if (selectedChapter) {
             const chapterContent = selectedChapter.content || "";
-            console.log('Initializing content for chapter:', selectedChapter.chapter_name);
-            setContent(chapterContent);
-            originalContent.current = chapterContent;
-            
-            // Save last viewed chapter to localStorage
-            const storageKey = `lastChapter_${projectId}`;
-            localStorage.setItem(storageKey, selectedChapter.order.toString());
-            
-            // Initialize version control if needed
-            if (!selectedChapter.navigation_info) {
-                initializeChapterHistory(selectedChapter.order, chapterContent);
+            const isChapterSwitch = lastChapterOrderRef.current !== selectedChapter.order;
+
+            console.log('Chapter useEffect triggered:', {
+                chapterName: selectedChapter.chapter_name,
+                isChapterSwitch,
+                lastOrder: lastChapterOrderRef.current,
+                currentOrder: selectedChapter.order
+            });
+
+            // Update the last chapter order
+            lastChapterOrderRef.current = selectedChapter.order;
+
+            // Only reset everything on actual chapter switch
+            if (isChapterSwitch) {
+                console.log('Initializing content for chapter:', selectedChapter.chapter_name);
+                setContent(chapterContent);
+                originalContent.current = chapterContent;
+
+                // Cache current version for instant switching
+                if (selectedChapter.navigation_info) {
+                    versionControl.cacheVersion(
+                        selectedChapter.navigation_info.currentVersionIndex,
+                        chapterContent,
+                        selectedChapter.navigation_info
+                    );
+                }
+
+                // Reset baseContent when switching chapters
+                setBaseContent("");
+
+                // Migrate legacy aiRanges if present (one-time migration to OriginTextNode)
+                if (needsMigration(selectedChapter.ai_ranges) && editorRef?.current) {
+                    console.log('Migrating legacy aiRanges to OriginTextNode metadata');
+                    // Small delay to ensure editor is fully loaded with content
+                    setTimeout(() => {
+                        if (editorRef?.current) {
+                            migrateAiRangesToMetadata(editorRef.current, selectedChapter.ai_ranges!);
+                        }
+                    }, 100);
+                }
+
+                // Save last viewed chapter to localStorage
+                const storageKey = `lastChapter_${projectId}`;
+                localStorage.setItem(storageKey, selectedChapter.order.toString());
+
+                // Initialize version control if needed
+                if (!selectedChapter.navigation_info) {
+                    initializeChapterHistory(selectedChapter.order, chapterContent);
+                }
+            } else {
+                // Same chapter, content updated from server
+                console.log('Content updated from server for same chapter');
             }
         } else {
             setContent("");
             originalContent.current = "";
+            setBaseContent("");
+            lastChapterOrderRef.current = null;
         }
     }, [selectedChapter?.order, selectedChapter?.content, projectId]);
 
@@ -221,15 +523,40 @@ export function useProjectEditor({
         const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
         
         if (settingsChanged) {
-            console.log('Settings changed, auto-saving with 2s debounce', {
-                changedKeys: Object.keys(settings).filter(key => 
+            const changedKeys = Object.keys(settings).filter(key => 
                     JSON.stringify(settings[key]) !== JSON.stringify(originalSettings.current[key])
-                )
+            );
+            
+            console.log('Settings changed, auto-saving', {
+                changedKeys,
+                aiModel: settings.aiModel,
             });
-            // Use 2 second debounce for settings to batch rapid changes
-            debouncedSaveSettings(settings, 2000);
+            
+            // If aiModel changed, save immediately (no debounce) to ensure it's persisted
+            if (changedKeys.includes('aiModel')) {
+                console.log('AI Model changed, saving immediately:', settings.aiModel);
+                saveSettings(settings).catch(console.error);
+            } else {
+                // Use 1 second debounce for other settings to batch rapid changes
+                debouncedSaveSettings(settings, 1000);
+            }
         }
-    }, [settings, debouncedSaveSettings, isGenerating, isStreaming]);
+    }, [settings, debouncedSaveSettings, saveSettings, isGenerating, isStreaming]);
+
+    // Save settings immediately when component unmounts (e.g., switching tabs)
+    useEffect(() => {
+        return () => {
+            // On unmount, save settings immediately if there are pending changes
+            if (isInitialized.current) {
+                const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
+                if (settingsChanged) {
+                    console.log('Component unmounting, force-saving settings immediately');
+                    // Force immediate save on unmount (bypass debounce)
+                    saveSettings(settings).catch(console.error);
+                }
+            }
+        };
+    }, [settings, saveSettings]);
 
     // Handle streaming text updates - removed duplicate logic
     // The StreamingPlugin will handle the visual streaming updates
@@ -279,39 +606,85 @@ export function useProjectEditor({
             
             channel.listen('.project.content.updated', (data: any) => {
                 console.log('Project content updated via websocket:', data);
-                
+
                 // Security: Only process events for current workspace/project
                 if (data.workspace_id !== workspaceId || data.project_id !== projectId) {
                     return;
                 }
-                
+
                 // Only handle updates for the current chapter
                 if (selectedChapter && data.chapter_order === selectedChapter.order) {
-                    
+
                     // Handle different types of updates
                     if (['undo_step', 'redo_step', 'version_switch'].includes(data.trigger)) {
                         // Full content replacement for navigation operations
                         console.log('Updating content from navigation operation:', data.content);
                         setContent(data.content || '');
                         originalContent.current = data.content || '';
-                        
+
+                        // Cache the received version for instant switching
+                        if (data.version_index !== undefined) {
+                            versionControl.cacheVersion(
+                                data.version_index,
+                                data.content || '',
+                                data.navigation_info
+                            );
+                        }
+
                         // Refresh the page data to get updated navigation info
                         router.reload({ only: ['chapters'] });
                     } else if (data.trigger === 'regenerate_switch_to_parent') {
                         // Switch to parent content during regeneration
-                        console.log('Switching to parent content for regeneration:', data.content);
-                        setContent(data.content || '');
-                        originalContent.current = data.content || '';
+                        const parentContent = data.content || '';
+
+                        // Update content state
+                        setContent(parentContent);
+                        originalContent.current = parentContent;
+
+                        // CRITICAL: Update base content for StreamingPlugin
+                        // This ensures the streaming plugin composes: PARENT + NEW_AI_TEXT
+                        setBaseContent(parentContent);
+                        baseContentRef.current = parentContent;
+
+                        console.log('Switched to parent content for regeneration:', {
+                            parentContentLength: parentContent.length
+                        });
                     } else if (['llm_generation', 'llm_regeneration'].includes(data.trigger)) {
-                        // Generation completed - refresh navigation info
-                        console.log('Generation completed, refreshing navigation info');
-                        setTimeout(() => {
-                            router.reload({ only: ['chapters'] });
-                        }, 100);
+                        // Generation completed - only refresh if onStreamComplete is NOT currently handling the save
+                        // onStreamComplete already does router.reload after saving, so skip here to avoid race condition
+                        if (!streamCompletionInProgressRef.current) {
+                            console.log('Generation completed (non-streaming path), refreshing navigation info');
+                            setTimeout(() => {
+                                router.reload({ only: ['chapters'] });
+                            }, 300);
+                        } else {
+                            console.log('Generation completed but stream completion in progress, skipping reload (onStreamComplete will handle it)');
+                        }
                     }
                 }
             });
-            
+
+            // Listen for operation state changes to update navigation info directly
+            // This provides a direct path for navigation updates without relying on router.reload
+            channel.listen('.operation.state.changed', (data: any) => {
+                console.log('Operation state changed via websocket:', data);
+
+                // Only process unlocked state with navigation info for current chapter
+                if (data.locked === false &&
+                    data.navigationInfo &&
+                    selectedChapter &&
+                    data.chapter_order === selectedChapter.order) {
+
+                    console.log('Updating navigation info directly from websocket:', data.navigationInfo);
+
+                    // Update selectedChapter with new navigation_info directly
+                    setSelectedChapter(prev => prev ? {
+                        ...prev,
+                        navigation_info: data.navigationInfo
+                    } : null);
+                }
+            });
+
         } catch (error) {
             console.error('Error setting up content update listener:', error);
         }
@@ -320,6 +693,7 @@ export function useProjectEditor({
             if (channel) {
                 try {
                     channel.stopListening('.project.content.updated');
+                    channel.stopListening('.operation.state.changed');
                     Echo.leave(channelName);
                 } catch (error) {
                     console.error('Error cleaning up content update listener:', error);
@@ -464,16 +838,19 @@ export function useProjectEditor({
     }, [workspaceId, projectId]);
 
     // Text generation
-    const handleGenerateText = useCallback(() => {
+    const handleGenerateText = useCallback((currentEditorContent?: string) => {
         if (!selectedChapter || isGenerating || isStreaming) {
             return;
         }
 
         setPreservedChapterOrder(selectedChapter.order);
-        setIsGenerating(true);
 
+        // Use current editor content if provided, otherwise fall back to state
+        // This ensures we capture what the user actually sees, not stale state
+        const currentContent = currentEditorContent ?? content ?? '';
+        
         // Save current content and settings before generation
-        const contentChanged = content !== originalContent.current;
+        const contentChanged = currentContent !== originalContent.current;
         const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
         
         if (contentChanged || settingsChanged) {
@@ -484,7 +861,7 @@ export function useProjectEditor({
             if (contentChanged) {
                 saveData.content = {
                     order: selectedChapter.order,
-                    content: content ?? '', // Treat null as empty string
+                    content: currentContent,
                     trigger: 'manual'
                 };
             }
@@ -497,34 +874,48 @@ export function useProjectEditor({
         }
         
         // CRITICAL: Update originalContent to current content before generation
-        // This ensures that when stream completes, we append to the correct base
-        // (including any guidance markers the user added)
-        originalContent.current = content ?? '';
+        originalContent.current = currentContent;
 
-        console.log("Starting text generation");
+        // CRITICAL: Freeze baseContent BEFORE generation starts
+        // baseContent = the user's text that was in the editor before AI generates
+        setBaseContent(currentContent);
+        baseContentRef.current = currentContent;
+
+        console.log('handleGenerateText - frozen state:', {
+            baseContentRefLength: baseContentRef.current.length,
+            baseContentPreview: baseContentRef.current.substring(0, 50)
+        });
+
+        setContent(currentContent);
+
+        console.log("Starting text generation with content:", {
+            contentLength: currentContent.length,
+            contentPreview: currentContent.substring(0, 50) + '...'
+        });
+        
+        // NOW trigger generation - baseContent is already set
+        setIsGenerating(true);
+
+        // Safety timeout - if no stream completion received within 30 seconds, reset generating state
+        if (safetyTimeoutRef.current) {
+            clearTimeout(safetyTimeoutRef.current);
+        }
+        safetyTimeoutRef.current = setTimeout(() => {
+            console.warn('Stream safety timeout: no stream completion received within 30s, resetting state');
+            setIsGenerating(false);
+            setPreservedChapterOrder(null);
+            safetyTimeoutRef.current = null;
+        }, 30000);
+
+        // Extract plain text from Lexical JSON before sending to LLM
+        // The LLM needs plain text, not JSON structure
+        const plainTextPrompt = getPlainText(currentContent || "");
 
         const generationSettings = {
-            prompt: content || "",
+            prompt: plainTextPrompt,
             order: selectedChapter.order,
-            settings: {
-                currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || 'gemini-2.0-flash',
-                memory: settings.memory || '',
-                storyGenre: settings.storyGenre || '',
-                storyTone: settings.storyTone || '',
-                storyPov: settings.storyPov || '',
-                temperature: settings.temperature || 1.0,
-                repetitionPenalty: settings.repetitionPenalty || 0.0,
-                outputLength: settings.outputLength || 300,
-                minOutputToken: settings.minOutputToken || 50,
-                topP: settings.topP || 0.85,
-                tailFree: settings.tailFree || 0.85,
-                topA: settings.topA || 0.85,
-                topK: settings.topK || 0.85,
-                phraseBias: settings.phraseBias || [],
-                bannedPhrases: settings.bannedPhrases || [],
-                stopSequences: settings.stopSequences || [],
-            }
+            chapter_name: selectedChapter.chapter_name || 'Untitled',
+            settings: buildGenerationSettings(settings),
         };
 
         router.post(
@@ -543,7 +934,13 @@ export function useProjectEditor({
                     console.error("Failed to start text generation:", errors);
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
-                    
+
+                    // Clear safety timeout since the request itself failed
+                    if (safetyTimeoutRef.current) {
+                        clearTimeout(safetyTimeoutRef.current);
+                        safetyTimeoutRef.current = null;
+                    }
+
                     // Handle Inertia errors
                     if (errors.generation) {
                         alert(errors.generation);
@@ -553,10 +950,10 @@ export function useProjectEditor({
                 },
             }
         );
-    }, [workspaceId, projectId, selectedChapter, content, isGenerating, isStreaming, settings, forceSave]);
+    }, [workspaceId, projectId, selectedChapter, content, isGenerating, isStreaming, settings, forceSave, setContent]);
 
     // Text regeneration
-    const handleRegenerateText = useCallback(() => {
+    const handleRegenerateText = useCallback((currentEditorContent?: string) => {
         if (!selectedChapter || isGenerating || isStreaming || !versionControl.canRegenerate) {
             return;
         }
@@ -564,29 +961,34 @@ export function useProjectEditor({
         setPreservedChapterOrder(selectedChapter.order);
         setIsGenerating(true);
 
-        console.log("Starting text regeneration");
+        // Safety timeout - if no stream completion received within 30 seconds, reset generating state
+        if (safetyTimeoutRef.current) {
+            clearTimeout(safetyTimeoutRef.current);
+        }
+        safetyTimeoutRef.current = setTimeout(() => {
+            console.warn('Regeneration safety timeout: no stream completion received within 30s, resetting state');
+            setIsGenerating(false);
+            setPreservedChapterOrder(null);
+            safetyTimeoutRef.current = null;
+        }, 30000);
+
+        // Use current editor content if provided, otherwise use state
+        const currentContent = currentEditorContent ?? content ?? '';
+
+        // Update baseContent to current content (which will be cleared during regeneration)
+        originalContent.current = currentContent;
+        setBaseContent(currentContent);
+        setContent(currentContent);
+
+        console.log("Starting text regeneration with content:", {
+            contentLength: currentContent.length,
+            contentPreview: currentContent.substring(0, 50) + '...'
+        });
 
         const regenerationSettings = {
             order: selectedChapter.order,
-            settings: {
-                currentPreset: settings.currentPreset || "creative-writing",
-                aiModel: settings.aiModel || 'gemini-2.0-flash',
-                memory: settings.memory || '',
-                storyGenre: settings.storyGenre || '',
-                storyTone: settings.storyTone || '',
-                storyPov: settings.storyPov || '',
-                temperature: settings.temperature || 1.0,
-                repetitionPenalty: settings.repetitionPenalty || 0.0,
-                outputLength: settings.outputLength || 300,
-                minOutputToken: settings.minOutputToken || 50,
-                topP: settings.topP || 0.85,
-                tailFree: settings.tailFree || 0.85,
-                topA: settings.topA || 0.85,
-                topK: settings.topK || 0.85,
-                phraseBias: settings.phraseBias || [],
-                bannedPhrases: settings.bannedPhrases || [],
-                stopSequences: settings.stopSequences || [],
-            }
+            chapter_name: selectedChapter.chapter_name || 'Untitled',
+            settings: buildGenerationSettings(settings),
         };
 
         router.post(
@@ -605,7 +1007,13 @@ export function useProjectEditor({
                     console.error("Failed to start text regeneration:", errors);
                     setIsGenerating(false);
                     setPreservedChapterOrder(null);
-                    
+
+                    // Clear safety timeout since the request itself failed
+                    if (safetyTimeoutRef.current) {
+                        clearTimeout(safetyTimeoutRef.current);
+                        safetyTimeoutRef.current = null;
+                    }
+
                     if (errors.generation) {
                         alert(errors.generation);
                     } else {
@@ -622,6 +1030,12 @@ export function useProjectEditor({
         }
         setIsGenerating(false);
         setPreservedChapterOrder(null);
+
+        // Clear safety timeout
+        if (safetyTimeoutRef.current) {
+            clearTimeout(safetyTimeoutRef.current);
+            safetyTimeoutRef.current = null;
+        }
         
         // If we were regenerating, restore the original chapter content
         if (isRegenerating && selectedChapter) {
@@ -637,19 +1051,19 @@ export function useProjectEditor({
     const smartSave = useCallback((order: number, content: string | null, trigger: string) => {
         const normalizedContent = content ?? ''; // Treat null as empty string
         const normalizedOriginal = originalContent.current ?? ''; // Treat null as empty string
-        
+
         if (selectedChapter && normalizedContent !== normalizedOriginal) {
-            console.log('Content changed, saving:', { 
-                originalLength: normalizedOriginal.length, 
+            console.log('Content changed, saving:', {
+                originalLength: normalizedOriginal.length,
                 currentLength: normalizedContent.length,
                 trigger
             });
-            
+
             // Update the original content reference immediately to prevent duplicate saves
             originalContent.current = normalizedContent;
-            
+
             if (trigger === 'auto') {
-                debouncedSaveContent(order, normalizedContent, trigger);
+                debouncedSaveContent(order, normalizedContent, trigger, 1000);
             } else {
                 saveContent(order, normalizedContent, trigger);
             }
@@ -662,31 +1076,57 @@ export function useProjectEditor({
     useEffect(() => {
         return () => {
             cancelPendingSaves();
+            if (safetyTimeoutRef.current) {
+                clearTimeout(safetyTimeoutRef.current);
+                safetyTimeoutRef.current = null;
+            }
         };
     }, [cancelPendingSaves]);
 
+    // Sync baseContent ref with state
+    useEffect(() => {
+        baseContentRef.current = baseContent;
+    }, [baseContent]);
+
+    // Flush settings before navigation (e.g., to ChainBuilder)
+    // This ensures debounced settings are saved before leaving the page
+    const flushSettingsBeforeNavigation = useCallback(async () => {
+        const settingsChanged = JSON.stringify(settings) !== JSON.stringify(originalSettings.current);
+
+        if (settingsChanged) {
+            console.log('Flushing settings before navigation');
+            // forceSave cancels pending debounced saves and saves immediately
+            await forceSave({ settings });
+            originalSettings.current = { ...settings };
+        }
+    }, [settings, forceSave]);
+
     return {
         // State
-        isSaving: false, // Always false since saves are async
+        isSaving: isSaving || isGenerating || isStreaming, // Also true while streaming
         isGenerating: isGenerating || isStreaming,
         content,
         setContent,
         settings,
         localChapters,
         selectedChapter,
-        
+
         // Streaming state
         isStreaming,
         streamingText,
         streamError,
         isRegenerating,
-        
+        baseContent, // User text before generation (for StreamingPlugin)
+        // Color coding now uses OriginTextNode metadata instead of aiRanges
+        isColorCoded, // Color coding toggle state
+        setIsColorCoded, // Toggle color coding
+
         // Version control state
         versionControl,
-        
+
         // Computed values
         selectedChapterOrder: selectedChapter?.order ?? 0,
-        
+
         // Actions
         handleChapterSelect,
         handleAddChapter,
@@ -694,9 +1134,12 @@ export function useProjectEditor({
         handleGenerateText,
         handleRegenerateText,
         handleCancelGeneration,
-        
+
         // Save functions
         saveContent: (order: number, content: string | null, trigger: string) => saveContent(order, content ?? '', trigger),
         smartSave,
+
+        // Navigation helpers
+        flushSettingsBeforeNavigation,
     };
 }

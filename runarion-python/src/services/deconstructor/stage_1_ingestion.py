@@ -5,8 +5,8 @@ Handles document extraction and creates initial chunks for processing.
 
 import logging
 from typing import Dict, Any, List, Optional
-from utils.document_processor import Chunk, DocumentProcessor
-from utils.database_utils import clean_text_for_database
+from src.utils.document_processor import Chunk, DocumentProcessor
+from src.utils.database_utils import clean_text_for_database
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ class PDFIngestionStage(BasePipelineStage):
             db_pool: Database connection pool
         """
         super().__init__(db_pool, "PDFIngestionStage")
-        self.document_processor = DocumentProcessor(provider="openai", model="gpt-4o", chunk_word_limit=2000)
+        self.document_processor = DocumentProcessor(provider="gemini", model="gemini-2.5-flash", chunk_word_limit=2000)
     
     def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """

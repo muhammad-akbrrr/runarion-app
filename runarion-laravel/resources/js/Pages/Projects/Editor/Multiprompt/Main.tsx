@@ -1,6 +1,8 @@
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
-import { PageProps, Project } from "@/types";
-import { Head } from "@inertiajs/react";
+import { PageProps, Project, ProjectChapter } from "@/types";
+import { Head, router } from "@inertiajs/react";
+import { ChainBuilder } from "../ChainBuilder/ChainBuilder";
+import { useState, useEffect } from "react";
 
 export default function ProjectEditorPage({
     workspaceId,
@@ -11,14 +13,103 @@ export default function ProjectEditorPage({
     projectId: string;
     project: Project;
 }>) {
+    const [chapters, setChapters] = useState<ProjectChapter[]>([]);
+    const [projectSettings, setProjectSettings] = useState(project.settings || {});
+    const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        // Load chapters
+        fetch(`/${workspaceId}/projects/${projectId}/editor/chapters`)
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.chapters) {
+                    setChapters(data.chapters);
+                }
+            })
+            .catch(console.error);
+    }, [workspaceId, projectId]);
+
+    // Update local settings when project prop changes (from server)
+    useEffect(() => {
+        if (project.settings) {
+            setProjectSettings(project.settings);
+        }
+    }, [project.settings]);
+
+    // Get AI model from settings - log for debugging
+    const aiModel = projectSettings?.aiModel || project.settings?.aiModel || 'gemini-2.5-flash';
+    const authorProfile = projectSettings?.authorProfile || project.settings?.authorProfile;
+    
+    // Debug logging
+    useEffect(() => {
+        console.log('Multi-Node: AI Model selection', {
+            projectSettings_aiModel: projectSettings?.aiModel,
+            project_settings_aiModel: project.settings?.aiModel,
+            final_aiModel: aiModel,
+            all_project_settings: project.settings,
+        });
+    }, [projectSettings, project.settings, aiModel]);
+
+    // Callback to apply result to editor - saves server-side then navigates
+    const handleApplyResult = async (text: string) => {
+        if (text && text.trim()) {
+            try {
+                // Save content server-side first (avoids storage size limits)
+                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+                const response = await fetch(
+                    `/${workspaceId}/projects/${projectId}/editor/chain-builder/apply-to-story`,
+                    {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'X-CSRF-TOKEN': csrfToken,
+                        },
+                        body: JSON.stringify({
+                            result_text: text,
+                            // chapter_order: optional, defaults to last chapter
+                        }),
+                    }
+                );
+
+                if (response.ok) {
+                    // Content saved successfully, navigate to editor
+                    router.visit(`/${workspaceId}/projects/${projectId}/editor`, {
+                        preserveScroll: false,
+                    });
+                } else {
+                    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    console.error('Failed to apply result:', error);
+                    alert(`Failed to save content: ${error.error || 'Please try again.'}`);
+                }
+            } catch (error) {
+                console.error('Error applying result:', error);
+                alert('Failed to save content. Please try again.');
+            }
+        }
+    };
+
     return (
         <ProjectEditorLayout
             project={project}
             projectId={projectId}
             workspaceId={workspaceId}
+            isSaving={isLoading}
         >
-            <Head title="Multiprompt Editor" />
-            {/* Main content goes here */}
+            <Head title="Multi-Node Prompt Builder" />
+            <div className="w-full h-full" style={{ minHeight: 'calc(100vh - 4rem)' }}>
+                <ChainBuilder
+                    workspaceId={workspaceId}
+                    projectId={projectId}
+                    project={project}
+                    chapters={chapters}
+                    aiModel={aiModel}
+                    authorProfile={authorProfile}
+                    settings={projectSettings || project.settings || {}}
+                    onApplyResult={handleApplyResult}
+                    onLoadingChange={setIsLoading}
+                />
+            </div>
         </ProjectEditorLayout>
     );
 }

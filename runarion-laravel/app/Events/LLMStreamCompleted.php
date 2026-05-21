@@ -7,10 +7,11 @@ use Illuminate\Broadcasting\InteractsWithSockets;
 use Illuminate\Broadcasting\PresenceChannel;
 use Illuminate\Broadcasting\PrivateChannel;
 use Illuminate\Contracts\Broadcasting\ShouldBroadcast;
+use Illuminate\Contracts\Broadcasting\ShouldBroadcastNow;
 use Illuminate\Foundation\Events\Dispatchable;
 use Illuminate\Queue\SerializesModels;
 
-class LLMStreamCompleted implements ShouldBroadcast
+class LLMStreamCompleted implements ShouldBroadcastNow
 {
     use Dispatchable, InteractsWithSockets, SerializesModels;
 
@@ -71,12 +72,14 @@ class LLMStreamCompleted implements ShouldBroadcast
      */
     public function broadcastWith(): array
     {
+        // Don't send full_text in completion event - frontend already has it from chunks
+        // This prevents "payload too large" errors for long generations (>10KB Pusher limit)
         return [
             'workspace_id' => $this->workspaceId,
             'project_id' => $this->projectId,
             'chapter_order' => $this->chapterOrder,
             'session_id' => $this->sessionId,
-            'full_text' => $this->fullText,
+            'full_text' => '', // Empty - frontend already has full text from streamed chunks
             'success' => $this->success,
             'error' => $this->error,
             'error_type' => $this->errorType,

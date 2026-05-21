@@ -69,11 +69,14 @@ RUN set -eux; \
   fi
 
 # Copy AGE initialization scripts to the official image's init directory
+COPY 00-configure-age-settings.sh /docker-entrypoint-initdb.d/
 COPY 01-init-age.sql /docker-entrypoint-initdb.d/
 COPY 02-init-novel-graph-schema.sql /docker-entrypoint-initdb.d/
 
 # Set proper permissions for init scripts
-RUN chown postgres:postgres /docker-entrypoint-initdb.d/01-init-age.sql \
+RUN chmod +x /docker-entrypoint-initdb.d/00-configure-age-settings.sh \
+    && chown postgres:postgres /docker-entrypoint-initdb.d/00-configure-age-settings.sh \
+    && chown postgres:postgres /docker-entrypoint-initdb.d/01-init-age.sql \
     && chmod 644 /docker-entrypoint-initdb.d/01-init-age.sql \
     && chown postgres:postgres /docker-entrypoint-initdb.d/02-init-novel-graph-schema.sql \
     && chmod 644 /docker-entrypoint-initdb.d/02-init-novel-graph-schema.sql

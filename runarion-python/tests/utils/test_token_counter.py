@@ -1,12 +1,16 @@
 import os
 import sys
+import logging
 
 # Add src to Python path for imports
-sys.path.append(os.path.join(os.path.dirname(__file__), "../.."))
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../src"))
 
 import pytest
 from src.utils.token_counter import TokenCounter
+
+
+@pytest.fixture(autouse=True)
+def _silence_expected_token_counter_logs(set_logger_level):
+    set_logger_level("src.utils.token_counter", logging.ERROR)
 
 
 class TestTokenCounter:

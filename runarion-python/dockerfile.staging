@@ -1,0 +1,32 @@
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONPATH=/app
+ENV PIP_NO_CACHE_DIR=1
+
+RUN apt-get update && apt-get install -y \
+  libpq-dev \
+  gcc \
+  curl \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+RUN useradd --create-home appuser
+
+COPY requirements.txt ./
+RUN python -m pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+COPY docker-entrypoint.staging.sh /usr/local/bin/python-entrypoint
+
+RUN chmod +x /usr/local/bin/python-entrypoint \
+  && mkdir -p /app/uploads \
+  && chown -R appuser:appuser /app
+
+USER appuser
+
+ENTRYPOINT ["/usr/local/bin/python-entrypoint"]
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--threads", "8", "--timeout", "900", "--access-logfile", "-", "--error-logfile", "-", "src.app:app"]

@@ -21,6 +21,7 @@ import {
     HelpCircle,
     Keyboard,
     X,
+    History,
 } from "lucide-react";
 import { Link, router, usePage } from "@inertiajs/react";
 import {
@@ -46,7 +47,8 @@ import { Button } from "@/Components/ui/button";
 import LoadingOverlay from "@/Components/LoadingOverlay";
 import { Project } from "@/types";
 import OnboardingDialog from "./Partials/OnboardingDialog";
-import type { AuthorStyle } from "./Partials/OnboardingDialog"; // adjust path if needed
+import type { AuthorStyle } from "@/types/files";
+import type { PipelineLock } from "@/types/project";
 
 // ============================================================================
 // TYPE DEFINITIONS
@@ -196,7 +198,7 @@ function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
                             <h3 className="mb-2 text-sm font-medium text-muted-foreground">
                                 Actions
                             </h3>
-                            <div className="space-y-1 mx-[-0.5rem]">
+                            <div className="space-y-1 -mx-2">
                                 {commandActions.map((action) => (
                                     <Button
                                         key={action.label}
@@ -214,7 +216,7 @@ function CommandDialog({ open, onOpenChange }: CommandDialogProps) {
                             <h3 className="mb-2 text-sm font-medium text-muted-foreground">
                                 Quick Links
                             </h3>
-                            <div className="space-y-1 mx-[-0.5rem]">
+                            <div className="space-y-1 -mx-2">
                                 {quickLinks.map((link) => (
                                     <Button
                                         key={link.label}
@@ -243,8 +245,8 @@ interface ProjectEditorLayoutProps {
     project: Project;
     projectId: string;
     workspaceId: string;
-    isSaving: boolean;
-    setIsSaving: (saving: boolean) => void;
+    isSaving?: boolean;
+    setIsSaving?: (saving: boolean) => void;
 }
 
 export default function ProjectEditorLayout({
@@ -261,8 +263,11 @@ export default function ProjectEditorLayout({
         force_project_editor_loader,
         project_completed_onboarding,
         authorStyles: rawAuthorStyles,
+        projectPipelineLock: rawProjectPipelineLock,
     } = usePage().props;
     const authorStyles = rawAuthorStyles as AuthorStyle[];
+    const projectPipelineLock =
+        (rawProjectPipelineLock as PipelineLock | null | undefined) ?? null;
     const [showLoader, setShowLoader] = React.useState(
         Boolean(workspace_switching) ||
             Boolean(project_switching) ||
@@ -272,8 +277,17 @@ export default function ProjectEditorLayout({
     const [completedSteps, setCompletedSteps] = React.useState(0);
     const progress = (completedSteps / TOTAL_STEPS) * 100;
     const [onboardingOpen, setOnboardingOpen] = React.useState(
-        !project_completed_onboarding
+        !project_completed_onboarding && !projectPipelineLock?.isLocked
     );
+
+    React.useEffect(() => {
+        if (project_completed_onboarding) {
+            setOnboardingOpen(false);
+            return;
+        }
+
+        setOnboardingOpen(!projectPipelineLock?.isLocked);
+    }, [project_completed_onboarding, projectPipelineLock?.isLocked]);
 
     // Only trigger loader when a switch flag or force flag is true
     React.useEffect(() => {
@@ -331,7 +345,7 @@ export default function ProjectEditorLayout({
                 onSuccess: () => {
                     setIsSaving(false);
                     setIsSaved(true);
-                    router.reload({ only: ['project'] });
+                    router.reload({ only: ["project"] });
                 },
                 onError: () => {
                     setIsSaving(false);
@@ -363,6 +377,12 @@ export default function ProjectEditorLayout({
             icon: Paintbrush,
             label: "Image Editor",
             path: "workspace.projects.editor.image",
+            param: { workspace_id: workspaceId, project_id: projectId },
+        },
+        {
+            icon: History,
+            label: "Version History",
+            path: "workspace.projects.editor.version-history",
             param: { workspace_id: workspaceId, project_id: projectId },
         },
     ];
@@ -480,16 +500,33 @@ export default function ProjectEditorLayout({
                         {/* Sidebar Footer (unchanged) */}
                         <SidebarFooter className="border-t py-4 flex flex-col items-center">
                             <SidebarMenu className="flex flex-col items-center">
-                                {footerItems.map((item) => (
-                                    <SidebarMenuItem key={item.label}>
-                                        <SidebarMenuButton
-                                            tooltip={item.label}
-                                            className="w-8 h-8 flex items-center justify-center p-0"
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        asChild
+                                        tooltip="Settings"
+                                        className="w-8 h-8 flex items-center justify-center p-0"
+                                    >
+                                        <Link
+                                            href={route(
+                                                "workspace.projects.edit",
+                                                {
+                                                    workspace_id: workspaceId,
+                                                    project_id: projectId,
+                                                }
+                                            )}
                                         >
-                                            <item.icon className="size-5" />
-                                        </SidebarMenuButton>
-                                    </SidebarMenuItem>
-                                ))}
+                                            <Settings className="size-5" />
+                                        </Link>
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
+                                <SidebarMenuItem>
+                                    <SidebarMenuButton
+                                        tooltip="Documentation"
+                                        className="w-8 h-8 flex items-center justify-center p-0"
+                                    >
+                                        <FileText className="size-5" />
+                                    </SidebarMenuButton>
+                                </SidebarMenuItem>
                             </SidebarMenu>
                         </SidebarFooter>
                     </Sidebar>
@@ -542,7 +579,7 @@ export default function ProjectEditorLayout({
                             onOpenChange={setCommandOpen}
                         />
                         {/* Main content area */}
-                        <main className="flex-1 min-h-0 flex-col flex-grow overflow-hidden w-full bg-gray-100">
+                        <main className="flex-1 min-h-0 flex-col grow overflow-hidden w-full bg-gray-100">
                             {children}
                         </main>
                     </SidebarInset>

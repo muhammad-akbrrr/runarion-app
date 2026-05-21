@@ -6,6 +6,7 @@ use App\Events\LLMStreamChunk;
 use App\Events\LLMStreamCompleted;
 use App\Events\LLMStreamStarted;
 use App\Events\ProjectContentUpdated;
+use App\Models\AuthorStyle;
 use App\Models\ProjectContent;
 use App\Models\Projects;
 use App\Services\VersionControlService;
@@ -34,6 +35,7 @@ class StreamLLMJob implements ShouldQueue
     public int $userId;
     public bool $isRegenerate;
     public ?string $regenerateNodeId;
+    public ?string $chapterName;
     public int $timeout = 180;
     public int $tries = 1;
     
@@ -51,7 +53,8 @@ class StreamLLMJob implements ShouldQueue
         int $userId,
         ?string $sessionId = null,
         bool $isRegenerate = false,
-        ?string $regenerateNodeId = null
+        ?string $regenerateNodeId = null,
+        ?string $chapterName = null
     ) {
         $this->workspaceId = $workspaceId;
         $this->projectId = $projectId;
@@ -62,6 +65,7 @@ class StreamLLMJob implements ShouldQueue
         $this->userId = $userId;
         $this->isRegenerate = $isRegenerate;
         $this->regenerateNodeId = $regenerateNodeId;
+        $this->chapterName = $chapterName ?? 'Untitled';
     }
 
     /**
@@ -79,13 +83,24 @@ class StreamLLMJob implements ShouldQueue
                 'attempt' => $this->attempts(),
             ]);
 
-            broadcast(new LLMStreamStarted(
+            // Broadcast stream started event
+            $event = new LLMStreamStarted(
                 $this->workspaceId,
                 $this->projectId,
                 $this->chapterOrder,
                 $this->sessionId,
                 $this->isRegenerate
-            ));
+            );
+            
+            broadcast($event);
+            
+            Log::info('LLMStreamStarted event broadcasted', [
+                'channel' => "project.{$this->workspaceId}.{$this->projectId}",
+                'session_id' => $this->sessionId,
+                'chapter_order' => $this->chapterOrder,
+                'workspace_id' => $this->workspaceId,
+                'project_id' => $this->projectId,
+            ]);
 
             $requestData = $this->prepareRequestData();
             $this->streamFromPythonService($requestData);
@@ -190,9 +205,10 @@ class StreamLLMJob implements ShouldQueue
         return [
             'usecase' => 'story',
             'provider' => $this->determineProvider(),
-            'model' => $this->settings['aiModel'] ?? 'gemini-2.0-flash',
+            'model' => $this->settings['aiModel'] ?? 'gemini-2.5-flash',
             'prompt' => $processedPrompt['baseContent'],
             'writing_guidance' => $processedPrompt['guidance'],
+            'chapter_order' => $this->chapterOrder, // Include chapter_order for conversation history
             'instruction' => 'Continue the story in a coherent and engaging way, maintaining the same style, tone, and narrative voice. Return the continuation exclusively in Markdown format with no HTML escaping or wrappers.',
             'stream' => true,
             'generation_config' => [
@@ -207,18 +223,18 @@ class StreamLLMJob implements ShouldQueue
                 'phrase_bias' => $this->settings['phraseBias'] ?? [],
                 'banned_tokens' => $this->settings['bannedPhrases'] ?? [],
                 'stop_sequences' => $this->settings['stopSequences'] ?? [],
+                // Gemini thinking config - only for thinking models
+                // null uses model-specific defaults, 0 to disable, positive value for custom budget
+                'thinking_budget' => $this->shouldIncludeThinkingBudget()
+                    ? ($this->settings['thinkingBudget'] ?? null)
+                    : null,
+                'include_thinking' => $this->settings['includeThinking'] ?? false,
             ],
-            'prompt_config' => [
-                'current_preset' => $this->settings['currentPreset'] ?? '',
-                'context' => $this->settings['memory'] ?? '',
-                'genre' => $this->settings['storyGenre'] ?? '',
-                'tone' => $this->settings['storyTone'] ?? '',
-                'pov' => $this->settings['storyPov'] ?? '',
-            ],
+            'prompt_config' => $this->buildPromptConfig(),
             'caller' => [
                 'user_id' => (string)$this->userId,
                 'workspace_id' => $this->workspaceId,
-                'project_id' => $this->projectId,
+                'project_id' => $this->projectId, // Required for conversation history
                 'session_id' => $this->sessionId,
                 'api_keys' => [
                     'openai' => env('OPENAI_API_KEY', ''),
@@ -283,7 +299,7 @@ class StreamLLMJob implements ShouldQueue
      */
     private function determineProvider(): string
     {
-        $model = $this->settings['aiModel'] ?? 'gemini-2.0-flash';
+        $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
         
         if (stripos($model, 'gemini') !== false) {
             return 'gemini';
@@ -296,6 +312,235 @@ class StreamLLMJob implements ShouldQueue
         }
         
         return 'gemini';
+    }
+
+    /**
+     * Check if the current model supports thinking (internal reasoning).
+     *
+     * @return bool
+     */
+    private function shouldIncludeThinkingBudget(): bool
+    {
+        $thinkingModels = [
+            'gemini-2.5-pro',
+            'gemini-2.5-flash',
+            'gemini-3-pro-preview'
+        ];
+
+        $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
+        return in_array($model, $thinkingModels);
+    }
+
+    /**
+     * Build the prompt configuration with logging.
+     *
+     * @return array
+     */
+    private function buildPromptConfig(): array
+    {
+        $authorProfileId = $this->settings['authorProfile'] ?? null;
+        $authorStyleDna = $this->getFormattedAuthorStyle($authorProfileId);
+        
+        Log::info('Building prompt_config for generation', [
+            'author_profile_id' => $authorProfileId,
+            'author_style_found' => !empty($authorStyleDna),
+            'author_style_length' => strlen($authorStyleDna),
+            'preset' => $this->settings['currentPreset'] ?? 'none',
+            'genre' => $this->settings['storyGenre'] ?? 'none',
+            'tone' => $this->settings['storyTone'] ?? 'none',
+            'pov' => $this->settings['storyPov'] ?? 'none',
+            'session_id' => $this->sessionId,
+        ]);
+        
+        return [
+            'current_preset' => $this->settings['currentPreset'] ?? '',
+            'context' => $this->settings['memory'] ?? '',
+            'genre' => $this->settings['storyGenre'] ?? '',
+            'tone' => $this->settings['storyTone'] ?? '',
+            'pov' => $this->settings['storyPov'] ?? '',
+            'author_profile' => $authorStyleDna,
+            'chapter_name' => $this->chapterName,
+        ];
+    }
+
+    /**
+     * Look up and format AuthorStyle data from the database.
+     * 
+     * The AuthorStyle contains techniques_json and examples_json which need to be
+     * formatted into a readable style DNA text for the AI prompt.
+     * 
+     * @param string|null $authorProfileId The AuthorStyle ID from the sidebar selection
+     * @return string Formatted style DNA text, or empty string if not found
+     */
+    private function getFormattedAuthorStyle(?string $authorProfileId): string
+    {
+        if (empty($authorProfileId)) {
+            return '';
+        }
+
+        try {
+            $authorStyle = AuthorStyle::find($authorProfileId);
+            
+            if (!$authorStyle || $authorStyle->status !== 'profiling_completed') {
+                Log::warning('AuthorStyle not found or not completed', [
+                    'author_profile_id' => $authorProfileId,
+                    'session_id' => $this->sessionId,
+                ]);
+                return '';
+            }
+
+            $styleDna = [];
+            $styleDna[] = "AUTHOR STYLE: {$authorStyle->author_name}";
+            $styleDna[] = "";
+
+            // Format techniques
+            $techniques = $authorStyle->techniques_json;
+            if (!empty($techniques)) {
+                $styleDna[] = "WRITING TECHNIQUES:";
+
+                if (!empty($techniques['voice'])) {
+                    $voice = $techniques['voice'];
+                    if (!empty($voice['diction'])) {
+                        $styleDna[] = "- Diction: {$voice['diction']}";
+                    }
+                    if (!empty($voice['syntax'])) {
+                        $styleDna[] = "- Syntax: {$voice['syntax']}";
+                    }
+                    if (!empty($voice['rhythm'])) {
+                        $styleDna[] = "- Rhythm: {$voice['rhythm']}";
+                    }
+                    if (!empty($voice['register'])) {
+                        $styleDna[] = "- Register: {$voice['register']}";
+                    }
+                    if (!empty($voice['figurative_language'])) {
+                        $styleDna[] = "- Figurative Language: {$voice['figurative_language']}";
+                    }
+                }
+
+                if (!empty($techniques['dialogue'])) {
+                    $d = $techniques['dialogue'];
+                    if (!empty($d['conversation_style'])) {
+                        $styleDna[] = "- Dialogue Style: {$d['conversation_style']}";
+                    }
+                    if (!empty($d['speaker_differentiation'])) {
+                        $styleDna[] = "- Speaker Differentiation: {$d['speaker_differentiation']}";
+                    }
+                    if (!empty($d['dialogue_narration_balance'])) {
+                        $styleDna[] = "- Dialogue-Narration Balance: {$d['dialogue_narration_balance']}";
+                    }
+                }
+
+                
+                if (!empty($techniques['description'])) {
+                    $description = $techniques['description'];
+                    if (!empty($description['description_density'])) {
+                        $styleDna[] = "- Description Density: {$description['description_density']}";
+                    }
+                    if (!empty($description['sensory_focus'])) {
+                        $styleDna[] = "- Sensory Focus: {$description['sensory_focus']}";
+                    }
+                    if (!empty($description['atmosphere_strategy'])) {
+                        $styleDna[] = "- Atmosphere Strategy: {$description['atmosphere_strategy']}";
+                    }
+                }
+
+                if (!empty($techniques['exposition'])) {
+                    $exposition = $techniques['exposition'];
+                    if (!empty($exposition['exposition_strategy'])) {
+                        $styleDna[] = "- Exposition Strategy: {$exposition['exposition_strategy']}";
+                    }
+                    if (!empty($exposition['context_integration'])) {
+                        $styleDna[] = "- Context Integration: {$exposition['context_integration']}";
+                    }
+                    if (!empty($exposition['terminology_handling'])) {
+                        $styleDna[] = "- Terminology Handling: {$exposition['terminology_handling']}";
+                    }
+                }
+
+                if (!empty($techniques['pacing'])) {
+                    $pacing = $techniques['pacing'];
+                    if (!empty($pacing['scene_tempo'])) {
+                        $styleDna[] = "- Scene Tempo: {$pacing['scene_tempo']}";
+                    }
+                    if (!empty($pacing['transition_style'])) {
+                        $styleDna[] = "- Transition Style: {$pacing['transition_style']}";
+                    }
+                    if (!empty($pacing['tension_pattern'])) {
+                        $styleDna[] = "- Tension Pattern: {$pacing['tension_pattern']}";
+                    }
+                }
+
+                if (!empty($techniques['narrative'])) {
+                    $narrative = $techniques['narrative'];
+                    if (!empty($narrative['pov_tendency'])) {
+                        $styleDna[] = "- POV Tendency: {$narrative['pov_tendency']}";
+                    }
+                    if (!empty($narrative['narrative_distance'])) {
+                        $styleDna[] = "- Narrative Distance: {$narrative['narrative_distance']}";
+                    }
+                    if (!empty($narrative['redundancy_avoidance'])) {
+                        $styleDna[] = "- Redundancy Avoidance: {$narrative['redundancy_avoidance']}";
+                    }
+                }
+            }
+
+            // Format examples (include a few key examples)
+            $examples = $authorStyle->examples_json;
+            if (!empty($examples)) {
+                $styleDna[] = "";
+                $styleDna[] = "STYLE EXAMPLES:";
+                
+                // Add dialogue examples
+                if (!empty($examples['dialogue']) && count($examples['dialogue']) > 0) {
+                    $styleDna[] = "Dialogue Example: \"{$examples['dialogue'][0]}\"";
+                }
+                
+                // Add description examples
+                if (!empty($examples['description']) && count($examples['description']) > 0) {
+                    $styleDna[] = "Description Example: \"{$examples['description'][0]}\"";
+                }
+
+                if (!empty($examples['voice']) && count($examples['voice']) > 0) {
+                    $styleDna[] = "Voice Example: \"{$examples['voice'][0]}\"";
+                }
+
+                $adaptation = $authorStyle->adaptation_json;
+                if (!empty($adaptation['portable_traits'])) {
+                    $styleDna[] = "";
+                    $styleDna[] = "PORTABLE STYLE TRAITS:";
+                    foreach (array_slice($adaptation['portable_traits'], 0, 5) as $trait) {
+                        $styleDna[] = "- {$trait}";
+                    }
+                }
+
+                if (!empty($adaptation['suppression_guidance'])) {
+                    $styleDna[] = "";
+                    $styleDna[] = "SUPPRESSION GUIDANCE:";
+                    foreach (array_slice($adaptation['suppression_guidance'], 0, 5) as $guidance) {
+                        $styleDna[] = "- {$guidance}";
+                    }
+                }
+            }
+
+            $result = implode("\n", $styleDna);
+            
+            Log::info('Formatted AuthorStyle for generation', [
+                'author_profile_id' => $authorProfileId,
+                'author_name' => $authorStyle->author_name,
+                'style_dna_length' => strlen($result),
+                'session_id' => $this->sessionId,
+            ]);
+
+            return $result;
+
+        } catch (\Exception $e) {
+            Log::error('Failed to format AuthorStyle', [
+                'author_profile_id' => $authorProfileId,
+                'error' => $e->getMessage(),
+                'session_id' => $this->sessionId,
+            ]);
+            return '';
+        }
     }
 
     /**
@@ -433,6 +678,50 @@ class StreamLLMJob implements ShouldQueue
     }
 
     /**
+     * Split text into individual words for smooth streaming.
+     * Each chunk is a word + its trailing whitespace.
+     * This creates a typewriter effect for real-time generation.
+     *
+     * @param string $text The text to split
+     * @return array Array of text chunks (one word + whitespace each)
+     */
+    private function chunkTextByWords(string $text): array
+    {
+        // Split on whitespace while preserving it
+        $tokens = preg_split('/(\s+)/', $text, -1, PREG_SPLIT_DELIM_CAPTURE | PREG_SPLIT_NO_EMPTY);
+
+        $chunks = [];
+        $currentWord = '';
+
+        foreach ($tokens as $token) {
+            if (preg_match('/^\s+$/', $token)) {
+                // Whitespace: attach to current word and flush
+                if (!empty($currentWord)) {
+                    $chunks[] = $currentWord . $token;
+                    $currentWord = '';
+                } else {
+                    // Standalone whitespace (edge case)
+                    $chunks[] = $token;
+                }
+            } else {
+                // Word token: start new word
+                if (!empty($currentWord)) {
+                    // Previous word had no trailing space
+                    $chunks[] = $currentWord;
+                }
+                $currentWord = $token;
+            }
+        }
+
+        // Flush remaining word
+        if (!empty($currentWord)) {
+            $chunks[] = $currentWord;
+        }
+
+        return array_filter($chunks); // Remove empty strings
+    }
+
+    /**
      * Process individual stream line
      */
     private function processStreamLine(string $line, string &$fullText, int &$chunkIndex): void
@@ -472,17 +761,27 @@ class StreamLLMJob implements ShouldQueue
             
             if (!empty($textChunk)) {
                 $fullText .= $textChunk;
-                
-                broadcast(new LLMStreamChunk(
-                    $this->workspaceId,
-                    $this->projectId,
-                    $this->chapterOrder,
-                    $this->sessionId,
-                    $textChunk,
-                    $chunkIndex
-                ));
-                
-                $chunkIndex++;
+
+                // Split into word-level chunks for smoother frontend streaming display
+                $wordChunks = $this->chunkTextByWords($textChunk);
+
+                foreach ($wordChunks as $wordChunk) {
+                    // Broadcast each word chunk
+                    broadcast(new LLMStreamChunk(
+                        $this->workspaceId,
+                        $this->projectId,
+                        $this->chapterOrder,
+                        $this->sessionId,
+                        $wordChunk,
+                        $chunkIndex
+                    ));
+
+                    $chunkIndex++;
+
+                    // Small delay for visual smoothness (10ms between word chunks)
+                    // This prevents overwhelming the frontend with rapid updates
+                    usleep(10000);
+                }
             }
         } catch (\Exception $e) {
             Log::warning('Error processing stream chunk', [
@@ -529,7 +828,7 @@ class StreamLLMJob implements ShouldQueue
                 if ($this->isRegenerate && $this->regenerateNodeId) {
                     // Add new version to the specified node (not current state)
                     $versionIndex = $versionControlService->addVersion($this->regenerateNodeId, $finalContent);
-                    
+
                     Log::info('Added new version to regenerate node', [
                         'session_id' => $this->sessionId,
                         'chapter_order' => $this->chapterOrder,

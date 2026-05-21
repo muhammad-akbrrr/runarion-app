@@ -10,6 +10,7 @@ class GraphConstants
     public const VERTEX_ITEM = 'Item';
     public const VERTEX_THEME = 'Theme';
     public const VERTEX_PLOT_POINT = 'PlotPoint';
+    public const VERTEX_RECORD_KEEPER = 'RecordKeeper';
     public const VERTEX_SCENE = 'Scene';
     public const VERTEX_DRAFT = 'Draft';
 
@@ -62,6 +63,7 @@ class GraphConstants
     public const ENTITY_ITEM = 'item';
     public const ENTITY_THEME = 'theme';
     public const ENTITY_PLOT_POINT = 'plot_point';
+    public const ENTITY_RECORD_KEEPER = 'record_keeper';
 
     public static function getVertexLabels(): array
     {
@@ -71,6 +73,7 @@ class GraphConstants
             self::VERTEX_ITEM,
             self::VERTEX_THEME,
             self::VERTEX_PLOT_POINT,
+            self::VERTEX_RECORD_KEEPER,
             self::VERTEX_SCENE,
             self::VERTEX_DRAFT,
         ];
@@ -132,6 +135,7 @@ class GraphConstants
             self::ENTITY_ITEM => 'Item',
             self::ENTITY_THEME => 'Theme',
             self::ENTITY_PLOT_POINT => 'Plot Point',
+            self::ENTITY_RECORD_KEEPER => 'Record Keeper',
         ];
     }
 }

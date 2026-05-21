@@ -11,4 +11,10 @@ export type PageProps<
         user: User;
     };
     workspaces: SimpleWorkspace[];
+    flash?: {
+        success?: string | null;
+        error?: string | null;
+        info?: string | null;
+        warning?: string | null;
+    };
 };

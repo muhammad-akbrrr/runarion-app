@@ -14,7 +14,10 @@ import {
     SlidersHorizontal,
     RefreshCw,
     Loader2,
+    Palette,
+    Network,
 } from "lucide-react";
+import { router } from "@inertiajs/react";
 import { useState, useEffect } from "react";
 
 interface VersionControlState {
@@ -36,6 +39,12 @@ interface EditorToolbarProps {
     isGenerating?: boolean;
     wordCount?: number;
     versionControl?: VersionControlState;
+    isColorCoded?: boolean;
+    onToggleColorCoding?: () => void;
+    workspaceId?: string;
+    projectId?: string;
+    onBeforeNavigate?: () => Promise<void>;
+    isLocked?: boolean;
 }
 
 export function EditorToolbar({
@@ -43,6 +52,12 @@ export function EditorToolbar({
     isGenerating = false,
     wordCount = 0,
     versionControl,
+    isColorCoded = true,
+    onToggleColorCoding,
+    workspaceId,
+    projectId,
+    onBeforeNavigate,
+    isLocked = false,
 }: EditorToolbarProps) {
     const [isButtonDisabled, setIsButtonDisabled] = useState(false);
 
@@ -59,35 +74,61 @@ export function EditorToolbar({
     }, [isGenerating]);
 
     const handleSendClick = () => {
-        if (onSend && !isButtonDisabled) {
+        if (onSend && !isButtonDisabled && !isLocked) {
             setIsButtonDisabled(true);
             onSend();
         }
     };
 
     const handleRegenerateClick = () => {
-        if (versionControl?.onRegenerate && !isButtonDisabled && versionControl.canRegenerate) {
+        if (
+            versionControl?.onRegenerate &&
+            !isButtonDisabled &&
+            versionControl.canRegenerate &&
+            !isLocked
+        ) {
             setIsButtonDisabled(true);
             versionControl.onRegenerate();
         }
     };
 
     const handleUndoClick = () => {
-        if (versionControl?.onUndo && versionControl.canUndo && !versionControl.isLoading) {
+        if (
+            versionControl?.onUndo &&
+            versionControl.canUndo &&
+            !versionControl.isLoading
+        ) {
             versionControl.onUndo();
         }
     };
 
     const handleRedoClick = () => {
-        if (versionControl?.onRedo && versionControl.canRedo && !versionControl.isLoading) {
+        if (
+            versionControl?.onRedo &&
+            versionControl.canRedo &&
+            !versionControl.isLoading
+        ) {
             versionControl.onRedo();
         }
     };
 
     const handleVersionSwitch = (versionIndex: number) => {
-        if (versionControl?.onSwitchVersion && !versionControl.isLoading) {
+        if (versionControl?.onSwitchVersion && !versionControl.isLoading && !isLocked) {
             versionControl.onSwitchVersion(versionIndex);
         }
+    };
+
+    const handleNavigateToMultiPrompt = async () => {
+        if (isLocked) {
+            return;
+        }
+        if (onBeforeNavigate) {
+            await onBeforeNavigate();
+        }
+        router.visit(route("workspace.projects.editor.multiprompt", {
+            workspace_id: workspaceId,
+            project_id: projectId,
+        }));
     };
 
     // Calculate word count
@@ -115,16 +156,37 @@ export function EditorToolbar({
             <div className="flex items-center justify-between">
                 {/* Left side - Controls */}
                 <div className="flex items-center space-x-2">
-                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+                    <Button variant="ghost" size="sm" className="h-8 w-8 p-0" disabled={isLocked}>
                         <SlidersHorizontal className="h-4 w-4" />
                     </Button>
                     <span className="text-sm text-gray-500">
                         {displayWordCount} Words
                     </span>
+
+                    {/* Color Coding Toggle */}
+                    {onToggleColorCoding && (
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className={`h-8 ${
+                                isColorCoded ? "bg-blue-50 text-blue-700" : ""
+                            }`}
+                            onClick={onToggleColorCoding}
+                            disabled={isLocked}
+                            title={
+                                isColorCoded
+                                    ? "Disable color coding"
+                                    : "Enable color coding"
+                            }
+                        >
+                            <Palette className="h-4 w-4" />
+                        </Button>
+                    )}
+
                     {/* Auto dropdown - opens upward */}
                     <DropdownMenu>
                         <DropdownMenuTrigger>
-                            <Button variant="ghost" size="sm" className="h-8">
+                            <Button variant="ghost" size="sm" className="h-8" disabled={isLocked}>
                                 Auto
                                 <ChevronUp className="h-3 w-3" />
                             </Button>
@@ -132,7 +194,9 @@ export function EditorToolbar({
                         <DropdownMenuContent align="start" side="top">
                             <DropdownMenuItem>Auto Mode On</DropdownMenuItem>
                             <DropdownMenuItem>Auto Mode Off</DropdownMenuItem>
-                            <DropdownMenuItem>Custom Settings</DropdownMenuItem>
+                            <DropdownMenuItem onClick={handleNavigateToMultiPrompt}>
+                                Multi-Prompt
+                            </DropdownMenuItem>
                         </DropdownMenuContent>
                     </DropdownMenu>
                 </div>
@@ -140,12 +204,17 @@ export function EditorToolbar({
                 {/* Right side - Action buttons */}
                 <div className="flex items-center space-x-2">
                     {/* Undo Button */}
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0"
                         onClick={handleUndoClick}
-                        disabled={!versionControl?.canUndo || versionControl?.isLoading || isGenerating}
+                        disabled={
+                            !versionControl?.canUndo ||
+                            versionControl?.isLoading ||
+                            isGenerating ||
+                            isLocked
+                        }
                         title="Undo to previous step"
                     >
                         {versionControl?.isLoading ? (
@@ -156,15 +225,20 @@ export function EditorToolbar({
                     </Button>
 
                     {/* Redo Button */}
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0"
                         onClick={handleRedoClick}
-                        disabled={!versionControl?.canRedo || versionControl?.isLoading || isGenerating}
+                        disabled={
+                            !versionControl?.canRedo ||
+                            versionControl?.isLoading ||
+                            isGenerating ||
+                            isLocked
+                        }
                         title={
-                            !versionControl?.canRedo 
-                                ? "No valid redo steps available for current version" 
+                            !versionControl?.canRedo
+                                ? "No valid redo steps available for current version"
                                 : "Redo to next step"
                         }
                     >
@@ -177,16 +251,23 @@ export function EditorToolbar({
 
                     {/* Version Dropdown */}
                     <DropdownMenu>
-                        <DropdownMenuTrigger disabled={versionControl?.isLoading || isGenerating}>
-                            <span 
+                        <DropdownMenuTrigger
+                            disabled={versionControl?.isLoading || isGenerating || isLocked}
+                        >
+                            <span
                                 className={`
                                     text-lg h-8 w-8 flex items-center justify-center rounded-md 
-                                    ${versionControl?.isLoading || isGenerating 
-                                        ? 'text-gray-400 cursor-not-allowed' 
-                                        : 'hover:bg-gray-100 cursor-pointer'
+                                    ${
+                                        versionControl?.isLoading ||
+                                        isGenerating ||
+                                        isLocked
+                                            ? "text-gray-400 cursor-not-allowed"
+                                            : "hover:bg-gray-100 cursor-pointer"
                                     }
                                 `}
-                                title={`Current version: ${versionControl?.versionDisplayText || '0'} of ${versionControl?.totalVersions || 1}`}
+                                title={`Current version: ${
+                                    versionControl?.versionDisplayText || "0"
+                                } of ${versionControl?.totalVersions || 1}`}
                             >
                                 {versionControl?.isLoading ? (
                                     <Loader2 className="h-4 w-4 animate-spin" />
@@ -200,8 +281,14 @@ export function EditorToolbar({
                                 versionOptions.map((option) => (
                                     <DropdownMenuItem
                                         key={option.index}
-                                        onClick={() => handleVersionSwitch(option.index)}
-                                        className={option.isSelected ? "bg-blue-50 text-blue-700" : ""}
+                                        onClick={() =>
+                                            handleVersionSwitch(option.index)
+                                        }
+                                        className={
+                                            option.isSelected
+                                                ? "bg-blue-50 text-blue-700"
+                                                : ""
+                                        }
                                     >
                                         {option.label}
                                         {option.isSelected && " (Current)"}
@@ -216,12 +303,17 @@ export function EditorToolbar({
                     </DropdownMenu>
 
                     {/* Regenerate Button */}
-                    <Button 
-                        variant="ghost" 
-                        size="sm" 
+                    <Button
+                        variant="ghost"
+                        size="sm"
                         className="h-8 w-8 p-0"
                         onClick={handleRegenerateClick}
-                        disabled={!versionControl?.canRegenerate || isButtonDisabled || versionControl?.isLoading}
+                        disabled={
+                            !versionControl?.canRegenerate ||
+                            isButtonDisabled ||
+                            versionControl?.isLoading ||
+                            isLocked
+                        }
                         title="Regenerate current step"
                     >
                         {isGenerating || versionControl?.isLoading ? (
@@ -235,7 +327,7 @@ export function EditorToolbar({
                     <Button
                         size="sm"
                         onClick={handleSendClick}
-                        disabled={isButtonDisabled || versionControl?.isLoading}
+                        disabled={isButtonDisabled || versionControl?.isLoading || isLocked}
                         className={isGenerating ? "animate-pulse" : ""}
                     >
                         {isGenerating ? (

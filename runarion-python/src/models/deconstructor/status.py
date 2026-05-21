@@ -1,6 +1,6 @@
 """
 Status enumeration for draft processing pipeline.
-Defines valid status values for the novel deconstruction pipeline.
+Defines valid status values for the novel deconstruction and novel writer pipelines.
 """
 
 from enum import Enum
@@ -9,7 +9,9 @@ from enum import Enum
 class DraftStatus(Enum):
     """
     Valid status values for draft processing.
+    Covers both the deconstructor pipeline and the novel writer pipeline.
     """
+    # Deconstructor statuses
     PENDING = "pending"
     PROCESSING = "processing"
     STAGE_1_COMPLETE = "stage_1_complete"
@@ -20,6 +22,22 @@ class DraftStatus(Enum):
     STAGE_6_COMPLETE = "stage_6_complete"
     COMPLETED = "completed"
     FAILED = "failed"
+
+    # Novel writer statuses
+    NOVEL_WRITING = "novel_writing"
+    NW_STAGE_1_COMPLETE = "nw_stage_1_complete"
+    NW_STAGE_2_COMPLETE = "nw_stage_2_complete"
+    NW_STAGE_3_COMPLETE = "nw_stage_3_complete"
+    NW_STAGE_4_COMPLETE = "nw_stage_4_complete"
+    NW_COMPLETED = "nw_completed"
+    NW_FAILED = "nw_failed"
+
+    # Pipeline orchestrator statuses (full 3-phase run)
+    PIPELINE_PENDING = "pipeline_pending"
+    PIPELINE_PHASE_1_2_RUNNING = "pipeline_phase_1_2_running"
+    PIPELINE_PHASE_3_RUNNING = "pipeline_phase_3_running"
+    PIPELINE_COMPLETED = "pipeline_completed"
+    PIPELINE_FAILED = "pipeline_failed"
 
     @classmethod
     def is_valid(cls, status: str) -> bool:
@@ -48,7 +66,7 @@ class DraftStatus(Enum):
     def get_processing_statuses(cls) -> list:
         """
         Get list of statuses that indicate processing is in progress.
-        
+
         Returns:
             List of processing status strings
         """
@@ -60,17 +78,34 @@ class DraftStatus(Enum):
             cls.STAGE_4_COMPLETE.value,
             cls.STAGE_5_COMPLETE.value,
             cls.STAGE_6_COMPLETE.value,
+            # Novel writer processing statuses
+            cls.NOVEL_WRITING.value,
+            cls.NW_STAGE_1_COMPLETE.value,
+            cls.NW_STAGE_2_COMPLETE.value,
+            cls.NW_STAGE_3_COMPLETE.value,
+            cls.NW_STAGE_4_COMPLETE.value,
+            # Pipeline orchestrator processing statuses
+            cls.PIPELINE_PENDING.value,
+            cls.PIPELINE_PHASE_1_2_RUNNING.value,
+            cls.PIPELINE_PHASE_3_RUNNING.value,
         ]
 
     @classmethod
     def get_final_statuses(cls) -> list:
         """
         Get list of statuses that indicate processing is complete.
-        
+
         Returns:
             List of final status strings
         """
-        return [cls.COMPLETED.value, cls.FAILED.value]
+        return [
+            cls.COMPLETED.value,
+            cls.FAILED.value,
+            cls.NW_COMPLETED.value,
+            cls.NW_FAILED.value,
+            cls.PIPELINE_COMPLETED.value,
+            cls.PIPELINE_FAILED.value,
+        ]
 
     @classmethod
     def is_processing(cls, status: str) -> bool:

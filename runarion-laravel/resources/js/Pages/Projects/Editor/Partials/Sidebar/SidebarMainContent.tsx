@@ -27,12 +27,16 @@ import {
     Trash2,
     X,
     Book,
+    Type,
+    Sparkles,
 } from "lucide-react";
-import { SidebarSettingsProps, DEFAULT_SETTINGS } from "@/types/project";
+import { Switch } from "@/Components/ui/switch";
+import { SidebarSettingsProps, DEFAULT_SETTINGS, THINKING_MODELS, DEFAULT_THINKING_BUDGETS, MODEL_CONFIGS } from "@/types/project";
 
 export function SidebarContent({ 
     settings,
-    onSettingChange
+    onSettingChange,
+    authorStyles = []
 }: SidebarSettingsProps) {
     // UI State only - no data state
     const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -47,6 +51,7 @@ export function SidebarContent({
     const currentPreset = settings.currentPreset ?? DEFAULT_SETTINGS.currentPreset;
     const authorProfile = settings.authorProfile ?? DEFAULT_SETTINGS.authorProfile;
     const aiModel = settings.aiModel ?? DEFAULT_SETTINGS.aiModel;
+    const selectionToolbarMode = settings.selectionToolbarMode ?? DEFAULT_SETTINGS.selectionToolbarMode;
     const memory = settings.memory ?? DEFAULT_SETTINGS.memory;
     const storyGenre = settings.storyGenre ?? DEFAULT_SETTINGS.storyGenre;
     const storyTone = settings.storyTone ?? DEFAULT_SETTINGS.storyTone;
@@ -62,6 +67,13 @@ export function SidebarContent({
     const phraseBias = settings.phraseBias ?? DEFAULT_SETTINGS.phraseBias;
     const bannedPhrases = settings.bannedPhrases ?? DEFAULT_SETTINGS.bannedPhrases;
     const stopSequences = settings.stopSequences ?? DEFAULT_SETTINGS.stopSequences;
+    const thinkingBudget = settings.thinkingBudget ?? DEFAULT_SETTINGS.thinkingBudget;
+    
+    // Check if current model supports thinking
+    const isThinkingModel = THINKING_MODELS.includes(aiModel);
+
+    // Get model-specific parameter config
+    const modelConfig = MODEL_CONFIGS[aiModel];
 
     return (
         <div
@@ -78,12 +90,9 @@ export function SidebarContent({
                         <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="story-telling">
-                            Story Telling
-                        </SelectItem>
-                        <SelectItem value="creative-writing">
-                            Creative Writing
-                        </SelectItem>
+                        <SelectItem value="none">None (Default)</SelectItem>
+                        <SelectItem value="story-telling">Story Telling</SelectItem>
+                        <SelectItem value="creative-writing">Creative Writing</SelectItem>
                         <SelectItem value="technical-writing">Technical Writing</SelectItem>
                     </SelectContent>
                 </Select>
@@ -92,16 +101,45 @@ export function SidebarContent({
             {/* Author Profile */}
             <div className="space-y-2">
                 <Label htmlFor="author">Author Profile</Label>
-                <Select value={authorProfile} onValueChange={(value) => onSettingChange?.('authorProfile', value)}>
+                <p className="text-xs text-gray-500">
+                    Writing style from analyzed samples
+                </p>
+                <Select 
+                    value={authorProfile || "__none__"} 
+                    onValueChange={(value) => onSettingChange?.('authorProfile', value === "__none__" ? "" : value)}
+                >
                     <SelectTrigger className="w-full">
-                        <SelectValue />
+                        <SelectValue placeholder="Select author style..." />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="tolkien">Tolkien</SelectItem>
-                        <SelectItem value="hemingway">Hemingway</SelectItem>
-                        <SelectItem value="shakespeare">Shakespeare</SelectItem>
+                        {authorStyles && authorStyles.length > 0 ? (
+                            <>
+                                <SelectItem value="__none__">None</SelectItem>
+                                {authorStyles.map((style) => {
+                                    const isReady = style.status === 'profiling_completed';
+                                    return (
+                                        <SelectItem 
+                                            key={style.id} 
+                                            value={style.id}
+                                            disabled={!isReady}
+                                        >
+                                            {style.name} {!isReady && '(Processing...)'}
+                                        </SelectItem>
+                                    );
+                                })}
+                            </>
+                        ) : (
+                            <SelectItem value="__none__">
+                                No author styles available
+                            </SelectItem>
+                        )}
                     </SelectContent>
                 </Select>
+                {authorStyles?.length === 0 && (
+                    <p className="text-xs text-amber-600">
+                        Create author styles in File Manager
+                    </p>
+                )}
             </div>
 
             {/* AI Model */}
@@ -109,17 +147,60 @@ export function SidebarContent({
                 <Label htmlFor="model">AI Model</Label>
                 <Select
                     value={aiModel}
-                    onValueChange={(value) => onSettingChange?.("aiModel", value)}
+                    onValueChange={(value) => {
+                        onSettingChange?.("aiModel", value);
+                        // Auto-set default thinking budget when switching to a thinking model
+                        if (THINKING_MODELS.includes(value)) {
+                            const defaultBudget = DEFAULT_THINKING_BUDGETS[value] ?? 4096;
+                            onSettingChange?.("thinkingBudget", defaultBudget);
+                        }
+                    }}
                 >
                     <SelectTrigger className="w-full">
                     <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                        <SelectItem value="gemini-2.0-flash">Gemini 2.0 Flash</SelectItem>
-                        <SelectItem value="gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                        {Object.values(MODEL_CONFIGS).map((mc) => (
+                            <SelectItem key={mc.id} value={mc.id}>{mc.label}</SelectItem>
+                        ))}
                     </SelectContent>
                 </Select>
             </div>
+
+            {/* Thinking Budget - Only for thinking models */}
+            {modelConfig?.params.thinkingBudget && (
+            <div className={`space-y-3 ${!isThinkingModel ? 'opacity-50' : ''}`}>
+                <div className="flex justify-between items-center">
+                    <Label className={!isThinkingModel ? 'text-gray-400' : ''}>
+                        Thinking Budget
+                    </Label>
+                    <span className="text-sm text-gray-500">
+                        {isThinkingModel ? `${thinkingBudget} tokens` : 'N/A'}
+                    </span>
+                </div>
+                <p className="text-xs text-gray-500">
+                    {isThinkingModel
+                        ? "Tokens for AI reasoning (higher = better quality, slower)"
+                        : "Only available for thinking models"
+                    }
+                </p>
+                <Slider
+                    value={[thinkingBudget]}
+                    onValueChange={(value) => onSettingChange?.('thinkingBudget', value[0])}
+                    max={modelConfig.params.thinkingBudget.max}
+                    min={modelConfig.params.thinkingBudget.min}
+                    step={modelConfig.params.thinkingBudget.step}
+                    className="w-full"
+                    disabled={!isThinkingModel}
+                />
+                {isThinkingModel && (
+                    <div className="flex justify-between text-xs text-gray-400">
+                        <span>{modelConfig.params.thinkingBudget.min} (Fast)</span>
+                        <span>{modelConfig.params.thinkingBudget.max} (Quality)</span>
+                    </div>
+                )}
+            </div>
+            )}
 
             {/* Memory */}
             <div className="space-y-2">
@@ -131,7 +212,7 @@ export function SidebarContent({
                     <Textarea
                         id="memory"
                         placeholder="Type here..."
-                        className="min-h-[80px] pr-8"
+                        className="min-h-20 pr-8"
                         value={memory}
                         onChange={(e) => onSettingChange?.('memory', e.target.value)}
                     />
@@ -155,7 +236,7 @@ export function SidebarContent({
                     <Textarea
                         id="genre"
                         placeholder="Type here..."
-                        className="min-h-[80px] pr-8"
+                        className="min-h-20 pr-8"
                         value={storyGenre}
                         onChange={(e) => onSettingChange?.('storyGenre', e.target.value)}
                     />
@@ -179,7 +260,7 @@ export function SidebarContent({
                     <Textarea
                         id="tone"
                         placeholder="Type here..."
-                        className="min-h-[80px] pr-8"
+                        className="min-h-20 pr-8"
                         value={storyTone}
                         onChange={(e) => onSettingChange?.('storyTone', e.target.value)}
                     />
@@ -196,18 +277,36 @@ export function SidebarContent({
             {/* Story POV */}
             <div className="space-y-2">
                 <Label htmlFor="pov">Story POV</Label>
-                <div className="flex flex-row items-center gap-2">
+                <p className="text-xs text-gray-500">
+                    Point of view for the narrative
+                </p>
+                <Select 
+                    value={storyPov || "__select__"} 
+                    onValueChange={(value) => onSettingChange?.('storyPov', value === "__select__" ? "" : value)}
+                >
+                    <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select POV..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                        <SelectItem value="__select__">Select POV...</SelectItem>
+                        <SelectItem value="First Person">First Person (I/We)</SelectItem>
+                        <SelectItem value="Second Person">Second Person (You)</SelectItem>
+                        <SelectItem value="Third Person Limited">Third Person Limited</SelectItem>
+                        <SelectItem value="Third Person Omniscient">Third Person Omniscient</SelectItem>
+                        <SelectItem value="Third Person Objective">Third Person Objective</SelectItem>
+                        <SelectItem value="Multiple POV">Multiple POV / Alternating</SelectItem>
+                    </SelectContent>
+                </Select>
+                {/* Custom POV input if needed */}
+                {storyPov && !["First Person", "Second Person", "Third Person Limited", "Third Person Omniscient", "Third Person Objective", "Multiple POV", "", "__select__"].includes(storyPov) && (
                     <Input
-                        id="pov"
-                        placeholder="Search for an entry"
-                        className="pr-8"
+                        id="custom-pov"
+                        placeholder="Custom POV description..."
+                        className="mt-2"
                         value={storyPov}
                         onChange={(e) => onSettingChange?.('storyPov', e.target.value)}
                     />
-                    <Button variant="outline" className="h-9 w-9 p-0">
-                        <Book className="h-3 w-3" />
-                    </Button>
-                </div>
+                )}
             </div>
 
             {/* Advanced Section */}
@@ -216,7 +315,7 @@ export function SidebarContent({
                     <Button
                         variant="ghost"
                         className="
-                            w-full justify-between !p-0
+                            w-full justify-between p-0!
                             rounded-none h-auto
                             hover:bg-transparent
                         "
@@ -236,7 +335,7 @@ export function SidebarContent({
                         <div className="flex justify-between items-center">
                             <Label>Temperature</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 1
+                                Default: {modelConfig?.params.temperature?.default ?? 1}
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -247,20 +346,21 @@ export function SidebarContent({
                             <Slider
                                 value={[temperature]}
                                 onValueChange={(value) => onSettingChange?.('temperature', value[0])}
-                                max={2}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig?.params.temperature?.max ?? 2}
+                                min={modelConfig?.params.temperature?.min ?? 0}
+                                step={modelConfig?.params.temperature?.step ?? 0.01}
                                 className="w-full"
                             />
                         </div>
                     </div>
 
                     {/* Repetition Penalty */}
+                    {modelConfig?.params.repetitionPenalty && (
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <Label>Repetition Penalty</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 0
+                                Default: {modelConfig.params.repetitionPenalty.default}
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -273,20 +373,21 @@ export function SidebarContent({
                             <Slider
                                 value={[repetitionPenalty]}
                                 onValueChange={(value) => onSettingChange?.('repetitionPenalty', value[0])}
-                                max={2}
-                                min={-2}
-                                step={0.1}
+                                max={modelConfig.params.repetitionPenalty.max}
+                                min={modelConfig.params.repetitionPenalty.min}
+                                step={modelConfig.params.repetitionPenalty.step}
                                 className="w-full"
                             />
                         </div>
                     </div>
+                    )}
 
                     {/* Output Length */}
                     <div className="space-y-3">
                         <div className="flex justify-between items-center">
                             <Label>Output Length</Label>
                             <span className="text-sm text-gray-500">
-                                Default: 300
+                                Default: {modelConfig?.params.outputLength?.default ?? 300}
                             </span>
                         </div>
                         <p className="text-xs text-gray-500">
@@ -297,9 +398,9 @@ export function SidebarContent({
                             <Slider
                                 value={[outputLength]}
                                 onValueChange={(value) => onSettingChange?.('outputLength', value[0])}
-                                max={1000}
-                                min={50}
-                                step={10}
+                                max={modelConfig?.params.outputLength?.max ?? 8192}
+                                min={modelConfig?.params.outputLength?.min ?? 50}
+                                step={modelConfig?.params.outputLength?.step ?? 10}
                                 className="w-full"
                             />
                         </div>
@@ -309,73 +410,90 @@ export function SidebarContent({
                     <div className="space-y-3">
                         <Label>Sampling</Label>
                         <div className="space-y-3">
+                            {/* Nucleus (Top-P) — always shown */}
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Nucleus: {topP}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig?.params.topP?.default ?? 0.85}
                                 </span>
                             </div>
                             <Slider
                                 value={[topP]}
                                 onValueChange={(value) => onSettingChange('topP', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig?.params.topP?.max ?? 1}
+                                min={modelConfig?.params.topP?.min ?? 0}
+                                step={modelConfig?.params.topP?.step ?? 0.01}
                             />
 
+                            {/* Tail-Free — only if model supports it */}
+                            {modelConfig?.params.tailFree && (
+                            <>
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Tail-Free: {tailFree}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig.params.tailFree.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[tailFree]}
                                 onValueChange={(value) => onSettingChange('tailFree', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig.params.tailFree.max}
+                                min={modelConfig.params.tailFree.min}
+                                step={modelConfig.params.tailFree.step}
                             />
+                            </>
+                            )}
 
+                            {/* Top-A — only if model supports it */}
+                            {modelConfig?.params.topA && (
+                            <>
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Top-A: {topA}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig.params.topA.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[topA]}
                                 onValueChange={(value) => onSettingChange('topA', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig.params.topA.max}
+                                min={modelConfig.params.topA.min}
+                                step={modelConfig.params.topA.step}
                             />
+                            </>
+                            )}
 
+                            {/* Top-K — only if model supports it */}
+                            {modelConfig?.params.topK && (
+                            <>
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Top-K: {topK}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 0.85
+                                    Default: {modelConfig.params.topK.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[topK]}
                                 onValueChange={(value) => onSettingChange('topK', value[0])}
-                                max={1}
-                                min={0}
-                                step={0.01}
+                                max={modelConfig.params.topK.max}
+                                min={modelConfig.params.topK.min}
+                                step={modelConfig.params.topK.step}
                             />
+                            </>
+                            )}
                         </div>
                     </div>
 
-                    {/* Phrase Bias */}
+                    {/* Phrase Bias — only if model supports it */}
+                    {modelConfig?.params.phraseBias && (
                     <div className="space-y-3">
                         <Label>Phrase Bias</Label>
                         <p className="text-xs text-gray-500">
@@ -492,6 +610,7 @@ export function SidebarContent({
                             )}
                         </div>
                     </div>
+                    )}
 
                     {/* Phrases */}
                     <div className="space-y-3">
@@ -504,7 +623,7 @@ export function SidebarContent({
                         <div className="relative">
                             <Textarea
                                 placeholder="Type here..."
-                                className="min-h-[80px] pr-8"
+                                className="min-h-20 pr-8"
                             />
                             <Button
                                 variant="ghost"
@@ -641,7 +760,7 @@ export function SidebarContent({
                         <div className="relative">
                             <Textarea
                                 placeholder="Type here..."
-                                className="min-h-[80px] pr-8"
+                                className="min-h-20 pr-8"
                             />
                             <Button
                                 variant="ghost"
@@ -718,24 +837,27 @@ export function SidebarContent({
                             </div>
                         )}
 
+                        {/* Min Output Token — only if model supports it */}
+                        {modelConfig?.params.minOutputToken && (
                         <div className="space-y-2">
                             <div className="flex justify-between items-center">
                                 <span className="text-sm">
                                     Min Output Token: {minOutputToken}
                                 </span>
                                 <span className="text-sm text-gray-500">
-                                    Default: 1
+                                    Default: {modelConfig.params.minOutputToken.default}
                                 </span>
                             </div>
                             <Slider
                                 value={[minOutputToken]}
                                 onValueChange={(value) => onSettingChange('minOutputToken', value[0])}
-                                max={100}
-                                min={1}
-                                step={1}
+                                max={modelConfig.params.minOutputToken.max}
+                                min={modelConfig.params.minOutputToken.min}
+                                step={modelConfig.params.minOutputToken.step}
                                 className="w-full"
                             />
                         </div>
+                        )}
                     </div>
                 </CollapsibleContent>
             </Collapsible>

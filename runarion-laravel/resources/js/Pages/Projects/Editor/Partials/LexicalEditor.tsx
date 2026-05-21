@@ -1,4 +1,4 @@
-import { useRef, useCallback, useState } from "react";
+import { useRef, useCallback, useEffect } from "react";
 import {
     LexicalComposer,
     type InitialConfigType,
@@ -10,7 +10,7 @@ import { OnChangePlugin } from "@lexical/react/LexicalOnChangePlugin";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { ListPlugin } from "@lexical/react/LexicalListPlugin";
 import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin";
-import { 
+import {
     HEADING,
     UNORDERED_LIST,
     ORDERED_LIST,
@@ -21,30 +21,20 @@ import {
     ITALIC_UNDERSCORE,
     STRIKETHROUGH,
     INLINE_CODE,
-    $convertToMarkdownString 
 } from "@lexical/markdown";
-import {
-    $getSelection,
-    $isRangeSelection,
-    FORMAT_TEXT_COMMAND,
-    TextNode,
-    $createParagraphNode,
-} from "lexical";
-import {
-    HeadingNode,
-    $createHeadingNode,
-    QuoteNode,
-} from "@lexical/rich-text";
+import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
-import { $setBlocksType } from "@lexical/selection";
-import { ContentUpdatePlugin, EditorRefPlugin, StreamingPlugin } from "../Plugins";
+import { TextNode } from "lexical";
+import { OriginTextNode } from "../nodes/OriginTextNode";
 import {
-    ContextMenu,
-    ContextMenuContent,
-    ContextMenuItem,
-    ContextMenuTrigger,
-    ContextMenuSeparator,
-} from "@/Components/ui/context-menu";
+    ContentUpdatePlugin,
+    EditorRefPlugin,
+    StreamingPlugin,
+    ColorCodingPlugin,
+    InlineDiffPlugin,
+    OriginTrackingPlugin,
+} from "../plugins";
+import { UnifiedSelectionToolbarPlugin } from "../plugins/UnifiedSelectionToolbarPlugin";
 
 // Define supported transformers using the correct exports
 const SUPPORTED_TRANSFORMERS = [
@@ -61,10 +51,13 @@ const SUPPORTED_TRANSFORMERS = [
 ];
 
 // Debug: Log supported transformers
-console.log('Supported transformers:', SUPPORTED_TRANSFORMERS.map(t => ({
-    type: t.type,
-    tag: (t as any).tag ?? undefined
-})));
+console.log(
+    "Supported transformers:",
+    SUPPORTED_TRANSFORMERS.map((t) => ({
+        type: t.type,
+        tag: (t as any).tag ?? undefined,
+    }))
+);
 
 const editorConfig: InitialConfigType = {
     namespace: "MyEditor",
@@ -73,6 +66,9 @@ const editorConfig: InitialConfigType = {
         ListNode,
         ListItemNode,
         QuoteNode,
+        OriginTextNode,
+        // CRITICAL: Include TextNode to allow deserialization of legacy "type": "text" nodes
+        // The OriginTrackingPlugin will automatically convert these to OriginTextNode with 'user' origin
         TextNode,
     ],
     theme: {
@@ -122,11 +118,23 @@ interface LexicalEditorProps {
     setContent: (content: string) => void;
     isStreaming: boolean;
     streamingText: string;
+    baseContent: string;
+    isColorCoded: boolean;
     selectedChapter: any;
     isInteracting: boolean;
     setIsInteracting: (interacting: boolean) => void;
     isRegenerating?: boolean;
     onBlur: () => void;
+    onGetCurrentContent?: (callback: () => string) => void;
+    // Props for selection toolbar
+    workspaceId?: string;
+    projectId?: string;
+    aiModel?: string;
+    selectionToolbarMode?: string;
+    // Props for inline diff (Agent mode)
+    onApplyEdit?: (oldText: string, newText: string) => Promise<boolean>;
+    // External ref for migration support
+    editorRef?: React.MutableRefObject<any>;
 }
 
 export function LexicalEditor({
@@ -134,70 +142,54 @@ export function LexicalEditor({
     setContent,
     isStreaming,
     streamingText,
+    baseContent,
+    isColorCoded,
     selectedChapter,
     isInteracting,
     setIsInteracting,
     isRegenerating = false,
     onBlur,
+    onGetCurrentContent,
+    workspaceId,
+    projectId,
+    aiModel,
+    onApplyEdit,
+    editorRef,
 }: LexicalEditorProps) {
-    // Store editor instance for context menu
-    const editorRef = useRef<any>(null);
+    // Internal editor ref (used when external ref not provided)
+    const internalEditorRef = useRef<any>(null);
+
+    // Use external ref if provided, otherwise use internal
+    const effectiveEditorRef = editorRef || internalEditorRef;
+
+    // Expose function to get current editor content as Lexical JSON
+    useEffect(() => {
+        if (onGetCurrentContent) {
+            onGetCurrentContent(() => {
+                if (!effectiveEditorRef.current) return "";
+
+                // Serialize as Lexical JSON for proper whitespace preservation
+                const editorState = effectiveEditorRef.current.getEditorState();
+                return JSON.stringify(editorState.toJSON());
+            });
+        }
+    }, [onGetCurrentContent]);
 
     // Handle streaming updates from the plugin
-    const handleStreamingUpdate = useCallback((fullContent: string) => {
-        // Update the content state to match what's being displayed
-        // This keeps the state in sync with the visual content during streaming
-        console.log('LexicalEditor: Received streaming update', {
-            fullContentLength: fullContent.length,
-            isStreaming,
-            isRegenerating
-        });
-        // Don't update content state during streaming to avoid conflicts
-        // The final content will be set when streaming completes
-    }, [isStreaming, isRegenerating]);
-
-    // Format functions for context menu
-    const formatHeading = (level: 1 | 2 | 3 | 4 | 5 | 6) => {
-        if (editorRef.current) {
-            editorRef.current.update(() => {
-                const selection = $getSelection();
-                if ($isRangeSelection(selection)) {
-                    $setBlocksType(selection, () =>
-                        $createHeadingNode(`h${level}`)
-                    );
-                }
+    const handleStreamingUpdate = useCallback(
+        (fullContent: string) => {
+            // Update the content state to match what's being displayed
+            // This keeps the state in sync with the visual content during streaming
+            console.log("LexicalEditor: Received streaming update", {
+                fullContentLength: fullContent.length,
+                isStreaming,
+                isRegenerating,
             });
-        }
-    };
-
-    const formatParagraph = () => {
-        if (editorRef.current) {
-            editorRef.current.update(() => {
-                const selection = $getSelection();
-                if ($isRangeSelection(selection)) {
-                    $setBlocksType(selection, () => $createParagraphNode());
-                }
-            });
-        }
-    };
-
-    const formatBold = () => {
-        if (editorRef.current) {
-            editorRef.current.dispatchCommand(FORMAT_TEXT_COMMAND, "bold");
-        }
-    };
-
-    const formatItalic = () => {
-        if (editorRef.current) {
-            editorRef.current.dispatchCommand(FORMAT_TEXT_COMMAND, "italic");
-        }
-    };
-
-    const formatUnderline = () => {
-        if (editorRef.current) {
-            editorRef.current.dispatchCommand(FORMAT_TEXT_COMMAND, "underline");
-        }
-    };
+            // Don't update content state during streaming to avoid conflicts
+            // The final content will be set when streaming completes
+        },
+        [isStreaming, isRegenerating]
+    );
 
     return (
         <div
@@ -207,93 +199,105 @@ export function LexicalEditor({
                 absolute top-0 left-0 w-full h-full
             "
         >
-            <ContextMenu>
-                <ContextMenuTrigger asChild>
-                    <div 
-                        className="bg-white rounded-lg min-h-full h-auto p-6 !pb-18 flex items-start justify-start"
-                        onContextMenu={() => setIsInteracting(true)}
-                    >
-                        <LexicalComposer initialConfig={editorConfig}>
-                            <RichTextPlugin
-                                contentEditable={
-                                    <ContentEditable
-                                        className={`outline-none w-full min-h-full ${
-                                            isStreaming ? "opacity-90" : ""
-                                        }`}
-                                        onBlur={onBlur}
-                                    />
-                                }
-                                placeholder={<Placeholder />}
-                                ErrorBoundary={LexicalErrorBoundary}
+            <div
+                className={`bg-white rounded-lg min-h-full h-auto p-6 pb-18! flex items-start justify-start editor-content ${
+                    isColorCoded ? "color-coded" : ""
+                }`}
+                data-user-content-length={baseContent?.length || 0}
+            >
+                <LexicalComposer initialConfig={editorConfig}>
+                    <RichTextPlugin
+                        contentEditable={
+                            <ContentEditable
+                                className={`outline-none w-full min-h-full ${
+                                    isStreaming ? "opacity-90" : ""
+                                }`}
+                                onBlur={onBlur}
                             />
-                            <HistoryPlugin />
-                            <ListPlugin />
-                            <MarkdownShortcutPlugin transformers={SUPPORTED_TRANSFORMERS} />
-                            <OnChangePlugin
-                                onChange={(editorState, editor) => {
-                                    // Only update content state when not streaming and not interacting
-                                    // Don't update during regeneration to prevent conflicts
-                                    if (!isStreaming && !isInteracting && !isRegenerating) {
-                                        editorState.read(() => {
-                                            const newContent = $convertToMarkdownString(SUPPORTED_TRANSFORMERS);
-                                            console.log('OnChangePlugin: Content changed', {
-                                                newContentLength: newContent.length,
-                                                isStreaming,
-                                                isInteracting,
-                                                isRegenerating
-                                            });
-                                            setContent(newContent);
-                                        });
-                                    } else {
-                                        console.log('OnChangePlugin: Skipping content update', {
-                                            isStreaming,
-                                            isInteracting,
-                                            isRegenerating
-                                        });
+                        }
+                        placeholder={<Placeholder />}
+                        ErrorBoundary={LexicalErrorBoundary}
+                    />
+                    <HistoryPlugin />
+                    <ListPlugin />
+                    <MarkdownShortcutPlugin
+                        transformers={SUPPORTED_TRANSFORMERS}
+                    />
+                    <OnChangePlugin
+                        onChange={(editorState, editor) => {
+                            // Only update content state when not streaming and not interacting
+                            // Don't update during regeneration to prevent conflicts
+                            if (
+                                !isStreaming &&
+                                !isInteracting &&
+                                !isRegenerating
+                            ) {
+                                // Serialize as Lexical JSON for proper whitespace preservation
+                                const json = JSON.stringify(editorState.toJSON());
+                                console.log(
+                                    "OnChangePlugin: Content changed",
+                                    {
+                                        newContentLength: json.length,
+                                        isStreaming,
+                                        isInteracting,
+                                        isRegenerating,
                                     }
-                                }}
-                            />
-                            <ContentUpdatePlugin content={content} isStreaming={isStreaming} />
-                            <StreamingPlugin 
-                                isStreaming={isStreaming}
-                                streamingText={streamingText}
-                                baseContent={content} // Use current content as base for streaming
-                                isRegenerating={isRegenerating}
-                                onStreamingUpdate={handleStreamingUpdate}
-                            />
-                            <EditorRefPlugin editorRef={editorRef} />
-                        </LexicalComposer>
-                    </div>
-                </ContextMenuTrigger>
-                <ContextMenuContent 
-                    onCloseAutoFocus={() => setIsInteracting(false)}
-                    onEscapeKeyDown={() => setIsInteracting(false)}
-                    onPointerDownOutside={() => setIsInteracting(false)}
-                >
-                    <ContextMenuItem onClick={() => { formatHeading(1); setIsInteracting(false); }}>
-                        Heading 1
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => { formatHeading(2); setIsInteracting(false); }}>
-                        Heading 2
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => { formatHeading(3); setIsInteracting(false); }}>
-                        Heading 3
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => { formatParagraph(); setIsInteracting(false); }}>
-                        Paragraph
-                    </ContextMenuItem>
-                    <ContextMenuSeparator />
-                    <ContextMenuItem onClick={() => { formatBold(); setIsInteracting(false); }}>
-                        Bold
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => { formatItalic(); setIsInteracting(false); }}>
-                        Italic
-                    </ContextMenuItem>
-                    <ContextMenuItem onClick={() => { formatUnderline(); setIsInteracting(false); }}>
-                        Underline
-                    </ContextMenuItem>
-                </ContextMenuContent>
-            </ContextMenu>
+                                );
+                                setContent(json);
+                            } else {
+                                console.log(
+                                    "OnChangePlugin: Skipping content update",
+                                    {
+                                        isStreaming,
+                                        isInteracting,
+                                        isRegenerating,
+                                    }
+                                );
+                            }
+                        }}
+                    />
+                    <ContentUpdatePlugin
+                        content={content}
+                        isStreaming={isStreaming}
+                    />
+                    <StreamingPlugin
+                        isStreaming={isStreaming}
+                        streamingText={streamingText}
+                        baseContent={baseContent} // User text before generation (preserved)
+                        isRegenerating={isRegenerating}
+                        onStreamingUpdate={handleStreamingUpdate}
+                    />
+                    <OriginTrackingPlugin />
+                    <ColorCodingPlugin
+                        isColorCoded={isColorCoded}
+                    />
+                    <EditorRefPlugin editorRef={effectiveEditorRef} />
+
+                    {/* Unified Selection Toolbar - combines formatting + AI features */}
+                    {workspaceId && projectId && selectedChapter && (
+                        <UnifiedSelectionToolbarPlugin
+                            workspaceId={workspaceId}
+                            projectId={projectId}
+                            chapterOrder={selectedChapter.order}
+                            aiModel={aiModel}
+                            onRewriteComplete={(oldText, newText) => {
+                                console.log("Selection rewritten:", {
+                                    oldText: oldText.substring(0, 50),
+                                    newText: newText.substring(0, 50),
+                                });
+                            }}
+                        />
+                    )}
+
+                    {/* Inline Diff Plugin - for Agent mode edits */}
+                    {onApplyEdit && (
+                        <InlineDiffPlugin
+                            content={content}
+                            onApplyEdit={onApplyEdit}
+                        />
+                    )}
+                </LexicalComposer>
+            </div>
         </div>
     );
 }

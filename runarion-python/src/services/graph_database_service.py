@@ -84,7 +84,36 @@ class GraphDatabaseService:
         escaped = re.sub(r'[\r\n\t]+', ' ', escaped)
         
         return escaped
-    
+
+    def _sanitize_property_key(self, key: str) -> str:
+        """
+        Sanitize property key for Cypher compatibility.
+
+        Cypher property keys must be valid identifiers:
+        - Only alphanumeric characters and underscores
+        - Must start with a letter or underscore
+        - No special characters like '/', '-', etc.
+
+        Args:
+            key: Raw property key (may contain invalid characters)
+
+        Returns:
+            Sanitized key suitable for Cypher queries
+
+        Examples:
+            "N/A" -> "N_A"
+            "my-field" -> "my_field"
+            "123key" -> "_123key"
+        """
+        import re
+        # Replace invalid characters with underscore
+        sanitized = re.sub(r'[^a-zA-Z0-9_]', '_', str(key))
+        # Ensure it starts with letter or underscore (not digit)
+        if sanitized and sanitized[0].isdigit():
+            sanitized = '_' + sanitized
+        # Return sanitized key or a fallback if empty
+        return sanitized or '_invalid_key'
+
     def _prepare_agtype_properties(self, properties: Dict[str, Any]) -> str:
         """
         Convert a properties dictionary to AGE agtype format for Cypher queries.
@@ -101,18 +130,20 @@ class GraphDatabaseService:
         # Build Cypher object notation: {key: 'value', key2: 'value2'}
         prop_parts = []
         for key, value in properties.items():
+            # Sanitize key to ensure it's a valid Cypher identifier
+            safe_key = self._sanitize_property_key(key)
             if isinstance(value, str):
                 escaped_value = self._escape_cypher_string(value)
-                prop_parts.append(f"{key}: '{escaped_value}'")
+                prop_parts.append(f"{safe_key}: '{escaped_value}'")
             elif isinstance(value, (int, float)):
-                prop_parts.append(f"{key}: {value}")
+                prop_parts.append(f"{safe_key}: {value}")
             elif isinstance(value, bool):
-                prop_parts.append(f"{key}: {str(value).lower()}")
+                prop_parts.append(f"{safe_key}: {str(value).lower()}")
             else:
                 # For complex objects, convert to JSON and escape
                 json_str = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
                 escaped_json = self._escape_cypher_string(json_str)
-                prop_parts.append(f"{key}: '{escaped_json}'")
+                prop_parts.append(f"{safe_key}: '{escaped_json}'")
         
         return "{" + ", ".join(prop_parts) + "}"
 
@@ -395,6 +426,7 @@ class GraphDatabaseService:
     def get_age_connection(self):
         """
         Context manager for database connections with AGE session initialized.
+        Includes retry logic for connection pool exhaustion.
         
         Yields:
             Database connection with AGE session configured
@@ -404,34 +436,61 @@ class GraphDatabaseService:
         """
         conn = None
         original_search_path = None
+        max_retries = 3
+        retry_delay = 0.5  # seconds
+        import time
         
         try:
-            conn = self.db_pool.getconn()
-            
-            # Initialize AGE session
-            with conn.cursor() as cursor:
-                # Store original search path
-                cursor.execute("SELECT current_setting('search_path')")
-                original_search_path = cursor.fetchone()[0]
-                
-                if not self._initialize_age_session(cursor):
-                    raise GraphDatabaseNotAvailableError(
-                        f"Failed to initialize AGE session for graph operations. "
-                        f"Graph: {self.graph_name}"
-                    )
-            
-            yield conn
-            
-        except GraphDatabaseNotAvailableError:
-            if conn:
-                conn.rollback()
-            raise
-        except Exception as e:
-            if conn:
-                conn.rollback()
-            raise GraphDatabaseNotAvailableError(
-                f"Graph database operation failed: {e}"
-            ) from e
+            for attempt in range(max_retries):
+                try:
+                    try:
+                        conn = self.db_pool.getconn()
+                    except Exception as pool_error:
+                        if "connection pool exhausted" in str(pool_error).lower() and attempt < max_retries - 1:
+                            logger.warning(f"Connection pool exhausted (attempt {attempt + 1}/{max_retries}), retrying in {retry_delay}s...")
+                            time.sleep(retry_delay)
+                            retry_delay *= 2  # Exponential backoff
+                            continue
+                        else:
+                            raise GraphDatabaseNotAvailableError(
+                                f"Connection pool exhausted after {max_retries} attempts: {pool_error}"
+                            )
+                    
+                    # Initialize AGE session
+                    with conn.cursor() as cursor:
+                        # Store original search path
+                        cursor.execute("SELECT current_setting('search_path')")
+                        original_search_path = cursor.fetchone()[0]
+                        
+                        if not self._initialize_age_session(cursor):
+                            raise GraphDatabaseNotAvailableError(
+                                f"Failed to initialize AGE session for graph operations. "
+                                f"Graph: {self.graph_name}"
+                            )
+                    
+                    yield conn
+                    break  # Success, exit retry loop
+                    
+                except GraphDatabaseNotAvailableError:
+                    if conn:
+                        conn.rollback()
+                        self.db_pool.putconn(conn)
+                        conn = None
+                    if attempt == max_retries - 1:
+                        raise
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
+                except Exception as e:
+                    if conn:
+                        conn.rollback()
+                        self.db_pool.putconn(conn)
+                        conn = None
+                    if attempt == max_retries - 1:
+                        raise GraphDatabaseNotAvailableError(
+                            f"Graph database operation failed after {max_retries} attempts: {e}"
+                        ) from e
+                    time.sleep(retry_delay)
+                    retry_delay *= 2
         finally:
             if conn and original_search_path:
                 # Restore original search path

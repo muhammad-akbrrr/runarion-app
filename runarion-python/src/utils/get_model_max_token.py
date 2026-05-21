@@ -17,6 +17,23 @@ openai_model_max_tokens = {
     "gpt-4.1-nano": 1_047_576,
 }
 
+gemini_model_max_tokens_fallback = {
+    "gemini-2.5-flash": 1_048_576,
+    "gemini-2.5-pro": 1_048_576,
+    "gemini-2.0-flash": 1_048_576,
+    "gemini-1.5-flash": 1_048_576,
+    "gemini-1.5-pro": 2_097_152,
+}
+
+huggingface_model_max_tokens_fallback = {
+    "roberta-base": 512,
+    "deepseek-ai/DeepSeek-R1-Distill-Llama-8B": 131_072,
+}
+
+mock_model_max_tokens = {
+    "mock-replay-v1": 131_072,
+}
+
 
 @functools.lru_cache(maxsize=None)
 def list_gemini_model_max_token() -> dict[str, int]:
@@ -25,12 +42,21 @@ def list_gemini_model_max_token() -> dict[str, int]:
     The output is cached to avoid repeated API calls.
     """
     output = {}
-    models = genai.list_models()  # type: ignore
-    for model in models:
-        if not hasattr(model, "name") or not hasattr(model, "input_token_limit"):
-            continue
-        output[model.name[7:]] = model.input_token_limit
-    return output
+    try:
+        models = genai.list_models()  # type: ignore
+        for model in models:
+            if not hasattr(model, "name") or not hasattr(model, "input_token_limit"):
+                continue
+            output[model.name[7:]] = model.input_token_limit
+    except Exception:
+        output = {}
+
+    if not output:
+        return dict(gemini_model_max_tokens_fallback)
+
+    merged = dict(gemini_model_max_tokens_fallback)
+    merged.update(output)
+    return merged
 
 
 @functools.lru_cache(maxsize=64)
@@ -39,22 +65,27 @@ def get_huggingface_model_max_token(model: str) -> Optional[int]:
     Get the max token limit for a Hugging Face model using the model's tokenizer.
     The output is cached to avoid repeated loading of the tokenizer.
     """
-    tokenizer = AutoTokenizer.from_pretrained(model)
-    if hasattr(tokenizer, "model_max_length") and tokenizer.model_max_length < int(
-        1e30
-    ):
-        return tokenizer.model_max_length
-    else:
+    fallback = huggingface_model_max_tokens_fallback.get(model)
+    if fallback is not None:
+        return fallback
+
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(model)
+    except Exception:
         return None
+
+    if hasattr(tokenizer, "model_max_length") and tokenizer.model_max_length < int(1e30):
+        return tokenizer.model_max_length
+    return None
 
 
 def get_model_max_tokens(provider: str, model: str) -> int:
     """
     Get the max token limit for a model based on the provider and model name.
-    The provider can be "openai", "gemini", or other (Hugging Face).
+    The provider can be "gemini", "openai", or other (Hugging Face).
 
     Args:
-        provider: AI provider ('openai', 'gemini', etc.)
+        provider: AI provider ('gemini', 'openai', etc.)
         model: Specific model name
 
     Returns:
@@ -66,9 +97,15 @@ def get_model_max_tokens(provider: str, model: str) -> int:
     if provider == "openai":
         max_token = openai_model_max_tokens.get(model)
     elif provider == "gemini":
-        max_token = list_gemini_model_max_token().get(model)
+        max_token = gemini_model_max_tokens_fallback.get(model)
+        if max_token is None:
+            max_token = list_gemini_model_max_token().get(model)
+    elif provider == "mock":
+        max_token = mock_model_max_tokens.get(model, 131_072)
     else:
-        max_token = get_huggingface_model_max_token(model)
+        max_token = huggingface_model_max_tokens_fallback.get(model)
+        if max_token is None:
+            max_token = get_huggingface_model_max_token(model)
 
     if max_token is None:
         raise ValueError(

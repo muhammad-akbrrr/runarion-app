@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any
 import logging
 from datetime import datetime
+from src.config.provider_config import ProviderOutputBudgetConfig
 
 logger = logging.getLogger(__name__)
 
@@ -165,7 +166,34 @@ class BasePipelineStage(ABC):
         self.stage_name = stage_name
         self.generation_engine = generation_engine
         self.logger = logging.getLogger(f"{__name__}.{stage_name}")
-    
+
+    def _get_output_budget(self, task_type: str) -> int:
+        """
+        Get provider-aware output token budget for a generation task.
+
+        Args:
+            task_type: One of "json_analytical", "text_generation", "short_text"
+
+        Returns:
+            Appropriate max_output_tokens value for the current provider and task type
+        """
+        if not self.generation_engine:
+            self.logger.warning(
+                f"{self.stage_name}._get_output_budget: No generation_engine, "
+                f"using default budget for task_type={task_type}"
+            )
+            return ProviderOutputBudgetConfig.get_budget("gemini", task_type)
+
+        provider = self.generation_engine.request.provider
+        budget = ProviderOutputBudgetConfig.get_budget(provider, task_type)
+
+        self.logger.debug(
+            f"{self.stage_name}: Output budget for provider={provider}, "
+            f"task_type={task_type} -> {budget} tokens"
+        )
+
+        return budget
+
     @abstractmethod
     def _execute_stage(self, context: PipelineStageContext) -> PipelineStageResult:
         """
@@ -337,7 +365,7 @@ class BasePipelineStage(ABC):
             metadata_updates: Metadata updates to apply
         """
         try:
-            from utils.database_utils import utf8_database_connection, ensure_utf8_json
+            from src.utils.database_utils import utf8_database_connection, ensure_utf8_json
             
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()
@@ -392,7 +420,7 @@ class BasePipelineStage(ABC):
             return context.get('connection')
         else:
             # Return connection manager for non-transactional operations
-            from utils.database_utils import utf8_database_connection
+            from src.utils.database_utils import utf8_database_connection
             return utf8_database_connection(self.db_pool)
     
     def validate_required_parameters(self, context: PipelineStageContext, 

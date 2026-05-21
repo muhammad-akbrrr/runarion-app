@@ -6,17 +6,20 @@ use Illuminate\Http\Request;
 use App\Models\Projects;
 use App\Models\ProjectContent;
 use App\Http\Controllers\Controller;
+use App\Models\AuthorStyle;
 use Inertia\Inertia;
 use Illuminate\Support\Str;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
-use App\Jobs\ManuscriptDeconstructionJob;
 use App\Jobs\StreamLLMJob;
 use App\Events\ProjectContentUpdated;
 use App\Events\LLMStreamCompleted;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Cache;
+use App\Services\AuthorStyleFormatter;
+use App\Services\NovelPipelineOrchestratorService;
+use App\Services\ProjectPipelineStateService;
 use App\Services\VersionControlService;
 use App\Events\OperationStateChanged;
 
@@ -24,8 +27,12 @@ class MainEditorController extends Controller
 {
     protected VersionControlService $versionControl;
 
-    public function __construct(VersionControlService $versionControl)
-    {
+    public function __construct(
+        VersionControlService $versionControl,
+        private readonly AuthorStyleFormatter $authorStyleFormatter,
+        private readonly NovelPipelineOrchestratorService $novelPipelineOrchestrator,
+        private readonly ProjectPipelineStateService $projectPipelineStateService,
+    ) {
         $this->versionControl = $versionControl;
     }
     /**
@@ -33,40 +40,68 @@ class MainEditorController extends Controller
      */
     public function editor(Request $request, string $workspace_id, string $project_id)
     {
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->first();
+        try {
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->first();
 
-        if (!$project) {
-            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
-        }
-
-        // Query project content
-        $projectContent = ProjectContent::where('project_id', $project_id)->first();
-
-        // Extract chapters from JSON content field
-        $chapters = [];
-        if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
-            $chapters = $projectContent->content;
-            
-            // Get current content from version control for each chapter
-            foreach ($chapters as &$chapter) {
-                $currentContent = $this->versionControl->getCurrentContent($project_id, $chapter['order']);
-                if ($currentContent !== null) {
-                    $chapter['content'] = $currentContent;
-                }
-                
-                // Add navigation info for version control
-                $chapter['navigation_info'] = $this->versionControl->getNavigationInfo($project_id, $chapter['order']);
+            if (!$project) {
+                return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
+                    ->withErrors(['project' => 'Project not found']);
             }
-        }
 
-        return Inertia::render('Projects/Editor/Main', [
-            'workspaceId' => $workspace_id,
-            'projectId' => $project_id,
-            'project' => $project,
-            'chapters' => $chapters,
-        ]);
+            // Query project content
+            $projectContent = ProjectContent::where('project_id', $project_id)->first();
+
+            // Extract chapters from JSON content field
+            $chapters = [];
+            if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
+                $chapters = $projectContent->content;
+
+                // Get current content from version control for each chapter
+                foreach ($chapters as &$chapter) {
+                    try {
+                        $currentContent = $this->versionControl->getCurrentContent($project_id, $chapter['order']);
+                        if ($currentContent !== null) {
+                            $chapter['content'] = $currentContent;
+                        }
+
+                        // Add navigation info for version control
+                        $chapter['navigation_info'] = $this->versionControl->getNavigationInfo($project_id, $chapter['order']);
+                    } catch (\Exception $e) {
+                        Log::warning('Error getting version control info for chapter', [
+                            'project_id' => $project_id,
+                            'chapter_order' => $chapter['order'] ?? null,
+                            'error' => $e->getMessage()
+                        ]);
+                        // Continue with default content
+                    }
+                }
+            }
+
+            $authorStyles = $this->authorStyleFormatter->formatCollection(
+                AuthorStyle::where('workspace_id', $workspace_id)->get()
+            );
+            $projectPipelineLock = $this->projectPipelineStateService->getProjectLock($workspace_id, $project_id);
+
+            return Inertia::render('Projects/Editor/Main', [
+                'workspaceId' => $workspace_id,
+                'projectId' => $project_id,
+                'project' => $project,
+                'chapters' => $chapters,
+                'authorStyles' => $authorStyles,
+                'projectPipelineLock' => $projectPipelineLock,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error loading editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString()
+            ]);
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
+                ->withErrors(['editor' => 'Failed to load editor: ' . $e->getMessage()]);
+        }
     }
 
     /**
@@ -102,73 +137,43 @@ class MainEditorController extends Controller
             $project->completed_onboarding = true;
             $project->save();
 
-            $chapters = [];
-            if ($project && $project->content && is_array($project->content)) {
-                $chapters = $project->content;
-            }
-
-            return Inertia::render('Projects/Editor/Main', [
-                'workspaceId' => $workspace_id,
-                'projectId' => $project_id,
-                'project' => $project,
-                'chapters' => $chapters,
-            ]);
+            return redirect()->route('workspace.projects.editor', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+            ])->with('success', 'Project onboarding completed.');
         }
 
         if ($method === 'draft') {
             $user = Auth::user();
             $validated = $request->validate([
-                'draft_file' => 'required|file|mimes:pdf|max:102400',
+                'draft_file' => 'required|file|mimes:pdf,txt,doc,docx|max:102400',
                 'author_style_type' => 'required|in:existing,new',
                 'writing_perspective' => 'required|string',
                 'selectedAuthorStyle' => 'required_if:author_style_type,existing',
                 'newAuthorFiles' => 'required_if:author_style_type,new|array|sometimes',
-                'newAuthorFiles.*' => 'file|mimes:pdf|max:102400|sometimes',
+                'newAuthorFiles.*' => 'file|mimes:pdf,txt,doc,docx|max:102400|sometimes',
                 'newAuthorName' => 'required_if:author_style_type,new|sometimes|string',
             ]);
 
-            // Store draft file
-            $draftFile = $request->file('draft_file');
-            $draftPath = $draftFile->store('drafts', 'local');
-            $draftFullPath = storage_path('app/' . $draftPath);
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
 
-            // Add file existence check and log
-            if (!file_exists($draftFullPath)) {
-                throw new \Exception('Draft file missing after store: ' . $draftFullPath);
-            }
-
-            $authorStyleType = $validated['author_style_type'];
-            $authorStyleId = null;
-            $authorSamplePaths = [];
-            $newAuthorName = null;
-
-            if ($authorStyleType === 'existing') {
-                $authorStyleId = $validated['selectedAuthorStyle'];
-            } else if ($authorStyleType === 'new') {
-                $newAuthorName = $validated['newAuthorName'];
-                $newAuthorFiles = $request->file('newAuthorFiles', []);
-                foreach ($newAuthorFiles as $idx => $file) {
-                    $path = $file->store('author_samples', 'local');
-                    $authorSamplePaths[] = storage_path('app/' . $path);
-                }
-            }
-
-            $writingPerspective = $validated['writing_perspective'];
-
-            // Dispatch the job
-            ManuscriptDeconstructionJob::dispatch(
-                $user ? $user->id : null,
-                $workspace_id,
-                $project_id,
-                $draftFullPath,
-                $authorStyleType,
-                $authorStyleId,
-                $authorSamplePaths,
-                $newAuthorName,
-                $writingPerspective
+            $this->novelPipelineOrchestrator->startProjectPipeline(
+                $project,
+                $user,
+                $request->file('draft_file'),
+                [
+                    'author_style_type' => $validated['author_style_type'],
+                    'selected_author_style' => $validated['selectedAuthorStyle'] ?? null,
+                    'new_author_name' => $validated['newAuthorName'] ?? null,
+                    'new_author_files' => $request->file('newAuthorFiles', []),
+                    'writing_perspective' => $validated['writing_perspective'],
+                ],
             );
 
-            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
+            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
+                ->with('success', 'Novel pipeline processing started. Your project will unlock once the rewritten manuscript is ready.');
         }
         return response()->json(['error' => 'Invalid method'], 400);
     }
@@ -196,10 +201,10 @@ class MainEditorController extends Controller
         }
 
         $chapters = $projectContent->content ?? [];
-        
+
         // Validate for duplicate chapter names (case-insensitive with whitespace trimming)
         $normalizedNewName = strtolower(trim($validated['chapter_name']));
-        
+
         foreach ($chapters as $chapter) {
             $existingName = strtolower(trim($chapter['chapter_name']));
             if ($existingName === $normalizedNewName) {
@@ -208,8 +213,23 @@ class MainEditorController extends Controller
                 ]);
             }
         }
-        
+
         $newOrder = count($chapters);
+
+        // Defensive cleanup: ensure no leftover version control data exists for this order
+        // This can happen if a chapter was deleted but version control wasn't cleaned up properly
+
+        try {
+            $this->versionControl->deleteChapterVersionControl($project_id, $newOrder);
+        } catch (\Exception $e) {
+            // Log but don't fail - this is defensive cleanup
+            Log::warning('Error cleaning up version control when creating new chapter', [
+                'project_id' => $project_id,
+                'chapter_order' => $newOrder,
+                'error' => $e->getMessage()
+            ]);
+        }
+
         $newChapter = [
             'order' => $newOrder,
             'chapter_name' => $validated['chapter_name'],
@@ -225,6 +245,197 @@ class MainEditorController extends Controller
             'workspace_id' => $workspace_id,
             'project_id' => $project_id,
         ]);
+    }
+
+    /**
+     * Get all chapters for a project as JSON.
+     */
+    public function getChapters(Request $request, string $workspace_id, string $project_id)
+    {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (!$project) {
+            return response()->json(['error' => 'Project not found'], 404);
+        }
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->first();
+        $chapters = [];
+
+        if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
+            $chapters = $projectContent->content;
+
+            // Get current content from version control for each chapter (same as editor method)
+            foreach ($chapters as &$chapter) {
+                try {
+                    $currentContent = $this->versionControl->getCurrentContent($project_id, $chapter['order']);
+                    if ($currentContent !== null) {
+                        $chapter['content'] = $currentContent;
+                    }
+                } catch (\Exception $e) {
+                    Log::warning('Error getting version control content for chapter in getChapters', [
+                        'project_id' => $project_id,
+                        'chapter_order' => $chapter['order'] ?? null,
+                        'error' => $e->getMessage()
+                    ]);
+                    // Keep existing content if any
+                }
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'chapters' => $chapters
+        ], 200);
+    }
+
+    /**
+     * Update a chapter's title and/or content.
+     */
+    public function updateChapter(Request $request, string $workspace_id, string $project_id, int $order)
+    {
+        $validated = $request->validate([
+            'chapter_name' => 'sometimes|string|max:255',
+            'content' => 'sometimes|string',
+        ]);
+
+        // Ensure at least one field is provided
+        if (empty($validated)) {
+            return response()->json([
+                'error' => 'At least chapter_name or content must be provided'
+            ], 422);
+        }
+
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+        $chapters = $projectContent->content ?? [];
+
+        // Validate for duplicate chapter names (excluding current chapter) if chapter_name is being updated
+        if (isset($validated['chapter_name'])) {
+            $normalizedNewName = strtolower(trim($validated['chapter_name']));
+            foreach ($chapters as $chapter) {
+                if ($chapter['order'] !== $order) {
+                    $existingName = strtolower(trim($chapter['chapter_name']));
+                    if ($existingName === $normalizedNewName) {
+                        return response()->json([
+                            'error' => "A chapter named '{$chapter['chapter_name']}' already exists."
+                        ], 422);
+                    }
+                }
+            }
+        }
+
+        // Update chapter fields
+        $updated = false;
+        foreach ($chapters as &$chapter) {
+            if (isset($chapter['order']) && $chapter['order'] === $order) {
+                if (isset($validated['chapter_name'])) {
+                    $chapter['chapter_name'] = $validated['chapter_name'];
+                }
+                if (isset($validated['content'])) {
+                    $chapter['content'] = $validated['content'];
+                }
+                $updated = true;
+                break;
+            }
+        }
+
+        if (!$updated) {
+            return response()->json([
+                'error' => 'Chapter not found'
+            ], 404);
+        }
+
+        $projectContent->content = $chapters;
+        $projectContent->save();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Chapter updated successfully',
+            'chapters' => $chapters
+        ], 200);
+    }
+
+    /**
+     * Delete a chapter.
+     */
+    public function deleteChapter(Request $request, string $workspace_id, string $project_id, int $order)
+    {
+        $project = Projects::where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->firstOrFail();
+
+        $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+        $chapters = $projectContent->content ?? [];
+
+        // Remove the chapter (use == for type-coerced comparison to handle int/string mismatch)
+        $chapterCountBefore = count($chapters);
+        $chapters = array_filter($chapters, function ($chapter) use ($order) {
+            // Use != instead of !== to allow type coercion (e.g., "3" == 3)
+            return isset($chapter['order']) && (int) $chapter['order'] != (int) $order;
+        });
+        $chapterCountAfter = count($chapters);
+
+        Log::info('Chapter deletion', [
+            'project_id' => $project_id,
+            'order_to_delete' => $order,
+            'chapters_before' => $chapterCountBefore,
+            'chapters_after' => $chapterCountAfter,
+            'deleted' => $chapterCountBefore - $chapterCountAfter
+        ]);
+
+        // Build mapping of old orders to new orders for version control reordering
+        // Before reordering, capture the old orders
+        $oldOrders = [];
+        foreach (array_values($chapters) as $index => $chapter) {
+            $oldOrder = $chapter['order'] ?? $index;
+            $oldOrders[$oldOrder] = $index; // Map old order => new order
+        }
+
+        // Reorder remaining chapters
+        $reorderedChapters = [];
+        foreach (array_values($chapters) as $index => $chapter) {
+            $chapter['order'] = $index;
+            $reorderedChapters[] = $chapter;
+        }
+
+        $projectContent->content = $reorderedChapters;
+        $projectContent->save();
+
+        // Clean up version control for the deleted chapter
+        try {
+            $this->versionControl->deleteChapterVersionControl($project_id, $order);
+        } catch (\Exception $e) {
+            Log::warning('Error cleaning up version control for deleted chapter', [
+                'project_id' => $project_id,
+                'chapter_order' => $order,
+                'error' => $e->getMessage()
+            ]);
+        }
+
+        // Reorder version control data for remaining chapters
+        // Only reorder chapters that actually changed order
+        if (!empty($oldOrders)) {
+            try {
+                $this->versionControl->reorderChapters($project_id, $oldOrders);
+            } catch (\Exception $e) {
+                Log::warning('Error reordering version control data after chapter deletion', [
+                    'project_id' => $project_id,
+                    'order_mapping' => $oldOrders,
+                    'error' => $e->getMessage()
+                ]);
+            }
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Chapter deleted successfully',
+            'chapters' => $reorderedChapters
+        ], 200);
     }
 
     /**
@@ -296,7 +507,7 @@ class MainEditorController extends Controller
             'storyPov' => 'nullable|string',
             'temperature' => 'nullable|numeric|min:0|max:2',
             'repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
-            'outputLength' => 'nullable|integer|min:50|max:1000',
+            'outputLength' => 'nullable|integer|min:50|max:8192',
             'minOutputToken' => 'nullable|integer|min:1|max:100',
             'topP' => 'nullable|numeric|min:0|max:1',
             'tailFree' => 'nullable|numeric|min:0|max:1',
@@ -333,8 +544,10 @@ class MainEditorController extends Controller
             $validated = $request->validate([
                 'prompt' => 'nullable|string',
                 'order' => 'required|integer',
+                'chapter_name' => 'nullable|string|max:500',
                 'settings' => 'nullable|array',
                 'settings.currentPreset' => 'nullable|string',
+                'settings.authorProfile' => 'nullable|string',
                 'settings.aiModel' => 'nullable|string',
                 'settings.memory' => 'nullable|string',
                 'settings.storyGenre' => 'nullable|string',
@@ -342,7 +555,7 @@ class MainEditorController extends Controller
                 'settings.storyPov' => 'nullable|string',
                 'settings.temperature' => 'nullable|numeric|min:0|max:2',
                 'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
-                'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+                'settings.outputLength' => 'nullable|integer|min:50|max:8192',
                 'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
                 'settings.topP' => 'nullable|numeric|min:0|max:1',
                 'settings.tailFree' => 'nullable|numeric|min:0|max:1',
@@ -365,6 +578,9 @@ class MainEditorController extends Controller
             $settings = $validated['settings'] ?? [];
             $sessionId = Str::uuid()->toString();
 
+            // Extract chapter_name (prioritize request, fallback to lookup)
+            $chapterName = $validated['chapter_name'] ?? null;
+
             // Verify the chapter exists
             $projectContent = ProjectContent::where('project_id', $project_id)->first();
             if (!$projectContent) {
@@ -376,6 +592,10 @@ class MainEditorController extends Controller
             foreach ($chapters as $chapter) {
                 if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
                     $chapterExists = true;
+                    // If chapter_name wasn't provided, look it up from database
+                    if (!$chapterName) {
+                        $chapterName = $chapter['chapter_name'] ?? 'Untitled';
+                    }
                     break;
                 }
             }
@@ -384,34 +604,44 @@ class MainEditorController extends Controller
                 return response()->json(['error' => 'Chapter not found'], 404);
             }
 
-            // Get current content and node info for parent tracking
-            $currentContent = $this->versionControl->getCurrentContent($project_id, $validated['order']);
-            if ($currentContent === null) {
-                // Initialize if not exists
-                $currentContent = $validated['prompt'] ?? '';
+            // Final fallback for chapter name
+            $chapterName = $chapterName ?? 'Untitled';
+
+            // CRITICAL: Use the prompt from request (current editor content), not database
+            // The frontend sends the current editor content as 'prompt'
+            $currentContent = $validated['prompt'] ?? '';
+
+            // Initialize version control if needed
+            $existingContent = $this->versionControl->getCurrentContent($project_id, $validated['order']);
+            if ($existingContent === null) {
                 $this->versionControl->initializeChapter($project_id, $validated['order'], $currentContent);
             }
+            // Note: We don't update version control here - the current content is what user typed
+            // Version control will create a new node when generation completes
 
             Log::info('Text generation request', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
                 'chapter_order' => $validated['order'],
+                'prompt_length' => strlen($currentContent),
                 'settings' => $settings,
                 'session_id' => $sessionId,
                 'user_id' => $user->id,
                 'model' => $settings['aiModel'] ?? 'default',
             ]);
 
-            // Dispatch streaming job
+            // Dispatch streaming job with CURRENT editor content
             StreamLLMJob::dispatch(
                 $workspace_id,
                 $project_id,
                 $validated['order'],
-                $currentContent,
+                $currentContent, // Use current editor content, not stale database content
                 $settings,
                 $user->id,
                 $sessionId,
-                false // isRegenerate flag
+                false, // isRegenerate flag
+                null, // regenerateNodeId
+                $chapterName // chapter name for AI context
             );
 
             return redirect()->route('workspace.projects.editor', [
@@ -425,7 +655,7 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'errors' => $e->errors()
             ]);
-            
+
             return redirect()->route('workspace.projects.editor', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
@@ -437,7 +667,7 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'error' => $e->getMessage()
             ]);
-            
+
             return redirect()->route('workspace.projects.editor', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
@@ -453,7 +683,7 @@ class MainEditorController extends Controller
             ]);
 
             $errorMessage = 'Failed to start text generation. Please try again.';
-            
+
             // Provide specific error messages
             if (str_contains($e->getMessage(), 'quota') || str_contains($e->getMessage(), 'limit')) {
                 $errorMessage = 'Generation quota exceeded. Please try again later.';
@@ -492,19 +722,23 @@ class MainEditorController extends Controller
                 'content.order' => 'required_with:content|integer',
                 'content.content' => 'sometimes|nullable|string|max:1000000',
                 'content.trigger' => 'nullable|string|in:manual,auto,llm_generation',
-                
+                'content.ai_ranges' => 'nullable|array',
+                'content.ai_ranges.*' => 'nullable|array',
+                'content.ai_ranges.*.*' => 'nullable|integer',
+
                 // Settings validation
                 'settings' => 'nullable|array',
                 'settings.currentPreset' => 'nullable|string',
                 'settings.authorProfile' => 'nullable|string',
                 'settings.aiModel' => 'nullable|string',
+                'settings.selectionToolbarMode' => 'nullable|string|in:formatting,ai-rewrite',
                 'settings.memory' => 'nullable|string',
                 'settings.storyGenre' => 'nullable|string',
                 'settings.storyTone' => 'nullable|string',
                 'settings.storyPov' => 'nullable|string',
                 'settings.temperature' => 'nullable|numeric|min:0|max:2',
                 'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
-                'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+                'settings.outputLength' => 'nullable|integer|min:50|max:8192',
                 'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
                 'settings.topP' => 'nullable|numeric|min:0|max:1',
                 'settings.tailFree' => 'nullable|numeric|min:0|max:1',
@@ -516,6 +750,14 @@ class MainEditorController extends Controller
                 'settings.bannedPhrases.*' => 'nullable|string',
                 'settings.stopSequences' => 'nullable|array',
                 'settings.stopSequences.*' => 'nullable|string',
+                // Auditor Tab Settings
+                'settings.auditorAnalysisModel' => 'nullable|string',
+                // Advisor Tab Settings
+                'settings.advisorModel' => 'nullable|string',
+                'settings.advisorSystemInstructions' => 'nullable|string',
+                'settings.advisorThinkingBudget' => 'nullable|integer|min:0|max:24576',
+                'settings.advisorOutputLength' => 'nullable|integer|min:100|max:16000',
+                'settings.advisorTemperature' => 'nullable|numeric|min:0|max:2',
             ]);
 
             $project = Projects::where('id', $project_id)
@@ -532,84 +774,99 @@ class MainEditorController extends Controller
             while ($attempt < $maxAttempts) {
                 try {
                     \DB::transaction(function () use ($validated, $project, $project_id, $workspace_id, &$updatedChapters) {
-            // Update content if provided
-            if (isset($validated['content'])) {
-                $contentData = $validated['content'];
-                
-                $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
-                $chapters = $projectContent->content ?? [];
+                        // Update content if provided
+                        if (isset($validated['content'])) {
+                            $contentData = $validated['content'];
 
-                // Update chapter content in JSON
-                foreach ($chapters as &$chapter) {
-                    if (isset($chapter['order']) && $chapter['order'] === $contentData['order']) {
-                        $chapter['content'] = $contentData['content'] ?? '';
-                        break;
-                    }
-                }
+                            $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
+                            $chapters = $projectContent->content ?? [];
 
-                $projectContent->content = $chapters;
-                $projectContent->updateLastEdited();
-                $projectContent->save();
+                            // Update chapter content and ai_ranges in JSON
+                            foreach ($chapters as &$chapter) {
+                                if (isset($chapter['order']) && $chapter['order'] === $contentData['order']) {
+                                    $chapter['content'] = $contentData['content'] ?? '';
+                                    // Update ai_ranges if provided
+                                    if (array_key_exists('ai_ranges', $contentData)) {
+                                        $chapter['ai_ranges'] = $contentData['ai_ranges'];
+                                    }
+                                    break;
+                                }
+                            }
 
-                // CRITICAL FIX: Also update version control current content
-                // This is the key fix - after generation, manual edits must update the ContentVersion
-                $currentState = $this->versionControl->getCurrentState($project_id, $contentData['order']);
-                
-                if ($currentState) {
-                    // Update the current version's content
-                    // This ensures that getCurrentContent() returns the manually edited content
-                    $updated = $this->versionControl->updateCurrentVersion(
-                        $currentState['node_id'],
-                        $currentState['version_index'],
-                        $contentData['content'] ?? ''
-                    );
-                    
-                    if (!$updated) {
-                        Log::warning('Failed to update version control, but ProjectContent saved', [
-                            'project_id' => $project_id,
-                            'chapter_order' => $contentData['order'],
-                            'node_id' => $currentState['node_id'],
-                            'version_index' => $currentState['version_index']
-                        ]);
-                    }
-                } else {
-                    // Initialize if doesn't exist (first save before any generation)
-                    $this->versionControl->initializeChapter(
-                        $project_id,
-                        $contentData['order'],
-                        $contentData['content'] ?? ''
-                    );
-                }
-                
-                // Clear cache to ensure fresh data on next load
-                Cache::forget("content:{$project_id}:{$contentData['order']}");
-                Cache::forget("navigation:{$project_id}:{$contentData['order']}");
+                            $projectContent->content = $chapters;
+                            $projectContent->content_format = 'lexical-json';
+                            $projectContent->updateLastEdited();
+                            $projectContent->save();
 
-                $updatedChapters = $chapters;
+                            // CRITICAL FIX: Also update version control current content
+                            // This is the key fix - after generation, manual edits must update the ContentVersion
+                            $currentState = $this->versionControl->getCurrentState($project_id, $contentData['order']);
 
-                Log::info('Unified save completed', [
-                    'project_id' => $project_id,
-                    'chapter_order' => $contentData['order'],
-                    'content_length' => strlen($contentData['content'] ?? ''),
-                    'trigger' => $contentData['trigger'] ?? 'manual',
-                    'version_control_updated' => isset($currentState)
-                ]);
+                            if ($currentState) {
+                                // Update the current version's content
+                                // This ensures that getCurrentContent() returns the manually edited content
+                                $updated = $this->versionControl->updateCurrentVersion(
+                                    $currentState['node_id'],
+                                    $currentState['version_index'],
+                                    $contentData['content'] ?? ''
+                                );
 
-                // Broadcast content update event
-                broadcast(new ProjectContentUpdated(
-                    $workspace_id,
-                    $project_id,
-                    $contentData['order'],
-                    $contentData['content'] ?? '',
-                    $contentData['trigger'] ?? 'manual'
-                ));
-            }
+                                if (!$updated) {
+                                    Log::warning('Failed to update version control, but ProjectContent saved', [
+                                        'project_id' => $project_id,
+                                        'chapter_order' => $contentData['order'],
+                                        'node_id' => $currentState['node_id'],
+                                        'version_index' => $currentState['version_index']
+                                    ]);
+                                }
+                            } else {
+                                // Initialize if doesn't exist (first save before any generation)
+                                $this->versionControl->initializeChapter(
+                                    $project_id,
+                                    $contentData['order'],
+                                    $contentData['content'] ?? ''
+                                );
+                            }
+
+                            // Clear cache to ensure fresh data on next load
+                            Cache::forget("content:{$project_id}:{$contentData['order']}");
+                            Cache::forget("navigation:{$project_id}:{$contentData['order']}");
+
+                            $updatedChapters = $chapters;
+
+                            Log::info('Unified save completed', [
+                                'project_id' => $project_id,
+                                'chapter_order' => $contentData['order'],
+                                'content_length' => strlen($contentData['content'] ?? ''),
+                                'trigger' => $contentData['trigger'] ?? 'manual',
+                                'version_control_updated' => isset($currentState)
+                            ]);
+
+                            // Broadcast content update event
+                            broadcast(new ProjectContentUpdated(
+                                $workspace_id,
+                                $project_id,
+                                $contentData['order'],
+                                $contentData['content'] ?? '',
+                                $contentData['trigger'] ?? 'manual'
+                            ));
+                        }
 
                         // Update settings if provided
                         if (isset($validated['settings'])) {
-                            $project->settings = $validated['settings'];
+                            // Merge settings to preserve existing values
+                            $existingSettings = $project->settings ?? [];
+                            $newSettings = $validated['settings'] ?? [];
+                            $project->settings = array_merge($existingSettings, $newSettings);
                             $project->save();
-                            
+
+                            // Log settings save for debugging
+                            Log::info('Settings saved', [
+                                'project_id' => $project_id,
+                                'aiModel' => $project->settings['aiModel'] ?? 'not set',
+                                'all_settings' => $project->settings,
+                            ]);
+
                             Log::info('Settings updated', [
                                 'project_id' => $project_id,
                                 'settings_keys' => array_keys($validated['settings'])
@@ -623,18 +880,18 @@ class MainEditorController extends Controller
                 } catch (\Illuminate\Database\QueryException $e) {
                     $attempt++;
                     $lastException = $e;
-                    
+
                     // Check if it's a deadlock or lock timeout
-                    $isDeadlock = str_contains($e->getMessage(), 'Deadlock') || 
-                                  str_contains($e->getMessage(), 'Lock wait timeout') ||
-                                  $e->getCode() === '40001' || 
-                                  $e->getCode() === '40P01';
-                    
+                    $isDeadlock = str_contains($e->getMessage(), 'Deadlock') ||
+                        str_contains($e->getMessage(), 'Lock wait timeout') ||
+                        $e->getCode() === '40001' ||
+                        $e->getCode() === '40P01';
+
                     if ($isDeadlock && $attempt < $maxAttempts) {
                         // Wait with exponential backoff before retrying
                         $delay = min(100 * pow(2, $attempt - 1), 1000); // 100ms, 200ms, 400ms max
                         usleep($delay * 1000);
-                        
+
                         Log::warning('Database deadlock detected, retrying', [
                             'attempt' => $attempt,
                             'max_attempts' => $maxAttempts,
@@ -642,10 +899,10 @@ class MainEditorController extends Controller
                             'project_id' => $project_id,
                             'error' => $e->getMessage()
                         ]);
-                        
+
                         continue;
                     }
-                    
+
                     // Not a deadlock or max attempts reached
                     throw $e;
                 }
@@ -659,9 +916,12 @@ class MainEditorController extends Controller
                 'attempts' => $attempt + 1
             ]);
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            // For XHR/Inertia PATCH requests, return the updated chapters as JSON
+            // This prevents page reloads and allows the frontend to update state
+            return response()->json([
+                'success' => true,
+                'chapters' => $updatedChapters,
+                'message' => 'Content saved successfully'
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
@@ -670,7 +930,7 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'errors' => $e->errors()
             ]);
-            
+
             return back()->withErrors($e->errors())->withInput();
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -679,7 +939,7 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'error' => $e->getMessage()
             ]);
-            
+
             return back()->withErrors([
                 'save' => 'Project not found. Please refresh the page.'
             ])->setStatusCode(404);
@@ -692,9 +952,9 @@ class MainEditorController extends Controller
                 'code' => $e->getCode(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             $errorMessage = 'Failed to save changes due to a database error. Please try again.';
-            
+
             // Check for specific database errors
             if (str_contains($e->getMessage(), 'Deadlock') || str_contains($e->getMessage(), 'Lock wait timeout')) {
                 $errorMessage = 'Save failed due to concurrent updates. Please try again.';
@@ -703,7 +963,7 @@ class MainEditorController extends Controller
             } elseif (str_contains($e->getMessage(), 'Data too long')) {
                 $errorMessage = 'Content is too large. Please reduce the size and try again.';
             }
-            
+
             return back()->withErrors([
                 'save' => $errorMessage
             ])->setStatusCode(500);
@@ -715,7 +975,7 @@ class MainEditorController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
-            
+
             return back()->withErrors([
                 'save' => 'An unexpected error occurred. Please try again.'
             ])->setStatusCode(500);
@@ -786,8 +1046,10 @@ class MainEditorController extends Controller
         try {
             $validated = $request->validate([
                 'order' => 'required|integer',
+                'chapter_name' => 'nullable|string|max:500',
                 'settings' => 'nullable|array',
                 'settings.currentPreset' => 'nullable|string',
+                'settings.authorProfile' => 'nullable|string',
                 'settings.aiModel' => 'nullable|string',
                 'settings.memory' => 'nullable|string',
                 'settings.storyGenre' => 'nullable|string',
@@ -795,7 +1057,7 @@ class MainEditorController extends Controller
                 'settings.storyPov' => 'nullable|string',
                 'settings.temperature' => 'nullable|numeric|min:0|max:2',
                 'settings.repetitionPenalty' => 'nullable|numeric|min:-2|max:2',
-                'settings.outputLength' => 'nullable|integer|min:50|max:1000',
+                'settings.outputLength' => 'nullable|integer|min:50|max:8192',
                 'settings.minOutputToken' => 'nullable|integer|min:1|max:100',
                 'settings.topP' => 'nullable|numeric|min:0|max:1',
                 'settings.tailFree' => 'nullable|numeric|min:0|max:1',
@@ -823,6 +1085,21 @@ class MainEditorController extends Controller
 
             $settings = $validated['settings'] ?? [];
             $sessionId = Str::uuid()->toString();
+
+            // Extract chapter_name (prioritize request, fallback to lookup)
+            $chapterName = $validated['chapter_name'] ?? null;
+            if (!$chapterName) {
+                $projectContent = ProjectContent::where('project_id', $project_id)->first();
+                if ($projectContent && $projectContent->content) {
+                    foreach ($projectContent->content as $chapter) {
+                        if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
+                            $chapterName = $chapter['chapter_name'] ?? 'Untitled';
+                            break;
+                        }
+                    }
+                }
+            }
+            $chapterName = $chapterName ?? 'Untitled';
 
             // Get current state to know which node we're regenerating
             $currentState = $this->versionControl->getCurrentState($project_id, $validated['order']);
@@ -875,7 +1152,8 @@ class MainEditorController extends Controller
                 $user->id,
                 $sessionId,
                 true, // isRegenerate flag
-                $currentState['node_id'] // Pass current node ID for regeneration
+                $currentState['node_id'], // Pass current node ID for regeneration
+                $chapterName // chapter name for AI context
             );
 
             return redirect()->route('workspace.projects.editor', [
@@ -924,13 +1202,28 @@ class MainEditorController extends Controller
                 return response()->json(['error' => 'Failed to switch version'], 400);
             }
 
-            // Broadcast content update event
+            // Get updated navigation info
+            $navigationInfo = $this->versionControl->getNavigationInfo($project_id, $validated['order']);
+
+            // Broadcast content update event with version info for frontend caching
             broadcast(new ProjectContentUpdated(
                 $workspace_id,
                 $project_id,
                 $validated['order'],
                 $result['content'],
-                'version_switch'
+                'version_switch',
+                $result['version_index'] ?? $validated['version_index'],
+                $navigationInfo
+            ));
+
+            // Broadcast operation state change with navigation info
+            broadcast(new OperationStateChanged(
+                $workspace_id,
+                $project_id,
+                $validated['order'],
+                'version_switch',
+                false,
+                $navigationInfo
             ));
 
             return redirect()->route('workspace.projects.editor', [
@@ -990,13 +1283,15 @@ class MainEditorController extends Controller
             // Get updated navigation info
             $navigationInfo = $this->versionControl->getNavigationInfo($project_id, $validated['order']);
 
-            // Broadcast content update and unlock
+            // Broadcast content update with version info for frontend caching
             broadcast(new ProjectContentUpdated(
                 $workspace_id,
                 $project_id,
                 $validated['order'],
                 $result['content'] ?? '',
-                'undo_step'
+                'undo_step',
+                $result['version_index'] ?? null,
+                $navigationInfo
             ));
 
             broadcast(new OperationStateChanged(
@@ -1054,13 +1349,28 @@ class MainEditorController extends Controller
                 return response()->json(['error' => 'Cannot redo - no child steps available'], 400);
             }
 
-            // Broadcast content update event
+            // Get updated navigation info
+            $navigationInfo = $this->versionControl->getNavigationInfo($project_id, $validated['order']);
+
+            // Broadcast content update with version info for frontend caching
             broadcast(new ProjectContentUpdated(
                 $workspace_id,
                 $project_id,
                 $validated['order'],
                 $result['content'] ?? '',
-                'redo_step'
+                'redo_step',
+                $result['version_index'] ?? null,
+                $navigationInfo
+            ));
+
+            // Broadcast operation state change with navigation info
+            broadcast(new OperationStateChanged(
+                $workspace_id,
+                $project_id,
+                $validated['order'],
+                'redo',
+                false,
+                $navigationInfo
             ));
 
             return redirect()->route('workspace.projects.editor', [
@@ -1120,6 +1430,237 @@ class MainEditorController extends Controller
                 'success' => false,
                 'message' => 'Failed to initialize chapter history: ' . $e->getMessage(),
             ], 500);
+        }
+    }
+
+    /**
+     * Function to handle selection-based text rewriting.
+     * Takes selected text with context and rewrites it using AI.
+     */
+    public function rewriteSelection(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'selected_text' => 'required|string|min:1|max:10000',
+                'context_before' => 'nullable|string|max:2000',
+                'context_after' => 'nullable|string|max:2000',
+                'action' => 'required|string|in:rewrite,humanize,custom',
+                'custom_instruction' => 'nullable|string|max:500',
+                'chapter_order' => 'required|integer',
+                'model' => 'nullable|string',
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            // Determine the model to use
+            $model = $validated['model'] ?? $project->settings['aiModel'] ?? 'gemini-2.5-flash';
+
+            // Map model names to provider
+            $provider = 'gemini';
+            if (str_starts_with($model, 'gpt-')) {
+                $provider = 'openai';
+            } elseif (str_starts_with($model, 'deepseek')) {
+                $provider = 'deepseek';
+            }
+
+            Log::info('Selection rewrite request', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'chapter_order' => $validated['chapter_order'],
+                'action' => $validated['action'],
+                'selected_text_length' => strlen($validated['selected_text']),
+                'model' => $model,
+                'user_id' => $user->id,
+            ]);
+
+            // Call Python API for rewrite
+            $pythonApiUrl = env('PYTHON_SERVICE_URL', 'http://python-app:5000');
+
+            $response = Http::timeout(60)->post("{$pythonApiUrl}/api/rewrite-selection", [
+                'project_id' => $project_id,
+                'workspace_id' => $workspace_id,
+                'selected_text' => $validated['selected_text'],
+                'context_before' => $validated['context_before'] ?? '',
+                'context_after' => $validated['context_after'] ?? '',
+                'action' => $validated['action'],
+                'custom_instruction' => $validated['custom_instruction'] ?? '',
+                'model' => $model,
+                'provider' => $provider,
+            ]);
+
+            if (!$response->successful()) {
+                $error = $response->json('error') ?? 'Failed to rewrite text';
+                Log::error('Rewrite API error', [
+                    'status' => $response->status(),
+                    'error' => $error,
+                ]);
+                return response()->json(['error' => $error], $response->status());
+            }
+
+            $result = $response->json();
+
+            return response()->json([
+                'success' => true,
+                'new_text' => $result['new_text'] ?? '',
+                'action' => $validated['action'],
+            ]);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation error in rewrite selection', [
+                'errors' => $e->errors()
+            ]);
+            return response()->json(['error' => 'Invalid request', 'details' => $e->errors()], 422);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['error' => 'Project not found'], 404);
+
+        } catch (\Exception $e) {
+            Log::error('Error in rewrite selection', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Failed to rewrite text: ' . $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Function to enhance text using AI with context-aware prompts.
+     * Used by the Magic Wand feature to enhance unsent text.
+     */
+    public function enhanceText(Request $request, string $workspace_id, string $project_id)
+    {
+        try {
+            $validated = $request->validate([
+                'text' => 'required|string|min:1|max:10000',
+                'enhancement_mode' => 'required|string|in:story_text,chat_message,property,custom_instruction,entity_name,chapter_name,description,summary',
+                'model' => 'nullable|string',
+                'chapter_content' => 'nullable|string|max:50000', // Optional chapter content for chapter_name mode
+            ]);
+
+            $project = Projects::where('id', $project_id)
+                ->where('workspace_id', $workspace_id)
+                ->firstOrFail();
+
+            $user = Auth::user();
+            if (!$user) {
+                return response()->json(['error' => 'User not authenticated'], 401);
+            }
+
+            // Determine the model to use - check settings properly
+            $model = $validated['model']
+                ?? ($project->settings && isset($project->settings['aiModel']) ? $project->settings['aiModel'] : null)
+                ?? 'gemini-2.5-flash'; // Default to 2.5 flash
+
+            // Map model names to provider
+            $provider = 'gemini';
+            if (str_starts_with($model, 'gpt-')) {
+                $provider = 'openai';
+            } elseif (str_starts_with($model, 'deepseek')) {
+                $provider = 'deepseek';
+            }
+
+            Log::info('Text enhancement request', [
+                'workspace_id' => $workspace_id,
+                'project_id' => $project_id,
+                'enhancement_mode' => $validated['enhancement_mode'],
+                'text_length' => strlen($validated['text']),
+                'model' => $model,
+                'user_id' => $user->id,
+            ]);
+
+            // Call Python API for enhancement
+            $pythonApiUrl = env('PYTHON_SERVICE_URL', 'http://python-app:5000');
+
+            try {
+                $response = Http::timeout(60)->post("{$pythonApiUrl}/api/enhance-text", [
+                    'text' => $validated['text'],
+                    'enhancement_mode' => $validated['enhancement_mode'],
+                    'model' => $model,
+                    'provider' => $provider,
+                    'project_id' => $project_id,
+                    'workspace_id' => $workspace_id,
+                    'chapter_content' => $validated['chapter_content'] ?? null,
+                ]);
+
+                if (!$response->successful()) {
+                    $errorBody = $response->body();
+                    $errorData = $response->json();
+                    $error = $errorData['error'] ?? $errorData['message'] ?? $errorBody ?? 'Failed to enhance text';
+
+                    Log::error('Enhancement API error', [
+                        'status' => $response->status(),
+                        'error' => $error,
+                        'response_body' => $errorBody,
+                    ]);
+
+                    return response()->json([
+                        'error' => $error,
+                        'status' => $response->status()
+                    ], $response->status());
+                }
+
+                $result = $response->json();
+
+                if (!isset($result['enhanced_text']) || empty($result['enhanced_text'])) {
+                    Log::error('Enhancement API returned empty result', [
+                        'result' => $result
+                    ]);
+                    return response()->json(['error' => 'Enhancement API returned empty result'], 500);
+                }
+
+                return response()->json([
+                    'success' => true,
+                    'enhanced_text' => $result['enhanced_text'],
+                ]);
+
+            } catch (\Illuminate\Http\Client\ConnectionException $e) {
+                Log::error('Enhancement API connection error', [
+                    'error' => $e->getMessage(),
+                    'url' => "{$pythonApiUrl}/api/enhance-text",
+                ]);
+                return response()->json([
+                    'error' => 'Could not connect to enhancement service. Please check if the Python service is running.',
+                    'details' => $e->getMessage()
+                ], 503);
+            } catch (\Illuminate\Http\Client\RequestException $e) {
+                Log::error('Enhancement API request error', [
+                    'error' => $e->getMessage(),
+                    'response' => $e->response?->body(),
+                ]);
+                return response()->json([
+                    'error' => 'Enhancement service error: ' . $e->getMessage(),
+                ], 500);
+            }
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            Log::warning('Validation error in enhance text', [
+                'errors' => $e->errors()
+            ]);
+            return response()->json(['error' => 'Invalid request', 'details' => $e->errors()], 422);
+
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['error' => 'Project not found'], 404);
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Already handled above, but catch here to prevent duplicate handling
+            throw $e;
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            // Already handled above
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error in enhance text', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json(['error' => 'Failed to enhance text: ' . $e->getMessage()], 500);
         }
     }
 

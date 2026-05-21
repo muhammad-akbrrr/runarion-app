@@ -6,6 +6,8 @@ use App\Jobs\AuthorStyleJob;
 use App\Models\Projects;
 use App\Models\AuthorStyle;
 use App\Models\Workspace;
+use App\Services\AuthorStyleFormatter;
+use App\Services\ProjectPipelineStateService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -15,6 +17,12 @@ use Inertia\Inertia;
 
 class FileManagerController extends Controller
 {
+    public function __construct(
+        private readonly AuthorStyleFormatter $authorStyleFormatter,
+        private readonly ProjectPipelineStateService $pipelineStateService,
+    ) {
+    }
+
     /**
      * Display the file manager page.
      *
@@ -92,6 +100,12 @@ class FileManagerController extends Controller
                 'workspace_id' => $workspace_id,
             ]);
             return back()->withErrors(['project_id' => 'The selected project does not belong to this workspace.'])->withInput();
+        }
+
+        if ($this->pipelineStateService->getProjectLock($workspace_id, $project->id)) {
+            return back()->withErrors([
+                'project_id' => 'This project is currently locked while the novel pipeline is processing.',
+            ])->withInput();
         }
         
         // Store the uploaded files
@@ -235,6 +249,200 @@ class FileManagerController extends Controller
     }
     
     /**
+     * Delete an author style.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $workspace_id
+     * @param  string  $author_style_id
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+     */
+    public function deleteAuthorStyle(Request $request, $workspace_id, $author_style_id)
+    {
+        try {
+            $authorStyle = AuthorStyle::where('workspace_id', $workspace_id)
+                ->where('id', $author_style_id)
+                ->first();
+            
+            if (!$authorStyle) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'Author style not found.'], 404);
+                }
+                return back()->withErrors(['error' => 'Author style not found.']);
+            }
+
+            if ($authorStyle->project_id && $this->pipelineStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'This author style is attached to a project that is currently processing.'], 423);
+                }
+
+                return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
+            }
+            
+            // Clean up related data in Python's tables
+            DB::table('author_styles_to_samples')
+                ->where('author_style_id', $author_style_id)
+                ->delete();
+            
+            DB::table('author_style_chunks')
+                ->where('author_style_id', $author_style_id)
+                ->delete();
+            
+            // Delete the author style
+            $authorStyle->delete();
+            
+            \Log::info('Author style deleted', [
+                'author_style_id' => $author_style_id,
+                'workspace_id' => $workspace_id,
+            ]);
+            
+            if ($request->wantsJson()) {
+                return response()->json(['success' => true, 'message' => 'Author style deleted successfully.']);
+            }
+            
+            return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
+                ->with('success', 'Author style deleted successfully.');
+                
+        } catch (\Exception $e) {
+            \Log::error('Failed to delete author style', [
+                'author_style_id' => $author_style_id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Failed to delete author style.'], 500);
+            }
+            
+            return back()->withErrors(['error' => 'Failed to delete author style.']);
+        }
+    }
+    
+    /**
+     * Update an author style.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $workspace_id
+     * @param  string  $author_style_id
+     * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
+     */
+    public function updateAuthorStyle(Request $request, $workspace_id, $author_style_id)
+    {
+        try {
+            $authorStyle = AuthorStyle::where('workspace_id', $workspace_id)
+                ->where('id', $author_style_id)
+                ->first();
+            
+            if (!$authorStyle) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'Author style not found.'], 404);
+                }
+                return back()->withErrors(['error' => 'Author style not found.']);
+            }
+
+            if ($authorStyle->project_id && $this->pipelineStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
+                if ($request->wantsJson()) {
+                    return response()->json(['error' => 'This author style is attached to a project that is currently processing.'], 423);
+                }
+
+                return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
+            }
+            
+            // Update allowed fields
+            $updateData = [];
+            
+            if ($request->has('author_name')) {
+                // Check for duplicate name
+                $existing = AuthorStyle::where('workspace_id', $workspace_id)
+                    ->where('author_name', $request->author_name)
+                    ->where('id', '!=', $author_style_id)
+                    ->first();
+                    
+                if ($existing) {
+                    if ($request->wantsJson()) {
+                        return response()->json(['error' => 'An author style with this name already exists.'], 400);
+                    }
+                    return back()->withErrors(['author_name' => 'An author style with this name already exists.']);
+                }
+                
+                $updateData['author_name'] = $request->author_name;
+            }
+            
+            if ($request->has('techniques_json')) {
+                $updateData['techniques_json'] = $request->techniques_json;
+            }
+
+            if ($request->has('examples_json')) {
+                $updateData['examples_json'] = $request->examples_json;
+            }
+
+            if ($request->has('adaptation_json')) {
+                $updateData['adaptation_json'] = $request->adaptation_json;
+            }
+            
+            if ($request->has('project_ids')) {
+                // For now, we store the first project_id (multi-project will be a separate table later)
+                // TODO: Implement author_style_projects pivot table for true multi-project support
+                $projectIds = $request->project_ids;
+                if (!empty($projectIds) && is_array($projectIds)) {
+                    $updateData['project_id'] = $projectIds[0];
+                }
+            }
+            
+            $authorStyle->update($updateData);
+            
+            \Log::info('Author style updated', [
+                'author_style_id' => $author_style_id,
+                'updates' => array_keys($updateData),
+            ]);
+            
+            if ($request->wantsJson()) {
+                return response()->json([
+                    'success' => true, 
+                    'message' => 'Author style updated successfully.',
+                    'author_style' => $this->authorStyleFormatter->format($authorStyle->fresh()),
+                ]);
+            }
+            
+            return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
+                ->with('success', 'Author style updated successfully.');
+                
+        } catch (\Exception $e) {
+            \Log::error('Failed to update author style', [
+                'author_style_id' => $author_style_id,
+                'error' => $e->getMessage(),
+            ]);
+            
+            if ($request->wantsJson()) {
+                return response()->json(['error' => 'Failed to update author style.'], 500);
+            }
+            
+            return back()->withErrors(['error' => 'Failed to update author style.']);
+        }
+    }
+    
+    /**
+     * Get a single author style with full details.
+     *
+     * @param  \Illuminate\Http\Request  $request
+     * @param  string  $workspace_id
+     * @param  string  $author_style_id
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function getAuthorStyle(Request $request, $workspace_id, $author_style_id)
+    {
+        $authorStyle = AuthorStyle::where('workspace_id', $workspace_id)
+            ->where('id', $author_style_id)
+            ->first();
+        
+        if (!$authorStyle) {
+            return response()->json(['error' => 'Author style not found.'], 404);
+        }
+        
+        return response()->json([
+            'author_style' => $this->authorStyleFormatter->format($authorStyle, true),
+        ]);
+    }
+    
+    /**
      * Get author styles with their project counts.
      *
      * @param  string  $workspace_id
@@ -242,37 +450,9 @@ class FileManagerController extends Controller
      */
     private function getAuthorStyles($workspace_id)
     {
-        $authorStyles = AuthorStyle::where('workspace_id', $workspace_id)
-            ->select('id', 'author_name')
-            ->get();
-        
-        $result = [];
-        $colors = ['bg-blue-100', 'bg-purple-100', 'bg-green-100', 'bg-pink-100', 'bg-amber-100', 'bg-cyan-100'];
-        
-        foreach ($authorStyles as $index => $style) {
-            // Count how many projects use this author style
-            $projectCount = DB::table('projects')
-                ->join('author_styles', 'projects.id', '=', 'author_styles.project_id')
-                ->where('author_styles.id', $style->id)
-                ->count();
-            
-            // Get the first letter of the author name for the avatar
-            $avatar = substr($style->author_name, 0, 1);
-            
-            // Assign a color from the colors array
-            $colorIndex = $index % count($colors);
-            $color = $colors[$colorIndex];
-            
-            $result[] = [
-                'id' => $style->id,
-                'name' => $style->author_name,
-                'fileCount' => $projectCount,
-                'avatar' => $avatar,
-                'color' => $color,
-            ];
-        }
-        
-        return $result;
+        return $this->authorStyleFormatter->formatCollection(
+            AuthorStyle::where('workspace_id', $workspace_id)->get()
+        );
     }
     
     /**
@@ -285,8 +465,13 @@ class FileManagerController extends Controller
     {
         $projects = Projects::where('workspace_id', $workspace_id)
             ->where('is_active', true)
-            ->select('id', 'name', 'created_at', 'access', 'saved_in')
+            ->select('id', 'name', 'created_at', 'updated_at', 'access', 'saved_in')
             ->get();
+
+        $locks = $this->pipelineStateService->getLocksForProjects(
+            $workspace_id,
+            $projects->pluck('id')->all(),
+        );
         
         $result = [];
         
@@ -321,6 +506,7 @@ class FileManagerController extends Controller
                 'createdAt' => $project->created_at->format('Y-m-d'),
                 'sharedWith' => $sharedWith,
                 'savedIn' => $savedIn,
+                'pipelineLock' => $locks[$project->id] ?? null,
             ];
         }
         

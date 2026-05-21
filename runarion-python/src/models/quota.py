@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import Optional, Dict, Any
 from datetime import datetime
-from models.request import CallerInfo
+from src.models.request import CallerInfo
 
 
 class QuotaCaller(CallerInfo):

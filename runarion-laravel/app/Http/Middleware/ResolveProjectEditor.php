@@ -2,15 +2,23 @@
 
 namespace App\Http\Middleware;
 
+use App\Models\AuthorStyle;
+use App\Services\AuthorStyleFormatter;
+use App\Services\ProjectPipelineStateService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Inertia\Inertia;
 use Symfony\Component\HttpFoundation\Response;
-use App\Models\AuthorStyle;
 
 class ResolveProjectEditor
 {
+    public function __construct(
+        private readonly AuthorStyleFormatter $authorStyleFormatter,
+        private readonly ProjectPipelineStateService $pipelineStateService,
+    ) {
+    }
+
     /**
      * Handle an incoming request.
      *
@@ -128,8 +136,11 @@ class ResolveProjectEditor
             session(['force_project_editor_loader' => true]);
         }
 
-        $authorStyles = AuthorStyle::where('workspace_id', $workspaceId)
-            ->get(['id', 'author_name']);
+        $authorStyles = $this->authorStyleFormatter->formatCollection(
+            AuthorStyle::where('workspace_id', $workspaceId)->get()
+        );
+
+        $projectPipelineLock = $this->pipelineStateService->getProjectLock($workspaceId, $projectId);
 
         Inertia::share([
             'auth' => [
@@ -141,6 +152,7 @@ class ResolveProjectEditor
             'force_project_editor_loader' => session()->pull('force_project_editor_loader', false),
             'project_completed_onboarding' => $project->completed_onboarding ?? false,
             'authorStyles' => $authorStyles,
+            'projectPipelineLock' => $projectPipelineLock,
         ]);
 
         $request->attributes->set('user_role', $userRole);

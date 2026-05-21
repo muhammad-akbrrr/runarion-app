@@ -20,6 +20,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->alias([
             'workspace' => \App\Http\Middleware\ResolveWorkspace::class,
             'project-editor' => \App\Http\Middleware\ResolveProjectEditor::class,
+            'project-unlocked' => \App\Http\Middleware\RejectLockedProjectMutations::class,
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions) {

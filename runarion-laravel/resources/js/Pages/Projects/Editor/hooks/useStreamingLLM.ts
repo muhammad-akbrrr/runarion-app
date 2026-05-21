@@ -37,6 +37,18 @@ export function useStreamingLLM({
     const streamingTextRef = useRef<string>('');
     const currentSessionRef = useRef<string | null>(null);
 
+    // Refs for callbacks to avoid stale closures in WebSocket listeners
+    const onStreamCompleteRef = useRef(onStreamComplete);
+    const onStreamErrorRef = useRef(onStreamError);
+
+    useEffect(() => {
+        onStreamCompleteRef.current = onStreamComplete;
+    }, [onStreamComplete]);
+
+    useEffect(() => {
+        onStreamErrorRef.current = onStreamError;
+    }, [onStreamError]);
+
     // Setup WebSocket listeners
     useEffect(() => {
         const channelName = `project.${workspaceId}.${projectId}`;
@@ -56,9 +68,19 @@ export function useStreamingLLM({
             // Join public channel
             channelRef.current = Echo.channel(channelName);
             
+            // Listen for subscription success
+            channelRef.current.subscribed(() => {
+                console.log('✅ Successfully subscribed to channel:', channelName);
+            });
+            
+            // Listen for any error
+            channelRef.current.error((error: any) => {
+                console.error('❌ WebSocket channel error:', error);
+            });
+            
             // Listen for stream started event
             channelRef.current.listen('.llm.stream.started', (data: any) => {
-                console.log('Stream started:', data);
+                console.log('✅ Stream started event received:', data);
                 
                 // Security: Only process events for current workspace/project/chapter
                 if (data.workspace_id === workspaceId && 
@@ -80,7 +102,7 @@ export function useStreamingLLM({
 
             // Listen for stream chunks
             channelRef.current.listen('.llm.stream.chunk', (data: any) => {
-                console.log('Stream chunk received:', data);
+                console.log('✅ Stream chunk received:', data);
                 
                 // Security: Only process events for current workspace/project/chapter/session
                 if (data.workspace_id === workspaceId && 
@@ -99,7 +121,7 @@ export function useStreamingLLM({
 
             // Listen for stream completion
             channelRef.current.listen('.llm.stream.completed', (data: any) => {
-                console.log('Stream completed:', data);
+                console.log('✅ Stream completed event received:', data);
                 
                 // Security: Only process events for current workspace/project/chapter/session
                 if (data.workspace_id === workspaceId && 
@@ -116,13 +138,13 @@ export function useStreamingLLM({
                     }));
 
                     if (data.success) {
-                        onStreamComplete(data.full_text || streamingTextRef.current);
+                        onStreamCompleteRef.current(data.full_text || streamingTextRef.current);
                     } else {
                         // Handle different error types
                         if (data.error_type === 'quota_exceeded') {
-                            onStreamError('Generation quota exceeded. Please try again later.');
+                            onStreamErrorRef.current('Generation quota exceeded. Please try again later.');
                         } else {
-                            onStreamError(data.error || 'Stream failed');
+                            onStreamErrorRef.current(data.error || 'Stream failed');
                         }
                     }
 

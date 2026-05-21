@@ -25,6 +25,18 @@ export interface ProjectAccess {
     role: ProjectRole;
 }
 
+export interface PipelineLock {
+    isLocked: boolean;
+    runId: string;
+    draftId?: string | null;
+    authorStyleId?: string | null;
+    status: string;
+    phase: string;
+    errorMessage?: string | null;
+    startedAt?: string | null;
+    completedAt?: string | null;
+}
+
 export interface GenerationVersion {
     index: number;
     content: string;
@@ -54,6 +66,7 @@ export interface NavigationInfo {
     canRedo: boolean;
     canRegenerate: boolean;
     versionDisplayText: string;
+    currentNodeId?: string; // ID of the current node in the version tree
 }
 
 export interface ProjectChapter {
@@ -64,6 +77,7 @@ export interface ProjectChapter {
     plot_points: Array<string>;
     generation_history?: GenerationHistory;
     navigation_info?: NavigationInfo;
+    ai_ranges?: number[][]; // Legacy: position-based AI text markers (migrated to OriginTextNode metadata)
 }
 
 export interface ProjectContent {
@@ -106,6 +120,7 @@ export interface Project {
     created_at: string;
     updated_at: string;
     deleted_at: string | null;
+    pipelineLock?: PipelineLock | null;
     author?: {
         id: number;
         name: string;
@@ -118,53 +133,176 @@ export interface ProjectSettings {
     currentPreset: string;
     authorProfile: string;
     aiModel: string;
+    selectionToolbarMode: "formatting" | "ai-rewrite"; // DEPRECATED - unified toolbar now shows both formatting and AI features
     memory: string;
     storyGenre: string;
     storyTone: string;
     storyPov: string;
-    
+
     // Advanced Settings
     temperature: number;
     repetitionPenalty: number;
     outputLength: number;
     minOutputToken: number;
-    
+    thinkingBudget: number; // Token budget for AI reasoning (thinking models only)
+
     // Sampling
     topP: number;
     tailFree: number;
     topA: number;
     topK: number;
-    
+
     // Complex Settings
     phraseBias: Array<{ [key: string]: number }>;
     bannedPhrases: string[];
     stopSequences: string[];
+
+    // Auditor Tab Settings
+    auditorAnalysisModel: string;
+
+    // Advisor Tab Settings (default values for new chats)
+    advisorModel: string;
+    advisorSystemInstructions: string;
+    advisorThinkingBudget: number;
+    advisorOutputLength: number;
+    advisorTemperature: number;
 }
+
+// Type for story fix confirmation request (when confidence is 50-90%)
+export interface StoryFixConfirmationRequest {
+    needsConfirmation: true;
+    matchedText: string;
+    confidence: number;
+    start: number;
+    end: number;
+    newText: string;
+}
+
+// Return type for story fix callbacks
+export type StoryFixResult = boolean | StoryFixConfirmationRequest;
 
 export interface SidebarSettingsProps {
     settings: Partial<ProjectSettings>;
     onSettingChange: (key: keyof ProjectSettings, value: any) => void;
     workspaceId?: string;
     projectId?: string;
+    authorStyles?: Array<{ id: string; name: string; status?: string; schemaVersion?: number }>;
+    projectPipelineLock?: PipelineLock | null;
+    onApplyStoryFix?: (oldText: string, newText: string) => Promise<boolean>; // Callback to apply story fixes, returns success/failure
+    onSavingChange?: (isSaving: boolean) => void; // Callback to signal saving state changes (for save indicator)
 }
+
+// Parameter range configuration for model-specific slider settings
+export interface ParameterRange {
+    min: number;
+    max: number;
+    step: number;
+    default: number;
+}
+
+// Per-model configuration defining supported parameters and their ranges
+export interface ModelConfig {
+    id: string;
+    label: string;
+    provider: string;
+    supportsThinking: boolean;
+    params: {
+        temperature?: ParameterRange;
+        topP?: ParameterRange;
+        topK?: ParameterRange;
+        outputLength?: ParameterRange;
+        thinkingBudget?: ParameterRange;
+        repetitionPenalty?: ParameterRange;
+        tailFree?: ParameterRange;
+        topA?: ParameterRange;
+        phraseBias?: ParameterRange;
+        minOutputToken?: ParameterRange;
+    };
+}
+
+export const MODEL_CONFIGS: Record<string, ModelConfig> = {
+    "gemini-2.5-flash": {
+        id: "gemini-2.5-flash",
+        label: "Gemini 2.5 Flash (Fast + Thinking)",
+        provider: "gemini",
+        supportsThinking: true,
+        params: {
+            temperature: { min: 0, max: 2, step: 0.01, default: 1 },
+            topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
+            outputLength: { min: 50, max: 8192, step: 10, default: 1000 },
+            thinkingBudget: { min: 0, max: 24576, step: 256, default: 2048 },
+            // repetitionPenalty: not supported — "Penalty is not enabled for models/gemini-2.5-flash"
+        },
+    },
+    "gemini-2.5-pro": {
+        id: "gemini-2.5-pro",
+        label: "Gemini 2.5 Pro (Quality + Thinking)",
+        provider: "gemini",
+        supportsThinking: true,
+        params: {
+            temperature: { min: 0, max: 2, step: 0.01, default: 1 },
+            topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
+            outputLength: { min: 50, max: 8192, step: 10, default: 1000 },
+            thinkingBudget: { min: 0, max: 24576, step: 256, default: 4096 },
+            // repetitionPenalty: not supported — "Penalty is not enabled for models/gemini-2.5-*"
+        },
+    },
+    "gemini-3-pro-preview": {
+        id: "gemini-3-pro-preview",
+        label: "Gemini 3.0 Pro (Paid API Key)",
+        provider: "gemini",
+        supportsThinking: true,
+        params: {
+            temperature: { min: 0, max: 2, step: 0.01, default: 1 },
+            topP: { min: 0, max: 1, step: 0.01, default: 0.95 },
+            topK: { min: 1, max: 100, step: 1, default: 64 },
+            outputLength: { min: 50, max: 8192, step: 10, default: 1000 },
+            thinkingBudget: { min: 0, max: 24576, step: 256, default: 4096 },
+            repetitionPenalty: { min: -2, max: 2, step: 0.1, default: 0 },
+        },
+    },
+};
+
+// Models that support thinking — derived from MODEL_CONFIGS
+export const THINKING_MODELS = Object.values(MODEL_CONFIGS)
+    .filter((m) => m.supportsThinking)
+    .map((m) => m.id);
+
+// Default thinking budgets per model — derived from MODEL_CONFIGS
+export const DEFAULT_THINKING_BUDGETS: Record<string, number> =
+    Object.fromEntries(
+        Object.values(MODEL_CONFIGS)
+            .filter((m) => m.params.thinkingBudget)
+            .map((m) => [m.id, m.params.thinkingBudget!.default]),
+    );
 
 export const DEFAULT_SETTINGS: ProjectSettings = {
     currentPreset: "story-telling",
-    authorProfile: "tolkien",
-    aiModel: "gemini-2.0-flash",
+    authorProfile: "", // Empty - user must select from available workspace author styles
+    aiModel: "gemini-2.5-flash",
+    selectionToolbarMode: "formatting", // DEPRECATED - no longer used, kept for backward compatibility
     memory: "",
     storyGenre: "",
     storyTone: "",
     storyPov: "",
     temperature: 1,
     repetitionPenalty: 0,
-    outputLength: 300,
+    outputLength: 1000,
     minOutputToken: 50,
+    thinkingBudget: 4096, // Default thinking budget (only used for thinking models)
     topP: 0.85,
     tailFree: 0.85,
     topA: 0.85,
-    topK: 0.85,
+    topK: 64,
     phraseBias: [],
     bannedPhrases: [],
     stopSequences: [],
+    // Auditor Tab Settings
+    auditorAnalysisModel: "gemini-2.5-flash",
+    // Advisor Tab Settings
+    advisorModel: "gemini-2.5-flash",
+    advisorSystemInstructions: "",
+    advisorThinkingBudget: 4096,
+    advisorOutputLength: 4000,
+    advisorTemperature: 0.8,
 };

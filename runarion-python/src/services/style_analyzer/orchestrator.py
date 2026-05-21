@@ -3,16 +3,17 @@ import time
 import traceback
 from typing import Literal, Optional, TypedDict
 
-from psycopg2.extras import Json
-from psycopg2.pool import SimpleConnectionPool
-from ulid import ULID
-
+from psycopg2 import errors
 from src.models.request import CallerInfo
 from src.models.style_analyzer.author_style import (
     AuthorStyle,
+    AuthorStyleAdaptation,
     AuthorStyleExamples,
     AuthorStyleTechniques,
 )
+from psycopg2.extras import Json
+from psycopg2.pool import SimpleConnectionPool
+from ulid import ULID
 from src.utils.database_utils import utf8_database_connection
 
 from .stage_1_sampling import SamplingStage
@@ -73,10 +74,37 @@ class StyleAnalyzerOrchestrator:
         self.db_pool = db_pool
         self.sampling_stage = sampling_stage
         self.profiling_stage = profiling_stage
+        self._author_styles_supports_v2_schema: Optional[bool] = None
+
+    def _supports_author_style_v2_schema(self) -> bool:
+        if self._author_styles_supports_v2_schema is not None:
+            return self._author_styles_supports_v2_schema
+
+        try:
+            with utf8_database_connection(self.db_pool) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    SELECT column_name
+                    FROM information_schema.columns
+                    WHERE table_name = 'author_styles'
+                      AND column_name IN ('schema_version', 'adaptation_json')
+                    """
+                )
+                columns = {row[0] for row in cursor.fetchall()}
+                self._author_styles_supports_v2_schema = {
+                    "schema_version",
+                    "adaptation_json",
+                }.issubset(columns)
+        except Exception as e:
+            logger.warning(f"Failed to inspect author_styles schema; assuming legacy layout: {e}")
+            self._author_styles_supports_v2_schema = False
+
+        return self._author_styles_supports_v2_schema
 
     def _get_author_style(
         self, workspace_id: str, author_name: str
-    ) -> tuple[Optional[str], Optional[dict], Optional[dict]]:
+    ) -> tuple[Optional[str], Optional[int], Optional[dict], Optional[dict], Optional[dict]]:
         """
         Retrieve the author style from the database by its ID.
 
@@ -86,25 +114,40 @@ class StyleAnalyzerOrchestrator:
 
         Returns:
             Optional[str]: Author style ID if found, otherwise None.
+            Optional[int]: Schema version if found, otherwise None.
             Optional[dict]: AuthorStyle techniques JSON if found, otherwise None.
             Optional[dict]: AuthorStyle examples JSON if found, otherwise None.
+            Optional[dict]: AuthorStyle adaptation JSON if found, otherwise None.
         """
         try:
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    SELECT id, techniques_json, examples_json
-                    FROM author_styles
-                    WHERE workspace_id = %s AND author_name = %s
-                    """,
-                    (workspace_id, author_name),
-                )
+                if self._supports_author_style_v2_schema():
+                    cursor.execute(
+                        """
+                        SELECT id, schema_version, techniques_json, examples_json, adaptation_json
+                        FROM author_styles
+                        WHERE workspace_id = %s AND author_name = %s
+                        """,
+                        (workspace_id, author_name),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        SELECT id, techniques_json, examples_json
+                        FROM author_styles
+                        WHERE workspace_id = %s AND author_name = %s
+                        """,
+                        (workspace_id, author_name),
+                    )
                 row = cursor.fetchone()
                 if row:
+                    if self._supports_author_style_v2_schema():
+                        id, schema_version, techniques_json, examples_json, adaptation_json = row
+                        return id, schema_version, techniques_json, examples_json, adaptation_json
                     id, techniques_json, examples_json = row
-                    return id, techniques_json, examples_json
-                return None, None, None
+                    return id, 2, techniques_json, examples_json, {}
+                return None, None, None, None, None
         except Exception as e:
             logger.error(f"Failed to retrieve author style: {e}")
             raise
@@ -132,6 +175,36 @@ class StyleAnalyzerOrchestrator:
             logger.error(f"Failed to soft delete author style relations: {e}")
             raise
 
+    def _mark_reprofile_status(
+        self,
+        author_style_id: str,
+        status: str,
+        failure_reason: Optional[str] = None,
+    ) -> None:
+        """Update migration-backed legacy reprofile tracking when available."""
+        try:
+            with utf8_database_connection(self.db_pool) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    """
+                    UPDATE author_style_reprofiles
+                    SET status = %s,
+                        failure_reason = %s,
+                        processed_at = CASE
+                            WHEN %s IN ('completed', 'failed', 'skipped') THEN NOW()
+                            ELSE processed_at
+                        END,
+                        updated_at = NOW()
+                    WHERE author_style_id = %s
+                    """,
+                    (status, failure_reason, status, author_style_id),
+                )
+                conn.commit()
+        except errors.UndefinedTable:
+            logger.debug("author_style_reprofiles table not present; skipping reprofile tracking update")
+        except Exception as e:
+            logger.warning(f"Failed to update author_style_reprofiles for {author_style_id}: {e}")
+
     def _create_author_style(
         self,
         author_style_id: str,
@@ -149,27 +222,51 @@ class StyleAnalyzerOrchestrator:
         try:
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    INSERT INTO author_styles 
-                    (id, workspace_id, project_id, user_id, author_name, status, started_at)
-                    VALUES (%s, %s, %s, %s, %s, 'init_completed', NOW())
-                    ON CONFLICT ON CONSTRAINT unique_workspace_author_name
-                    DO UPDATE SET
-                        project_id = EXCLUDED.project_id,
-                        user_id = EXCLUDED.user_id,
-                        status = 'init_completed',
-                        started_at = NOW(),
-                        updated_at = NOW()
-                    """,
-                    (
-                        author_style_id,
-                        caller.workspace_id,
-                        caller.project_id,
-                        caller.user_id,
-                        author_name,
-                    ),
-                )
+                if self._supports_author_style_v2_schema():
+                    cursor.execute(
+                        """
+                        INSERT INTO author_styles 
+                        (id, workspace_id, project_id, user_id, author_name, schema_version, status, started_at)
+                        VALUES (%s, %s, %s, %s, %s, 2, 'init_completed', NOW())
+                        ON CONFLICT ON CONSTRAINT unique_workspace_author_name
+                        DO UPDATE SET
+                            project_id = EXCLUDED.project_id,
+                            user_id = EXCLUDED.user_id,
+                            schema_version = 2,
+                            status = 'init_completed',
+                            started_at = NOW(),
+                            updated_at = NOW()
+                        """,
+                        (
+                            author_style_id,
+                            caller.workspace_id,
+                            caller.project_id,
+                            caller.user_id,
+                            author_name,
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        INSERT INTO author_styles 
+                        (id, workspace_id, project_id, user_id, author_name, status, started_at)
+                        VALUES (%s, %s, %s, %s, %s, 'init_completed', NOW())
+                        ON CONFLICT ON CONSTRAINT unique_workspace_author_name
+                        DO UPDATE SET
+                            project_id = EXCLUDED.project_id,
+                            user_id = EXCLUDED.user_id,
+                            status = 'init_completed',
+                            started_at = NOW(),
+                            updated_at = NOW()
+                        """,
+                        (
+                            author_style_id,
+                            caller.workspace_id,
+                            caller.project_id,
+                            caller.user_id,
+                            author_name,
+                        ),
+                    )
                 conn.commit()
         except Exception as e:
             logger.error(f"Failed to create author style: {e}")
@@ -197,32 +294,61 @@ class StyleAnalyzerOrchestrator:
             if author_style is None:
                 techniques = None
                 examples = None
+                adaptation = None
+                schema_version = 2
             else:
                 techniques = Json(author_style.techniques.model_dump(mode="json"))
                 examples = Json(author_style.examples.model_dump(mode="json"))
+                adaptation = Json(author_style.adaptation.model_dump(mode="json"))
+                schema_version = int(author_style.schema_version)
 
             if error_message is not None:
                 error_message = error_message + "\n\n" + traceback.format_exc()
 
             with utf8_database_connection(self.db_pool) as conn:
                 cursor = conn.cursor()
-                cursor.execute(
-                    """
-                    UPDATE author_styles
-                    SET techniques_json = %s, examples_json = %s,
-                        status = %s, error_message = %s,
-                        total_time_ms = %s, updated_at = NOW()
-                    WHERE id = %s
-                    """,
-                    (
-                        techniques,
-                        examples,
-                        status,
-                        error_message,
-                        total_time_ms,
-                        author_style_id,
-                    ),
-                )
+                if self._supports_author_style_v2_schema():
+                    cursor.execute(
+                        """
+                        UPDATE author_styles
+                        SET schema_version = %s,
+                            techniques_json = %s, examples_json = %s, adaptation_json = %s,
+                            status = %s, error_message = %s,
+                            total_time_ms = %s, updated_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (
+                            schema_version,
+                            techniques,
+                            examples,
+                            adaptation,
+                            status,
+                            error_message,
+                            total_time_ms,
+                            author_style_id,
+                        ),
+                    )
+                else:
+                    cursor.execute(
+                        """
+                        UPDATE author_styles
+                        SET techniques_json = %s,
+                            examples_json = %s,
+                            status = %s,
+                            error_message = %s,
+                            total_time_ms = %s,
+                            updated_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (
+                            techniques,
+                            examples,
+                            status,
+                            error_message,
+                            total_time_ms,
+                            author_style_id,
+                        ),
+                    )
                 conn.commit()
 
         except Exception as e:
@@ -262,19 +388,32 @@ class StyleAnalyzerOrchestrator:
         Returns:
             tuple[Optional[str], Optional[AuthorStyle]]: Author style ID and existing author style if found.
         """
-        author_style_id, techniques_json, examples_json = self._get_author_style(
+        author_style_id, schema_version, techniques_json, examples_json, adaptation_json = self._get_author_style(
             caller.workspace_id, author_name
         )
+        
+        logger.info(f"check_and_clean: author_name={author_name}, workspace={caller.workspace_id}, "
+                    f"found_id={author_style_id}, on_exist={on_exist}")
 
         if author_style_id is not None:
             if on_exist == "update":
+                # Soft delete relations so we can re-run the analysis
                 self._soft_delete_author_style_relations(author_style_id)
+                self._mark_reprofile_status(author_style_id, "processing")
+                logger.info(f"Soft deleted relations for author_style_id={author_style_id}")
                 return author_style_id, None
             elif on_exist == "get":
+                if schema_version != 2:
+                    self._mark_reprofile_status(author_style_id, "pending")
+                    raise ValueError(
+                        "Existing author style uses incompatible schema_version and must be re-profiled."
+                    )
                 if techniques_json is not None and examples_json is not None:
                     return author_style_id, AuthorStyle(
+                        schema_version=2,
                         techniques=AuthorStyleTechniques(**techniques_json),
                         examples=AuthorStyleExamples(**examples_json),
+                        adaptation=AuthorStyleAdaptation(**(adaptation_json or {})),
                     )
             elif on_exist == "error":
                 raise ValueError("Author style already exists")
@@ -303,10 +442,17 @@ class StyleAnalyzerOrchestrator:
         start_time = time.time()
         if author_style_id is None:
             author_style_id = str(ULID())
+            logger.info(f"run_pipeline: Generated new author_style_id={author_style_id}")
+        else:
+            logger.info(f"run_pipeline: Using existing author_style_id={author_style_id}")
+        
         try:
             self._create_author_style(author_style_id, author_name, caller)
+            self._mark_reprofile_status(author_style_id, "processing")
+            logger.info(f"run_pipeline: Created/updated author_style record in DB")
         except Exception as e:
             logger.error(str(e), exc_info=True)
+            self._mark_reprofile_status(author_style_id, "failed", str(e))
             return {
                 "author_style_id": author_style_id,
                 "stored_sample_paths": None,
@@ -338,6 +484,7 @@ class StyleAnalyzerOrchestrator:
                     "Failed to update author style after sampling failure",
                     exc_info=True,
                 )
+            self._mark_reprofile_status(author_style_id, "failed", error_text)
             return {
                 "author_style_id": author_style_id,
                 "stored_sample_paths": None,
@@ -366,6 +513,11 @@ class StyleAnalyzerOrchestrator:
             logger.error(
                 f"Failed to update author style after profiling: {e}", exc_info=True
             )
+
+        if author_style is not None:
+            self._mark_reprofile_status(author_style_id, "completed")
+        else:
+            self._mark_reprofile_status(author_style_id, "failed", str(error_text))
 
         if author_style is not None:
             return {

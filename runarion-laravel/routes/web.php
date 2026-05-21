@@ -33,7 +33,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::post('/{workspace_id}/projects/folder', [ProjectController::class, 'storeFolder'])->name('workspace.folders.store');
     Route::post('/{workspace_id}/projects', [ProjectController::class, 'storeProject'])->name('workspace.projects.store');
     Route::get('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'openFolder'])->name('workspace.folders.open');
-    Route::delete('/{workspace_id}/projects/{project_id}', [ProjectController::class, 'destroyProject'])->name('workspace.projects.destroy');
+    Route::delete('/{workspace_id}/projects/{project_id}', [ProjectController::class, 'destroyProject'])->middleware('project-unlocked')->name('workspace.projects.destroy');
     Route::delete('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'destroyFolder'])->name('workspace.folders.destroy');
 
     Route::get('/projects', fn() => '')->name('raw.workspace.projects');
@@ -44,6 +44,9 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/files', [FileManagerController::class, 'show'])->name('workspace.files');
     Route::post('/{workspace_id}/files/author-styles', [FileManagerController::class, 'storeAuthorStyle'])->name('workspace.files.author-styles.store');
+    Route::get('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'getAuthorStyle'])->name('workspace.files.author-styles.show');
+    Route::patch('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'updateAuthorStyle'])->name('workspace.files.author-styles.update');
+    Route::delete('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'deleteAuthorStyle'])->name('workspace.files.author-styles.delete');
 
     Route::get('/files', fn() => '')->name('raw.workspace.files');
 });
@@ -51,11 +54,11 @@ Route::middleware(['auth', 'workspace'])->group(function () {
 // Project Settings Routes
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/settings', [ProjectController::class, 'settings'])->name('workspace.projects.edit');
-    Route::patch('/{workspace_id}/projects/{project_id}/settings', [ProjectController::class, 'update'])->name('workspace.projects.update');
+    Route::patch('/{workspace_id}/projects/{project_id}/settings', [ProjectController::class, 'update'])->middleware('project-unlocked')->name('workspace.projects.update');
     Route::get('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'access'])->name('workspace.projects.edit.access');
-    Route::patch('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'updateMemberRole'])->name('workspace.projects.update.member.role');
-    Route::post('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'addMember'])->name('workspace.projects.add.members');
-    Route::delete('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'removeMember'])->name('workspace.projects.remove.member');
+    Route::patch('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'updateMemberRole'])->middleware('project-unlocked')->name('workspace.projects.update.member.role');
+    Route::post('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'addMember'])->middleware('project-unlocked')->name('workspace.projects.add.members');
+    Route::delete('/{workspace_id}/projects/{project_id}/settings/access', [ProjectController::class, 'removeMember'])->middleware('project-unlocked')->name('workspace.projects.remove.member');
     Route::get('/{workspace_id}/projects/{project_id}/settings/backups', [ProjectController::class, 'backups'])->name('workspace.projects.edit.backups');
     Route::get('/{workspace_id}/projects/{project_id}/settings/activity', [ProjectController::class, 'activity'])->name('workspace.projects.edit.activity');
 

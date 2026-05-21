@@ -31,15 +31,15 @@ start_flask() {
     source /app/venv/bin/activate
     
     # Set Flask environment variables
-    export FLASK_APP=src/app.py
+    export FLASK_APP=src.app
     export FLASK_ENV=development
     export FLASK_DEBUG=1
     export PYTHONUNBUFFERED=1
     export PYTHONDONTWRITEBYTECODE=1
-    export PYTHONPATH="/app/src"
+    export PYTHONPATH="/app"
     
     # Run Flask directly with python instead of using flask CLI
-    python src/app.py || {
+    python -m src.app || {
         log "Error: Flask application failed to start"
         exit 1
     }

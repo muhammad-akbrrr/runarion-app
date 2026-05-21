@@ -24,6 +24,7 @@ class ProjectContent extends Model
   protected $fillable = [
     'project_id',
     'content',
+    'content_format',
     'metadata',
     'generation_history',
     'current_step_id',
@@ -34,6 +35,7 @@ class ProjectContent extends Model
 
   protected $casts = [
     'content' => 'array',
+    'content_format' => 'string',
     'metadata' => 'array',
     'generation_history' => 'array',
     'last_selected_versions' => 'array',

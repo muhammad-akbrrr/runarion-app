@@ -1,6 +1,6 @@
 import os
 from psycopg2 import pool
-from models.request import CallerInfo
+from src.models.request import CallerInfo
 
 
 class QuotaManager:

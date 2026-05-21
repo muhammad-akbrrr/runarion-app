@@ -5,10 +5,10 @@ from abc import ABC, abstractmethod
 from typing import Optional, Tuple, Literal, List, Dict, Generator
 from flask import current_app
 
-from models.request import BaseGenerationRequest, GenerationConfig
-from models.response import BaseGenerationResponse, UsageMetadata, QuotaMetadata
-from services.quota_manager import QuotaManager
-from utils.tokenizer import TokenizerManager
+from src.models.request import BaseGenerationRequest, GenerationConfig
+from src.models.response import BaseGenerationResponse, UsageMetadata, QuotaMetadata
+from src.services.quota_manager import QuotaManager
+from src.utils.tokenizer import TokenizerManager
 
 class BaseProvider(ABC):
     def __init__(self, request: BaseGenerationRequest):

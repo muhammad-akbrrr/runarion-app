@@ -3,12 +3,17 @@ import { SidebarTrigger, useSidebar } from "@/Components/ui/sidebar";
 import { Grid3X3 } from "lucide-react";
 import { SidebarContent } from "./SidebarMainContent";
 import { SidebarSettingsProps } from "@/types/project";
+import AuditorTab from "@/Pages/Projects/Editor/Partials/Sidebar/AuditorTab";
+import AdvisorTab from "@/Pages/Projects/Editor/Partials/Sidebar/AdvisorTab";
 
-export function SidebarTabs({ 
+export function SidebarTabs({
     settings,
     onSettingChange,
-    workspaceId, 
-    projectId 
+    workspaceId,
+    projectId,
+    authorStyles,
+    onApplyStoryFix,
+    onSavingChange,
 }: SidebarSettingsProps) {
     const { state } = useSidebar();
     const isCollapsed = state === "collapsed";
@@ -48,10 +53,10 @@ export function SidebarTabs({
                                 Advisor
                             </TabsTrigger>
                             <TabsTrigger
-                                value="summarize"
+                                value="auditor"
                                 className="text-sm px-2 py-1 !shadow-none"
                             >
-                                Summarize
+                                Auditor
                             </TabsTrigger>
                         </TabsList>
                     </div>
@@ -72,25 +77,35 @@ export function SidebarTabs({
                             onSettingChange={onSettingChange}
                             workspaceId={workspaceId}
                             projectId={projectId}
+                            authorStyles={authorStyles}
                         />
                     </TabsContent>
 
                     {/* Advisor tab content */}
-                    <TabsContent value="advisor" className="mt-0">
-                        <div className="p-3">
-                            <p className="text-sm text-gray-500">
-                                Advisor content will go here
-                            </p>
-                        </div>
+                    <TabsContent value="advisor" className="mt-0 h-[calc(100vh-120px)]">
+                        {workspaceId && projectId && (
+                            <AdvisorTab
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                onApplyEdit={onApplyStoryFix}
+                                settings={settings}
+                                onSettingChange={onSettingChange}
+                                onSavingChange={onSavingChange}
+                            />
+                        )}
                     </TabsContent>
 
-                    {/* Summarize tab content */}
-                    <TabsContent value="summarize" className="mt-0">
-                        <div className="p-3">
-                            <p className="text-sm text-gray-500">
-                                Summarize content will go here
-                            </p>
-                        </div>
+                    {/* Auditor tab content */}
+                    <TabsContent value="auditor" className="mt-0">
+                        {workspaceId && projectId && (
+                            <AuditorTab
+                                workspaceId={workspaceId}
+                                projectId={projectId}
+                                onApplyStoryFix={onApplyStoryFix}
+                                settings={settings}
+                                onSettingChange={onSettingChange}
+                            />
+                        )}
                     </TabsContent>
                 </div>
             </Tabs>

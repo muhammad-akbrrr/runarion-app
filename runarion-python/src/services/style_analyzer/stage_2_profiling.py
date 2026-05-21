@@ -4,15 +4,15 @@ import os
 from math import ceil
 from typing import Literal, Optional, TypedDict
 
-from psycopg2.pool import SimpleConnectionPool
-from pydantic import ValidationError
-from services.generation_engine import GenerationEngine
-from ulid import ULID
-
 from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
 from src.models.response import BaseGenerationResponse
 from src.models.style_analyzer import AuthorStyle
+from psycopg2.pool import SimpleConnectionPool
+from pydantic import ValidationError
+from src.services.generation_engine import GenerationEngine
+from ulid import ULID
 from src.utils.database_utils import clean_text_for_database, utf8_database_connection
+from src.utils.llm_retry import call_llm_with_retry
 from src.utils.document_processor import ChunkWithStart, DocumentProcessor
 from src.utils.json_response_parser import JSONResponseParser, ResponseFormat
 
@@ -61,7 +61,7 @@ class ProfilingStage:
         self,
         db_pool: SimpleConnectionPool,
         provider: Optional[str] = "gemini",
-        model: Optional[str] = "gemini-2.0-flash",
+        model: Optional[str] = "gemini-2.5-flash",
         max_output_tokens: Optional[int] = 2000,
         generation_config: Optional[dict] = None,
         min_success_partial_style: Optional[int | float] = 0.5,
@@ -83,7 +83,7 @@ class ProfilingStage:
         )
 
         self._provider = provider if provider else "gemini"
-        self._model = model if model else "gemini-2.0-flash"
+        self._model = model if model else "gemini-2.5-flash"
 
         default_generation_config = {
             "temperature": 0.7,
@@ -158,7 +158,7 @@ class ProfilingStage:
 
         engine = GenerationEngine(request)
 
-        response = engine.generate()
+        response = call_llm_with_retry(lambda: engine.generate())
 
         if not response.success and raise_errors:
             error_message = f"LLM call failed for mode {mode}: {response.error_message}"
@@ -491,6 +491,82 @@ class ProfilingStage:
             )
             raise ValueError(error_text)
 
+        if isinstance(parsed, dict):
+            parsed["schema_version"] = 2
+
+            techniques = parsed.setdefault("techniques", {})
+            for section, keys in {
+                "voice": (
+                    "diction",
+                    "syntax",
+                    "rhythm",
+                    "register",
+                    "figurative_language",
+                ),
+                "dialogue": (
+                    "conversation_style",
+                    "speaker_differentiation",
+                    "dialogue_narration_balance",
+                ),
+                "description": (
+                    "description_density",
+                    "sensory_focus",
+                    "atmosphere_strategy",
+                ),
+                "exposition": (
+                    "exposition_strategy",
+                    "context_integration",
+                    "terminology_handling",
+                ),
+                "pacing": (
+                    "scene_tempo",
+                    "transition_style",
+                    "tension_pattern",
+                ),
+                "narrative": (
+                    "pov_tendency",
+                    "narrative_distance",
+                    "redundancy_avoidance",
+                ),
+            }.items():
+                section_data = techniques.setdefault(section, {})
+                if not isinstance(section_data, dict):
+                    section_data = {}
+                    techniques[section] = section_data
+                for key in keys:
+                    value = section_data.get(key)
+                    if value is None:
+                        section_data[key] = ""
+                    elif not isinstance(value, str):
+                        section_data[key] = str(value)
+
+            examples = parsed.setdefault("examples", {})
+            for key in ("voice", "dialogue", "description", "exposition", "pacing"):
+                value = examples.get(key, [])
+                if value is None:
+                    value = []
+                elif isinstance(value, str):
+                    value = [value]
+                elif not isinstance(value, list):
+                    value = [str(value)]
+                examples[key] = [str(item).strip() for item in value if str(item).strip()]
+
+            adaptation = parsed.setdefault("adaptation", {})
+            for key in (
+                "portable_traits",
+                "non_portable_markers",
+                "transfer_risks",
+                "suppression_guidance",
+            ):
+                value = adaptation.get(key, [])
+                if value is None:
+                    value = []
+                elif isinstance(value, str):
+                    value = [value]
+                elif not isinstance(value, list):
+                    value = [str(value)]
+                adaptation[key] = [str(item).strip() for item in value if str(item).strip()]
+
         try:
             author_style = AuthorStyle(**parsed)
         except ValidationError:
@@ -519,16 +595,10 @@ class ProfilingStage:
         ]
 
         success_count = sum(1 for s in partial_styles if s["token"] > 0)
-        if len(partial_styles) > 0:
-            if isinstance(self.min_success_partial_style, int):
-                okay = success_count >= self.min_success_partial_style
-            else:
-                okay = (
-                    success_count / len(partial_styles)
-                    >= self.min_success_partial_style
-                )
+        if isinstance(self.min_success_partial_style, int):
+            okay = success_count >= self.min_success_partial_style
         else:
-            okay = False
+            okay = success_count / len(partial_styles) >= self.min_success_partial_style
         if not okay:
             error_text = f"Not enough successful partial styles: {success_count} out of {len(partial_styles)}"
             logger.error(error_text)

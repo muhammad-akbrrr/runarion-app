@@ -2,6 +2,7 @@ export interface SimpleWorkspace {
     id: string;
     name: string;
     slug: string;
+    cover_image_url: string | null;
 }
 
 export interface SimpleWorkspaceWithRole {

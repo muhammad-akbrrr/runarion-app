@@ -27,6 +27,7 @@ export enum ErrorType {
     NETWORK = 'network',
     VALIDATION = 'validation',
     AUTHENTICATION = 'authentication',
+    LOCKED = 'locked',
     NOT_FOUND = 'not_found',
     SERVER = 'server',
     TIMEOUT = 'timeout',
@@ -72,6 +73,10 @@ export function categorizeError(error: any): ErrorType {
     
     if (status === 401 || status === 403) {
         return ErrorType.AUTHENTICATION;
+    }
+
+    if (status === 423) {
+        return ErrorType.LOCKED;
     }
     
     if (status === 404) {
@@ -142,6 +147,9 @@ export function getUserFriendlyMessage(error: any, context?: ErrorContext): stri
                 }
             }
             return 'Invalid input. Please check your data and try again.';
+
+        case ErrorType.LOCKED:
+            return error.message || error.error || 'This project is locked while the novel pipeline is processing.';
         
         case ErrorType.AUTHENTICATION:
             return 'Authentication failed. Please refresh the page and log in again.';
