@@ -25,7 +25,6 @@ interface Props
 export default function ProjectBackups({
     workspaceId,
     projectId,
-    project,
 }: Props) {
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Project Settings", path: "workspace.projects.edit" },

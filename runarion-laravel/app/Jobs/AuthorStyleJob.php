@@ -2,13 +2,13 @@
 
 namespace App\Jobs;
 
+use App\Services\PythonServiceClient;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
-use App\Services\PythonServiceClient;
 
 class AuthorStyleJob implements ShouldQueue
 {
@@ -26,9 +26,13 @@ class AuthorStyleJob implements ShouldQueue
     public $tries = 2;
 
     protected $userId;
+
     protected $workspaceId;
+
     protected $projectId;
+
     protected $authorName;
+
     protected $authorFilePaths;
 
     /**
@@ -54,19 +58,19 @@ class AuthorStyleJob implements ShouldQueue
         // Prepare request data
         // on_exist: "update" allows re-running analysis if a previous attempt failed
         $requestData = [
-            "author_name" => $this->authorName,
-            "on_exist" => "update",
-            "caller" => [
-                "user_id" => (string)$this->userId,
-                "workspace_id" => $this->workspaceId,
-                "project_id" => $this->projectId
-            ]
+            'author_name' => $this->authorName,
+            'on_exist' => 'update',
+            'caller' => [
+                'user_id' => (string) $this->userId,
+                'workspace_id' => $this->workspaceId,
+                'project_id' => $this->projectId,
+            ],
         ];
 
         try {
             Log::info('Author style analysis API response', [
                 'author_name' => $this->authorName,
-                'duration_ms' => (int)((microtime(true) - $startTime) * 1000),
+                'duration_ms' => (int) ((microtime(true) - $startTime) * 1000),
             ]);
             $pythonClient->analyzeAuthorStyle($requestData, $this->authorFilePaths);
 
@@ -75,7 +79,7 @@ class AuthorStyleJob implements ShouldQueue
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
                 'author_name' => $this->authorName,
-                'duration_ms' => (int)((microtime(true) - $startTime) * 1000),
+                'duration_ms' => (int) ((microtime(true) - $startTime) * 1000),
             ]);
 
             throw $e;

@@ -2,16 +2,17 @@
 
 namespace App\Http\Controllers\ProjectEditor;
 
+use App\Events\AdvisorStreamCompleted;
 use App\Http\Controllers\Controller;
+use App\Jobs\AdvisorStreamJob;
 use App\Models\AdvisorChat;
 use App\Models\AdvisorMessage;
-use App\Models\Projects;
 use App\Models\ProjectContent;
+use App\Models\Projects;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
-use Symfony\Component\HttpFoundation\StreamedResponse;
+use Illuminate\Support\Str;
 
 class AdvisorController extends Controller
 {
@@ -123,7 +124,7 @@ class AdvisorController extends Controller
                 })
                 ->firstOrFail();
 
-            $chat->update(array_filter($validated, fn($v) => $v !== null));
+            $chat->update(array_filter($validated, fn ($v) => $v !== null));
 
             return response()->json([
                 'success' => true,
@@ -293,8 +294,7 @@ class AdvisorController extends Controller
     }
 
     /**
-     * Send a message and get a streaming AI response.
-     * This includes full story context for the AI.
+     * Start advisor streaming through the queue and Echo events.
      */
     public function sendMessage(Request $request, string $workspace_id, string $project_id, string $chat_id)
     {
@@ -319,7 +319,7 @@ class AdvisorController extends Controller
             // On retry, the message already exists in the database
             $isRetry = $validated['is_retry'] ?? false;
             $userMessageId = null;
-            if (!$isRetry) {
+            if (! $isRetry) {
                 $userMessage = AdvisorMessage::create([
                     'chat_id' => $chat_id,
                     'role' => 'user',
@@ -334,7 +334,7 @@ class AdvisorController extends Controller
             // Get story context if requested (default: true)
             $includeContext = $validated['include_story_context'] ?? true;
             $storyContext = '';
-            
+
             if ($includeContext) {
                 $storyContext = $this->getStoryContextText($project_id);
             }
@@ -359,15 +359,25 @@ class AdvisorController extends Controller
                 'temperature' => $validated['temperature'] ?? 0.8,
             ];
 
-            // Call Python API for streaming response
-            return $this->streamAIResponse(
-                $chat,
+            $sessionId = Str::uuid()->toString();
+
+            AdvisorStreamJob::dispatch(
+                $workspace_id,
+                $project_id,
+                $chat_id,
+                $sessionId,
                 $storyContext,
                 $conversationHistory,
-                $project_id,
                 $generationSettings,
                 $userMessageId
             );
+
+            return response()->json([
+                'success' => true,
+                'chat_id' => $chat_id,
+                'session_id' => $sessionId,
+                'user_message_id' => $userMessageId,
+            ]);
 
         } catch (\Exception $e) {
             Log::error('Error sending advisor message', [
@@ -378,7 +388,54 @@ class AdvisorController extends Controller
 
             return response()->json([
                 'success' => false,
-                'error' => 'Failed to send message: ' . $e->getMessage(),
+                'error' => 'Failed to send message: '.$e->getMessage(),
+            ], 500);
+        }
+    }
+
+    public function cancelMessageStream(Request $request, string $workspace_id, string $project_id, string $chat_id)
+    {
+        try {
+            $validated = $request->validate([
+                'session_id' => 'required|string',
+            ]);
+
+            $chat = AdvisorChat::where('id', $chat_id)
+                ->whereHas('project', function ($q) use ($workspace_id) {
+                    $q->where('workspace_id', $workspace_id);
+                })
+                ->firstOrFail();
+
+            Cache::put(
+                AdvisorStreamJob::cancellationCacheKey($validated['session_id']),
+                true,
+                now()->addMinutes(10),
+            );
+
+            broadcast(new AdvisorStreamCompleted(
+                $workspace_id,
+                $project_id,
+                $chat->id,
+                $validated['session_id'],
+                false,
+                null,
+                null,
+                'Generation cancelled by user',
+                true,
+            ));
+
+            return response()->json([
+                'success' => true,
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error cancelling advisor stream', [
+                'error' => $e->getMessage(),
+                'chat_id' => $chat_id,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to cancel advisor stream',
             ], 500);
         }
     }
@@ -421,13 +478,13 @@ class AdvisorController extends Controller
     private function getStoryContextText(string $project_id): string
     {
         $projectContent = ProjectContent::where('project_id', $project_id)->first();
-        
-        if (!$projectContent || !$projectContent->content) {
+
+        if (! $projectContent || ! $projectContent->content) {
             return '';
         }
 
         $chapters = $projectContent->content;
-        if (!is_array($chapters)) {
+        if (! is_array($chapters)) {
             return '';
         }
 
@@ -438,10 +495,10 @@ class AdvisorController extends Controller
 
         $contextParts = [];
         $project = Projects::find($project_id);
-        
+
         if ($project) {
             $contextParts[] = "# Story: {$project->name}";
-            $contextParts[] = "";
+            $contextParts[] = '';
         }
 
         $totalChapters = count($chapters);
@@ -452,26 +509,26 @@ class AdvisorController extends Controller
             // Use chapter_name if available, otherwise use 1-indexed chapter number
             // (order is 0-indexed internally, but users see 1-indexed chapters)
             $chapterOrder = ($chapter['order'] ?? 0) + 1;
-            $chapterName = !empty($chapter['chapter_name']) 
-                ? $chapter['chapter_name'] 
+            $chapterName = ! empty($chapter['chapter_name'])
+                ? $chapter['chapter_name']
                 : "Chapter {$chapterOrder}";
             $chapterContent = $chapter['content'] ?? '';
-            
-            if (!empty($chapterContent)) {
+
+            if (! empty($chapterContent)) {
                 $contextParts[] = "## {$chapterName}";
-                $contextParts[] = "";
+                $contextParts[] = '';
                 $contextParts[] = $chapterContent;
-                $contextParts[] = "";
-                $contextParts[] = "---";
-                $contextParts[] = "";
+                $contextParts[] = '';
+                $contextParts[] = '---';
+                $contextParts[] = '';
             } else {
                 // Still include empty chapters so AI knows they exist
                 $contextParts[] = "## {$chapterName}";
-                $contextParts[] = "";
-                $contextParts[] = "[This chapter is currently empty]";
-                $contextParts[] = "";
-                $contextParts[] = "---";
-                $contextParts[] = "";
+                $contextParts[] = '';
+                $contextParts[] = '[This chapter is currently empty]';
+                $contextParts[] = '';
+                $contextParts[] = '---';
+                $contextParts[] = '';
             }
         }
 
@@ -484,219 +541,6 @@ class AdvisorController extends Controller
     private function estimateTokens(string $text): int
     {
         return (int) ceil(strlen($text) / 4);
-    }
-
-    /**
-     * Stream AI response from Python service using cURL for true streaming.
-     */
-    private function streamAIResponse(
-        AdvisorChat $chat,
-        string $storyContext,
-        array $conversationHistory,
-        string $project_id,
-        array $generationSettings = [],
-        ?string $userMessageId = null
-    ): StreamedResponse {
-        return response()->stream(function () use ($chat, $storyContext, $conversationHistory, $project_id, $generationSettings, $userMessageId) {
-            $pythonApiUrl = env('PYTHON_SERVICE_URL', 'http://python-app:5000');
-            $fullResponse = '';
-            $lineBuffer = ''; // Buffer for incomplete SSE lines
-
-            try {
-                // Build the request payload with generation settings
-                $payload = [
-                    'model' => $generationSettings['model'] ?? $chat->model,
-                    'system_instructions' => $chat->system_instructions ?? $this->getDefaultSystemInstructions(),
-                    'story_context' => $storyContext,
-                    'conversation_history' => $conversationHistory,
-                    'project_id' => $project_id,
-                    'stream' => true,
-                    // Generation settings
-                    'thinking_budget' => $generationSettings['thinking_budget'] ?? 4096,
-                    'max_output_tokens' => $generationSettings['max_output_tokens'] ?? 4000,
-                    'temperature' => $generationSettings['temperature'] ?? 0.8,
-                ];
-
-                Log::info('Advisor streaming request', [
-                    'chat_id' => $chat->id,
-                    'model' => $payload['model'],
-                    'story_context_length' => strlen($storyContext),
-                    'history_count' => count($conversationHistory),
-                    'thinking_budget' => $payload['thinking_budget'],
-                    'max_output_tokens' => $payload['max_output_tokens'],
-                    'temperature' => $payload['temperature'],
-                ]);
-
-                // Use cURL for TRUE streaming (not buffered like Http::withOptions)
-                $ch = curl_init("{$pythonApiUrl}/api/advisor/chat");
-                curl_setopt_array($ch, [
-                    CURLOPT_POST => true,
-                    CURLOPT_POSTFIELDS => json_encode($payload),
-                    CURLOPT_HTTPHEADER => [
-                        'Content-Type: application/json',
-                        'Accept: text/event-stream',
-                    ],
-                    CURLOPT_RETURNTRANSFER => false,
-                    CURLOPT_TIMEOUT => 300,
-                    CURLOPT_WRITEFUNCTION => function ($ch, $data) use (&$fullResponse, &$lineBuffer) {
-                        // Append new data to buffer
-                        $lineBuffer .= $data;
-                        
-                        // Process complete lines only (SSE lines end with \n\n)
-                        while (($pos = strpos($lineBuffer, "\n")) !== false) {
-                            $line = substr($lineBuffer, 0, $pos);
-                            $lineBuffer = substr($lineBuffer, $pos + 1);
-                            
-                            $line = trim($line);
-                            if (empty($line)) continue;
-                            
-                            if (strpos($line, 'data: ') === 0) {
-                                $eventData = substr($line, 6);
-                                
-                                if ($eventData === '[DONE]') {
-                                    continue;
-                                }
-
-                                $decoded = json_decode($eventData, true);
-                                if ($decoded && isset($decoded['chunk'])) {
-                                    $fullResponse .= $decoded['chunk'];
-                                    
-                                    // Forward the chunk to the client immediately
-                                    echo "data: " . json_encode([
-                                        'chunk' => $decoded['chunk'],
-                                        'type' => 'content',
-                                    ]) . "\n\n";
-                                    if (ob_get_level() > 0) {
-                                        ob_flush();
-                                    }
-                                    flush();
-                                } elseif ($decoded && isset($decoded['error'])) {
-                                    Log::error('Advisor stream error from Python', ['error' => $decoded['error']]);
-                                    echo "data: " . json_encode(['error' => $decoded['error']]) . "\n\n";
-                                    if (ob_get_level() > 0) {
-                                        ob_flush();
-                                    }
-                                    flush();
-                                }
-                            }
-                        }
-                        return strlen($data);
-                    },
-                ]);
-
-                $result = curl_exec($ch);
-                $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-                $curlError = curl_error($ch);
-                curl_close($ch);
-
-                // Process any remaining buffered content
-                if (!empty($lineBuffer)) {
-                    $line = trim($lineBuffer);
-                    if (strpos($line, 'data: ') === 0) {
-                        $eventData = substr($line, 6);
-                        if ($eventData !== '[DONE]') {
-                            $decoded = json_decode($eventData, true);
-                            if ($decoded && isset($decoded['chunk'])) {
-                                $fullResponse .= $decoded['chunk'];
-                                echo "data: " . json_encode([
-                                    'chunk' => $decoded['chunk'],
-                                    'type' => 'content',
-                                ]) . "\n\n";
-                                if (ob_get_level() > 0) {
-                                    ob_flush();
-                                }
-                                flush();
-                            }
-                        }
-                    }
-                }
-
-                if ($httpCode !== 200 || $result === false) {
-                    $error = $curlError ?: "API error: HTTP {$httpCode}";
-                    Log::error('Advisor API error', ['error' => $error, 'http_code' => $httpCode]);
-                    echo "data: " . json_encode(['error' => $error]) . "\n\n";
-                    if (ob_get_level() > 0) {
-                        ob_flush();
-                    }
-                    flush();
-                    return;
-                }
-
-                Log::info('Advisor stream completed', [
-                    'chat_id' => $chat->id,
-                    'full_response_length' => strlen($fullResponse),
-                    'http_code' => $httpCode,
-                ]);
-
-                // Save the assistant's response AFTER streaming completes
-                $assistantMessageId = null;
-                if (!empty($fullResponse)) {
-                    try {
-                        $assistantMessage = AdvisorMessage::create([
-                            'chat_id' => $chat->id,
-                            'role' => 'assistant',
-                            'content' => $fullResponse,
-                            'metadata' => [
-                                'model' => $generationSettings['model'] ?? $chat->model,
-                                'story_context_tokens' => $this->estimateTokens($storyContext),
-                            ],
-                        ]);
-                        $assistantMessageId = $assistantMessage->id;
-
-                        // Auto-generate title from first message if still default
-                        if ($chat->title === 'New Chat' && $chat->messages()->count() <= 2) {
-                            $this->autoGenerateTitle($chat);
-                        }
-                        
-                        Log::info('Advisor response saved successfully', [
-                            'chat_id' => $chat->id,
-                            'message_id' => $assistantMessageId,
-                            'response_length' => strlen($fullResponse),
-                        ]);
-                    } catch (\Exception $saveError) {
-                        Log::error('Failed to save advisor response', [
-                            'chat_id' => $chat->id,
-                            'error' => $saveError->getMessage(),
-                            'response_length' => strlen($fullResponse),
-                        ]);
-                    }
-                } else {
-                    Log::warning('Advisor stream completed but fullResponse is empty', [
-                        'chat_id' => $chat->id,
-                    ]);
-                }
-
-                // Send completion signal with both message IDs
-                echo "data: " . json_encode([
-                    'type' => 'done',
-                    'message_id' => $assistantMessageId,
-                    'user_message_id' => $userMessageId,
-                    'response_length' => strlen($fullResponse),
-                ]) . "\n\n";
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                }
-                flush();
-
-            } catch (\Exception $e) {
-                Log::error('Error in advisor stream', [
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                    'chat_id' => $chat->id,
-                ]);
-
-                echo "data: " . json_encode(['error' => $e->getMessage()]) . "\n\n";
-                if (ob_get_level() > 0) {
-                    ob_flush();
-                }
-                flush();
-            }
-        }, 200, [
-            'Content-Type' => 'text/event-stream',
-            'Cache-Control' => 'no-cache',
-            'Connection' => 'keep-alive',
-            'X-Accel-Buffering' => 'no',
-        ]);
     }
 
     /**
@@ -724,7 +568,7 @@ class AdvisorController extends Controller
      */
     private function getDefaultSystemInstructions(): string
     {
-        return <<<EOT
+        return <<<'EOT'
 You are an expert writing advisor and creative assistant. You have access to the full story context and can help with:
 
 1. **Story Analysis**: Analyze plot, characters, pacing, themes, and narrative structure
@@ -751,4 +595,3 @@ IMPORTANT RULES:
 EOT;
     }
 }
-

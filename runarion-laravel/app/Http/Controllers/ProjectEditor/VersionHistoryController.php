@@ -2,14 +2,14 @@
 
 namespace App\Http\Controllers\ProjectEditor;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Projects;
 use App\Models\ProjectSnapshot;
 use App\Services\VersionControlService;
-use Inertia\Inertia;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class VersionHistoryController extends Controller
 {
@@ -29,7 +29,7 @@ class VersionHistoryController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
@@ -77,7 +77,7 @@ class VersionHistoryController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -91,8 +91,9 @@ class VersionHistoryController extends Controller
 
             $snapshot = ProjectSnapshot::with('creator:id,name')->find($snapshotId);
 
-            if (!$snapshot) {
+            if (! $snapshot) {
                 Log::error('Snapshot not found after creation', ['snapshot_id' => $snapshotId]);
+
                 return response()->json(['error' => 'Snapshot created but not found'], 500);
             }
 
@@ -132,14 +133,14 @@ class VersionHistoryController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $success = $this->versionControl->loadSnapshot($project_id, $snapshot_id);
 
-            if (!$success) {
+            if (! $success) {
                 return response()->json(['error' => 'Snapshot not found'], 404);
             }
 
@@ -174,7 +175,7 @@ class VersionHistoryController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -183,7 +184,7 @@ class VersionHistoryController extends Controller
                 ->where('project_id', $project_id)
                 ->first();
 
-            if (!$snapshot) {
+            if (! $snapshot) {
                 return response()->json(['error' => 'Snapshot not found'], 404);
             }
 
@@ -215,7 +216,7 @@ class VersionHistoryController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -224,7 +225,7 @@ class VersionHistoryController extends Controller
                 ->where('project_id', $project_id)
                 ->first();
 
-            if (!$snapshot) {
+            if (! $snapshot) {
                 return response()->json(['error' => 'Snapshot not found'], 404);
             }
 
@@ -258,7 +259,7 @@ class VersionHistoryController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 

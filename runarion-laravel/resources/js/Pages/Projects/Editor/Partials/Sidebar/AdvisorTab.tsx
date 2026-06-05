@@ -49,9 +49,10 @@ import {
 } from "lucide-react";
 import {
     usePendingEdits,
-    AdvisorMode,
-} from "../../contexts/PendingEditsContext";
+} from "../../Contexts/PendingEditsContext";
 import { MagicWandButton } from "@/Components/MagicWandButton";
+import Echo from "@/echo";
+import { http, normalizeHttpError } from "@/Lib/http";
 
 interface AdvisorChat {
     id: string;
@@ -73,6 +74,41 @@ interface AdvisorMessage {
 
 import { ProjectSettings, MODEL_CONFIGS } from "@/types/project";
 
+interface AdvisorStreamSession {
+    chatId: string;
+    sessionId: string;
+    fullContent: string;
+}
+
+interface AdvisorStreamStartedEvent {
+    workspace_id: string;
+    project_id: string;
+    chat_id: string;
+    session_id: string;
+    user_message_id?: string | null;
+}
+
+interface AdvisorStreamChunkEvent {
+    workspace_id: string;
+    project_id: string;
+    chat_id: string;
+    session_id: string;
+    chunk: string;
+    chunk_index: number;
+}
+
+interface AdvisorStreamCompletedEvent {
+    workspace_id: string;
+    project_id: string;
+    chat_id: string;
+    session_id: string;
+    success: boolean;
+    message_id?: string | null;
+    user_message_id?: string | null;
+    error?: string | null;
+    cancelled: boolean;
+}
+
 interface AdvisorTabProps {
     workspaceId: string;
     projectId: string;
@@ -81,29 +117,6 @@ interface AdvisorTabProps {
     onSettingChange?: (key: keyof ProjectSettings, value: any) => void;
     onSavingChange?: (isSaving: boolean) => void;
 }
-
-// Helper to get CSRF token
-const getCsrfToken = () => {
-    return (
-        document
-            .querySelector('meta[name="csrf-token"]')
-            ?.getAttribute("content") || ""
-    );
-};
-
-// Helper for fetch with CSRF token
-const fetchWithCsrf = async (url: string, options: RequestInit = {}) => {
-    const response = await fetch(url, {
-        ...options,
-        headers: {
-            "Content-Type": "application/json",
-            Accept: "application/json",
-            "X-CSRF-TOKEN": getCsrfToken(),
-            ...options.headers,
-        },
-    });
-    return response;
-};
 
 // Available models — derived from MODEL_CONFIGS
 const AVAILABLE_MODELS = Object.values(MODEL_CONFIGS).map((mc) => ({
@@ -167,19 +180,19 @@ export default function AdvisorTab({
     // Settings state - local state for active session, with defaults from project settings
     const [showSettings, setShowSettings] = useState(false);
     const [selectedModel, setSelectedModel] = useState(
-        settings?.advisorModel || "gemini-2.5-flash"
+        settings?.advisorModel || "gemini-2.5-flash",
     );
     const [systemInstructions, setSystemInstructions] = useState(
-        settings?.advisorSystemInstructions || DEFAULT_SYSTEM_INSTRUCTIONS
+        settings?.advisorSystemInstructions || DEFAULT_SYSTEM_INSTRUCTIONS,
     );
     const [thinkingBudget, setThinkingBudget] = useState(
-        settings?.advisorThinkingBudget || 4096
+        settings?.advisorThinkingBudget || 4096,
     );
     const [outputLength, setOutputLength] = useState(
-        settings?.advisorOutputLength || 4000
+        settings?.advisorOutputLength || 4000,
     ); // Increased default for more detailed responses
     const [temperature, setTemperature] = useState(
-        settings?.advisorTemperature || 0.8
+        settings?.advisorTemperature || 0.8,
     );
 
     // UI state
@@ -198,12 +211,12 @@ export default function AdvisorTab({
 
     // Refs
     const messagesEndRef = useRef<HTMLDivElement>(null);
-    const abortControllerRef = useRef<AbortController | null>(null);
     const chatListRef = useRef<HTMLDivElement>(null);
     const actionsRef = useRef<HTMLDivElement>(null);
     const pendingAfterMessagesRef = useRef<AdvisorMessage[]>([]); // Messages to append after edit completes
     const sentEditsRef = useRef<Set<string>>(new Set()); // Track sent edits to avoid duplicates
     const prevModeRef = useRef<"chat" | "agent">(advisorMode);
+    const streamSessionRef = useRef<AdvisorStreamSession | null>(null);
 
     // Re-queue edits when switching to Agent mode
     useEffect(() => {
@@ -229,16 +242,16 @@ export default function AdvisorTab({
                     matches.forEach((match) => {
                         const editContent = match[1];
                         const oldMatch = editContent.match(
-                            /OLD:\s*([\s\S]*?)(?=NEW:|$)/
+                            /OLD:\s*([\s\S]*?)(?=NEW:|$)/,
                         );
                         const newMatch = editContent.match(
-                            /NEW:\s*([\s\S]*?)(?=REASON:|$)/
+                            /NEW:\s*([\s\S]*?)(?=REASON:|$)/,
                         );
                         const reasonMatch = editContent.match(
-                            /REASON:\s*([\s\S]*?)$/
+                            /REASON:\s*([\s\S]*?)$/,
                         );
                         const chapterMatch = editContent.match(
-                            /CHAPTER:\s*(.*?)(?=\n|$)/
+                            /CHAPTER:\s*(.*?)(?=\n|$)/,
                         );
 
                         const oldText = oldMatch?.[1]?.trim() || "";
@@ -248,7 +261,7 @@ export default function AdvisorTab({
                         if (oldText && newText) {
                             // Check for duplicates (same oldText)
                             const isDuplicate = allEditSuggestions.some(
-                                (e) => e.oldText === oldText
+                                (e) => e.oldText === oldText,
                             );
                             if (!isDuplicate) {
                                 allEditSuggestions.push({
@@ -265,7 +278,7 @@ export default function AdvisorTab({
             if (allEditSuggestions.length > 0) {
                 console.log(
                     "[AdvisorTab] Re-queueing edits from all messages for Agent mode:",
-                    allEditSuggestions.length
+                    allEditSuggestions.length,
                 );
                 // Clear old edits and add fresh ones
                 clearAllEdits();
@@ -312,7 +325,7 @@ export default function AdvisorTab({
             loadMessages(activeChat.id);
             setSelectedModel(activeChat.model);
             setSystemInstructions(
-                activeChat.system_instructions || DEFAULT_SYSTEM_INSTRUCTIONS
+                activeChat.system_instructions || DEFAULT_SYSTEM_INSTRUCTIONS,
             );
             setTitleValue(activeChat.title);
         } else {
@@ -320,6 +333,112 @@ export default function AdvisorTab({
             setTitleValue("");
         }
     }, [activeChat?.id]);
+
+    useEffect(() => {
+        const channelName = `project.${workspaceId}.${projectId}`;
+        const channel = Echo.channel(channelName);
+
+        channel.listen(".advisor.stream.started", (event: AdvisorStreamStartedEvent) => {
+            if (
+                streamSessionRef.current &&
+                event.chat_id === streamSessionRef.current.chatId &&
+                event.session_id === streamSessionRef.current.sessionId
+            ) {
+                setIsStreaming(true);
+            }
+        });
+
+        channel.listen(".advisor.stream.chunk", (event: AdvisorStreamChunkEvent) => {
+            if (
+                !streamSessionRef.current ||
+                event.chat_id !== streamSessionRef.current.chatId ||
+                event.session_id !== streamSessionRef.current.sessionId
+            ) {
+                return;
+            }
+
+            streamSessionRef.current.fullContent += event.chunk ?? "";
+            setStreamingContent(streamSessionRef.current.fullContent);
+        });
+
+        channel.listen(".advisor.stream.completed", (event: AdvisorStreamCompletedEvent) => {
+            if (
+                !streamSessionRef.current ||
+                event.chat_id !== streamSessionRef.current.chatId ||
+                event.session_id !== streamSessionRef.current.sessionId
+            ) {
+                return;
+            }
+
+            const fullContent = streamSessionRef.current.fullContent;
+            const afterMessages = pendingAfterMessagesRef.current;
+            pendingAfterMessagesRef.current = [];
+            streamSessionRef.current = null;
+            setIsStreaming(false);
+            setStreamingContent("");
+
+            if (event.cancelled) {
+                return;
+            }
+
+            if (!event.success) {
+                const errorMsg: AdvisorMessage = {
+                    id: `error-${Date.now()}`,
+                    role: "assistant",
+                    content: `❌ Error: ${event.error || "Failed to generate response"}. Please try again.`,
+                    created_at: new Date().toISOString(),
+                };
+                setMessages((prev) => [...prev, errorMsg]);
+                return;
+            }
+
+            if (!fullContent) {
+                return;
+            }
+
+            const assistantMsg: AdvisorMessage = {
+                id: event.message_id || `assistant-${Date.now()}`,
+                role: "assistant",
+                content: fullContent,
+                created_at: new Date().toISOString(),
+            };
+
+            setMessages((prev) => {
+                const updated = prev.map((msg) => {
+                    if (
+                        msg.id.startsWith("pending-user-") &&
+                        event.user_message_id
+                    ) {
+                        return {
+                            ...msg,
+                            id: event.user_message_id,
+                        };
+                    }
+
+                    return msg;
+                });
+
+                if (
+                    updated.some(
+                        (msg) =>
+                            msg.role === "assistant" &&
+                            msg.content === fullContent,
+                    )
+                ) {
+                    return updated;
+                }
+
+                return [...updated, assistantMsg, ...afterMessages];
+            });
+        });
+
+        return () => {
+            channel.stopListening(".advisor.stream.started");
+            channel.stopListening(".advisor.stream.chunk");
+            channel.stopListening(".advisor.stream.completed");
+            Echo.leave(channelName);
+        };
+    }, [workspaceId, projectId]);
 
     const isThinkingModel =
         AVAILABLE_MODELS.find((m) => m.value === selectedModel)?.thinking ??
@@ -331,13 +450,12 @@ export default function AdvisorTab({
     const loadChats = async () => {
         setIsLoadingChats(true);
         try {
-            const response = await fetchWithCsrf(
+            const { data } = await http.get(
                 route("advisor.chats.list", {
                     workspace_id: workspaceId,
                     project_id: projectId,
-                })
+                }),
             );
-            const data = await response.json();
             if (data.success) {
                 setChats(data.chats);
                 if (data.chats.length > 0 && !activeChat) {
@@ -354,14 +472,13 @@ export default function AdvisorTab({
     const loadMessages = async (chatId: string) => {
         setIsLoadingMessages(true);
         try {
-            const response = await fetchWithCsrf(
+            const { data } = await http.get(
                 route("advisor.messages.get", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                     chat_id: chatId,
-                })
+                }),
             );
-            const data = await response.json();
             if (data.success) {
                 setMessages(data.messages);
             }
@@ -377,21 +494,17 @@ export default function AdvisorTab({
         setShowActions(false);
         onSavingChange?.(true);
         try {
-            const response = await fetchWithCsrf(
+            const { data } = await http.post(
                 route("advisor.chats.create", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                 }),
                 {
-                    method: "POST",
-                    body: JSON.stringify({
-                        title: "New Chat",
-                        model: selectedModel,
-                        system_instructions: systemInstructions,
-                    }),
-                }
+                    title: "New Chat",
+                    model: selectedModel,
+                    system_instructions: systemInstructions,
+                },
             );
-            const data = await response.json();
             if (data.success) {
                 setChats((prev) => [data.chat, ...prev]);
                 setActiveChat(data.chat);
@@ -409,21 +522,17 @@ export default function AdvisorTab({
         setEditingTitle(false);
         onSavingChange?.(true);
         try {
-            const response = await fetchWithCsrf(
+            const { data } = await http.put(
                 route("advisor.chats.update", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                     chat_id: activeChat.id,
                 }),
-                {
-                    method: "PUT",
-                    body: JSON.stringify({ title: titleValue.trim() }),
-                }
+                { title: titleValue.trim() },
             );
-            const data = await response.json();
             if (data.success) {
                 setChats((prev) =>
-                    prev.map((c) => (c.id === activeChat.id ? data.chat : c))
+                    prev.map((c) => (c.id === activeChat.id ? data.chat : c)),
                 );
                 setActiveChat(data.chat);
             }
@@ -439,34 +548,30 @@ export default function AdvisorTab({
         setShowSettings(false);
         onSavingChange?.(true);
         try {
-            const response = await fetchWithCsrf(
+            const { data } = await http.put(
                 route("advisor.chats.update", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                     chat_id: activeChat.id,
                 }),
                 {
-                    method: "PUT",
-                    body: JSON.stringify({
-                        model: selectedModel,
-                        system_instructions: systemInstructions,
-                    }),
-                }
+                    model: selectedModel,
+                    system_instructions: systemInstructions,
+                },
             );
-            const data = await response.json();
             if (data.success) {
                 setChats((prev) =>
-                    prev.map((c) => (c.id === activeChat.id ? data.chat : c))
+                    prev.map((c) => (c.id === activeChat.id ? data.chat : c)),
                 );
                 setActiveChat(data.chat);
             }
 
             // Also persist default settings to project settings
-            onSettingChange?.('advisorModel', selectedModel);
-            onSettingChange?.('advisorSystemInstructions', systemInstructions);
-            onSettingChange?.('advisorThinkingBudget', thinkingBudget);
-            onSettingChange?.('advisorOutputLength', outputLength);
-            onSettingChange?.('advisorTemperature', temperature);
+            onSettingChange?.("advisorModel", selectedModel);
+            onSettingChange?.("advisorSystemInstructions", systemInstructions);
+            onSettingChange?.("advisorThinkingBudget", thinkingBudget);
+            onSettingChange?.("advisorOutputLength", outputLength);
+            onSettingChange?.("advisorTemperature", temperature);
         } catch (error) {
             console.error("Error saving settings:", error);
         } finally {
@@ -477,15 +582,13 @@ export default function AdvisorTab({
     const deleteChat = async (chatId: string) => {
         onSavingChange?.(true);
         try {
-            const response = await fetchWithCsrf(
+            const { data } = await http.delete(
                 route("advisor.chats.delete", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                     chat_id: chatId,
                 }),
-                { method: "DELETE" }
             );
-            const data = await response.json();
             if (data.success) {
                 const remaining = chats.filter((c) => c.id !== chatId);
                 setChats(remaining);
@@ -507,15 +610,13 @@ export default function AdvisorTab({
         onSavingChange?.(true);
 
         try {
-            const response = await fetchWithCsrf(
+            const { data } = await http.delete(
                 route("advisor.messages.clear", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                     chat_id: activeChat.id,
                 }),
-                { method: "DELETE" }
             );
-            const data = await response.json();
             if (data.success) {
                 setMessages([]);
             } else {
@@ -531,7 +632,7 @@ export default function AdvisorTab({
     const sendMessage = async (
         messageText?: string,
         isRetry = false,
-        messagesOverride?: AdvisorMessage[]
+        messagesOverride?: AdvisorMessage[],
     ) => {
         const textToSend = messageText || inputMessage.trim();
         if (!textToSend || isStreaming || !activeChat) return;
@@ -581,174 +682,57 @@ export default function AdvisorTab({
 
         // Update UI with the base messages (without the streaming response yet)
         setMessages(baseMessages);
-
-        abortControllerRef.current = new AbortController();
+        streamSessionRef.current = {
+            chatId,
+            sessionId: "",
+            fullContent: "",
+        };
 
         try {
-            const response = await fetch(
+            const { data } = await http.post(
                 route("advisor.messages.send", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                     chat_id: chatId,
                 }),
                 {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "text/event-stream",
-                        "X-CSRF-TOKEN": getCsrfToken(),
-                    },
-                    body: JSON.stringify({
-                        message: textToSend,
-                        include_story_context: true,
-                        // Flag to indicate if this is a retry (don't save duplicate user message)
-                        is_retry: isRetry,
-                        // Generation settings
-                        model: selectedModel,
-                        thinking_budget: isThinkingModel ? thinkingBudget : 0,
-                        max_output_tokens: outputLength,
-                        temperature: temperature,
-                    }),
-                    signal: abortControllerRef.current.signal,
-                }
+                    message: textToSend,
+                    include_story_context: true,
+                    is_retry: isRetry,
+                    model: selectedModel,
+                    thinking_budget: isThinkingModel ? thinkingBudget : 0,
+                    max_output_tokens: outputLength,
+                    temperature,
+                },
             );
 
-            if (!response.ok) {
-                throw new Error(`HTTP ${response.status}`);
+            if (streamSessionRef.current) {
+                streamSessionRef.current.sessionId = data.session_id;
             }
 
-            const reader = response.body?.getReader();
-            const decoder = new TextDecoder();
-            let fullContent = "";
-
-            if (reader) {
-                let buffer = "";
-                while (true) {
-                    const { done, value } = await reader.read();
-                    if (done) break;
-
-                    buffer += decoder.decode(value, { stream: true });
-                    const lines = buffer.split("\n");
-                    buffer = lines.pop() || "";
-
-                    for (const line of lines) {
-                        if (line.startsWith("data: ")) {
-                            const data = line.slice(6).trim();
-                            if (data === "[DONE]") continue;
-
-                            try {
-                                const parsed = JSON.parse(data);
-                                if (parsed.chunk) {
-                                    fullContent += parsed.chunk;
-                                    setStreamingContent(fullContent);
-                                } else if (
-                                    parsed.type === "done" &&
-                                    parsed.message_id
-                                ) {
-                                    // Stream complete - add the assistant message with real ID
-                                    const assistantMsg: AdvisorMessage = {
-                                        id: parsed.message_id,
-                                        role: "assistant",
-                                        content: fullContent,
-                                        created_at: new Date().toISOString(),
-                                    };
-
-                                    // Get any pending after messages (from edit operation)
-                                    const afterMsgs =
-                                        pendingAfterMessagesRef.current;
-                                    pendingAfterMessagesRef.current = []; // Clear the ref
-
-                                    // Get the real user message ID from the backend (if provided)
-                                    const realUserMsgId =
-                                        parsed.user_message_id;
-
-                                    // Update messages: replace pending user msg with real ID, add assistant, append after messages
-                                    setMessages((prev) => {
-                                        // Replace any pending user message with the real ID from backend
-                                        const updated = prev.map((msg) => {
-                                            if (
-                                                msg.id.startsWith(
-                                                    "pending-user-"
-                                                ) &&
-                                                realUserMsgId
-                                            ) {
-                                                return {
-                                                    ...msg,
-                                                    id: realUserMsgId,
-                                                };
-                                            }
-                                            return msg;
-                                        });
-                                        return [
-                                            ...updated,
-                                            assistantMsg,
-                                            ...afterMsgs,
-                                        ];
-                                    });
-                                } else if (parsed.error) {
-                                    throw new Error(parsed.error);
-                                }
-                            } catch (e) {
-                                // Ignore parse errors for malformed JSON
-                            }
-                        }
-                    }
-                }
+            if (data.user_message_id) {
+                setMessages((prev) =>
+                    prev.map((msg) =>
+                        msg.id.startsWith("pending-user-")
+                            ? { ...msg, id: data.user_message_id }
+                            : msg,
+                    ),
+                );
             }
-
-            // If we got content but didn't receive a done signal with message_id,
-            // still add the assistant message to UI
-            if (
-                fullContent &&
-                !messages.some((m) => m.content === fullContent)
-            ) {
-                // Get any pending after messages (from edit operation)
-                const afterMsgs = pendingAfterMessagesRef.current;
-                pendingAfterMessagesRef.current = []; // Clear the ref
-
-                setMessages((prev) => {
-                    // Check if we already added it via the done signal
-                    if (
-                        prev.some(
-                            (m) =>
-                                m.role === "assistant" &&
-                                m.content === fullContent
-                        )
-                    ) {
-                        return prev;
-                    }
-                    const assistantMsg: AdvisorMessage = {
-                        id: `assistant-${Date.now()}`,
-                        role: "assistant",
-                        content: fullContent,
-                        created_at: new Date().toISOString(),
-                    };
-                    // Replace pending user message IDs
-                    const updated = prev.map((msg) => {
-                        if (msg.id.startsWith("pending-user-")) {
-                            return { ...msg, id: `user-${Date.now()}` };
-                        }
-                        return msg;
-                    });
-                    return [...updated, assistantMsg, ...afterMsgs];
-                });
-            }
-        } catch (error: any) {
-            if (error.name !== "AbortError") {
-                console.error("Error:", error);
-                // Show error but also reload to sync state
-                const errorMsg: AdvisorMessage = {
-                    id: `error-${Date.now()}`,
-                    role: "assistant",
-                    content: `❌ Error: ${error.message}. Please try again.`,
-                    created_at: new Date().toISOString(),
-                };
-                setMessages((prev) => [...prev, errorMsg]);
-            }
-        } finally {
+        } catch (error) {
+            const normalizedError = normalizeHttpError(error);
+            console.error("Error:", normalizedError);
+            streamSessionRef.current = null;
             setIsStreaming(false);
             setStreamingContent("");
-            abortControllerRef.current = null;
+
+            const errorMsg: AdvisorMessage = {
+                id: `error-${Date.now()}`,
+                role: "assistant",
+                content: `❌ Error: ${normalizedError.message}. Please try again.`,
+                created_at: new Date().toISOString(),
+            };
+            setMessages((prev) => [...prev, errorMsg]);
         }
     };
 
@@ -775,14 +759,13 @@ export default function AdvisorTab({
                     !msg.id.startsWith("error-")
                 ) {
                     try {
-                        await fetchWithCsrf(
+                        await http.delete(
                             route("advisor.messages.delete", {
                                 workspace_id: workspaceId,
                                 project_id: projectId,
                                 chat_id: activeChat.id,
                                 message_id: msg.id,
                             }),
-                            { method: "DELETE" }
                         );
                     } catch (error) {
                         console.error("Error deleting message:", error);
@@ -814,14 +797,13 @@ export default function AdvisorTab({
                     !msg.id.startsWith("error-")
                 ) {
                     try {
-                        await fetchWithCsrf(
+                        await http.delete(
                             route("advisor.messages.delete", {
                                 workspace_id: workspaceId,
                                 project_id: projectId,
                                 chat_id: activeChat.id,
                                 message_id: msg.id,
                             }),
-                            { method: "DELETE" }
                         );
                     } catch (error) {
                         console.error("Error deleting message:", error);
@@ -881,14 +863,13 @@ export default function AdvisorTab({
 
         if (isRealMessage(editedMessage.id)) {
             try {
-                await fetchWithCsrf(
+                await http.delete(
                     route("advisor.messages.delete", {
                         workspace_id: workspaceId,
                         project_id: projectId,
                         chat_id: activeChat.id,
                         message_id: editedMessage.id,
                     }),
-                    { method: "DELETE" }
                 );
             } catch (error) {
                 console.error("Error deleting old message:", error);
@@ -898,14 +879,13 @@ export default function AdvisorTab({
         // Delete the AI response to this message (if any)
         if (hasAIResponse && isRealMessage(nextMessage.id)) {
             try {
-                await fetchWithCsrf(
+                await http.delete(
                     route("advisor.messages.delete", {
                         workspace_id: workspaceId,
                         project_id: projectId,
                         chat_id: activeChat.id,
                         message_id: nextMessage.id,
                     }),
-                    { method: "DELETE" }
                 );
             } catch (error) {
                 console.error("Error deleting AI response:", error);
@@ -923,8 +903,27 @@ export default function AdvisorTab({
         setEditingMessageContent("");
     };
 
-    const cancelStreaming = () => {
-        abortControllerRef.current?.abort();
+    const cancelStreaming = async () => {
+        if (!activeChat || !streamSessionRef.current) {
+            return;
+        }
+
+        try {
+            await http.post(
+                route("advisor.messages.cancel", {
+                    workspace_id: workspaceId,
+                    project_id: projectId,
+                    chat_id: activeChat.id,
+                }),
+                {
+                    session_id: streamSessionRef.current.sessionId,
+                },
+            );
+        } catch (error) {
+            console.error("Error cancelling advisor stream:", error);
+        }
+
+        streamSessionRef.current = null;
         setIsStreaming(false);
         setStreamingContent("");
     };
@@ -950,14 +949,13 @@ export default function AdvisorTab({
             !messageToDelete.id.startsWith("error-")
         ) {
             try {
-                await fetchWithCsrf(
+                await http.delete(
                     route("advisor.messages.delete", {
                         workspace_id: workspaceId,
                         project_id: projectId,
                         chat_id: activeChat.id,
                         message_id: messageToDelete.id,
                     }),
-                    { method: "DELETE" }
                 );
             } catch (error) {
                 console.error("Error deleting message:", error);
@@ -972,7 +970,7 @@ export default function AdvisorTab({
             const editContent = match[1];
             const oldMatch = editContent.match(/OLD:\s*([\s\S]*?)(?=NEW:|$)/);
             const newMatch = editContent.match(
-                /NEW:\s*([\s\S]*?)(?=REASON:|$)/
+                /NEW:\s*([\s\S]*?)(?=REASON:|$)/,
             );
             const reasonMatch = editContent.match(/REASON:\s*([\s\S]*?)$/);
             const chapterMatch = editContent.match(/CHAPTER:\s*(.*?)(?=\n|$)/);
@@ -991,7 +989,7 @@ export default function AdvisorTab({
         edits: typeof parseEditSuggestions extends (c: string) => infer R
             ? R
             : never,
-        clearExisting: boolean = false
+        clearExisting: boolean = false,
     ) => {
         if (edits.length === 0) return;
 
@@ -1012,7 +1010,7 @@ export default function AdvisorTab({
 
     const renderMessageContent = (
         content: string,
-        isLatestAssistant: boolean = false
+        isLatestAssistant: boolean = false,
     ) => {
         const editSuggestions = parseEditSuggestions(content);
 
@@ -1034,7 +1032,7 @@ export default function AdvisorTab({
                     // Append to existing edits (don't clear - user might have edits from previous messages)
                     setTimeout(
                         () => sendEditsToEditor(editSuggestions, false),
-                        100
+                        100,
                     );
                 }
             }
@@ -1089,14 +1087,23 @@ export default function AdvisorTab({
                                                 className="bg-green-600 hover:bg-green-700"
                                                 onClick={async () => {
                                                     if (onApplyEdit) {
-                                                        const success = await onApplyEdit(
-                                                            editSuggestions[idx].oldText,
-                                                            editSuggestions[idx].newText
-                                                        );
+                                                        const success =
+                                                            await onApplyEdit(
+                                                                editSuggestions[
+                                                                    idx
+                                                                ].oldText,
+                                                                editSuggestions[
+                                                                    idx
+                                                                ].newText,
+                                                            );
                                                         if (success) {
-                                                            alert("Edit applied!");
+                                                            alert(
+                                                                "Edit applied!",
+                                                            );
                                                         } else {
-                                                            alert("Could not find text to replace. The text may have changed.");
+                                                            alert(
+                                                                "Could not find text to replace. The text may have changed.",
+                                                            );
                                                         }
                                                     }
                                                 }}
@@ -1110,7 +1117,7 @@ export default function AdvisorTab({
                                                 onClick={() =>
                                                     copyToClipboard(
                                                         editSuggestions[idx]
-                                                            .newText
+                                                            .newText,
                                                     )
                                                 }
                                             >
@@ -1191,7 +1198,7 @@ export default function AdvisorTab({
                         <span className="text-xs text-purple-600">
                             {
                                 pendingEdits.filter(
-                                    (e) => e.status === "pending"
+                                    (e) => e.status === "pending",
                                 ).length
                             }{" "}
                             pending
@@ -1201,7 +1208,7 @@ export default function AdvisorTab({
                                     (
                                     {
                                         pendingEdits.filter(
-                                            (e) => e.status === "stale"
+                                            (e) => e.status === "stale",
                                         ).length
                                     }{" "}
                                     stale)
@@ -1427,9 +1434,18 @@ export default function AdvisorTab({
                         <Slider
                             value={[thinkingBudget]}
                             onValueChange={([v]) => setThinkingBudget(v)}
-                            min={advisorModelConfig?.params.thinkingBudget?.min ?? 0}
-                            max={advisorModelConfig?.params.thinkingBudget?.max ?? 24576}
-                            step={advisorModelConfig?.params.thinkingBudget?.step ?? 256}
+                            min={
+                                advisorModelConfig?.params.thinkingBudget
+                                    ?.min ?? 0
+                            }
+                            max={
+                                advisorModelConfig?.params.thinkingBudget
+                                    ?.max ?? 24576
+                            }
+                            step={
+                                advisorModelConfig?.params.thinkingBudget
+                                    ?.step ?? 256
+                            }
                             className="w-full"
                             disabled={!isThinkingModel}
                         />
@@ -1453,9 +1469,18 @@ export default function AdvisorTab({
                         <Slider
                             value={[outputLength]}
                             onValueChange={([v]) => setOutputLength(v)}
-                            min={advisorModelConfig?.params.outputLength?.min ?? 50}
-                            max={advisorModelConfig?.params.outputLength?.max ?? 8192}
-                            step={advisorModelConfig?.params.outputLength?.step ?? 10}
+                            min={
+                                advisorModelConfig?.params.outputLength?.min ??
+                                50
+                            }
+                            max={
+                                advisorModelConfig?.params.outputLength?.max ??
+                                8192
+                            }
+                            step={
+                                advisorModelConfig?.params.outputLength?.step ??
+                                10
+                            }
                             className="w-full"
                         />
                     </div>
@@ -1473,9 +1498,16 @@ export default function AdvisorTab({
                         <Slider
                             value={[temperature]}
                             onValueChange={([v]) => setTemperature(v)}
-                            min={advisorModelConfig?.params.temperature?.min ?? 0}
-                            max={advisorModelConfig?.params.temperature?.max ?? 2}
-                            step={advisorModelConfig?.params.temperature?.step ?? 0.01}
+                            min={
+                                advisorModelConfig?.params.temperature?.min ?? 0
+                            }
+                            max={
+                                advisorModelConfig?.params.temperature?.max ?? 2
+                            }
+                            step={
+                                advisorModelConfig?.params.temperature?.step ??
+                                0.01
+                            }
                             className="w-full"
                         />
                     </div>
@@ -1572,7 +1604,7 @@ export default function AdvisorTab({
                                                     }
                                                     onChange={(e) =>
                                                         setEditingMessageContent(
-                                                            e.target.value
+                                                            e.target.value,
                                                         )
                                                     }
                                                     className="min-h-20 text-sm"
@@ -1614,7 +1646,7 @@ export default function AdvisorTab({
                                                             message.content,
                                                             idx ===
                                                                 messages.length -
-                                                                    1
+                                                                    1,
                                                         )
                                                     ) : (
                                                         <p className="whitespace-pre-wrap">
@@ -1641,7 +1673,7 @@ export default function AdvisorTab({
                                                                 className="p-1 rounded hover:bg-gray-200 text-gray-400 hover:text-gray-600"
                                                                 onClick={() =>
                                                                     copyToClipboard(
-                                                                        message.content
+                                                                        message.content,
                                                                     )
                                                                 }
                                                             >
@@ -1679,7 +1711,7 @@ export default function AdvisorTab({
                                                                 className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
                                                                 onClick={() =>
                                                                     deleteMessage(
-                                                                        idx
+                                                                        idx,
                                                                     )
                                                                 }
                                                             >
@@ -1701,7 +1733,7 @@ export default function AdvisorTab({
                                                                 onClick={() =>
                                                                     startEditingMessage(
                                                                         idx,
-                                                                        message.content
+                                                                        message.content,
                                                                     )
                                                                 }
                                                             >
@@ -1718,7 +1750,7 @@ export default function AdvisorTab({
                                                                 className="p-1 rounded hover:bg-blue-200 text-gray-400 hover:text-blue-600"
                                                                 onClick={() =>
                                                                     retryMessage(
-                                                                        idx
+                                                                        idx,
                                                                     )
                                                                 }
                                                                 disabled={
@@ -1738,7 +1770,7 @@ export default function AdvisorTab({
                                                                 className="p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-500"
                                                                 onClick={() =>
                                                                     deleteMessage(
-                                                                        idx
+                                                                        idx,
                                                                     )
                                                                 }
                                                             >
@@ -1770,7 +1802,7 @@ export default function AdvisorTab({
                                     <div className="rounded-lg p-3 max-w-[85%] bg-gray-100">
                                         <div className="text-sm">
                                             {renderMessageContent(
-                                                streamingContent
+                                                streamingContent,
                                             )}
                                         </div>
                                     </div>

@@ -3,16 +3,16 @@
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\DB;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
     public function up(): void
     {
         // Create novel_graph_vertices table if it doesn't exist
-        if (!Schema::hasTable('novel_graph_vertices')) {
+        if (! Schema::hasTable('novel_graph_vertices')) {
             Schema::create('novel_graph_vertices', function (Blueprint $table) {
                 $table->id();
                 $table->ulid('draft_id')->nullable()->comment('For deconstructor entities');
@@ -28,19 +28,19 @@ return new class extends Migration {
                 // Foreign keys
                 $table->foreign('draft_id')->references('id')->on('drafts')->onDelete('cascade');
                 $table->foreign('project_id')->references('id')->on('projects')->onDelete('cascade');
-                
+
                 // Indexes
                 $table->index(['draft_id', 'entity_type']);
                 $table->index(['project_id', 'entity_type']);
                 $table->index('vertex_id');
                 $table->index('entity_name');
-                
+
                 // Ensure either draft_id or project_id is set
                 $table->rawIndex('(CASE WHEN draft_id IS NOT NULL THEN draft_id ELSE project_id END)', 'graph_context_index');
             });
         } else {
             // Table exists, just add project_id if it doesn't exist
-            if (!Schema::hasColumn('novel_graph_vertices', 'project_id')) {
+            if (! Schema::hasColumn('novel_graph_vertices', 'project_id')) {
                 Schema::table('novel_graph_vertices', function (Blueprint $table) {
                     $table->ulid('project_id')->nullable()->after('draft_id');
                     $table->foreign('project_id')->references('id')->on('projects')->onDelete('cascade');
@@ -50,7 +50,7 @@ return new class extends Migration {
         }
 
         // Create novel_graph_edges table if it doesn't exist
-        if (!Schema::hasTable('novel_graph_edges')) {
+        if (! Schema::hasTable('novel_graph_edges')) {
             Schema::create('novel_graph_edges', function (Blueprint $table) {
                 $table->id();
                 $table->ulid('draft_id')->nullable()->comment('For deconstructor relationships');
@@ -71,7 +71,7 @@ return new class extends Migration {
                 // Note: source_vertex_id and target_vertex_id are Apache AGE vertex IDs, not Laravel foreign keys
                 // They reference vertices in the graph database, not this table directly
                 // We use indexes for performance but don't enforce referential integrity at the database level
-                
+
                 // Indexes
                 $table->index(['draft_id', 'edge_label']);
                 $table->index(['project_id', 'edge_label']);
@@ -80,7 +80,7 @@ return new class extends Migration {
             });
         } else {
             // Table exists, just add project_id if it doesn't exist
-            if (!Schema::hasColumn('novel_graph_edges', 'project_id')) {
+            if (! Schema::hasColumn('novel_graph_edges', 'project_id')) {
                 Schema::table('novel_graph_edges', function (Blueprint $table) {
                     $table->ulid('project_id')->nullable()->after('draft_id');
                     $table->foreign('project_id')->references('id')->on('projects')->onDelete('cascade');
@@ -114,4 +114,3 @@ return new class extends Migration {
         }
     }
 };
-

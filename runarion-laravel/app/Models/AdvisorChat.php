@@ -56,4 +56,3 @@ class AdvisorChat extends Model
         return $this->messages()->count();
     }
 }
-

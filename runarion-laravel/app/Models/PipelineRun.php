@@ -12,15 +12,23 @@ class PipelineRun extends Model
     use HasUlids, SoftDeletes;
 
     public const STATUS_PENDING = 'pending';
+
     public const STATUS_PHASE_1_2_RUNNING = 'phase_1_2_running';
+
     public const STATUS_PHASE_3_RUNNING = 'phase_3_running';
+
     public const STATUS_COMPLETED = 'completed';
+
     public const STATUS_FAILED = 'failed';
 
     public const IMPORT_STATUS_PENDING = 'pending';
+
     public const IMPORT_STATUS_RUNNING = 'running';
+
     public const IMPORT_STATUS_COMPLETED = 'completed';
+
     public const IMPORT_STATUS_FAILED = 'failed';
+
     public const IMPORT_STATUS_SKIPPED = 'skipped';
 
     protected $fillable = [

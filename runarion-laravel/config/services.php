@@ -40,7 +40,7 @@ return [
             'channel' => env('SLACK_BOT_USER_DEFAULT_CHANNEL'),
         ],
     ],
-    
+
     'google' => [
         'drive' => [
             'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),

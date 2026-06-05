@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
      */
@@ -12,7 +13,7 @@ return new class extends Migration {
     {
         Schema::create('project_conversations', function (Blueprint $table) {
             $table->ulid('project_id')->primary();
-            
+
             // JSONB array storing conversation history messages
             // Message structure:
             // {
@@ -24,7 +25,7 @@ return new class extends Migration {
             //   "message_index": 0
             // }
             $table->jsonb('messages')->default('[]')->comment('Array of conversation messages stored chronologically');
-            
+
             $table->timestamps();
 
             // Foreign key to projects table with cascade delete
@@ -40,4 +41,3 @@ return new class extends Migration {
         Schema::dropIfExists('project_conversations');
     }
 };
-

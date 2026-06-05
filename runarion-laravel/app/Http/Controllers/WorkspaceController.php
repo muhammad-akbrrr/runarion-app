@@ -40,7 +40,7 @@ class WorkspaceController extends Controller
             ->where('workspace_members.user_id', $request->user()->id)
             ->select('workspaces.*', 'workspace_members.role')
             ->get()
-            ->map(fn($workspace) => [
+            ->map(fn ($workspace) => [
                 'id' => $workspace->id,
                 'name' => $workspace->name,
                 'slug' => $workspace->slug,
@@ -65,7 +65,7 @@ class WorkspaceController extends Controller
         $workspace = DB::table('workspaces')
             ->where('id', $workspace_id)
             ->first(['id', 'name', 'slug', 'cover_image_url', 'timezone', 'permissions', 'is_active']);
-        if (!$workspace) {
+        if (! $workspace) {
             abort(401, 'Workspace not found.');
         }
 
@@ -94,7 +94,7 @@ class WorkspaceController extends Controller
         $cloudStorage = $workspace->cloud_storage ? json_decode($workspace->cloud_storage, true) : [];
 
         $cloudStorage = array_map(
-            fn($m) => [
+            fn ($m) => [
                 'enabled' => $m['enabled'] ?? false,
                 'connected_at' => $m['connected_at'] ?? null,
                 'has_token' => isset($m['token']),
@@ -126,7 +126,7 @@ class WorkspaceController extends Controller
         $llm = $llm ? json_decode($llm, true) : [];
 
         foreach ($llm as $key => $value) {
-            $apiKeyExists = isset($value['api_key']) && $value['api_key'] !== "";
+            $apiKeyExists = isset($value['api_key']) && $value['api_key'] !== '';
             $llm[$key] = [
                 'enabled' => $value['enabled'] && $apiKeyExists,
                 'api_key_exists' => $apiKeyExists,
@@ -168,7 +168,7 @@ class WorkspaceController extends Controller
                 'required',
                 'regex:/^[a-z0-9]+(?:-[a-z0-9]+)*$/',
                 'max:255',
-                'unique:workspaces,slug'
+                'unique:workspaces,slug',
             ],
             'photo' => 'nullable|image|max:2048',
         ]);
@@ -177,14 +177,13 @@ class WorkspaceController extends Controller
         $validated['id'] = $workspaceId;
 
         $validated['cover_image_url'] = ($request->hasFile('photo')
-            ? '/storage/' . Storage::disk('public')
+            ? '/storage/'.Storage::disk('public')
                 ->putFile('workspace_photos', $request->file('photo'))
-            : 'https://ui-avatars.com/api/?' . http_build_query([
+            : 'https://ui-avatars.com/api/?'.http_build_query([
                 'name' => $validated['name'],
                 'background' => 'random',
             ]));
         unset($validated['photo']);
-
 
         DB::table('workspaces')->insert($validated);
 
@@ -222,7 +221,7 @@ class WorkspaceController extends Controller
                 $prevPhotoUrl = substr($prevPhotoUrl, strlen('/storage/'));
                 Storage::disk('public')->delete($prevPhotoUrl);
             }
-            $validated['cover_image_url'] = '/storage/' . Storage::disk('public')
+            $validated['cover_image_url'] = '/storage/'.Storage::disk('public')
                 ->putFile('workspace_photos', $request->file('photo'));
         }
         unset($validated['photo']);
@@ -292,7 +291,7 @@ class WorkspaceController extends Controller
                 'api_key' => Crypt::encryptString($apiKey),
             ];
         } else {
-            if (!isset($llm[$llmKey])) {
+            if (! isset($llm[$llmKey])) {
                 $llm[$llmKey] = [
                     'enabled' => $enabled,
                     'api_key' => null,

@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { router } from "@inertiajs/react";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { 
@@ -7,14 +6,14 @@ import {
     DialogContent,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/Components/ui/dialog";
-import { Plus, Search, Edit, Trash2, X } from "lucide-react";
+import { Plus, Search, X } from "lucide-react";
 import EntityList from "./EntityList";
 import EntityForm from "./EntityForm";
 import RelationshipForm from "./RelationshipForm";
 import CollectionTypeForm from "./CollectionTypeForm";
 import EntityDetailSidebar from "./EntityDetailSidebar";
+import { http } from "@/Lib/http";
 
 interface Entity {
     vertex_id: string;  // String to avoid JS precision loss with large Apache AGE IDs
@@ -63,14 +62,14 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
         setLoading(true);
         try {
             const url = `/${workspaceId}/projects/${projectId}/editor/records/entities${selectedType !== "all" ? `?type=${selectedType}` : ""}`;
-            const response = await fetch(url, {
+            const response = await http(url, {
                 headers: {
                     "Accept": "application/json",
                 },
             });
             
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 const entitiesList = data.entities || [];
                 
                 // TEMPORARILY: Show all entities including duplicates so they can be deleted
@@ -109,7 +108,7 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                 setEntities(visibleEntities);
             } else {
                 // Handle non-OK responses
-                const errorData = await response.json().catch(() => ({ error: "Unknown error" }));
+                const errorData = response.data.catch(() => ({ error: "Unknown error" }));
                 console.error("Failed to load entities:", response.status, errorData);
                 setEntities([]); // Set empty array on error to prevent white screen
             }
@@ -125,14 +124,14 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
     const loadRelationships = async () => {
         try {
             const url = `/${workspaceId}/projects/${projectId}/editor/records/relationships`;
-            const response = await fetch(url, {
+            const response = await http(url, {
                 headers: {
                     "Accept": "application/json",
                 },
             });
             
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 console.log("Loaded relationships:", JSON.stringify(data.relationships, null, 2));
                 if (data.relationships?.[0]) {
                     console.log("First relationship structure:", JSON.stringify(data.relationships[0], null, 2));
@@ -150,14 +149,14 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
     const loadCollectionTypes = async () => {
         try {
             const url = `/${workspaceId}/projects/${projectId}/editor/records/collection-types`;
-            const response = await fetch(url, {
+            const response = await http(url, {
                 headers: {
                     "Accept": "application/json",
                 },
             });
             
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 const systemTypes = [
                     { value: "all", label: "All Types" },
                     { value: "character", label: "Characters" },
@@ -259,24 +258,20 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
         onSavingChange?.(true);
         try {
             console.log(`Attempting to delete entity with vertex_id: ${vertexId}`);
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/entities/${vertexId}`,
                 {
                     method: "DELETE",
                     headers: {
                         "Accept": "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
                 }
             );
 
-            const responseData = await response.json();
+            const responseData = response.data;
             console.log(`Delete response status: ${response.status}`, responseData);
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 if (responseData.success) {
                     console.log(`Successfully deleted entity ${vertexId}`);
                 loadEntities();
@@ -318,23 +313,19 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
 
             for (const vertexId of vertexIds) {
                 try {
-                    const response = await fetch(
+                    const response = await http(
                         `/${workspaceId}/projects/${projectId}/editor/records/entities/${vertexId}`,
                         {
                             method: "DELETE",
                             headers: {
                                 "Accept": "application/json",
-                                "X-CSRF-TOKEN":
-                                    document
-                                        .querySelector('meta[name="csrf-token"]')
-                                        ?.getAttribute("content") || "",
                             },
                         }
                     );
 
-                    const responseData = await response.json();
+                    const responseData = response.data;
 
-                    if (response.ok && responseData.success) {
+                    if (response.status >= 200 && response.status < 300 && responseData.success) {
                         successCount++;
                     } else {
                         failCount++;
@@ -396,7 +387,7 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
         onSavingChange?.(true);
         try {
             // Find the type ID from the collection types
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/collection-types`,
                 {
                     headers: {
@@ -405,8 +396,8 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                 }
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 const customType = data.collection_types?.custom?.find(
                     (t: any) => t.name.toLowerCase().replace(/\s+/g, '_') === typeValue
                 );
@@ -416,27 +407,23 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                     return;
                 }
 
-                const deleteResponse = await fetch(
+                const deleteResponse = await http(
                     `/${workspaceId}/projects/${projectId}/editor/records/collection-types/${customType.id}`,
                     {
                         method: "DELETE",
                         headers: {
                             "Accept": "application/json",
-                            "X-CSRF-TOKEN":
-                                document
-                                    .querySelector('meta[name="csrf-token"]')
-                                    ?.getAttribute("content") || "",
                         },
                     }
                 );
 
-                if (deleteResponse.ok) {
+                if (deleteResponse.status >= 200 && deleteResponse.status < 300) {
                     loadCollectionTypes();
                     if (selectedType === typeValue) {
                         setSelectedType("all");
                     }
                 } else {
-                    const error = await deleteResponse.json();
+                    const error = deleteResponse.data;
                     alert(`Error: ${error.error || "Failed to delete collection type"}`);
                 }
             }
@@ -686,10 +673,10 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                             // Refresh the selected entity data after entities are loaded
                             if (selectedEntity) {
                                 try {
-                                    const response = await fetch(`/${workspaceId}/projects/${projectId}/editor/records/entities/${selectedEntity.vertex_id}?project_id=${projectId}`, {
+                                    const response = await http(`/${workspaceId}/projects/${projectId}/editor/records/entities/${selectedEntity.vertex_id}?project_id=${projectId}`, {
                                         headers: { "Accept": "application/json" },
                                     });
-                                    const data = await response.json();
+                                    const data = response.data;
                                     console.log("RecordsPanel: Reloaded entity after update:", data);
                                     if (data.entity) {
                                         console.log("RecordsPanel: Entity properties:", data.entity.properties);
@@ -712,4 +699,3 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
         </div>
     );
 }
-

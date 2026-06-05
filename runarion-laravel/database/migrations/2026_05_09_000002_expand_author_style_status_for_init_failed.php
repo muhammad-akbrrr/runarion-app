@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         $driver = Schema::getConnection()->getDriverName();
@@ -13,6 +14,7 @@ return new class extends Migration {
         if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE author_styles DROP CONSTRAINT IF EXISTS author_styles_status_check');
             DB::statement("ALTER TABLE author_styles ADD CONSTRAINT author_styles_status_check CHECK (status::text = ANY (ARRAY[{$statuses}]::text[]))");
+
             return;
         }
 
@@ -29,6 +31,7 @@ return new class extends Migration {
         if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE author_styles DROP CONSTRAINT IF EXISTS author_styles_status_check');
             DB::statement("ALTER TABLE author_styles ADD CONSTRAINT author_styles_status_check CHECK (status::text = ANY (ARRAY[{$statuses}]::text[]))");
+
             return;
         }
 

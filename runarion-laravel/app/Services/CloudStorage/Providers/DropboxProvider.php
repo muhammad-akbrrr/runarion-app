@@ -2,16 +2,16 @@
 
 namespace App\Services\CloudStorage\Providers;
 
-use App\Services\CloudStorage\CloudStorageProviderInterface;
 use App\Models\Workspace;
+use App\Services\CloudStorage\CloudStorageProviderInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Redirect;
+use League\Flysystem\Filesystem;
 use Spatie\Dropbox\Client as DropboxClient;
 use Spatie\FlysystemDropbox\DropboxAdapter;
-use League\Flysystem\Filesystem;
 
 class DropboxProvider implements CloudStorageProviderInterface
 {
@@ -45,7 +45,7 @@ class DropboxProvider implements CloudStorageProviderInterface
             ->where('user_id', $request->user()->id)
             ->value('role');
 
-        if (!in_array($userRole, ['owner', 'admin'])) {
+        if (! in_array($userRole, ['owner', 'admin'])) {
             abort(403, 'You are not authorized to update this workspace.');
         }
 
@@ -58,9 +58,9 @@ class DropboxProvider implements CloudStorageProviderInterface
         ]);
 
         $accessToken = $response['access_token'] ?? null;
-        if (!$accessToken) {
+        if (! $accessToken) {
             return Redirect::route('workspace.edit.cloud-storage', [
-                'workspace_id' => $workspaceId
+                'workspace_id' => $workspaceId,
             ])->with('error', 'Failed to retrieve access token.');
         }
 
@@ -78,7 +78,7 @@ class DropboxProvider implements CloudStorageProviderInterface
         ]);
 
         return Redirect::route('workspace.edit.cloud-storage', [
-            'workspace_id' => $workspaceId
+            'workspace_id' => $workspaceId,
         ])->with('success', 'Dropbox connected successfully.');
     }
 
@@ -87,9 +87,9 @@ class DropboxProvider implements CloudStorageProviderInterface
         $cloudStorage = DB::table('workspaces')->where('id', $workspaceId)->value('cloud_storage');
         $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
 
-        if (!isset($cloudStorage['dropbox']) || !$cloudStorage['dropbox']['enabled']) {
+        if (! isset($cloudStorage['dropbox']) || ! $cloudStorage['dropbox']['enabled']) {
             return Redirect::route('workspace.edit.cloud-storage', [
-                'workspace_id' => $workspaceId
+                'workspace_id' => $workspaceId,
             ])->with('info', 'Dropbox is not connected.');
         }
 
@@ -100,7 +100,7 @@ class DropboxProvider implements CloudStorageProviderInterface
         ]);
 
         return Redirect::route('workspace.edit.cloud-storage', [
-            'workspace_id' => $workspaceId
+            'workspace_id' => $workspaceId,
         ])->with('success', 'Dropbox disconnected successfully.');
     }
 
@@ -114,7 +114,7 @@ class DropboxProvider implements CloudStorageProviderInterface
         }
 
         $token = Crypt::decryptString($data['token']);
-        $client  = new DropboxClient($token);
+        $client = new DropboxClient($token);
         $adapter = new DropboxAdapter($client);
 
         return new Filesystem($adapter);

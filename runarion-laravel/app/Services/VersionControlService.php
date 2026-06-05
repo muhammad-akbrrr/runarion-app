@@ -2,15 +2,15 @@
 
 namespace App\Services;
 
+use App\Models\ChapterState;
 use App\Models\ContentNode;
 use App\Models\ContentVersion;
-use App\Models\ChapterState;
+use App\Models\NovelGraphEdge;
+use App\Models\NovelGraphVertex;
 use App\Models\ProjectContent;
 use App\Models\ProjectSnapshot;
-use App\Models\NovelGraphVertex;
-use App\Models\NovelGraphEdge;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class VersionControlService
@@ -52,6 +52,7 @@ class VersionControlService
             );
 
             $this->clearCache($projectId, $chapterOrder);
+
             return $node->id;
         });
     }
@@ -90,6 +91,7 @@ class VersionControlService
             );
 
             $this->clearCache($projectId, $chapterOrder);
+
             return $node->id;
         });
     }
@@ -118,6 +120,7 @@ class VersionControlService
                 ]);
 
             $this->clearCache($node->project_id, $node->chapter_order);
+
             return $nextVersionIndex;
         });
     }
@@ -132,24 +135,28 @@ class VersionControlService
                 ->where('chapter_order', $chapterOrder)
                 ->first();
 
-            if (!$state)
+            if (! $state) {
                 return null;
+            }
 
             $currentNode = ContentNode::find($state->current_node_id);
-            if (!$currentNode || !$currentNode->parent_node_id)
+            if (! $currentNode || ! $currentNode->parent_node_id) {
                 return null;
+            }
 
             $parentNode = ContentNode::find($currentNode->parent_node_id);
-            if (!$parentNode)
+            if (! $parentNode) {
                 return null;
+            }
 
             $parentVersionIndex = $currentNode->parent_version_index ?? 0;
             $parentVersion = $parentNode->versions()
                 ->where('version_index', $parentVersionIndex)
                 ->first();
 
-            if (!$parentVersion)
+            if (! $parentVersion) {
                 return null;
+            }
 
             $state->update([
                 'current_node_id' => $parentNode->id,
@@ -176,23 +183,26 @@ class VersionControlService
                 ->where('chapter_order', $chapterOrder)
                 ->first();
 
-            if (!$state)
+            if (! $state) {
                 return null;
+            }
 
             $childNode = ContentNode::where('parent_node_id', $state->current_node_id)
                 ->where('parent_version_index', $state->current_version_index)
                 ->orderBy('created_at', 'desc')
                 ->first();
 
-            if (!$childNode)
+            if (! $childNode) {
                 return null;
+            }
 
             $latestVersion = $childNode->versions()
                 ->orderBy('version_index', 'desc')
                 ->first();
 
-            if (!$latestVersion)
+            if (! $latestVersion) {
                 return null;
+            }
 
             $state->update([
                 'current_node_id' => $childNode->id,
@@ -219,15 +229,17 @@ class VersionControlService
                 ->where('chapter_order', $chapterOrder)
                 ->first();
 
-            if (!$state)
+            if (! $state) {
                 return null;
+            }
 
             $version = ContentVersion::where('node_id', $state->current_node_id)
                 ->where('version_index', $versionIndex)
                 ->first();
 
-            if (!$version)
+            if (! $version) {
                 return null;
+            }
 
             $state->update(['current_version_index' => $versionIndex]);
 
@@ -250,8 +262,9 @@ class VersionControlService
             ->where('chapter_order', $chapterOrder)
             ->first();
 
-        if (!$state)
+        if (! $state) {
             return null;
+        }
 
         $version = ContentVersion::where('node_id', $state->current_node_id)
             ->where('version_index', $state->current_version_index)
@@ -269,8 +282,9 @@ class VersionControlService
             ->where('chapter_order', $chapterOrder)
             ->first();
 
-        if (!$state)
+        if (! $state) {
             return null;
+        }
 
         return [
             'node_id' => $state->current_node_id,
@@ -282,10 +296,10 @@ class VersionControlService
      * Update the content of a specific version.
      * This is critical for manual edits after generation - it ensures the current
      * ContentVersion stays in sync with ProjectContent JSON.
-     * 
-     * @param string $nodeId The node ID
-     * @param int $versionIndex The version index within the node
-     * @param string $content The new content
+     *
+     * @param  string  $nodeId  The node ID
+     * @param  int  $versionIndex  The version index within the node
+     * @param  string  $content  The new content
      * @return bool True if updated successfully, false otherwise
      */
     public function updateCurrentVersion(string $nodeId, int $versionIndex, string $content): bool
@@ -295,11 +309,12 @@ class VersionControlService
                 ->where('version_index', $versionIndex)
                 ->first();
 
-            if (!$version) {
+            if (! $version) {
                 Log::warning('Version not found for update', [
                     'node_id' => $nodeId,
-                    'version_index' => $versionIndex
+                    'version_index' => $versionIndex,
                 ]);
+
                 return false;
             }
 
@@ -316,7 +331,7 @@ class VersionControlService
             Log::info('Updated current version content', [
                 'node_id' => $nodeId,
                 'version_index' => $versionIndex,
-                'content_length' => strlen($content)
+                'content_length' => strlen($content),
             ]);
 
             return true;
@@ -324,8 +339,9 @@ class VersionControlService
             Log::error('Failed to update current version', [
                 'node_id' => $nodeId,
                 'version_index' => $versionIndex,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return false;
         }
     }
@@ -339,7 +355,7 @@ class VersionControlService
             ->where('chapter_order', $chapterOrder)
             ->first();
 
-        if (!$state) {
+        if (! $state) {
             return [
                 'canUndo' => false,
                 'canRedo' => false,
@@ -468,18 +484,19 @@ class VersionControlService
                 ->where('project_id', $projectId)
                 ->first();
 
-            if (!$snapshot) {
+            if (! $snapshot) {
                 Log::warning('Snapshot not found for load', [
                     'snapshot_id' => $snapshotId,
                     'project_id' => $projectId,
                 ]);
+
                 return false;
             }
 
             $snapshotData = $snapshot->snapshot_data ?? [];
 
             // Handle legacy snapshots (old format with chapter_states at root level)
-            if (!isset($snapshotData['chapter_states']) && !isset($snapshotData['chapters'])) {
+            if (! isset($snapshotData['chapter_states']) && ! isset($snapshotData['chapters'])) {
                 // Legacy format: snapshot_data is just chapter states
                 $chapterStatesData = $snapshotData;
                 $chaptersData = [];
@@ -503,7 +520,7 @@ class VersionControlService
 
             // Clean up chapter states for chapters that are not in the snapshot
             $snapshotChapterOrders = array_keys($chapterStatesData);
-            if (!empty($snapshotChapterOrders)) {
+            if (! empty($snapshotChapterOrders)) {
                 ChapterState::where('project_id', $projectId)
                     ->whereNotIn('chapter_order', $snapshotChapterOrders)
                     ->delete();
@@ -577,7 +594,7 @@ class VersionControlService
                 $currentChapters = $projectContent->content ?? [];
                 foreach ($currentChapters as $chapter) {
                     $chapterOrder = $chapter['order'] ?? null;
-                    if ($chapterOrder !== null && !in_array($chapterOrder, $snapshotChapterOrders)) {
+                    if ($chapterOrder !== null && ! in_array($chapterOrder, $snapshotChapterOrders)) {
                         // Chapter exists in current state but not in snapshot - delete its version control
                         try {
                             $this->deleteChapterVersionControl($projectId, $chapterOrder);
@@ -598,7 +615,7 @@ class VersionControlService
                     'chapters_count' => count($chaptersData),
                 ]);
             } else {
-                if (!empty($chaptersData)) {
+                if (! empty($chaptersData)) {
                     ProjectContent::create([
                         'project_id' => $projectId,
                         'content' => $chaptersData,
@@ -612,14 +629,14 @@ class VersionControlService
             // Restore entities
             // Get snapshot vertex_ids to know which entities should exist
             $snapshotVertexIds = [];
-            if (!empty($entitiesData) && is_array($entitiesData)) {
+            if (! empty($entitiesData) && is_array($entitiesData)) {
                 $snapshotVertexIds = array_filter(array_column($entitiesData, 'vertex_id'), function ($id) {
                     return $id !== null;
                 });
             }
 
             // Soft delete entities that are not in the snapshot (only if we have snapshot data)
-            if (!empty($snapshotVertexIds)) {
+            if (! empty($snapshotVertexIds)) {
                 NovelGraphVertex::where('project_id', $projectId)
                     ->whereNull('deleted_at')
                     ->whereNotIn('vertex_id', $snapshotVertexIds)
@@ -639,6 +656,7 @@ class VersionControlService
                     Log::warning('Skipping invalid entity data in snapshot', [
                         'entity_data' => $entityData,
                     ]);
+
                     continue;
                 }
 
@@ -680,14 +698,14 @@ class VersionControlService
             // Restore relationships
             // Get snapshot edge_ids to know which relationships should exist
             $snapshotEdgeIds = [];
-            if (!empty($relationshipsData) && is_array($relationshipsData)) {
+            if (! empty($relationshipsData) && is_array($relationshipsData)) {
                 $snapshotEdgeIds = array_filter(array_column($relationshipsData, 'edge_id'), function ($id) {
                     return $id !== null;
                 });
             }
 
             // Soft delete relationships that are not in the snapshot (only if we have snapshot data)
-            if (!empty($snapshotEdgeIds)) {
+            if (! empty($snapshotEdgeIds)) {
                 NovelGraphEdge::where('project_id', $projectId)
                     ->whereNull('deleted_at')
                     ->whereNotIn('edge_id', $snapshotEdgeIds)
@@ -707,6 +725,7 @@ class VersionControlService
                     Log::warning('Skipping invalid relationship data in snapshot', [
                         'relationship_data' => $relationshipData,
                     ]);
+
                     continue;
                 }
 
@@ -769,7 +788,7 @@ class VersionControlService
             ->with([
                 'versions' => function ($query) {
                     $query->orderBy('version_index');
-                }
+                },
             ])
             ->get();
 
@@ -786,7 +805,7 @@ class VersionControlService
             foreach ($node->versions as $version) {
                 $versions[] = [
                     'version_index' => $version->version_index,
-                    'content_preview' => substr($version->content, 0, 200) . (strlen($version->content) > 200 ? '...' : ''),
+                    'content_preview' => substr($version->content, 0, 200).(strlen($version->content) > 200 ? '...' : ''),
                     'content_length' => strlen($version->content),
                     'created_at' => $version->created_at?->toIso8601String(),
                     'is_current' => $node->id === $currentNodeId && $version->version_index === $currentVersionIndex,
@@ -814,7 +833,7 @@ class VersionControlService
     public function getAllChaptersVersionInfo(string $projectId): array
     {
         $projectContent = ProjectContent::where('project_id', $projectId)->first();
-        if (!$projectContent || !$projectContent->content) {
+        if (! $projectContent || ! $projectContent->content) {
             return [];
         }
 
@@ -853,9 +872,9 @@ class VersionControlService
     /**
      * Delete all version control data for a specific chapter order.
      * This is called when a chapter is deleted to ensure no orphaned data remains.
-     * 
-     * @param string $projectId The project ID
-     * @param int $chapterOrder The chapter order to delete
+     *
+     * @param  string  $projectId  The project ID
+     * @param  int  $chapterOrder  The chapter order to delete
      * @return bool True if deletion was successful
      */
     public function deleteChapterVersionControl(string $projectId, int $chapterOrder): bool
@@ -870,7 +889,7 @@ class VersionControlService
                 $nodeIds = $nodes->pluck('id')->toArray();
 
                 // Delete all versions associated with these nodes
-                if (!empty($nodeIds)) {
+                if (! empty($nodeIds)) {
                     ContentVersion::whereIn('node_id', $nodeIds)->delete();
                 }
 
@@ -908,9 +927,9 @@ class VersionControlService
     /**
      * Reorder version control data when chapters are reordered.
      * This maps old chapter orders to new chapter orders.
-     * 
-     * @param string $projectId The project ID
-     * @param array $orderMapping Array mapping old order => new order (e.g., [2 => 1, 3 => 2])
+     *
+     * @param  string  $projectId  The project ID
+     * @param  array  $orderMapping  Array mapping old order => new order (e.g., [2 => 1, 3 => 2])
      * @return bool True if reordering was successful
      */
     public function reorderChapters(string $projectId, array $orderMapping): bool

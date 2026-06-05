@@ -2,11 +2,11 @@
 
 namespace App\Models;
 
+use App\Services\GraphConstants;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Services\GraphConstants;
 
 class NovelGraphEdge extends Model
 {
@@ -30,14 +30,23 @@ class NovelGraphEdge extends Model
     ];
 
     public const LABEL_APPEARS_IN = GraphConstants::EDGE_APPEARS_IN;
+
     public const LABEL_INTERACTS_WITH = GraphConstants::EDGE_INTERACTS_WITH;
+
     public const LABEL_LOCATED_IN = GraphConstants::EDGE_LOCATED_IN;
+
     public const LABEL_OWNS = GraphConstants::EDGE_OWNS;
+
     public const LABEL_USES = GraphConstants::EDGE_USES;
+
     public const LABEL_KNOWS = GraphConstants::EDGE_KNOWS;
+
     public const LABEL_LOVES = GraphConstants::EDGE_LOVES;
+
     public const LABEL_HATES = GraphConstants::EDGE_HATES;
+
     public const LABEL_CAUSES = GraphConstants::EDGE_CAUSES;
+
     public const LABEL_LEADS_TO = GraphConstants::EDGE_LEADS_TO;
 
     public static function getLabelOptions(): array

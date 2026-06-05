@@ -2,26 +2,24 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Inertia\Inertia;
-use Inertia\Response;
-use Illuminate\Http\RedirectResponse;
 use App\Models\Folder;
-use App\Models\Projects;
-use App\Models\Workspace;
 use App\Models\ProjectContent;
 use App\Models\ProjectNodeEditor;
-use App\Services\ProjectPipelineStateService;
-use Illuminate\Support\Str;
+use App\Models\Projects;
+use App\Models\Workspace;
 use App\Models\WorkspaceMember;
-use Illuminate\Validation\Rule;
+use App\Services\ProjectPipelineStateService;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
+use Inertia\Response;
 
 class ProjectController extends Controller
 {
     public function __construct(
         private readonly ProjectPipelineStateService $pipelineStateService,
-    ) {
-    }
+    ) {}
 
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
     {
@@ -41,14 +39,15 @@ class ProjectController extends Controller
         );
 
         $projects = $projects->map(function ($project) use ($locks) {
-                if ($project->folder_id) {
-                    $project->folder = Folder::where('id', $project->folder_id)
-                        ->where('is_active', true)
-                        ->first(['id', 'name']);
-                }
-                $project->pipelineLock = $locks[$project->id] ?? null;
-                return $project;
-            });
+            if ($project->folder_id) {
+                $project->folder = Folder::where('id', $project->folder_id)
+                    ->where('is_active', true)
+                    ->first(['id', 'name']);
+            }
+            $project->pipelineLock = $locks[$project->id] ?? null;
+
+            return $project;
+        });
 
         return Inertia::render('Projects/ProjectList', [
             'workspaceId' => $workspace_id,
@@ -71,7 +70,7 @@ class ProjectController extends Controller
             ->where('is_active', true)
             ->with(['author:id,name'])
             ->first();
-        if (!$selectedFolder) {
+        if (! $selectedFolder) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
         $projects = Projects::where('workspace_id', $workspace_id)
@@ -87,6 +86,7 @@ class ProjectController extends Controller
 
         $projects = $projects->map(function ($project) use ($locks) {
             $project->pipelineLock = $locks[$project->id] ?? null;
+
             return $project;
         });
 
@@ -112,11 +112,11 @@ class ProjectController extends Controller
             ->where('user_id', $request->user()->id)
             ->exists();
 
-        if (!$isMember) {
+        if (! $isMember) {
             return back()->withErrors(['name' => 'You must be a member of this workspace to create folders.']);
         }
 
-        $folder = new Folder();
+        $folder = new Folder;
         $folder->workspace_id = $workspace_id;
         $folder->name = $validated['name'];
         $folder->slug = Str::slug($validated['name']);
@@ -151,23 +151,23 @@ class ProjectController extends Controller
                 ->where('user_id', $request->user()->id)
                 ->exists();
 
-            if (!$isMember) {
+            if (! $isMember) {
                 return back()->withErrors(['name' => 'You must be a member of this workspace to create projects.']);
             }
 
             // If folder_id is provided and not 'none', verify it exists and belongs to the workspace
-            if (!empty($validated['folder_id']) && $validated['folder_id'] !== null) {
+            if (! empty($validated['folder_id']) && $validated['folder_id'] !== null) {
                 $folder = Folder::where('id', $validated['folder_id'])
                     ->where('workspace_id', $workspace_id)
                     ->where('is_active', true)
                     ->first();
 
-                if (!$folder) {
+                if (! $folder) {
                     return back()->withErrors(['folder_id' => 'Invalid folder selected.']);
                 }
             }
 
-            $project = new Projects();
+            $project = new Projects;
             $project->workspace_id = $workspace_id;
             $project->name = $validated['name'];
             $project->slug = Str::slug($validated['name']);
@@ -186,8 +186,8 @@ class ProjectController extends Controller
                         'email' => $request->user()->email,
                         'avatar_url' => $request->user()->profile_photo_url ?? null,
                     ],
-                    'role' => 'admin'
-                ]
+                    'role' => 'admin',
+                ],
             ];
 
             // Validate using model rules
@@ -201,7 +201,7 @@ class ProjectController extends Controller
             $project->save();
 
             // Create associated ProjectContent record
-            $projectContent = new ProjectContent();
+            $projectContent = new ProjectContent;
             $projectContent->project_id = $project->id;
             $projectContent->content = [
                 [
@@ -210,7 +210,7 @@ class ProjectController extends Controller
                     'content' => '',
                     'summary' => null,
                     'plot_points' => [],
-                ]
+                ],
             ];
             $projectContent->metadata = [
                 'total_words' => 0,
@@ -224,7 +224,7 @@ class ProjectController extends Controller
             $projectContent->save();
 
             // Create associated ProjectNodeEditor record
-            $projectNodeEditor = new ProjectNodeEditor();
+            $projectNodeEditor = new ProjectNodeEditor;
             $projectNodeEditor->project_id = $project->id;
             $projectNodeEditor->save();
 
@@ -237,9 +237,10 @@ class ProjectController extends Controller
             \Log::error('Error creating project', [
                 'workspace_id' => $workspace_id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
-            return back()->withErrors(['name' => 'Failed to create project: ' . $e->getMessage()]);
+
+            return back()->withErrors(['name' => 'Failed to create project: '.$e->getMessage()]);
         }
     }
 
@@ -263,7 +264,7 @@ class ProjectController extends Controller
             $hasAdminAccess = $currentUserAccess && $currentUserAccess['role'] === 'admin';
         }
 
-        if (!$isOriginalAuthor && !$hasAdminAccess) {
+        if (! $isOriginalAuthor && ! $hasAdminAccess) {
             return back()->withErrors(['project' => 'You do not have permission to delete this project.']);
         }
 
@@ -274,7 +275,7 @@ class ProjectController extends Controller
         ProjectNodeEditor::where('project_id', $project_id)->delete();
 
         // Update the slug to make it unique when soft deleted
-        $project->slug = $project->slug . '-' . Str::random(6);
+        $project->slug = $project->slug.'-'.Str::random(6);
         $project->is_active = false;
         $project->save();
         $project->delete();
@@ -300,7 +301,7 @@ class ProjectController extends Controller
             ->where('role', 'owner')
             ->exists();
 
-        if (!$isOriginalAuthor && !$isWorkspaceOwner) {
+        if (! $isOriginalAuthor && ! $isWorkspaceOwner) {
             return back()->withErrors(['folder' => 'You do not have permission to delete this folder.']);
         }
 
@@ -310,7 +311,7 @@ class ProjectController extends Controller
             ->update(['folder_id' => null]);
 
         // Update the slug to make it unique when soft deleted
-        $folder->slug = $folder->slug . '-' . Str::random(6);
+        $folder->slug = $folder->slug.'-'.Str::random(6);
         $folder->is_active = false;
         $folder->save();
         $folder->delete();
@@ -327,7 +328,7 @@ class ProjectController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
@@ -376,7 +377,7 @@ class ProjectController extends Controller
             $hasAdminAccess = $currentUserAccess && $currentUserAccess['role'] === 'admin';
         }
 
-        if (!$isOriginalAuthor && !$hasAdminAccess) {
+        if (! $isOriginalAuthor && ! $hasAdminAccess) {
             return back()->withErrors(['project' => 'You do not have permission to update this project.']);
         }
 
@@ -395,7 +396,7 @@ class ProjectController extends Controller
                 ->where('is_active', true)
                 ->first();
 
-            if (!$folder) {
+            if (! $folder) {
                 return back()->withErrors(['folder_id' => 'Invalid folder selected.']);
             }
         }
@@ -421,7 +422,7 @@ class ProjectController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
@@ -527,6 +528,7 @@ class ProjectController extends Controller
 
         $access = array_filter($access, function ($member) use ($validated) {
             $result = (string) $member['user']['id'] !== (string) $validated['user_id'];
+
             return $result;
         });
 
@@ -578,7 +580,7 @@ class ProjectController extends Controller
         }
 
         // Check if user has permission to add members
-        if (!$currentUserAccess || !in_array($currentUserAccess['role'], ['admin', 'manager'])) {
+        if (! $currentUserAccess || ! in_array($currentUserAccess['role'], ['admin', 'manager'])) {
             return back()->withErrors(['permission' => 'You do not have permission to add members to this project.']);
         }
 
@@ -611,7 +613,7 @@ class ProjectController extends Controller
                 return (string) $m->id === $memberData['user_id'];
             });
 
-            if (!$member) {
+            if (! $member) {
                 continue; // Skip if member not found
             }
 
@@ -625,7 +627,7 @@ class ProjectController extends Controller
             }
 
             // Only add if member doesn't already exist
-            if (!$exists) {
+            if (! $exists) {
                 $currentAccess[] = [
                     'user' => [
                         'id' => (string) $member->id,
@@ -662,7 +664,7 @@ class ProjectController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
@@ -682,7 +684,7 @@ class ProjectController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 

@@ -25,7 +25,7 @@ import {
 import { HeadingNode, QuoteNode } from "@lexical/rich-text";
 import { ListNode, ListItemNode } from "@lexical/list";
 import { TextNode } from "lexical";
-import { OriginTextNode } from "../nodes/OriginTextNode";
+import { OriginTextNode } from "../Nodes/OriginTextNode";
 import {
     ContentUpdatePlugin,
     EditorRefPlugin,
@@ -33,8 +33,8 @@ import {
     ColorCodingPlugin,
     InlineDiffPlugin,
     OriginTrackingPlugin,
-} from "../plugins";
-import { UnifiedSelectionToolbarPlugin } from "../plugins/UnifiedSelectionToolbarPlugin";
+} from "../Plugins";
+import { UnifiedSelectionToolbarPlugin } from "../Plugins/UnifiedSelectionToolbarPlugin";
 
 // Define supported transformers using the correct exports
 const SUPPORTED_TRANSFORMERS = [
@@ -56,7 +56,7 @@ console.log(
     SUPPORTED_TRANSFORMERS.map((t) => ({
         type: t.type,
         tag: (t as any).tag ?? undefined,
-    }))
+    })),
 );
 
 const editorConfig: InitialConfigType = {
@@ -146,7 +146,6 @@ export function LexicalEditor({
     isColorCoded,
     selectedChapter,
     isInteracting,
-    setIsInteracting,
     isRegenerating = false,
     onBlur,
     onGetCurrentContent,
@@ -188,7 +187,7 @@ export function LexicalEditor({
             // Don't update content state during streaming to avoid conflicts
             // The final content will be set when streaming completes
         },
-        [isStreaming, isRegenerating]
+        [isStreaming, isRegenerating],
     );
 
     return (
@@ -224,7 +223,7 @@ export function LexicalEditor({
                         transformers={SUPPORTED_TRANSFORMERS}
                     />
                     <OnChangePlugin
-                        onChange={(editorState, editor) => {
+                        onChange={(editorState) => {
                             // Only update content state when not streaming and not interacting
                             // Don't update during regeneration to prevent conflicts
                             if (
@@ -233,16 +232,15 @@ export function LexicalEditor({
                                 !isRegenerating
                             ) {
                                 // Serialize as Lexical JSON for proper whitespace preservation
-                                const json = JSON.stringify(editorState.toJSON());
-                                console.log(
-                                    "OnChangePlugin: Content changed",
-                                    {
-                                        newContentLength: json.length,
-                                        isStreaming,
-                                        isInteracting,
-                                        isRegenerating,
-                                    }
+                                const json = JSON.stringify(
+                                    editorState.toJSON(),
                                 );
+                                console.log("OnChangePlugin: Content changed", {
+                                    newContentLength: json.length,
+                                    isStreaming,
+                                    isInteracting,
+                                    isRegenerating,
+                                });
                                 setContent(json);
                             } else {
                                 console.log(
@@ -251,7 +249,7 @@ export function LexicalEditor({
                                         isStreaming,
                                         isInteracting,
                                         isRegenerating,
-                                    }
+                                    },
                                 );
                             }
                         }}
@@ -268,9 +266,7 @@ export function LexicalEditor({
                         onStreamingUpdate={handleStreamingUpdate}
                     />
                     <OriginTrackingPlugin />
-                    <ColorCodingPlugin
-                        isColorCoded={isColorCoded}
-                    />
+                    <ColorCodingPlugin isColorCoded={isColorCoded} />
                     <EditorRefPlugin editorRef={effectiveEditorRef} />
 
                     {/* Unified Selection Toolbar - combines formatting + AI features */}

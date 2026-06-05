@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\ProjectEditor;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Models\Projects;
 use App\Models\ProjectContent;
+use App\Models\Projects;
+use App\Services\VersionControlService;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use App\Services\VersionControlService;
 
 class ChainBuilderController extends Controller
 {
@@ -33,13 +33,13 @@ class ChainBuilderController extends Controller
     private function getStoryContext(string $project_id, int $limit = 500000): string
     {
         $projectContent = ProjectContent::where('project_id', $project_id)->first();
-        
-        if (!$projectContent || !$projectContent->content) {
+
+        if (! $projectContent || ! $projectContent->content) {
             return '';
         }
 
         $chapters = $projectContent->content;
-        if (!is_array($chapters)) {
+        if (! is_array($chapters)) {
             return '';
         }
 
@@ -57,12 +57,12 @@ class ChainBuilderController extends Controller
         }
 
         $fullContext = implode("\n\n", $contextParts);
-        
+
         // Return last N characters for continuation context
         if (strlen($fullContext) > $limit) {
-            return '...' . substr($fullContext, -$limit);
+            return '...'.substr($fullContext, -$limit);
         }
-        
+
         return $fullContext;
     }
 
@@ -85,17 +85,17 @@ class ChainBuilderController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             // Get story context if not provided
             $storyContext = $validated['story_context'] ?? $this->getStoryContext($project_id);
-            
+
             // Format inputs
             $inputsText = '';
-            if (!empty($validated['inputs'])) {
+            if (! empty($validated['inputs'])) {
                 $inputParts = [];
                 foreach ($validated['inputs'] as $input) {
                     $typeLabel = ($input['type'] ?? '') === 'context' ? 'BACKGROUND DATA' : 'PREVIOUS STEP OUTPUT';
@@ -107,26 +107,26 @@ class ChainBuilderController extends Controller
             // Build prompt for chain builder node
             // StoryHandler will build instruction with author profile/style benefits
             // Our prompt contains node-specific instructions and context
-            
+
             // Build the story context and node inputs section
             $prompt = "GLOBAL STORY CONTEXT (The story so far):\n\"\"\"\n{$storyContext}\n\"\"\"\n\n";
-            
+
             if ($inputsText) {
                 $prompt .= "INPUTS FROM CONNECTED NODES (Data/Logic):\n{$inputsText}\n\n";
             } else {
                 $prompt .= "INPUTS FROM CONNECTED NODES: No upstream inputs.\n\n";
             }
-            
+
             // Add node-specific instruction
             $prompt .= "YOUR NODE INSTRUCTION:\n{$validated['node_prompt']}\n\n";
-            
+
             // Determine node type
             $nodeType = $validated['node_type'] ?? 'prompt'; // Default to prompt for backward compatibility
-            
+
             // Add task-specific guidance based on node type
             $prompt .= "TASK GUIDELINES:\n";
             $prompt .= "- Execute the instruction above using the provided Data and Context.\n";
-            
+
             if ($nodeType === 'logic') {
                 // Logic nodes: Analysis and processing instructions
                 $prompt .= "- You are a 'Logic' node - perform ANALYSIS, not story writing.\n";
@@ -154,7 +154,7 @@ class ChainBuilderController extends Controller
             // Call Python service with proper format
             $model = $validated['ai_model'] ?? 'gemini-2.5-flash';
             $provider = str_starts_with($model, 'gemini') ? 'gemini' : 'openai';
-            
+
             // Build prompt_config for StoryHandler - includes author profile for style benefits
             $promptConfig = [
                 'current_preset' => $validated['settings']['currentPreset'] ?? 'story-telling',
@@ -164,7 +164,7 @@ class ChainBuilderController extends Controller
                 'pov' => $validated['settings']['storyPov'] ?? '',
                 'author_profile' => $validated['author_profile'] ?? null,
             ];
-            
+
             // Build complete generation_config with all required fields
             // StoryHandler will build instruction from prompt_config, but our custom prompt
             // contains the node-specific instructions and will be used as the main content
@@ -184,9 +184,9 @@ class ChainBuilderController extends Controller
                 'include_thinking' => $validated['settings']['includeThinking'] ?? false,
                 'stream' => false,
             ], $validated['settings'] ?? []);
-            
+
             $response = Http::timeout(60)
-                ->post($this->getPythonServiceUrl() . '/api/generate', [
+                ->post($this->getPythonServiceUrl().'/api/generate', [
                     'usecase' => 'story',
                     'provider' => $provider,
                     'model' => $model,
@@ -198,12 +198,13 @@ class ChainBuilderController extends Controller
                         'workspace_id' => $workspace_id,
                         'project_id' => $project_id,
                         'session_id' => 'chain-builder',
-                        'api_keys' => (object)[],
+                        'api_keys' => (object) [],
                     ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
+
                 return response()->json([
                     'success' => true,
                     'result' => $result['text'] ?? $result['content'] ?? '',
@@ -211,20 +212,22 @@ class ChainBuilderController extends Controller
             } else {
                 Log::error('Python service error executing node', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to execute node',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception executing node', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to execute node: ' . $e->getMessage()
+                'error' => 'Failed to execute node: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -248,34 +251,34 @@ class ChainBuilderController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $storyContext = $validated['story_context'] ?? $this->getStoryContext($project_id);
-            
+
             // Limit story context to 500k chars for auto-build (to save tokens)
             if (strlen($storyContext) > 500000) {
-                $storyContext = '...' . substr($storyContext, -500000);
+                $storyContext = '...'.substr($storyContext, -500000);
             }
-            
+
             $entities = $validated['entities'] ?? [];
-            
+
             // Format entities
             $entitiesText = '';
-            if (!empty($entities)) {
+            if (! empty($entities)) {
                 $entityParts = [];
                 foreach ($entities as $entity) {
-                    $entityParts[] = "--- {$entity['name']} ({$entity['type']}) ---\n" . 
+                    $entityParts[] = "--- {$entity['name']} ({$entity['type']}) ---\n".
                         json_encode($entity['properties'] ?? [], JSON_PRETTY_PRINT);
                 }
                 $entitiesText = implode("\n\n", $entityParts);
             }
 
             $modeInstruction = $validated['mode'] === 'sequence'
-                ? "DESIGN FOR SEQUENCE MODE: Connect prompt nodes in a LINEAR chain (A -> B -> C) where each node writes a subsequent part of the story."
-                : "DESIGN FOR FINAL-ONLY MODE: Design a flow where context and logic nodes feed into a FINAL prompt node. The intermediate nodes should process data, not write story segments.";
+                ? 'DESIGN FOR SEQUENCE MODE: Connect prompt nodes in a LINEAR chain (A -> B -> C) where each node writes a subsequent part of the story.'
+                : 'DESIGN FOR FINAL-ONLY MODE: Design a flow where context and logic nodes feed into a FINAL prompt node. The intermediate nodes should process data, not write story segments.';
 
             $prompt = "You are an AI Graph Architect.\n";
             $prompt .= "Create a Logic Graph (Workflow) for a story writing app based on the user's goal.\n\n";
@@ -286,10 +289,10 @@ class ChainBuilderController extends Controller
             $existingNodes = $validated['existing_nodes'] ?? [];
             $existingEdges = $validated['existing_edges'] ?? [];
 
-            if (!empty($existingNodes)) {
+            if (! empty($existingNodes)) {
                 $prompt .= "EXISTING GRAPH (build upon this):\n";
-                $prompt .= "Current Nodes: " . json_encode($existingNodes, JSON_PRETTY_PRINT) . "\n";
-                $prompt .= "Current Edges: " . json_encode($existingEdges, JSON_PRETTY_PRINT) . "\n";
+                $prompt .= 'Current Nodes: '.json_encode($existingNodes, JSON_PRETTY_PRINT)."\n";
+                $prompt .= 'Current Edges: '.json_encode($existingEdges, JSON_PRETTY_PRINT)."\n";
                 $prompt .= "Generate NEW nodes that connect to these existing nodes where appropriate.\n";
                 $prompt .= "Do NOT recreate the existing nodes - only add new ones based on the user's goal.\n\n";
             }
@@ -321,19 +324,19 @@ class ChainBuilderController extends Controller
             $prompt .= "  ],\n";
             $prompt .= '  "edges": [ { "id": "e1", "source": "n1", "target": "n2" }, { "id": "e2", "source": "n2", "target": "n3" } ]\n';
             $prompt .= "}\n\n";
-            $prompt .= "Return ONLY the JSON.";
+            $prompt .= 'Return ONLY the JSON.';
 
             // Call Python service with proper format
             $model = $validated['ai_model'];
             $provider = str_starts_with($model, 'gemini') ? 'gemini' : 'openai';
-            
+
             // Log model selection for debugging
             Log::info('Generate graph layout model', [
                 'requested_model' => $validated['ai_model'],
                 'final_model' => $model,
                 'provider' => $provider,
             ]);
-            
+
             // Build prompt_config for StoryHandler
             $promptConfig = [
                 'current_preset' => 'story-telling',
@@ -343,7 +346,7 @@ class ChainBuilderController extends Controller
                 'pov' => '',
                 'author_profile' => null,
             ];
-            
+
             // Build complete generation_config with all required fields
             // Increased max_output_tokens for complex graph layouts (graphs can be large with lots of context)
             $generationConfig = [
@@ -362,13 +365,13 @@ class ChainBuilderController extends Controller
                 'include_thinking' => false,
                 'stream' => false,
             ];
-            
+
             $response = Http::timeout(120)
-                ->post($this->getPythonServiceUrl() . '/api/generate', [
+                ->post($this->getPythonServiceUrl().'/api/generate', [
                     'usecase' => 'graph-layout',  // Use graph-layout usecase to bypass conversation history
                     'provider' => $provider,
                     'model' => $model,
-                    'prompt' => $prompt . "\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or explanations. Ensure the JSON is complete and properly closed.",
+                    'prompt' => $prompt."\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or explanations. Ensure the JSON is complete and properly closed.",
                     'prompt_config' => $promptConfig,
                     'generation_config' => $generationConfig,
                     'caller' => [
@@ -376,23 +379,23 @@ class ChainBuilderController extends Controller
                         'workspace_id' => $workspace_id,
                         'project_id' => $project_id,
                         'session_id' => 'chain-builder-auto-build',
-                        'api_keys' => (object)[],
+                        'api_keys' => (object) [],
                     ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
                 $jsonText = $result['text'] ?? $result['content'] ?? '';
-                
+
                 if (empty($jsonText)) {
                     throw new \Exception('Empty response from Python service');
                 }
-                
+
                 // Parse JSON (handle markdown code blocks)
                 $jsonText = preg_replace('/```json\s*/', '', $jsonText);
                 $jsonText = preg_replace('/```\s*/', '', $jsonText);
                 $jsonText = trim($jsonText);
-                
+
                 // Try to extract JSON if wrapped in text - use a more robust approach
                 // First, try to find the JSON object boundaries more accurately
                 $firstBrace = strpos($jsonText, '{');
@@ -415,42 +418,42 @@ class ChainBuilderController extends Controller
                         $jsonText = substr($jsonText, $firstBrace, $lastBrace - $firstBrace + 1);
                     }
                 }
-                
+
                 $graphData = json_decode($jsonText, true);
-                
+
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     $errorMsg = json_last_error_msg();
                     // Check if JSON appears truncated (ends abruptly)
-                    $isTruncated = !str_ends_with(trim($jsonText), '}') && str_contains($jsonText, '{');
+                    $isTruncated = ! str_ends_with(trim($jsonText), '}') && str_contains($jsonText, '{');
                     $truncatedHint = $isTruncated ? ' (Response appears truncated - may need more tokens)' : '';
-                    
+
                     Log::error('JSON decode error in generateGraphLayout', [
                         'error' => $errorMsg,
                         'json_length' => strlen($jsonText),
                         'appears_truncated' => $isTruncated,
                         'json_preview' => substr($jsonText, 0, 1000),
-                        'json_end' => substr($jsonText, -200)
+                        'json_end' => substr($jsonText, -200),
                     ]);
-                    throw new \Exception('Invalid JSON response: ' . $errorMsg . $truncatedHint . ' (Response length: ' . strlen($jsonText) . ' chars)');
+                    throw new \Exception('Invalid JSON response: '.$errorMsg.$truncatedHint.' (Response length: '.strlen($jsonText).' chars)');
                 }
-                
+
                 // Check if decoded data is null (can happen with malformed JSON)
                 if ($graphData === null) {
-                    $isTruncated = !str_ends_with(trim($jsonText), '}') && str_contains($jsonText, '{');
+                    $isTruncated = ! str_ends_with(trim($jsonText), '}') && str_contains($jsonText, '{');
                     Log::error('JSON decode returned null in generateGraphLayout', [
                         'json_length' => strlen($jsonText),
                         'appears_truncated' => $isTruncated,
                         'json_preview' => substr($jsonText, 0, 1000),
-                        'json_end' => substr($jsonText, -200)
+                        'json_end' => substr($jsonText, -200),
                     ]);
-                    throw new \Exception('Invalid JSON response: Decoded data is null' . ($isTruncated ? ' (Response appears truncated - may need more tokens)' : ''));
+                    throw new \Exception('Invalid JSON response: Decoded data is null'.($isTruncated ? ' (Response appears truncated - may need more tokens)' : ''));
                 }
-                
-                if (!isset($graphData['nodes']) || !is_array($graphData['nodes'])) {
+
+                if (! isset($graphData['nodes']) || ! is_array($graphData['nodes'])) {
                     Log::error('Invalid graph layout structure', [
                         'has_nodes' => isset($graphData['nodes']),
                         'nodes_type' => gettype($graphData['nodes'] ?? null),
-                        'data_keys' => array_keys($graphData ?? [])
+                        'data_keys' => array_keys($graphData ?? []),
                     ]);
                     throw new \Exception('Invalid graph layout response: missing or invalid nodes array');
                 }
@@ -463,27 +466,28 @@ class ChainBuilderController extends Controller
             } else {
                 $errorBody = $response->body();
                 $errorData = $response->json();
-                
+
                 Log::error('Python service error generating graph layout', [
                     'status' => $response->status(),
                     'body' => $errorBody,
-                    'error_data' => $errorData
+                    'error_data' => $errorData,
                 ]);
-                
+
                 $errorMessage = $errorData['error'] ?? $errorData['message'] ?? 'Failed to generate graph layout';
-                
+
                 return response()->json([
                     'error' => $errorMessage,
-                    'details' => $errorData
+                    'details' => $errorData,
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception generating graph layout', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to generate graph layout: ' . $e->getMessage()
+                'error' => 'Failed to generate graph layout: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -505,15 +509,15 @@ class ChainBuilderController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $storyContext = $validated['story_context'] ?? $this->getStoryContext($project_id);
-            
+
             $inputsText = '';
-            if (!empty($validated['inputs'])) {
+            if (! empty($validated['inputs'])) {
                 $inputParts = [];
                 foreach ($validated['inputs'] as $input) {
                     $inputParts[] = "SOURCE: {$input['label']}\nCONTENT: {$input['text']}";
@@ -522,21 +526,21 @@ class ChainBuilderController extends Controller
             }
 
             // Limit story context to last 20k chars for magic wand (to save tokens)
-            $limitedStoryContext = strlen($storyContext) > 20000 ? '...' . substr($storyContext, -20000) : $storyContext;
-            
+            $limitedStoryContext = strlen($storyContext) > 20000 ? '...'.substr($storyContext, -20000) : $storyContext;
+
             $nodeType = $validated['node_type'] ?? 'prompt'; // Default to prompt for backward compatibility
-            
+
             if ($nodeType === 'logic') {
                 // Logic node: Generate analytical/processing instructions
                 $prompt = "You are an \"Analysis Director AI\". Your job is to write precise, effective Logic/Analysis Instructions for another AI to execute.\n\n";
                 $prompt .= "USER GOAL (Seed Idea): \"{$validated['seed']}\"\n\n";
-                
+
                 if ($inputsText) {
                     $prompt .= "AVAILABLE CONTEXT/RESOURCES:\n{$inputsText}\n\n";
                 } else {
                     $prompt .= "AVAILABLE CONTEXT/RESOURCES: No upstream inputs.\n\n";
                 }
-                
+
                 $prompt .= "STORY CONTEXT:\n{$limitedStoryContext}\n\n";
                 $prompt .= "Based on the user's goal and the available resources, write a robust paragraph of ANALYSIS or LOGIC instructions.\n";
                 $prompt .= "Logic nodes perform analytical tasks like:\n";
@@ -547,27 +551,27 @@ class ChainBuilderController extends Controller
                 $prompt .= "- Brainstorming or critiquing story elements\n\n";
                 $prompt .= "Tell the AI exactly what analysis to perform, what to examine, and what insights to provide.\n";
                 $prompt .= "Do NOT write story text - only analytical instructions.\n\n";
-                $prompt .= "Return ONLY the instruction text.";
+                $prompt .= 'Return ONLY the instruction text.';
             } else {
                 // Prompt node: Generate story writing instructions
                 $prompt = "You are a \"Director AI\". Your job is to write a precise, effective Prompt Instruction for another AI to execute.\n\n";
                 $prompt .= "USER GOAL (Seed Idea): \"{$validated['seed']}\"\n\n";
-                
+
                 if ($inputsText) {
                     $prompt .= "AVAILABLE CONTEXT/RESOURCES:\n{$inputsText}\n\n";
                 } else {
                     $prompt .= "AVAILABLE CONTEXT/RESOURCES: No upstream inputs.\n\n";
                 }
-                
+
                 $prompt .= "STORY CONTEXT:\n{$limitedStoryContext}\n\n";
                 $prompt .= "Based on the user's goal and the available resources (Characters, Locations, Logic), write a robust paragraph of instructions.\n";
                 $prompt .= "Tell the AI exactly what to write, how to incorporate the characters provided, and how to advance the plot.\n\n";
-                $prompt .= "Return ONLY the instruction text.";
+                $prompt .= 'Return ONLY the instruction text.';
             }
 
             $model = $validated['ai_model'];
             $provider = str_starts_with($model, 'gemini') ? 'gemini' : 'openai';
-            
+
             // Build prompt_config for StoryHandler
             $promptConfig = [
                 'current_preset' => 'story-telling',
@@ -577,7 +581,7 @@ class ChainBuilderController extends Controller
                 'pov' => '',
                 'author_profile' => null,
             ];
-            
+
             // Build complete generation_config with all required fields
             $generationConfig = [
                 'temperature' => 0.7,
@@ -595,9 +599,9 @@ class ChainBuilderController extends Controller
                 'include_thinking' => false,
                 'stream' => false,
             ];
-            
+
             $response = Http::timeout(60)
-                ->post($this->getPythonServiceUrl() . '/api/generate', [
+                ->post($this->getPythonServiceUrl().'/api/generate', [
                     'usecase' => 'story',
                     'provider' => $provider,
                     'model' => $model,
@@ -609,24 +613,24 @@ class ChainBuilderController extends Controller
                         'workspace_id' => $workspace_id,
                         'project_id' => $project_id,
                         'session_id' => 'chain-builder-wand',
-                        'api_keys' => (object)[],
+                        'api_keys' => (object) [],
                     ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
                 $instruction = $result['text'] ?? $result['content'] ?? '';
-                
+
                 // Clean up instruction (remove markdown code blocks if present)
                 $instruction = preg_replace('/```.*?\n/', '', $instruction);
                 $instruction = preg_replace('/```/', '', $instruction);
                 $instruction = trim($instruction);
-                
+
                 // If empty, fallback to seed
                 if (empty($instruction)) {
                     $instruction = $validated['seed'];
                 }
-                
+
                 return response()->json([
                     'success' => true,
                     'instruction' => $instruction,
@@ -634,27 +638,28 @@ class ChainBuilderController extends Controller
             } else {
                 $errorBody = $response->body();
                 $errorData = $response->json();
-                
+
                 Log::error('Python service error generating instruction', [
                     'status' => $response->status(),
                     'body' => $errorBody,
-                    'error_data' => $errorData
+                    'error_data' => $errorData,
                 ]);
-                
+
                 $errorMessage = $errorData['error'] ?? $errorData['message'] ?? 'Failed to generate instruction';
-                
+
                 return response()->json([
                     'error' => $errorMessage,
-                    'details' => $errorData
+                    'details' => $errorData,
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception generating instruction', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to generate instruction: ' . $e->getMessage()
+                'error' => 'Failed to generate instruction: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -676,38 +681,38 @@ class ChainBuilderController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $storyContext = $validated['story_context'] ?? $this->getStoryContext($project_id);
-            
+
             // Limit story context to 500k chars for refine (to save tokens)
             if (strlen($storyContext) > 500000) {
-                $storyContext = '...' . substr($storyContext, -500000);
+                $storyContext = '...'.substr($storyContext, -500000);
             }
-            
+
             $prompt = "You are an expert Story Logic Engineer.\n";
             $prompt .= "You are provided with a SUBSET of a node graph.\n\n";
             $prompt .= "STORY CONTEXT:\n\"\"\"\n{$storyContext}\n\"\"\"\n\n";
             $prompt .= "YOUR TASK: Refine, Expand, or Modify this subset based on the user's instruction.\n\n";
             $prompt .= "USER INSTRUCTION: \"{$validated['instruction']}\"\n\n";
-            $prompt .= "CURRENT SUBSET JSON:\n" . json_encode([
+            $prompt .= "CURRENT SUBSET JSON:\n".json_encode([
                 'nodes' => $validated['selected_nodes'],
                 'edges' => $validated['selected_edges'] ?? [],
-            ], JSON_PRETTY_PRINT) . "\n\n";
+            ], JSON_PRETTY_PRINT)."\n\n";
             $prompt .= "RULES:\n";
             $prompt .= "1. Return a NEW JSON object with 'nodes' and 'edges' representing the improved flow.\n";
             $prompt .= "2. You can add new nodes (e.g., breaking a prompt into 3 steps), remove nodes, or change node content.\n";
             $prompt .= "3. Use specific names/details from the Story Context in your new nodes.\n";
             $prompt .= "4. Use unique IDs for new nodes (e.g., 'new_1', 'new_2').\n";
             $prompt .= "5. Keep the general position coordinates similar but adjust spacing so they don't overlap.\n\n";
-            $prompt .= "Return ONLY the JSON.";
+            $prompt .= 'Return ONLY the JSON.';
 
             $model = $validated['ai_model'];
             $provider = str_starts_with($model, 'gemini') ? 'gemini' : 'openai';
-            
+
             // Build prompt_config for StoryHandler
             $promptConfig = [
                 'current_preset' => 'story-telling',
@@ -717,7 +722,7 @@ class ChainBuilderController extends Controller
                 'pov' => '',
                 'author_profile' => null,
             ];
-            
+
             // Build complete generation_config with all required fields
             $generationConfig = [
                 'temperature' => 0.3,
@@ -735,13 +740,13 @@ class ChainBuilderController extends Controller
                 'include_thinking' => false,
                 'stream' => false,
             ];
-            
+
             $response = Http::timeout(120)
-                ->post($this->getPythonServiceUrl() . '/api/generate', [
+                ->post($this->getPythonServiceUrl().'/api/generate', [
                     'usecase' => 'story',
                     'provider' => $provider,
                     'model' => $model,
-                    'prompt' => $prompt . "\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or explanations.",
+                    'prompt' => $prompt."\n\nIMPORTANT: Return ONLY valid JSON. Do not include markdown code blocks or explanations.",
                     'prompt_config' => $promptConfig,
                     'generation_config' => $generationConfig,
                     'caller' => [
@@ -749,43 +754,43 @@ class ChainBuilderController extends Controller
                         'workspace_id' => $workspace_id,
                         'project_id' => $project_id,
                         'session_id' => 'chain-builder-refine',
-                        'api_keys' => (object)[],
+                        'api_keys' => (object) [],
                     ],
                 ]);
 
             if ($response->successful()) {
                 $result = $response->json();
                 $jsonText = $result['text'] ?? $result['content'] ?? '';
-                
+
                 if (empty($jsonText)) {
                     throw new \Exception('Empty response from Python service');
                 }
-                
+
                 // Parse JSON (handle markdown code blocks)
                 $jsonText = preg_replace('/```json\s*/', '', $jsonText);
                 $jsonText = preg_replace('/```\s*/', '', $jsonText);
                 $jsonText = trim($jsonText);
-                
+
                 // Try to extract JSON if wrapped in text
                 if (preg_match('/\{.*\}/s', $jsonText, $matches)) {
                     $jsonText = $matches[0];
                 }
-                
+
                 $refinedData = json_decode($jsonText, true);
-                
+
                 if (json_last_error() !== JSON_ERROR_NONE) {
                     Log::error('JSON decode error in refineSelection', [
                         'error' => json_last_error_msg(),
-                        'json_preview' => substr($jsonText, 0, 500)
+                        'json_preview' => substr($jsonText, 0, 500),
                     ]);
-                    throw new \Exception('Invalid JSON response: ' . json_last_error_msg());
+                    throw new \Exception('Invalid JSON response: '.json_last_error_msg());
                 }
-                
-                if (!$refinedData || !isset($refinedData['nodes']) || !is_array($refinedData['nodes'])) {
+
+                if (! $refinedData || ! isset($refinedData['nodes']) || ! is_array($refinedData['nodes'])) {
                     Log::error('Invalid refined graph structure', [
                         'has_nodes' => isset($refinedData['nodes']),
                         'nodes_type' => gettype($refinedData['nodes'] ?? null),
-                        'data_keys' => array_keys($refinedData ?? [])
+                        'data_keys' => array_keys($refinedData ?? []),
                     ]);
                     throw new \Exception('Invalid refined graph response: missing or invalid nodes array');
                 }
@@ -798,27 +803,28 @@ class ChainBuilderController extends Controller
             } else {
                 $errorBody = $response->body();
                 $errorData = $response->json();
-                
+
                 Log::error('Python service error refining selection', [
                     'status' => $response->status(),
                     'body' => $errorBody,
-                    'error_data' => $errorData
+                    'error_data' => $errorData,
                 ]);
-                
+
                 $errorMessage = $errorData['error'] ?? $errorData['message'] ?? 'Failed to refine selection';
-                
+
                 return response()->json([
                     'error' => $errorMessage,
-                    'details' => $errorData
+                    'details' => $errorData,
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception refining selection', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to refine selection: ' . $e->getMessage()
+                'error' => 'Failed to refine selection: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -877,7 +883,7 @@ class ChainBuilderController extends Controller
                     } else {
                         // Plain text: simple concatenation
                         $separator = $this->determineSeparator($existingContent, $validated['result_text']);
-                        $chapter['content'] = $existingContent . $separator . $validated['result_text'];
+                        $chapter['content'] = $existingContent.$separator.$validated['result_text'];
                     }
 
                     $updatedContent = $chapter['content'];
@@ -887,7 +893,7 @@ class ChainBuilderController extends Controller
             }
             unset($chapter);
 
-            if (!$chapterFound) {
+            if (! $chapterFound) {
                 return response()->json(['error' => 'Chapter not found'], 404);
             }
 
@@ -926,8 +932,9 @@ class ChainBuilderController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
-                'error' => 'Failed: ' . $e->getMessage()
+                'error' => 'Failed: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -959,12 +966,13 @@ class ChainBuilderController extends Controller
      */
     private function isLexicalJson(string $content): bool
     {
-        if (empty($content) || !str_starts_with(trim($content), '{')) {
+        if (empty($content) || ! str_starts_with(trim($content), '{')) {
             return false;
         }
 
         try {
             $parsed = json_decode($content, true);
+
             return isset($parsed['root']['type']) && $parsed['root']['type'] === 'root';
         } catch (\Exception $e) {
             return false;
@@ -998,7 +1006,7 @@ class ChainBuilderController extends Controller
     {
         $doc = json_decode($existingContent, true);
 
-        if (!$doc || !isset($doc['root']['children'])) {
+        if (! $doc || ! isset($doc['root']['children'])) {
             // Fallback: create fresh document
             $doc = [
                 'root' => [
@@ -1013,7 +1021,7 @@ class ChainBuilderController extends Controller
         }
 
         // Add blank paragraph for spacing if there's existing content
-        if (!empty($doc['root']['children'])) {
+        if (! empty($doc['root']['children'])) {
             $doc['root']['children'][] = [
                 'type' => 'paragraph',
                 'version' => 1,
@@ -1034,7 +1042,7 @@ class ChainBuilderController extends Controller
             // Create paragraph for each line (empty lines = empty paragraphs for spacing)
             $children = [];
             $trimmed = trim($line);
-            if (!empty($trimmed)) {
+            if (! empty($trimmed)) {
                 $children[] = $this->createOriginTextNode($trimmed, $origin);
             }
 
@@ -1070,11 +1078,11 @@ class ChainBuilderController extends Controller
                 ->firstOrFail();
 
             // Get model from request, then project settings, then default
-            $model = $validated['model'] 
+            $model = $validated['model']
                 ?? ($project->settings && isset($project->settings['aiModel']) ? $project->settings['aiModel'] : null)
                 ?? 'gemini-2.5-flash'; // Default to 2.5 flash
             $provider = str_starts_with($model, 'gemini') ? 'gemini' : 'openai';
-            
+
             // Log for debugging
             Log::info('Auto-Build enhancement model selection', [
                 'requested_model' => $validated['model'] ?? 'not provided',
@@ -1085,10 +1093,10 @@ class ChainBuilderController extends Controller
             // Create a prompt that helps enhance the user's goal into a better pipeline description
             $storyContext = $validated['story_context'] ?? '';
             $userGoal = $validated['text'];
-            
+
             // Limit story context to 100k chars for this enhancement
             if (strlen($storyContext) > 100000) {
-                $storyContext = '...' . substr($storyContext, -100000);
+                $storyContext = '...'.substr($storyContext, -100000);
             }
 
             $enhancementPrompt = "You are a technical assistant helping create a WORKFLOW DESCRIPTION for an AI story generation pipeline builder.\n\n";
@@ -1110,7 +1118,7 @@ class ChainBuilderController extends Controller
             $enhancementPrompt .= "EXAMPLE:\n";
             $enhancementPrompt .= "Input: 'yurak is breaking apart'\n";
             $enhancementPrompt .= "Output: 'Create a workflow to depict Yurak's psychological breakdown. Include context nodes for his current transformed state, the greaves' influence, and Ericon's presence. Add logic nodes analyzing the internal conflict between his warrior persona and suppressed cowardice. The final prompt should generate a scene showing his mental fragmentation, physical manifestations of his breakdown, and the moment of recognition or collapse.'\n\n";
-            $enhancementPrompt .= "Enhanced workflow description:";
+            $enhancementPrompt .= 'Enhanced workflow description:';
 
             $generationConfig = [
                 'temperature' => 0.5, // Lower temperature for more focused output
@@ -1129,7 +1137,7 @@ class ChainBuilderController extends Controller
                 'stream' => false,
             ];
 
-            $response = Http::timeout(60)->post($this->getPythonServiceUrl() . '/api/generate', [
+            $response = Http::timeout(60)->post($this->getPythonServiceUrl().'/api/generate', [
                 'usecase' => 'story', // Keep story usecase but with explicit instructions
                 'provider' => $provider,
                 'model' => $model,
@@ -1148,13 +1156,13 @@ class ChainBuilderController extends Controller
                     'workspace_id' => $workspace_id,
                     'project_id' => $project_id,
                     'session_id' => 'chain-builder-auto-build-enhance',
-                    'api_keys' => (object)[],
+                    'api_keys' => (object) [],
                 ],
             ]);
 
             if ($response->successful()) {
                 $result = $response->json();
-                
+
                 // Check if the Python service itself reported failure
                 if (isset($result['success']) && $result['success'] === false) {
                     $errorMessage = $result['error_message'] ?? $result['error'] ?? 'Python service reported failure';
@@ -1162,21 +1170,21 @@ class ChainBuilderController extends Controller
                         'error_message' => $errorMessage,
                         'full_result' => $result,
                     ]);
-                    
+
                     // Check for quota errors and provide helpful message
                     if (str_contains($errorMessage, '429') || str_contains($errorMessage, 'RESOURCE_EXHAUSTED') || str_contains($errorMessage, 'quota')) {
                         return response()->json([
                             'error' => 'API quota exceeded. Please wait a moment and try again, or check your API usage limits.',
-                            'details' => $errorMessage
+                            'details' => $errorMessage,
                         ], 429);
                     }
-                    
+
                     return response()->json([
-                        'error' => 'Enhancement failed: ' . $errorMessage,
-                        'details' => $errorMessage
+                        'error' => 'Enhancement failed: '.$errorMessage,
+                        'details' => $errorMessage,
                     ], 500);
                 }
-                
+
                 // Log the full response for debugging
                 Log::info('Auto-Build enhancement response', [
                     'result_keys' => array_keys($result ?? []),
@@ -1184,17 +1192,18 @@ class ChainBuilderController extends Controller
                     'has_content' => isset($result['content']),
                     'text_preview' => substr($result['text'] ?? '', 0, 200),
                 ]);
-                
+
                 $enhancedText = $result['text'] ?? $result['content'] ?? $result['output'] ?? '';
-                
+
                 if (empty($enhancedText)) {
                     Log::error('Auto-Build enhancement empty response', [
                         'full_result' => $result,
                         'response_status' => $response->status(),
                     ]);
+
                     return response()->json([
                         'error' => 'Empty response from Python service',
-                        'details' => 'The service returned a successful response but no text content. Check logs for details.'
+                        'details' => 'The service returned a successful response but no text content. Check logs for details.',
                     ], 500);
                 }
 
@@ -1206,12 +1215,12 @@ class ChainBuilderController extends Controller
                 $errorBody = $response->body();
                 $errorData = $response->json();
                 $errorMessage = $errorData['error'] ?? $errorData['message'] ?? 'Failed to enhance prompt';
-                
+
                 Log::error('Auto-Build prompt enhancement error', [
                     'status' => $response->status(),
                     'error' => $errorMessage,
                 ]);
-                
+
                 return response()->json([
                     'error' => $errorMessage,
                 ], $response->status());
@@ -1219,12 +1228,12 @@ class ChainBuilderController extends Controller
         } catch (\Exception $e) {
             Log::error('Exception enhancing auto-build prompt', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to enhance prompt: ' . $e->getMessage()
+                'error' => 'Failed to enhance prompt: '.$e->getMessage(),
             ], 500);
         }
     }
 }
-

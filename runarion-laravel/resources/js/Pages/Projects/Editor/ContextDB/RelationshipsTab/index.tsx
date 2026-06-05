@@ -1,12 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { Button } from "@/Components/ui/button";
-import {
-    CheckSquare,
-    Square,
-    Plus,
-    Trash2,
-    Loader2,
-} from "lucide-react";
+import { CheckSquare, Square, Plus, Trash2, Loader2 } from "lucide-react";
 import type {
     RelationshipsTabProps,
     Relationship,
@@ -19,10 +13,14 @@ import type {
     FilterBy,
     InteractionsViewMode,
 } from "./types";
-import { STANDARD_RELATIONSHIP_TYPES, STANDARD_EMOTIONAL_TONES } from "./constants";
-import EmotionalTonesManager from "./components/EmotionalTonesManager";
-import AllRelationshipsView from "./components/AllRelationshipsView";
-import OneToOneView from "./components/OneToOneView";
+import {
+    STANDARD_RELATIONSHIP_TYPES,
+    STANDARD_EMOTIONAL_TONES,
+} from "./constants";
+import EmotionalTonesManager from "./Components/EmotionalTonesManager";
+import AllRelationshipsView from "./Components/AllRelationshipsView";
+import OneToOneView from "./Components/OneToOneView";
+import { http } from "@/Lib/http";
 
 export default function RelationshipsTab({
     entity,
@@ -51,7 +49,9 @@ export default function RelationshipsTab({
     const [customType, setCustomType] = useState("");
     const [useCustomTone, setUseCustomTone] = useState(false);
     const [customTone, setCustomTone] = useState("");
-    const [editedProperties, setEditedProperties] = useState<Record<string, any>>({});
+    const [editedProperties, setEditedProperties] = useState<
+        Record<string, any>
+    >({});
     const [newPropertyKey, setNewPropertyKey] = useState("");
     const [newPropertyValue, setNewPropertyValue] = useState("");
     const [saving, setSaving] = useState(false);
@@ -63,7 +63,9 @@ export default function RelationshipsTab({
 
     // Multi-select mode
     const [multiSelectMode, setMultiSelectMode] = useState(false);
-    const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(new Set());
+    const [selectedEdgeIds, setSelectedEdgeIds] = useState<Set<string>>(
+        new Set(),
+    );
     const [deletingMultiple, setDeletingMultiple] = useState(false);
 
     // Interactions for CK3-style breakdown
@@ -72,8 +74,12 @@ export default function RelationshipsTab({
     const [interactionsExpanded, setInteractionsExpanded] = useState(false);
     const [interactionsViewMode, setInteractionsViewMode] =
         useState<InteractionsViewMode>("all");
-    const [expandedChapters, setExpandedChapters] = useState<Set<number>>(new Set());
-    const [deletingInteraction, setDeletingInteraction] = useState<string | null>(null);
+    const [expandedChapters, setExpandedChapters] = useState<Set<number>>(
+        new Set(),
+    );
+    const [deletingInteraction, setDeletingInteraction] = useState<
+        string | null
+    >(null);
     const [showCreateInteraction, setShowCreateInteraction] = useState(false);
     const [creatingInteraction, setCreatingInteraction] = useState(false);
     const [newInteraction, setNewInteraction] = useState({
@@ -83,11 +89,13 @@ export default function RelationshipsTab({
         context: "",
         text_evidence: "",
     });
-    const [editingInteraction, setEditingInteraction] = useState<Interaction | null>(null);
+    const [editingInteraction, setEditingInteraction] =
+        useState<Interaction | null>(null);
     const [savingInteraction, setSavingInteraction] = useState(false);
 
     // Chapter Analysis Editing
-    const [editingChapter, setEditingChapter] = useState<ChapterAnalysis | null>(null);
+    const [editingChapter, setEditingChapter] =
+        useState<ChapterAnalysis | null>(null);
     const [savingChapter, setSavingChapter] = useState(false);
     const [showAddChapter, setShowAddChapter] = useState(false);
     const [deletingChapter, setDeletingChapter] = useState<number | null>(null);
@@ -117,7 +125,9 @@ export default function RelationshipsTab({
         let filtered = [...entityRelationships];
 
         if (filterBy !== "all") {
-            filtered = filtered.filter((rel) => rel.relationship_type === filterBy);
+            filtered = filtered.filter(
+                (rel) => rel.relationship_type === filterBy,
+            );
         }
 
         if (searchQuery) {
@@ -140,7 +150,9 @@ export default function RelationshipsTab({
                 case "name":
                     return aOther.localeCompare(bOther);
                 case "type":
-                    return a.relationship_type.localeCompare(b.relationship_type);
+                    return a.relationship_type.localeCompare(
+                        b.relationship_type,
+                    );
                 default:
                     return 0;
             }
@@ -160,12 +172,16 @@ export default function RelationshipsTab({
     }, [allRelationships, entity.name]);
 
     // Get relationship between this entity and another character
-    const getRelationshipWith = (characterName: string): Relationship | null => {
+    const getRelationshipWith = (
+        characterName: string,
+    ): Relationship | null => {
         return (
             entityRelationships.find(
                 (rel) =>
-                    (rel.source === entity.name && rel.target === characterName) ||
-                    (rel.source === characterName && rel.target === entity.name)
+                    (rel.source === entity.name &&
+                        rel.target === characterName) ||
+                    (rel.source === characterName &&
+                        rel.target === entity.name),
             ) || null
         );
     };
@@ -183,9 +199,13 @@ export default function RelationshipsTab({
         const currentTone = props.emotional_tone || "neutral";
         setContext(props.context || "");
         setEmotionalTone(currentTone);
-        setUseCustomTone(!STANDARD_EMOTIONAL_TONES.includes(currentTone.toLowerCase()));
+        setUseCustomTone(
+            !STANDARD_EMOTIONAL_TONES.includes(currentTone.toLowerCase()),
+        );
         setCustomTone(currentTone);
-        setSentimentScore(props.sentiment_score !== undefined ? props.sentiment_score : 0);
+        setSentimentScore(
+            props.sentiment_score !== undefined ? props.sentiment_score : 0,
+        );
 
         const otherProps = { ...props };
         delete otherProps.context;
@@ -235,27 +255,23 @@ export default function RelationshipsTab({
         setSaving(true);
         onSavingChange?.(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/relationships/${selectedRelationship.edge_id}`,
                 {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         project_id: projectId,
                         type: finalType,
                         properties: allProperties,
-                    }),
-                }
+                    },
+                },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 setIsEditing(false);
                 onRelationshipUpdated();
                 const updatedRel = {
@@ -269,12 +285,12 @@ export default function RelationshipsTab({
                 setSentimentScore(
                     allProperties.sentiment_score !== undefined
                         ? allProperties.sentiment_score
-                        : 0
+                        : 0,
                 );
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
-                    const error = await response.json();
+                    const error = response.data;
                     errorMessage = error.error || error.message || errorMessage;
                     if (error.details) {
                         errorMessage += `\n\nDetails: ${
@@ -290,7 +306,9 @@ export default function RelationshipsTab({
             }
         } catch (error: any) {
             console.error("Error updating relationship:", error);
-            alert(`Failed to update relationship: ${error?.message || String(error)}`);
+            alert(
+                `Failed to update relationship: ${error?.message || String(error)}`,
+            );
         } finally {
             setSaving(false);
             onSavingChange?.(false);
@@ -300,7 +318,10 @@ export default function RelationshipsTab({
     const handleCancelEdit = () => {
         if (!selectedRelationship) return;
         setIsEditing(false);
-        const relType = selectedRelationship.relationship_type.replace(/"/g, "");
+        const relType = selectedRelationship.relationship_type.replace(
+            /"/g,
+            "",
+        );
         setEditedType(relType);
         setUseCustomType(!STANDARD_RELATIONSHIP_TYPES.includes(relType));
         setCustomType(relType);
@@ -309,9 +330,13 @@ export default function RelationshipsTab({
         const currentTone = props.emotional_tone || "neutral";
         setContext(props.context || "");
         setEmotionalTone(currentTone);
-        setUseCustomTone(!STANDARD_EMOTIONAL_TONES.includes(currentTone.toLowerCase()));
+        setUseCustomTone(
+            !STANDARD_EMOTIONAL_TONES.includes(currentTone.toLowerCase()),
+        );
         setCustomTone(currentTone);
-        setSentimentScore(props.sentiment_score !== undefined ? props.sentiment_score : 0);
+        setSentimentScore(
+            props.sentiment_score !== undefined ? props.sentiment_score : 0,
+        );
 
         const otherProps = { ...props };
         delete otherProps.context;
@@ -335,21 +360,17 @@ export default function RelationshipsTab({
 
         onSavingChange?.(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/relationships/${edgeId}`,
                 {
                     method: "DELETE",
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                }
+                },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 if (selectedRelationship?.edge_id === String(edgeId)) {
                     setSelectedRelationship(null);
                     setViewMode("all");
@@ -358,7 +379,7 @@ export default function RelationshipsTab({
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
-                    const error = await response.json();
+                    const error = response.data;
                     errorMessage = error.error || error.message || errorMessage;
                 } catch (e) {
                     console.error("Error parsing response:", e);
@@ -367,28 +388,33 @@ export default function RelationshipsTab({
             }
         } catch (error: any) {
             console.error("Error deleting relationship:", error);
-            alert(`Failed to delete relationship: ${error?.message || String(error)}`);
+            alert(
+                `Failed to delete relationship: ${error?.message || String(error)}`,
+            );
         } finally {
             onSavingChange?.(false);
         }
     };
 
     // Fetch interactions when relationship is selected
-    const fetchInteractions = async (sourceChar: string, targetChar: string) => {
+    const fetchInteractions = async (
+        sourceChar: string,
+        targetChar: string,
+    ) => {
         setLoadingInteractions(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/interactions?source_character=${encodeURIComponent(
-                    sourceChar
+                    sourceChar,
                 )}&target_character=${encodeURIComponent(targetChar)}`,
                 {
                     headers: {
                         Accept: "application/json",
                     },
-                }
+                },
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setInteractions(data.interactions || []);
             } else {
                 console.error("Failed to fetch interactions");
@@ -405,7 +431,10 @@ export default function RelationshipsTab({
     // Load interactions when relationship changes
     useEffect(() => {
         if (selectedRelationship && viewMode === "one-to-one") {
-            fetchInteractions(selectedRelationship.source, selectedRelationship.target);
+            fetchInteractions(
+                selectedRelationship.source,
+                selectedRelationship.target,
+            );
         } else {
             setInteractions([]);
         }
@@ -435,7 +464,7 @@ export default function RelationshipsTab({
         if (selectedEdgeIds.size === 0) return;
         if (
             !confirm(
-                `Are you sure you want to delete ${selectedEdgeIds.size} relationships?`
+                `Are you sure you want to delete ${selectedEdgeIds.size} relationships?`,
             )
         ) {
             return;
@@ -448,20 +477,16 @@ export default function RelationshipsTab({
 
         for (const edgeId of selectedEdgeIds) {
             try {
-                const response = await fetch(
+                const response = await http(
                     `/${workspaceId}/projects/${projectId}/editor/records/relationships/${edgeId}`,
                     {
                         method: "DELETE",
                         headers: {
                             Accept: "application/json",
-                            "X-CSRF-TOKEN":
-                                document
-                                    .querySelector('meta[name="csrf-token"]')
-                                    ?.getAttribute("content") || "",
                         },
-                    }
+                    },
                 );
-                if (response.ok) {
+                if (response.status >= 200 && response.status < 300) {
                     successCount++;
                 } else {
                     errorCount++;
@@ -480,7 +505,9 @@ export default function RelationshipsTab({
             onRelationshipDeleted();
         }
         if (errorCount > 0) {
-            alert(`Deleted ${successCount} relationships. ${errorCount} failed.`);
+            alert(
+                `Deleted ${successCount} relationships. ${errorCount} failed.`,
+            );
         }
     };
 
@@ -494,27 +521,25 @@ export default function RelationshipsTab({
         onSavingChange?.(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/interactions/${vertexId}`,
                 {
                     method: "DELETE",
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                }
+                },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 setInteractions((prev) =>
-                    prev.filter((i) => String(i.vertex_id) !== vertexId)
+                    prev.filter((i) => String(i.vertex_id) !== vertexId),
                 );
             } else {
-                const error = await response.json();
-                alert(`Failed to delete interaction: ${error.error || "Unknown error"}`);
+                const error = response.data;
+                alert(
+                    `Failed to delete interaction: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (e) {
             console.error("Error deleting interaction:", e);
@@ -532,19 +557,15 @@ export default function RelationshipsTab({
         onSavingChange?.(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/interactions`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         source_character: selectedRelationship.source,
                         target_character: selectedRelationship.target,
                         chapter_number: newInteraction.chapter_number,
@@ -552,12 +573,12 @@ export default function RelationshipsTab({
                         emotional_tone: newInteraction.emotional_tone,
                         context: newInteraction.context,
                         text_evidence: newInteraction.text_evidence,
-                    }),
-                }
+                    },
+                },
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setInteractions((prev) => [...prev, data.interaction]);
                 setNewInteraction({
                     interaction_type: "INTERACTS_WITH",
@@ -568,8 +589,10 @@ export default function RelationshipsTab({
                 });
                 setShowCreateInteraction(false);
             } else {
-                const error = await response.json();
-                alert(`Failed to create interaction: ${error.error || "Unknown error"}`);
+                const error = response.data;
+                alert(
+                    `Failed to create interaction: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (e) {
             console.error("Error creating interaction:", e);
@@ -587,40 +610,40 @@ export default function RelationshipsTab({
         onSavingChange?.(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/interactions/${editingInteraction.vertex_id}`,
                 {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         interaction_type: editingInteraction.interaction_type,
                         emotional_tone: editingInteraction.emotional_tone,
-                        sentiment_modifier: editingInteraction.sentiment_modifier,
+                        sentiment_modifier:
+                            editingInteraction.sentiment_modifier,
                         context: editingInteraction.context,
                         text_evidence: editingInteraction.text_evidence,
-                    }),
-                }
+                    },
+                },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 setInteractions((prev) =>
                     prev.map((i) =>
-                        String(i.vertex_id) === String(editingInteraction.vertex_id)
+                        String(i.vertex_id) ===
+                        String(editingInteraction.vertex_id)
                             ? editingInteraction
-                            : i
-                    )
+                            : i,
+                    ),
                 );
                 setEditingInteraction(null);
             } else {
-                const error = await response.json();
-                alert(`Failed to update interaction: ${error.error || "Unknown error"}`);
+                const error = response.data;
+                alert(
+                    `Failed to update interaction: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (e) {
             console.error("Error updating interaction:", e);
@@ -639,27 +662,23 @@ export default function RelationshipsTab({
         onSavingChange?.(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/relationships/${selectedRelationship.edge_id}/chapter-analyses`,
                 {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         project_id: projectId,
                         chapter_analyses: chapters,
                         recalculate_overall: true,
-                    }),
-                }
+                    },
+                },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 if (selectedRelationship.properties) {
                     selectedRelationship.properties.chapter_analyses =
                         JSON.stringify(chapters);
@@ -668,8 +687,10 @@ export default function RelationshipsTab({
                 setShowAddChapter(false);
                 onRelationshipUpdated();
             } else {
-                const error = await response.json();
-                alert(`Failed to update chapters: ${error.error || "Unknown error"}`);
+                const error = response.data;
+                alert(
+                    `Failed to update chapters: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (e) {
             console.error("Error updating chapters:", e);
@@ -682,7 +703,8 @@ export default function RelationshipsTab({
 
     const handleDeleteChapter = async (chapterNumber: number) => {
         if (!selectedRelationship) return;
-        if (!confirm("Are you sure you want to delete this chapter analysis?")) return;
+        if (!confirm("Are you sure you want to delete this chapter analysis?"))
+            return;
 
         setDeletingChapter(chapterNumber);
 
@@ -694,14 +716,14 @@ export default function RelationshipsTab({
                     typeof props.chapter_analyses === "string"
                         ? JSON.parse(props.chapter_analyses)
                         : Array.isArray(props.chapter_analyses)
-                        ? props.chapter_analyses
-                        : [];
+                          ? props.chapter_analyses
+                          : [];
             } catch (e) {
                 chapters = [];
             }
 
             const updatedChapters = chapters.filter(
-                (ch) => ch.chapter_number !== chapterNumber
+                (ch) => ch.chapter_number !== chapterNumber,
             );
 
             await handleSaveChapterAnalyses(updatedChapters);
@@ -720,8 +742,8 @@ export default function RelationshipsTab({
                 typeof props.chapter_analyses === "string"
                     ? JSON.parse(props.chapter_analyses)
                     : Array.isArray(props.chapter_analyses)
-                    ? props.chapter_analyses
-                    : [];
+                      ? props.chapter_analyses
+                      : [];
         } catch (e) {
             chapters = [];
         }
@@ -742,14 +764,16 @@ export default function RelationshipsTab({
                 typeof props.chapter_analyses === "string"
                     ? JSON.parse(props.chapter_analyses)
                     : Array.isArray(props.chapter_analyses)
-                    ? props.chapter_analyses
-                    : [];
+                      ? props.chapter_analyses
+                      : [];
         } catch (e) {
             chapters = [];
         }
 
         const updatedChapters = chapters.map((ch) =>
-            ch.chapter_number === updatedChapter.chapter_number ? updatedChapter : ch
+            ch.chapter_number === updatedChapter.chapter_number
+                ? updatedChapter
+                : ch,
         );
 
         await handleSaveChapterAnalyses(updatedChapters);
@@ -759,21 +783,17 @@ export default function RelationshipsTab({
     const fetchEmotionalTones = async () => {
         setLoadingTones(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/emotional-tones`,
                 {
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                }
+                },
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setEmotionalTones(data.tones || []);
             }
         } catch (e) {
@@ -789,31 +809,25 @@ export default function RelationshipsTab({
         setCreatingTone(true);
         onSavingChange?.(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/emotional-tones`,
                 {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
-                    },
-                    body: JSON.stringify({
+                    data: {
                         name: newToneName.trim(),
-                    }),
-                }
+                    },
+                },
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setEmotionalTones((prev) => [...prev, data.tone]);
                 setNewToneName("");
             } else {
-                const error = await response.json();
-                alert(`Failed to create tone: ${error.error || "Unknown error"}`);
+                const error = response.data;
+                alert(
+                    `Failed to create tone: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (e) {
             console.error("Error creating emotional tone:", e);
@@ -825,30 +839,31 @@ export default function RelationshipsTab({
     };
 
     const handleDeleteTone = async (toneId: number) => {
-        if (!confirm("Are you sure you want to delete this emotional tone?")) return;
+        if (!confirm("Are you sure you want to delete this emotional tone?"))
+            return;
 
         setDeletingTone(toneId);
         onSavingChange?.(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/emotional-tones/${toneId}`,
                 {
                     method: "DELETE",
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                }
+                },
             );
 
-            if (response.ok) {
-                setEmotionalTones((prev) => prev.filter((t) => t.id !== toneId));
+            if (response.status >= 200 && response.status < 300) {
+                setEmotionalTones((prev) =>
+                    prev.filter((t) => t.id !== toneId),
+                );
             } else {
-                const error = await response.json();
-                alert(`Failed to delete tone: ${error.error || "Unknown error"}`);
+                const error = response.data;
+                alert(
+                    `Failed to delete tone: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (e) {
             console.error("Error deleting emotional tone:", e);
@@ -868,7 +883,7 @@ export default function RelationshipsTab({
 
         if (
             !confirm(
-                `Re-analyze the relationship between ${source} and ${target}?\n\nThis will re-run the AI analysis across all chapters and update the stored data.`
+                `Re-analyze the relationship between ${source} and ${target}?\n\nThis will re-run the AI analysis across all chapters and update the stored data.`,
             )
         ) {
             return;
@@ -879,10 +894,12 @@ export default function RelationshipsTab({
 
         try {
             const sourceEntity = allEntities?.find(
-                (e) => e.name === source && e.type.toLowerCase() === "character"
+                (e) =>
+                    e.name === source && e.type.toLowerCase() === "character",
             );
             const targetEntity = allEntities?.find(
-                (e) => e.name === target && e.type.toLowerCase() === "character"
+                (e) =>
+                    e.name === target && e.type.toLowerCase() === "character",
             );
 
             if (!sourceEntity || !targetEntity) {
@@ -890,32 +907,31 @@ export default function RelationshipsTab({
                 return;
             }
 
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/extract-relationships`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
-                        character_ids: [sourceEntity.vertex_id, targetEntity.vertex_id],
+                    data: {
+                        character_ids: [
+                            sourceEntity.vertex_id,
+                            targetEntity.vertex_id,
+                        ],
                         focus_mode: "1-to-1",
                         model: "gemini-2.5-flash",
                         provider: "gemini",
-                    }),
-                }
+                    },
+                },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 alert(`✓ Successfully reassessed ${source} ↔ ${target}!`);
                 onRelationshipUpdated();
             } else {
-                const error = await response.json();
+                const error = response.data;
                 alert(`Failed to reassess: ${error.error || "Unknown error"}`);
             }
         } catch (e: any) {
@@ -969,8 +985,12 @@ export default function RelationshipsTab({
             const totalModifier =
                 interaction.sentiment_modifier !== undefined
                     ? interaction.sentiment_modifier
-                    : (typeModifiers[interaction.interaction_type?.toUpperCase()] || 0) +
-                      (toneModifiers[interaction.emotional_tone?.toLowerCase()] || 0);
+                    : (typeModifiers[
+                          interaction.interaction_type?.toUpperCase()
+                      ] || 0) +
+                      (toneModifiers[
+                          interaction.emotional_tone?.toLowerCase()
+                      ] || 0);
 
             return {
                 label: `${interaction.interaction_type || "INTERACTION"} (${
@@ -986,7 +1006,10 @@ export default function RelationshipsTab({
 
     // Calculate clamped and raw totals
     const clampedTotalSentiment = useMemo(() => {
-        const rawTotal = sentimentBreakdown.reduce((sum, item) => sum + item.value, 0);
+        const rawTotal = sentimentBreakdown.reduce(
+            (sum, item) => sum + item.value,
+            0,
+        );
         return Math.max(-100, Math.min(100, rawTotal));
     }, [sentimentBreakdown]);
 
@@ -1083,7 +1106,9 @@ export default function RelationshipsTab({
                         size="sm"
                         variant="destructive"
                         onClick={handleDeleteMultiple}
-                        disabled={selectedEdgeIds.size === 0 || deletingMultiple}
+                        disabled={
+                            selectedEdgeIds.size === 0 || deletingMultiple
+                        }
                     >
                         {deletingMultiple ? (
                             <Loader2 className="h-4 w-4 mr-2 animate-spin" />
@@ -1113,7 +1138,9 @@ export default function RelationshipsTab({
                     onClick={() => {
                         setViewMode("one-to-one");
                         if (!selectedRelationship && allCharacters.length > 0) {
-                            const firstRel = getRelationshipWith(allCharacters[0]);
+                            const firstRel = getRelationshipWith(
+                                allCharacters[0],
+                            );
                             if (firstRel) {
                                 handleSelectRelationship(firstRel);
                             }

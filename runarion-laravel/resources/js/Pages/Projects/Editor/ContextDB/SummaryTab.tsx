@@ -12,6 +12,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from "@/Components/ui/select";
+import { http } from "@/Lib/http";
 
 interface Entity {
     vertex_id: string; // String to avoid JS precision loss with large Apache AGE IDs
@@ -57,14 +58,14 @@ export default function SummaryTab({
         setLoading(true);
         try {
             // Fetch fresh entity data from server to get latest summaries
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/entities/${entity.vertex_id}`
             );
 
             let entitySummaries: any[] = [];
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 console.log("API response:", data);
                 // API returns {success: true, entity: {...}} or just the entity
                 const freshEntity = data?.entity || data;
@@ -200,7 +201,7 @@ export default function SummaryTab({
                         <SelectItem value="all">
                             All Chapters ({summaries.length})
                         </SelectItem>
-                        {summaries.map((summary, idx) =>
+                        {summaries.map((summary) =>
                             summary?.chapter_number != null ? (
                                 <SelectItem
                                     key={`ch-${summary.chapter_number}`}

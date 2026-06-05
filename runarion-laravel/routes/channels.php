@@ -1,8 +1,8 @@
 <?php
 
-use Illuminate\Support\Facades\Broadcast;
 use App\Models\Projects;
 use App\Models\WorkspaceMember;
+use Illuminate\Support\Facades\Broadcast;
 
 /*
 |--------------------------------------------------------------------------
@@ -24,7 +24,7 @@ Broadcast::channel('workspace.{workspaceId}', function ($user, $workspaceId) {
         ->where('user_id', $user->id)
         ->exists();
 
-    if (!$isMember) {
+    if (! $isMember) {
         return false;
     }
 
@@ -40,31 +40,31 @@ Broadcast::channel('project.{workspaceId}.{projectId}', function ($user, $worksp
     $isMember = WorkspaceMember::where('workspace_id', $workspaceId)
         ->where('user_id', $user->id)
         ->exists();
-    
-    if (!$isMember) {
+
+    if (! $isMember) {
         return false;
     }
-    
+
     // Check if project exists and belongs to the workspace
     $project = Projects::where('id', $projectId)
         ->where('workspace_id', $workspaceId)
         ->first();
-    
-    if (!$project) {
+
+    if (! $project) {
         return false;
     }
-    
+
     // Check if user has access to the project
     if ($project->access) {
         $hasAccess = collect($project->access)->contains(function ($access) use ($user) {
             return $access['user']['id'] == $user->id;
         });
-        
-        if (!$hasAccess) {
+
+        if (! $hasAccess) {
             return false;
         }
     }
-    
+
     return [
         'id' => $user->id,
         'name' => $user->name,

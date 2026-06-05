@@ -48,4 +48,3 @@ class AdvisorMessage extends Model
         return $this->metadata['edit_data'] ?? null;
     }
 }
-

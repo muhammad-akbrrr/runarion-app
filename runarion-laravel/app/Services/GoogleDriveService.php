@@ -16,7 +16,7 @@ class GoogleDriveService
     {
         $workspace = Workspace::find($workspaceId);
 
-        if (!$workspace || !$workspace->isCloudConnected($this->provider)) {
+        if (! $workspace || ! $workspace->isCloudConnected($this->provider)) {
             return null;
         }
 
@@ -24,17 +24,18 @@ class GoogleDriveService
             $refreshToken = $workspace->getCloudToken($this->provider);
 
             $config = [
-                'driver'         => 'google_drive',
-                'client_id'      => config('services.google.drive.client_id'),
-                'client_secret'  => config('services.google.drive.client_secret'),
-                'refresh_token'  => $refreshToken,
-                'folder_id'      => $workspace->cloud_storage[$this->provider]['folder_id'] ?? null,
-                'team_drive_id'  => $workspace->cloud_storage[$this->provider]['team_drive_id'] ?? null,
+                'driver' => 'google_drive',
+                'client_id' => config('services.google.drive.client_id'),
+                'client_secret' => config('services.google.drive.client_secret'),
+                'refresh_token' => $refreshToken,
+                'folder_id' => $workspace->cloud_storage[$this->provider]['folder_id'] ?? null,
+                'team_drive_id' => $workspace->cloud_storage[$this->provider]['team_drive_id'] ?? null,
             ];
 
             return Storage::build($config);
         } catch (\Exception $e) {
             report($e);
+
             return null;
         }
     }
@@ -45,6 +46,7 @@ class GoogleDriveService
     public function isConnected(string $workspaceId): bool
     {
         $workspace = Workspace::find($workspaceId);
+
         return $workspace?->isCloudConnected($this->provider) ?? false;
     }
 }

@@ -9,6 +9,7 @@ import {
     SelectValue,
 } from "@/Components/ui/select";
 import { Input } from "@/Components/ui/input";
+import { http } from "@/Lib/http";
 
 interface Entity {
     vertex_id: string; // String to avoid JS precision loss with large Apache AGE IDs
@@ -105,34 +106,26 @@ export default function RelationshipForm({
         try {
             const type = useCustomType ? customType : relationshipType;
 
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/relationships`,
                 {
                     method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
-                    },
-                    body: JSON.stringify({
+                    data: {
                         source: parseInt(source), // Convert string to integer
                         target: parseInt(target), // Convert string to integer
                         type,
-                    }),
-                }
+                    },
+                },
             );
 
-            if (response.ok) {
-                const result = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const result = response.data;
                 console.log("Relationship created successfully:", result);
                 onSaved();
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
-                    const error = await response.json();
+                    const error = response.data;
                     console.error("Relationship creation error:", error);
                     errorMessage = error.error || error.message || errorMessage;
                     if (error.details) {

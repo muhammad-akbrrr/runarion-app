@@ -52,7 +52,7 @@ class PythonServiceClient
             ];
 
             foreach ($authorFiles as $authorFile) {
-                if (!$authorFile instanceof UploadedFile) {
+                if (! $authorFile instanceof UploadedFile) {
                     continue;
                 }
 
@@ -145,18 +145,18 @@ class PythonServiceClient
 
     private function url(string $path): string
     {
-        return $this->baseUrl() . '/' . ltrim($path, '/');
+        return $this->baseUrl().'/'.ltrim($path, '/');
     }
 
     private function decodeResponse(Response $response): array
     {
         $decoded = $response->json();
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new RuntimeException($this->extractErrorMessage($decoded, $response));
         }
 
-        if (!is_array($decoded)) {
+        if (! is_array($decoded)) {
             throw new RuntimeException('Python service returned an invalid response payload.');
         }
 
@@ -170,14 +170,14 @@ class PythonServiceClient
     private function extractErrorMessage(mixed $decoded, Response $response): string
     {
         if (is_array($decoded)) {
-            if (!empty($decoded['error'])) {
+            if (! empty($decoded['error'])) {
                 return (string) $decoded['error'];
             }
 
             $fieldErrors = $decoded['details']['field_errors'] ?? null;
             if (is_array($fieldErrors)) {
                 foreach ($fieldErrors as $messages) {
-                    if (is_array($messages) && !empty($messages[0])) {
+                    if (is_array($messages) && ! empty($messages[0])) {
                         return (string) $messages[0];
                     }
                 }

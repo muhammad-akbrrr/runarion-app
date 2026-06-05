@@ -6,14 +6,15 @@ import type {
     ConsistencyIssue,
     DuplicateGroup,
     RefreshResults,
-} from "./auditor/types";
+} from "./Auditor/types";
 
 // Section components
-import ScanStatusSection from "./auditor/ScanStatusSection";
-import RecordConsistencySection from "./auditor/RecordConsistencySection";
-import StoryConsistencySection from "./auditor/StoryConsistencySection";
-import PropertyRefreshSection from "./auditor/PropertyRefreshSection";
-import DuplicateFinderSection from "./auditor/DuplicateFinderSection";
+import ScanStatusSection from "./Auditor/ScanStatusSection";
+import RecordConsistencySection from "./Auditor/RecordConsistencySection";
+import StoryConsistencySection from "./Auditor/StoryConsistencySection";
+import PropertyRefreshSection from "./Auditor/PropertyRefreshSection";
+import DuplicateFinderSection from "./Auditor/DuplicateFinderSection";
+import { http } from "@/Lib/http";
 
 export default function AuditorToolsTab({
     workspaceId,
@@ -30,7 +31,9 @@ export default function AuditorToolsTab({
     const [loadingScanStatus, setLoadingScanStatus] = useState(false);
 
     // Categories/entities - shared across Record, Property, and Duplicate sections
-    const [availableCategories, setAvailableCategories] = useState<string[]>([]);
+    const [availableCategories, setAvailableCategories] = useState<string[]>(
+        [],
+    );
     const [availableEntities, setAvailableEntities] = useState<
         Record<string, Array<{ vertex_id: string; name: string }>>
     >({});
@@ -45,7 +48,7 @@ export default function AuditorToolsTab({
     const [storyIssues, setStoryIssues] = useState<ConsistencyIssue[]>([]);
     const [duplicates, setDuplicates] = useState<DuplicateGroup[]>([]);
     const [refreshResults, setRefreshResults] = useState<RefreshResults | null>(
-        null
+        null,
     );
 
     // ============================================
@@ -61,7 +64,8 @@ export default function AuditorToolsTab({
                 const parsed = JSON.parse(saved);
                 if (parsed.recordIssues) setRecordIssues(parsed.recordIssues);
                 if (parsed.storyIssues) setStoryIssues(parsed.storyIssues);
-                if (parsed.refreshResults) setRefreshResults(parsed.refreshResults);
+                if (parsed.refreshResults)
+                    setRefreshResults(parsed.refreshResults);
                 if (parsed.duplicates) setDuplicates(parsed.duplicates);
             }
         } catch (error) {
@@ -91,12 +95,12 @@ export default function AuditorToolsTab({
     const loadScanStatus = async () => {
         setLoadingScanStatus(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/auditor/scan-status`,
-                { headers: { Accept: "application/json" } }
+                { headers: { Accept: "application/json" } },
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setScanStatus(data.scan_status || null);
             }
         } catch (error) {
@@ -109,12 +113,12 @@ export default function AuditorToolsTab({
     const loadAvailableCategories = async () => {
         setLoadingCategories(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/categories`,
-                { headers: { Accept: "application/json" } }
+                { headers: { Accept: "application/json" } },
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setAvailableCategories(data.categories || []);
             }
         } catch (error) {
@@ -130,13 +134,13 @@ export default function AuditorToolsTab({
         setLoadingEntities(true);
         try {
             const url = `/${workspaceId}/projects/${projectId}/editor/records/entities?category=${encodeURIComponent(
-                category
+                category,
             )}`;
-            const response = await fetch(url, {
+            const response = await http(url, {
                 headers: { Accept: "application/json" },
             });
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setAvailableEntities((prev) => ({
                     ...prev,
                     [category]: (data.entities || []).map((e: any) => ({

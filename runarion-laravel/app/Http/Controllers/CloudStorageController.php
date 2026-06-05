@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\CloudStorage\CloudStorageProviderFactory;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Response;
-use App\Services\CloudStorage\CloudStorageProviderFactory;
 
 class CloudStorageController extends Controller
 {
@@ -20,6 +20,7 @@ class CloudStorageController extends Controller
     {
         $this->canUpdate($request);
         $service = CloudStorageProviderFactory::make($provider);
+
         return $service->redirect($request, $workspaceId);
     }
 
@@ -27,6 +28,7 @@ class CloudStorageController extends Controller
     {
         // callback itself does its own auth check / DB update
         $service = CloudStorageProviderFactory::make($provider);
+
         return $service->callback($request);
     }
 
@@ -34,9 +36,10 @@ class CloudStorageController extends Controller
     {
         $this->canUpdate($request);
         $service = CloudStorageProviderFactory::make($provider);
+
         return $service->disconnect($request, $workspaceId);
     }
-    
+
     public function listFiles(Request $request, string $workspaceId, string $provider)
     {
         $this->canUpdate($request);
@@ -45,17 +48,17 @@ class CloudStorageController extends Controller
         $fs = $service->filesystem($workspaceId);
 
         $items = collect($fs->listContents('', false))
-            ->map(fn($i) => [
-                'path'     => $i->path(),
-                'type'     => $i->type(),
+            ->map(fn ($i) => [
+                'path' => $i->path(),
+                'type' => $i->type(),
                 'modified' => $i->lastModified(),
-                'size'     => $i->fileSize() ?? null,
+                'size' => $i->fileSize() ?? null,
             ]);
 
         return inertia('Cloud/StorageBrowser', [
             'workspaceId' => $workspaceId,
-            'provider'    => $provider,
-            'items'       => $items,
+            'provider' => $provider,
+            'items' => $items,
         ]);
     }
 
@@ -87,11 +90,11 @@ class CloudStorageController extends Controller
 
         $stream = $fs->readStream($path);
 
-        return Response::stream(function() use ($stream) {
+        return Response::stream(function () use ($stream) {
             fpassthru($stream);
         }, 200, [
-            'Content-Type'        => $fs->mimeType($path),
-            'Content-Length'      => $fs->fileSize($path),
+            'Content-Type' => $fs->mimeType($path),
+            'Content-Length' => $fs->fileSize($path),
             'Content-Disposition' => 'attachment; filename="'.basename($path).'"',
         ]);
     }
@@ -108,6 +111,7 @@ class CloudStorageController extends Controller
         }
 
         $fs->delete($path);
+
         return back()->with('success', "Deleted “{$path}”.");
     }
 }

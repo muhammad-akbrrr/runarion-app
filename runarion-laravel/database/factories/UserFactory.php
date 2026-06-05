@@ -3,7 +3,6 @@
 namespace Database\Factories;
 
 use App\Models\User;
-use App\Models\Projects;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
 use Illuminate\Database\Eloquent\Factories\Factory;
@@ -12,13 +11,14 @@ use Illuminate\Support\Str;
 
 /**
  * User Factory
- * 
+ *
  * Factory untuk membuat user test dengan data yang realistis
  * menyediakan metode untuk membuat user dalam berbagai keadaan (verified/unverified)
  */
 class UserFactory extends Factory
 {
     protected static ?string $password;
+
     protected $model = User::class;
 
     public function configure(): static
@@ -44,14 +44,14 @@ class UserFactory extends Factory
 
     /**
      * Define the model's default state.
-     * 
+     *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
         $name = fake()->name();
-        $email = Str::slug($name) . '@example.com';
-        $avatarUrl = 'https://ui-avatars.com/api/?' . http_build_query([
+        $email = Str::slug($name).'@example.com';
+        $avatarUrl = 'https://ui-avatars.com/api/?'.http_build_query([
             'name' => $name,
             'background' => 'random',
         ]);
@@ -78,7 +78,7 @@ class UserFactory extends Factory
      */
     public function unverified(): static
     {
-        return $this->state(fn(array $attributes) => [
+        return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
         ]);
     }

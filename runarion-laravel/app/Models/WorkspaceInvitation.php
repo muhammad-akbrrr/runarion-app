@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 /**
  * WorkspaceInvitation Model
- * 
+ *
  * Represents an invitation to join a workspace sent to a user via email
  */
 class WorkspaceInvitation extends Model

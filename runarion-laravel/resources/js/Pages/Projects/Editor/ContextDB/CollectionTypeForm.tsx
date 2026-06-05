@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
+import { http } from "@/Lib/http";
 
 interface CollectionTypeFormProps {
     workspaceId: string;
@@ -27,31 +28,27 @@ export default function CollectionTypeForm({
         onSavingChange?.(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/collection-types`,
                 {
                     method: "POST",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         name,
                         field_schema: [], // Will be implemented later
-                    }),
+                    },
                 }
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 onSaved();
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
-                    const error = await response.json();
+                    const error = response.data;
                     console.error("Collection type creation error:", error);
                     errorMessage = error.error || error.message || errorMessage;
                     if (error.details) {

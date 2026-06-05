@@ -29,11 +29,11 @@ class ProjectPipelineStateService
 
         $locks = [];
         foreach ($runs as $run) {
-            if (!$run instanceof PipelineRun) {
+            if (! $run instanceof PipelineRun) {
                 continue;
             }
 
-            if (!$run->project_id || array_key_exists($run->project_id, $locks)) {
+            if (! $run->project_id || array_key_exists($run->project_id, $locks)) {
                 continue;
             }
 
@@ -53,7 +53,7 @@ class ProjectPipelineStateService
             ->whereNull('deleted_at')
             ->orderByDesc('created_at')
             ->get()
-            ->first(fn(PipelineRun $run) => $this->isRunLocked($run));
+            ->first(fn (PipelineRun $run) => $this->isRunLocked($run));
     }
 
     public function isRunLocked(PipelineRun $run): bool
@@ -101,10 +101,10 @@ class ProjectPipelineStateService
             2 => 'style_analyzer',
             3 => 'novel_writer',
             default => match ($run->status) {
-                    PipelineRun::STATUS_PHASE_1_2_RUNNING => 'deconstructor',
-                    PipelineRun::STATUS_PHASE_3_RUNNING => 'novel_writer',
-                    default => 'pending',
-                },
+                PipelineRun::STATUS_PHASE_1_2_RUNNING => 'deconstructor',
+                PipelineRun::STATUS_PHASE_3_RUNNING => 'novel_writer',
+                default => 'pending',
+            },
         };
     }
 }

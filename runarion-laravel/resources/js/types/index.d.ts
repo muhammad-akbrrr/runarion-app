@@ -9,6 +9,7 @@ export type PageProps<
 > = T & {
     auth: {
         user: User;
+        csrf_token: string;
     };
     workspaces: SimpleWorkspace[];
     flash?: {

@@ -3,8 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Jobs\AuthorStyleJob;
-use App\Models\Projects;
 use App\Models\AuthorStyle;
+use App\Models\Projects;
 use App\Models\Workspace;
 use App\Services\AuthorStyleFormatter;
 use App\Services\ProjectPipelineStateService;
@@ -20,8 +20,7 @@ class FileManagerController extends Controller
     public function __construct(
         private readonly AuthorStyleFormatter $authorStyleFormatter,
         private readonly ProjectPipelineStateService $pipelineStateService,
-    ) {
-    }
+    ) {}
 
     /**
      * Display the file manager page.
@@ -33,16 +32,16 @@ class FileManagerController extends Controller
     {
         // Get the workspace with its cloud storage settings
         $workspace = Workspace::findOrFail($workspace_id);
-        
+
         // Get storage providers from cloud_storage JSON column
         $storageProviders = $this->getStorageProviders($workspace);
-        
+
         // Get author styles with their project counts
         $authorStyles = $this->getAuthorStyles($workspace_id);
-        
+
         // Get projects with their shared users
         $projects = $this->getProjects($workspace_id);
-        
+
         return Inertia::render('FileManager/Main', [
             'workspaceId' => $workspace_id,
             'workspaceName' => $workspace->name,
@@ -51,11 +50,10 @@ class FileManagerController extends Controller
             'projects' => $projects,
         ]);
     }
-    
+
     /**
      * Create a new author style.
      *
-     * @param  \Illuminate\Http\Request  $request
      * @param  string  $workspace_id
      * @return \Illuminate\Http\RedirectResponse
      */
@@ -68,37 +66,40 @@ class FileManagerController extends Controller
             'author_files' => ['required', 'array', 'min:1'],
             'author_files.*' => ['required', 'file', 'mimes:pdf,doc,docx,txt', 'max:102400'], // 100MB max
         ]);
-        
+
         if ($validator->fails()) {
             \Log::warning('Validation failed in storeAuthorStyle', [
                 'errors' => $validator->errors()->toArray(),
             ]);
+
             return back()->withErrors($validator)->withInput();
         }
-        
+
         // Check if author style name already exists for this workspace
         $existingStyle = AuthorStyle::where('workspace_id', $workspace_id)
             ->where('author_name', $request->author_name)
             ->first();
-            
+
         if ($existingStyle) {
             \Log::info('Author style name already exists', [
                 'workspace_id' => $workspace_id,
                 'author_name' => $request->author_name,
             ]);
+
             return back()->withErrors(['author_name' => 'An author style with this name already exists.'])->withInput();
         }
-        
+
         // Check if project belongs to the workspace
         $project = Projects::where('id', $request->project_id)
             ->where('workspace_id', $workspace_id)
             ->first();
-            
-        if (!$project) {
+
+        if (! $project) {
             \Log::warning('Project does not belong to workspace', [
                 'project_id' => $request->project_id,
                 'workspace_id' => $workspace_id,
             ]);
+
             return back()->withErrors(['project_id' => 'The selected project does not belong to this workspace.'])->withInput();
         }
 
@@ -107,14 +108,14 @@ class FileManagerController extends Controller
                 'project_id' => 'This project is currently locked while the novel pipeline is processing.',
             ])->withInput();
         }
-        
+
         // Store the uploaded files
         $filePaths = [];
         foreach ($request->file('author_files') as $file) {
-            $path = $file->store('author_styles/' . $workspace_id, 'local');
+            $path = $file->store('author_styles/'.$workspace_id, 'local');
             $filePaths[] = Storage::disk('local')->path($path);
         }
-        
+
         // Dispatch the job to analyze the author style
         AuthorStyleJob::dispatch(
             Auth::id(),
@@ -130,23 +131,21 @@ class FileManagerController extends Controller
             'author_name' => $request->author_name,
             'file_paths' => $filePaths,
         ]);
-        
+
         return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
             ->with('success', 'Author style creation has been initiated. This may take a few minutes to complete.');
     }
-    
-    
+
     /**
      * Get storage providers from workspace cloud_storage JSON column.
      *
-     * @param  \App\Models\Workspace  $workspace
      * @return array
      */
     private function getStorageProviders(Workspace $workspace)
     {
         $cloudStorage = $workspace->cloud_storage ?? [];
         $storageProviders = [];
-        
+
         // Local Storage is always enabled and should be first
         $storageProviders[] = [
             'id' => 'local_storage',
@@ -158,7 +157,7 @@ class FileManagerController extends Controller
             'percentage' => rand(10, 40), // Random percentage for now
             'enabled' => true,
         ];
-        
+
         // Google Drive
         $googleDriveEnabled = isset($cloudStorage['google_drive']['enabled']) && $cloudStorage['google_drive']['enabled'];
         if (isset($cloudStorage['google_drive'])) {
@@ -173,7 +172,7 @@ class FileManagerController extends Controller
                 'enabled' => $googleDriveEnabled,
             ];
         }
-        
+
         // Dropbox
         $dropboxEnabled = isset($cloudStorage['dropbox']['enabled']) && $cloudStorage['dropbox']['enabled'];
         if (isset($cloudStorage['dropbox'])) {
@@ -188,7 +187,7 @@ class FileManagerController extends Controller
                 'enabled' => $dropboxEnabled,
             ];
         }
-        
+
         // OneDrive
         $oneDriveEnabled = isset($cloudStorage['onedrive']['enabled']) && $cloudStorage['onedrive']['enabled'];
         if (isset($cloudStorage['onedrive'])) {
@@ -203,10 +202,10 @@ class FileManagerController extends Controller
                 'enabled' => $oneDriveEnabled,
             ];
         }
-        
+
         // If the cloud storage providers don't exist in the workspace settings,
         // add them as disabled by default
-        if (!isset($cloudStorage['google_drive'])) {
+        if (! isset($cloudStorage['google_drive'])) {
             $storageProviders[] = [
                 'id' => 'google_drive',
                 'name' => 'Google Drive',
@@ -218,8 +217,8 @@ class FileManagerController extends Controller
                 'enabled' => false,
             ];
         }
-        
-        if (!isset($cloudStorage['dropbox'])) {
+
+        if (! isset($cloudStorage['dropbox'])) {
             $storageProviders[] = [
                 'id' => 'dropbox',
                 'name' => 'Dropbox',
@@ -231,8 +230,8 @@ class FileManagerController extends Controller
                 'enabled' => false,
             ];
         }
-        
-        if (!isset($cloudStorage['onedrive'])) {
+
+        if (! isset($cloudStorage['onedrive'])) {
             $storageProviders[] = [
                 'id' => 'onedrive',
                 'name' => 'OneDrive',
@@ -244,14 +243,13 @@ class FileManagerController extends Controller
                 'enabled' => false,
             ];
         }
-        
+
         return $storageProviders;
     }
-    
+
     /**
      * Delete an author style.
      *
-     * @param  \Illuminate\Http\Request  $request
      * @param  string  $workspace_id
      * @param  string  $author_style_id
      * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
@@ -262,11 +260,12 @@ class FileManagerController extends Controller
             $authorStyle = AuthorStyle::where('workspace_id', $workspace_id)
                 ->where('id', $author_style_id)
                 ->first();
-            
-            if (!$authorStyle) {
+
+            if (! $authorStyle) {
                 if ($request->wantsJson()) {
                     return response()->json(['error' => 'Author style not found.'], 404);
                 }
+
                 return back()->withErrors(['error' => 'Author style not found.']);
             }
 
@@ -277,49 +276,48 @@ class FileManagerController extends Controller
 
                 return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
             }
-            
+
             // Clean up related data in Python's tables
             DB::table('author_styles_to_samples')
                 ->where('author_style_id', $author_style_id)
                 ->delete();
-            
+
             DB::table('author_style_chunks')
                 ->where('author_style_id', $author_style_id)
                 ->delete();
-            
+
             // Delete the author style
             $authorStyle->delete();
-            
+
             \Log::info('Author style deleted', [
                 'author_style_id' => $author_style_id,
                 'workspace_id' => $workspace_id,
             ]);
-            
+
             if ($request->wantsJson()) {
                 return response()->json(['success' => true, 'message' => 'Author style deleted successfully.']);
             }
-            
+
             return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
                 ->with('success', 'Author style deleted successfully.');
-                
+
         } catch (\Exception $e) {
             \Log::error('Failed to delete author style', [
                 'author_style_id' => $author_style_id,
                 'error' => $e->getMessage(),
             ]);
-            
+
             if ($request->wantsJson()) {
                 return response()->json(['error' => 'Failed to delete author style.'], 500);
             }
-            
+
             return back()->withErrors(['error' => 'Failed to delete author style.']);
         }
     }
-    
+
     /**
      * Update an author style.
      *
-     * @param  \Illuminate\Http\Request  $request
      * @param  string  $workspace_id
      * @param  string  $author_style_id
      * @return \Illuminate\Http\JsonResponse|\Illuminate\Http\RedirectResponse
@@ -330,11 +328,12 @@ class FileManagerController extends Controller
             $authorStyle = AuthorStyle::where('workspace_id', $workspace_id)
                 ->where('id', $author_style_id)
                 ->first();
-            
-            if (!$authorStyle) {
+
+            if (! $authorStyle) {
                 if ($request->wantsJson()) {
                     return response()->json(['error' => 'Author style not found.'], 404);
                 }
+
                 return back()->withErrors(['error' => 'Author style not found.']);
             }
 
@@ -345,27 +344,28 @@ class FileManagerController extends Controller
 
                 return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
             }
-            
+
             // Update allowed fields
             $updateData = [];
-            
+
             if ($request->has('author_name')) {
                 // Check for duplicate name
                 $existing = AuthorStyle::where('workspace_id', $workspace_id)
                     ->where('author_name', $request->author_name)
                     ->where('id', '!=', $author_style_id)
                     ->first();
-                    
+
                 if ($existing) {
                     if ($request->wantsJson()) {
                         return response()->json(['error' => 'An author style with this name already exists.'], 400);
                     }
+
                     return back()->withErrors(['author_name' => 'An author style with this name already exists.']);
                 }
-                
+
                 $updateData['author_name'] = $request->author_name;
             }
-            
+
             if ($request->has('techniques_json')) {
                 $updateData['techniques_json'] = $request->techniques_json;
             }
@@ -377,52 +377,51 @@ class FileManagerController extends Controller
             if ($request->has('adaptation_json')) {
                 $updateData['adaptation_json'] = $request->adaptation_json;
             }
-            
+
             if ($request->has('project_ids')) {
                 // For now, we store the first project_id (multi-project will be a separate table later)
                 // TODO: Implement author_style_projects pivot table for true multi-project support
                 $projectIds = $request->project_ids;
-                if (!empty($projectIds) && is_array($projectIds)) {
+                if (! empty($projectIds) && is_array($projectIds)) {
                     $updateData['project_id'] = $projectIds[0];
                 }
             }
-            
+
             $authorStyle->update($updateData);
-            
+
             \Log::info('Author style updated', [
                 'author_style_id' => $author_style_id,
                 'updates' => array_keys($updateData),
             ]);
-            
+
             if ($request->wantsJson()) {
                 return response()->json([
-                    'success' => true, 
+                    'success' => true,
                     'message' => 'Author style updated successfully.',
                     'author_style' => $this->authorStyleFormatter->format($authorStyle->fresh()),
                 ]);
             }
-            
+
             return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
                 ->with('success', 'Author style updated successfully.');
-                
+
         } catch (\Exception $e) {
             \Log::error('Failed to update author style', [
                 'author_style_id' => $author_style_id,
                 'error' => $e->getMessage(),
             ]);
-            
+
             if ($request->wantsJson()) {
                 return response()->json(['error' => 'Failed to update author style.'], 500);
             }
-            
+
             return back()->withErrors(['error' => 'Failed to update author style.']);
         }
     }
-    
+
     /**
      * Get a single author style with full details.
      *
-     * @param  \Illuminate\Http\Request  $request
      * @param  string  $workspace_id
      * @param  string  $author_style_id
      * @return \Illuminate\Http\JsonResponse
@@ -432,16 +431,16 @@ class FileManagerController extends Controller
         $authorStyle = AuthorStyle::where('workspace_id', $workspace_id)
             ->where('id', $author_style_id)
             ->first();
-        
-        if (!$authorStyle) {
+
+        if (! $authorStyle) {
             return response()->json(['error' => 'Author style not found.'], 404);
         }
-        
+
         return response()->json([
             'author_style' => $this->authorStyleFormatter->format($authorStyle, true),
         ]);
     }
-    
+
     /**
      * Get author styles with their project counts.
      *
@@ -454,7 +453,7 @@ class FileManagerController extends Controller
             AuthorStyle::where('workspace_id', $workspace_id)->get()
         );
     }
-    
+
     /**
      * Get projects with their shared users.
      *
@@ -472,9 +471,9 @@ class FileManagerController extends Controller
             $workspace_id,
             $projects->pluck('id')->all(),
         );
-        
+
         $result = [];
-        
+
         foreach ($projects as $project) {
             // Get shared users from the access JSON column
             $sharedWith = [];
@@ -485,7 +484,7 @@ class FileManagerController extends Controller
                     }
                 }
             }
-            
+
             // Map saved_in codes to provider names
             $savedInMap = [
                 '01' => 'Local Storage',
@@ -493,12 +492,12 @@ class FileManagerController extends Controller
                 '03' => 'Dropbox',
                 '04' => 'OneDrive',
             ];
-            
+
             $savedIn = $savedInMap[$project->saved_in] ?? 'Local Storage';
-            
+
             // Calculate a fake size for now
-            $size = rand(1, 10) . '.' . rand(1, 9) . ' MB';
-            
+            $size = rand(1, 10).'.'.rand(1, 9).' MB';
+
             $result[] = [
                 'id' => $project->id,
                 'name' => $project->name,
@@ -509,7 +508,7 @@ class FileManagerController extends Controller
                 'pipelineLock' => $locks[$project->id] ?? null,
             ];
         }
-        
+
         return $result;
     }
 }

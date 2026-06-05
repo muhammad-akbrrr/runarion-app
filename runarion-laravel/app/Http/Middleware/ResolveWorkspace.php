@@ -20,12 +20,13 @@ class ResolveWorkspace
         $workspaceId = $request->route('workspace_id');
         $user = $request->user();
 
-        if (!$workspaceId && $request->isMethod('get') && $user) {
+        if (! $workspaceId && $request->isMethod('get') && $user) {
             $routeName = $request->route()->getName();
             if (str_starts_with($routeName, 'raw.')) {
                 $routeName = substr($routeName, 4);
             }
             $defaultWorkspaceId = $request->user()->getActiveWorkspaceId();
+
             return redirect()->route($routeName, ['workspace_id' => $defaultWorkspaceId]);
         }
 
@@ -38,11 +39,11 @@ class ResolveWorkspace
             ->select('workspace_members.role')
             ->first();
 
-        if (!$userWorkspace) {
+        if (! $userWorkspace) {
             abort(404, 'Workspace not found');
         }
 
-        if (!$userWorkspace->role) {
+        if (! $userWorkspace->role) {
             abort(403, 'You are not a member of this workspace');
         }
 

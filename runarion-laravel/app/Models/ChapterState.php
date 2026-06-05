@@ -2,8 +2,8 @@
 
 namespace App\Models;
 
-use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Concerns\HasUlids;
+use Illuminate\Database\Eloquent\Model;
 
 class ChapterState extends Model
 {
@@ -35,11 +35,11 @@ class ChapterState extends Model
     protected static function boot()
     {
         parent::boot();
-        
+
         static::creating(function ($model) {
             $model->updated_at = now();
         });
-        
+
         static::updating(function ($model) {
             $model->updated_at = now();
         });

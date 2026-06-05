@@ -21,8 +21,7 @@ class ProjectPipelineLifecycleUpdated implements ShouldBroadcast
         public readonly bool $isLocked,
         public readonly string $message,
         public readonly bool $shouldToast = true,
-    ) {
-    }
+    ) {}
 
     public function broadcastOn(): array
     {

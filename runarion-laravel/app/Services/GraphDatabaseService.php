@@ -2,13 +2,14 @@
 
 namespace App\Services;
 
+use Exception;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Exception;
 
 class GraphDatabaseService
 {
     private string $graphName;
+
     private string $connection;
 
     public function __construct(string $connection = 'pgsql')
@@ -25,21 +26,21 @@ class GraphDatabaseService
         return DB::connection($this->connection)->transaction(function () use ($callback, $params) {
             // Set AGE-specific search path for this connection only
             $this->setAgeSearchPath();
-            
+
             try {
                 Log::debug('Executing graph operation with AGE context');
                 $result = $callback($this, ...$params);
-                
+
                 Log::debug('Graph operation completed successfully');
+
                 return $result;
-                
+
             } catch (Exception $e) {
                 Log::error('Graph operation failed', [
                     'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
+                    'trace' => $e->getTraceAsString(),
                 ]);
                 throw $e;
-                
             } finally {
                 // Always restore standard search path
                 $this->restoreStandardSearchPath();
@@ -54,13 +55,14 @@ class GraphDatabaseService
     {
         return $this->executeInGraphContext(function () use ($label, $properties) {
             $propertiesJson = empty($properties) ? '{}' : json_encode($properties);
-            
+
             $cypher = "SELECT * FROM cypher('{$this->graphName}', \$\$ 
                 CREATE (n:{$label} {$propertiesJson})
                 RETURN n
             \$\$) AS (n agtype)";
-            
+
             $result = DB::connection($this->connection)->select($cypher);
+
             return $this->parseAgtypeResult($result);
         });
     }
@@ -72,21 +74,22 @@ class GraphDatabaseService
     {
         return $this->executeInGraphContext(function () use ($label, $properties) {
             $whereClause = '';
-            if (!empty($properties)) {
+            if (! empty($properties)) {
                 $conditions = [];
                 foreach ($properties as $key => $value) {
-                    $conditions[] = "n.{$key} = '" . addslashes($value) . "'";
+                    $conditions[] = "n.{$key} = '".addslashes($value)."'";
                 }
-                $whereClause = 'WHERE ' . implode(' AND ', $conditions);
+                $whereClause = 'WHERE '.implode(' AND ', $conditions);
             }
-            
+
             $cypher = "SELECT * FROM cypher('{$this->graphName}', \$\$ 
                 MATCH (n:{$label})
                 {$whereClause}
                 RETURN n
             \$\$) AS (n agtype)";
-            
+
             $result = DB::connection($this->connection)->select($cypher);
+
             return $this->parseAgtypeResult($result);
         });
     }
@@ -95,22 +98,23 @@ class GraphDatabaseService
      * Create a relationship between vertices
      */
     public function createRelationship(
-        array $fromVertex, 
-        array $toVertex, 
-        string $relationshipType, 
+        array $fromVertex,
+        array $toVertex,
+        string $relationshipType,
         array $properties = []
     ): array {
         return $this->executeInGraphContext(function () use ($fromVertex, $toVertex, $relationshipType, $properties) {
             $propertiesJson = empty($properties) ? '' : json_encode($properties);
-            
+
             $cypher = "SELECT * FROM cypher('{$this->graphName}', \$\$ 
                 MATCH (a), (b)
                 WHERE id(a) = {$fromVertex['id']} AND id(b) = {$toVertex['id']}
                 CREATE (a)-[r:{$relationshipType} {$propertiesJson}]->(b)
                 RETURN r
             \$\$) AS (r agtype)";
-            
+
             $result = DB::connection($this->connection)->select($cypher);
+
             return $this->parseAgtypeResult($result);
         });
     }
@@ -122,23 +126,24 @@ class GraphDatabaseService
     {
         return $this->executeInGraphContext(function () use ($relationshipType, $properties) {
             $relationshipPattern = $relationshipType ? ":{$relationshipType}" : '';
-            
+
             $whereClause = '';
-            if (!empty($properties)) {
+            if (! empty($properties)) {
                 $conditions = [];
                 foreach ($properties as $key => $value) {
-                    $conditions[] = "r.{$key} = '" . addslashes($value) . "'";
+                    $conditions[] = "r.{$key} = '".addslashes($value)."'";
                 }
-                $whereClause = 'WHERE ' . implode(' AND ', $conditions);
+                $whereClause = 'WHERE '.implode(' AND ', $conditions);
             }
-            
+
             $cypher = "SELECT * FROM cypher('{$this->graphName}', \$\$ 
                 MATCH (a)-[r{$relationshipPattern}]->(b)
                 {$whereClause}
                 RETURN a, r, b
             \$\$) AS (a agtype, r agtype, b agtype)";
-            
+
             $result = DB::connection($this->connection)->select($cypher);
+
             return $this->parseAgtypeResult($result, ['a', 'r', 'b']);
         });
     }
@@ -149,13 +154,14 @@ class GraphDatabaseService
     public function executeCypher(string $cypher, array $returnColumns = ['result']): array
     {
         return $this->executeInGraphContext(function () use ($cypher, $returnColumns) {
-            $columnDefinition = implode(' agtype, ', $returnColumns) . ' agtype';
-            
+            $columnDefinition = implode(' agtype, ', $returnColumns).' agtype';
+
             $query = "SELECT * FROM cypher('{$this->graphName}', \$\$ 
                 {$cypher}
             \$\$) AS ({$columnDefinition})";
-            
+
             $result = DB::connection($this->connection)->select($query);
+
             return $this->parseAgtypeResult($result, $returnColumns);
         });
     }
@@ -168,18 +174,18 @@ class GraphDatabaseService
         return $this->executeInGraphContext(function () {
             // Get vertex count by label
             $vertexStats = DB::connection($this->connection)
-                ->select("SELECT label_name, label_id FROM ag_label WHERE graph_name = ? AND label_kind = 'v'", 
-                        [$this->graphName]);
-            
-            // Get edge count by label  
+                ->select("SELECT label_name, label_id FROM ag_label WHERE graph_name = ? AND label_kind = 'v'",
+                    [$this->graphName]);
+
+            // Get edge count by label
             $edgeStats = DB::connection($this->connection)
-                ->select("SELECT label_name, label_id FROM ag_label WHERE graph_name = ? AND label_kind = 'e'", 
-                        [$this->graphName]);
-            
+                ->select("SELECT label_name, label_id FROM ag_label WHERE graph_name = ? AND label_kind = 'e'",
+                    [$this->graphName]);
+
             return [
                 'vertex_labels' => $vertexStats,
                 'edge_labels' => $edgeStats,
-                'graph_name' => $this->graphName
+                'graph_name' => $this->graphName,
             ];
         });
     }
@@ -205,7 +211,7 @@ class GraphDatabaseService
     /**
      * Parse agtype results into PHP arrays
      */
-    private function parseAgtypeResult(array $result, array $columns = null): array
+    private function parseAgtypeResult(array $result, ?array $columns = null): array
     {
         if (empty($result)) {
             return [];
@@ -214,7 +220,7 @@ class GraphDatabaseService
         $parsed = [];
         foreach ($result as $row) {
             $parsedRow = [];
-            
+
             if ($columns === null) {
                 // Single column result - get first property
                 $firstProperty = get_object_vars($row)[array_key_first(get_object_vars($row))];
@@ -227,10 +233,10 @@ class GraphDatabaseService
                     }
                 }
             }
-            
+
             $parsed[] = $parsedRow;
         }
-        
+
         return $parsed;
     }
 
@@ -242,9 +248,11 @@ class GraphDatabaseService
         try {
             $result = DB::connection($this->connection)
                 ->select("SELECT 1 FROM pg_extension WHERE extname = 'age'");
-            return !empty($result);
+
+            return ! empty($result);
         } catch (Exception $e) {
             Log::warning('Failed to check AGE availability', ['error' => $e->getMessage()]);
+
             return false;
         }
     }
@@ -256,7 +264,7 @@ class GraphDatabaseService
     {
         $result = DB::connection($this->connection)
             ->select("SELECT current_setting('search_path') as search_path");
-        
+
         return $result[0]->search_path ?? 'unknown';
     }
 }

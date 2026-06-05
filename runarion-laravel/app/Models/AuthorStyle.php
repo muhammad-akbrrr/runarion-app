@@ -54,7 +54,7 @@ class AuthorStyle extends Model
                 'init_failed',
                 'sampling_completed',
                 'sampling_failed',
-                'profiling_completed', 
+                'profiling_completed',
                 'profiling_failed',
             ])],
             'error_message' => ['nullable', 'string'],

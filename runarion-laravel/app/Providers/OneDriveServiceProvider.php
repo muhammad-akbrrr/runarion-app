@@ -18,6 +18,7 @@ class OneDriveServiceProvider extends ServiceProvider
     {
         Storage::extend('onedrive', function ($app, $config) {
             $adapter = new OneDriveAdapter($config['access_token']);
+
             return new Filesystem($adapter);
         });
     }

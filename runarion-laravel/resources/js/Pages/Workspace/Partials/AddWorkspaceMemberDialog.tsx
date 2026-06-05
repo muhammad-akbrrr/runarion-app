@@ -12,6 +12,7 @@ import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
 import { router } from "@inertiajs/react";
 import { useEffect, useState } from "react";
+import { http } from "@/Lib/http";
 
 const isValidEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -54,12 +55,11 @@ export default function AddWorkspaceMemberDialog({
 
         const fetchOptions = async () => {
             try {
-                const res = await fetch(`${path}?${queryParams}`, {
+                const { data } = await http.get<
+                    { id: number; name: string; email: string }[]
+                >(`${path}?${queryParams}`, {
                     signal: controller.signal,
                 });
-
-                const data: { id: number; name: string; email: string }[] =
-                    await res.json();
                 setEmails(data.map((item) => item.email));
             } catch (error) {
                 console.error(error);

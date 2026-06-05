@@ -7,19 +7,16 @@ use App\Events\LLMStreamCompleted;
 use App\Events\LLMStreamStarted;
 use App\Events\ProjectContentUpdated;
 use App\Models\AuthorStyle;
-use App\Models\ProjectContent;
-use App\Models\Projects;
 use App\Services\VersionControlService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Redis;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class StreamLLMJob implements ShouldQueue
@@ -27,18 +24,29 @@ class StreamLLMJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public string $workspaceId;
+
     public string $projectId;
+
     public int $chapterOrder;
+
     public string $prompt;
+
     public array $settings;
+
     public string $sessionId;
+
     public int $userId;
+
     public bool $isRegenerate;
+
     public ?string $regenerateNodeId;
+
     public ?string $chapterName;
+
     public int $timeout = 180;
+
     public int $tries = 1;
-    
+
     private const REDIS_BUFFER_TTL = 300;
 
     /**
@@ -91,9 +99,9 @@ class StreamLLMJob implements ShouldQueue
                 $this->sessionId,
                 $this->isRegenerate
             );
-            
+
             broadcast($event);
-            
+
             Log::info('LLMStreamStarted event broadcasted', [
                 'channel' => "project.{$this->workspaceId}.{$this->projectId}",
                 'session_id' => $this->sessionId,
@@ -112,7 +120,7 @@ class StreamLLMJob implements ShouldQueue
                 'attempt' => $this->attempts(),
             ]);
 
-            $this->handleStreamingError($e, 'connection_error', 
+            $this->handleStreamingError($e, 'connection_error',
                 'Failed to connect to AI service. Please check your connection and try again.');
 
         } catch (\Illuminate\Http\Client\RequestException $e) {
@@ -125,10 +133,10 @@ class StreamLLMJob implements ShouldQueue
 
             $errorType = 'generation_failed';
             $errorMessage = 'AI service request failed. Please try again.';
-            
+
             if ($e->response) {
                 $status = $e->response->status();
-                
+
                 if ($status === 429) {
                     $errorType = 'quota_exceeded';
                     $errorMessage = 'Generation quota exceeded. Please try again later.';
@@ -157,7 +165,7 @@ class StreamLLMJob implements ShouldQueue
 
             $errorType = 'generation_failed';
             $errorMessage = $e->getMessage();
-            
+
             // Categorize common errors
             if (str_contains($errorMessage, 'quota') || str_contains($errorMessage, 'limit') || str_contains($errorMessage, '429')) {
                 $errorType = 'quota_exceeded';
@@ -201,7 +209,7 @@ class StreamLLMJob implements ShouldQueue
     {
         // Process writing guidance from the prompt
         $processedPrompt = $this->processWritingGuidance($this->prompt);
-        
+
         return [
             'usecase' => 'story',
             'provider' => $this->determineProvider(),
@@ -232,7 +240,7 @@ class StreamLLMJob implements ShouldQueue
             ],
             'prompt_config' => $this->buildPromptConfig(),
             'caller' => [
-                'user_id' => (string)$this->userId,
+                'user_id' => (string) $this->userId,
                 'workspace_id' => $this->workspaceId,
                 'project_id' => $this->projectId, // Required for conversation history
                 'session_id' => $this->sessionId,
@@ -249,37 +257,37 @@ class StreamLLMJob implements ShouldQueue
      * Process writing guidance from content.
      * Extracts text within parentheses ((), [], {}) as guidance instructions for the AI.
      * Returns both the base content (without markers) for AI processing and the guidance array.
-     * 
+     *
      * NOTE: The guidance markers are NOT removed from the editor content - they remain visible.
      * This method only extracts them for sending to the AI as separate instructions.
-     * 
-     * @param string $content The content to process
+     *
+     * @param  string  $content  The content to process
      * @return array Array with 'baseContent' (for AI) and 'guidance' keys
      */
     private function processWritingGuidance(string $content): array
     {
         $guidance = [];
         $baseContent = $content;
-        
+
         // Match all types of parentheses: (), [], {}
         // This regex captures text within any type of bracket
         $pattern = '/[\(\[\{]([^\)\]\}]+)[\)\]\}]/';
-        
+
         // Extract all guidance instructions
         if (preg_match_all($pattern, $content, $matches)) {
-            if (!empty($matches[1])) {
+            if (! empty($matches[1])) {
                 $guidance = $matches[1];
-                
+
                 // Remove guidance markers from base content FOR AI PROCESSING ONLY
                 // The original content in the editor remains unchanged
                 $baseContent = preg_replace($pattern, '', $content);
-                
+
                 // Clean up extra whitespace that may result from removal
                 $baseContent = preg_replace('/\s+/', ' ', $baseContent);
                 $baseContent = trim($baseContent);
             }
         }
-        
+
         Log::info('Processed writing guidance', [
             'session_id' => $this->sessionId,
             'original_length' => strlen($content),
@@ -287,7 +295,7 @@ class StreamLLMJob implements ShouldQueue
             'guidance_count' => count($guidance),
             'guidance' => $guidance,
         ]);
-        
+
         return [
             'baseContent' => $baseContent,
             'guidance' => $guidance,
@@ -300,7 +308,7 @@ class StreamLLMJob implements ShouldQueue
     private function determineProvider(): string
     {
         $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
-        
+
         if (stripos($model, 'gemini') !== false) {
             return 'gemini';
         } elseif (stripos($model, 'gpt') !== false) {
@@ -310,40 +318,37 @@ class StreamLLMJob implements ShouldQueue
         } elseif (stripos($model, 'deepseek') !== false) {
             return 'deepseek';
         }
-        
+
         return 'gemini';
     }
 
     /**
      * Check if the current model supports thinking (internal reasoning).
-     *
-     * @return bool
      */
     private function shouldIncludeThinkingBudget(): bool
     {
         $thinkingModels = [
             'gemini-2.5-pro',
             'gemini-2.5-flash',
-            'gemini-3-pro-preview'
+            'gemini-3-pro-preview',
         ];
 
         $model = $this->settings['aiModel'] ?? 'gemini-2.5-flash';
+
         return in_array($model, $thinkingModels);
     }
 
     /**
      * Build the prompt configuration with logging.
-     *
-     * @return array
      */
     private function buildPromptConfig(): array
     {
         $authorProfileId = $this->settings['authorProfile'] ?? null;
         $authorStyleDna = $this->getFormattedAuthorStyle($authorProfileId);
-        
+
         Log::info('Building prompt_config for generation', [
             'author_profile_id' => $authorProfileId,
-            'author_style_found' => !empty($authorStyleDna),
+            'author_style_found' => ! empty($authorStyleDna),
             'author_style_length' => strlen($authorStyleDna),
             'preset' => $this->settings['currentPreset'] ?? 'none',
             'genre' => $this->settings['storyGenre'] ?? 'none',
@@ -351,7 +356,7 @@ class StreamLLMJob implements ShouldQueue
             'pov' => $this->settings['storyPov'] ?? 'none',
             'session_id' => $this->sessionId,
         ]);
-        
+
         return [
             'current_preset' => $this->settings['currentPreset'] ?? '',
             'context' => $this->settings['memory'] ?? '',
@@ -365,11 +370,11 @@ class StreamLLMJob implements ShouldQueue
 
     /**
      * Look up and format AuthorStyle data from the database.
-     * 
+     *
      * The AuthorStyle contains techniques_json and examples_json which need to be
      * formatted into a readable style DNA text for the AI prompt.
-     * 
-     * @param string|null $authorProfileId The AuthorStyle ID from the sidebar selection
+     *
+     * @param  string|null  $authorProfileId  The AuthorStyle ID from the sidebar selection
      * @return string Formatted style DNA text, or empty string if not found
      */
     private function getFormattedAuthorStyle(?string $authorProfileId): string
@@ -380,105 +385,105 @@ class StreamLLMJob implements ShouldQueue
 
         try {
             $authorStyle = AuthorStyle::find($authorProfileId);
-            
-            if (!$authorStyle || $authorStyle->status !== 'profiling_completed') {
+
+            if (! $authorStyle || $authorStyle->status !== 'profiling_completed') {
                 Log::warning('AuthorStyle not found or not completed', [
                     'author_profile_id' => $authorProfileId,
                     'session_id' => $this->sessionId,
                 ]);
+
                 return '';
             }
 
             $styleDna = [];
             $styleDna[] = "AUTHOR STYLE: {$authorStyle->author_name}";
-            $styleDna[] = "";
+            $styleDna[] = '';
 
             // Format techniques
             $techniques = $authorStyle->techniques_json;
-            if (!empty($techniques)) {
-                $styleDna[] = "WRITING TECHNIQUES:";
+            if (! empty($techniques)) {
+                $styleDna[] = 'WRITING TECHNIQUES:';
 
-                if (!empty($techniques['voice'])) {
+                if (! empty($techniques['voice'])) {
                     $voice = $techniques['voice'];
-                    if (!empty($voice['diction'])) {
+                    if (! empty($voice['diction'])) {
                         $styleDna[] = "- Diction: {$voice['diction']}";
                     }
-                    if (!empty($voice['syntax'])) {
+                    if (! empty($voice['syntax'])) {
                         $styleDna[] = "- Syntax: {$voice['syntax']}";
                     }
-                    if (!empty($voice['rhythm'])) {
+                    if (! empty($voice['rhythm'])) {
                         $styleDna[] = "- Rhythm: {$voice['rhythm']}";
                     }
-                    if (!empty($voice['register'])) {
+                    if (! empty($voice['register'])) {
                         $styleDna[] = "- Register: {$voice['register']}";
                     }
-                    if (!empty($voice['figurative_language'])) {
+                    if (! empty($voice['figurative_language'])) {
                         $styleDna[] = "- Figurative Language: {$voice['figurative_language']}";
                     }
                 }
 
-                if (!empty($techniques['dialogue'])) {
+                if (! empty($techniques['dialogue'])) {
                     $d = $techniques['dialogue'];
-                    if (!empty($d['conversation_style'])) {
+                    if (! empty($d['conversation_style'])) {
                         $styleDna[] = "- Dialogue Style: {$d['conversation_style']}";
                     }
-                    if (!empty($d['speaker_differentiation'])) {
+                    if (! empty($d['speaker_differentiation'])) {
                         $styleDna[] = "- Speaker Differentiation: {$d['speaker_differentiation']}";
                     }
-                    if (!empty($d['dialogue_narration_balance'])) {
+                    if (! empty($d['dialogue_narration_balance'])) {
                         $styleDna[] = "- Dialogue-Narration Balance: {$d['dialogue_narration_balance']}";
                     }
                 }
 
-                
-                if (!empty($techniques['description'])) {
+                if (! empty($techniques['description'])) {
                     $description = $techniques['description'];
-                    if (!empty($description['description_density'])) {
+                    if (! empty($description['description_density'])) {
                         $styleDna[] = "- Description Density: {$description['description_density']}";
                     }
-                    if (!empty($description['sensory_focus'])) {
+                    if (! empty($description['sensory_focus'])) {
                         $styleDna[] = "- Sensory Focus: {$description['sensory_focus']}";
                     }
-                    if (!empty($description['atmosphere_strategy'])) {
+                    if (! empty($description['atmosphere_strategy'])) {
                         $styleDna[] = "- Atmosphere Strategy: {$description['atmosphere_strategy']}";
                     }
                 }
 
-                if (!empty($techniques['exposition'])) {
+                if (! empty($techniques['exposition'])) {
                     $exposition = $techniques['exposition'];
-                    if (!empty($exposition['exposition_strategy'])) {
+                    if (! empty($exposition['exposition_strategy'])) {
                         $styleDna[] = "- Exposition Strategy: {$exposition['exposition_strategy']}";
                     }
-                    if (!empty($exposition['context_integration'])) {
+                    if (! empty($exposition['context_integration'])) {
                         $styleDna[] = "- Context Integration: {$exposition['context_integration']}";
                     }
-                    if (!empty($exposition['terminology_handling'])) {
+                    if (! empty($exposition['terminology_handling'])) {
                         $styleDna[] = "- Terminology Handling: {$exposition['terminology_handling']}";
                     }
                 }
 
-                if (!empty($techniques['pacing'])) {
+                if (! empty($techniques['pacing'])) {
                     $pacing = $techniques['pacing'];
-                    if (!empty($pacing['scene_tempo'])) {
+                    if (! empty($pacing['scene_tempo'])) {
                         $styleDna[] = "- Scene Tempo: {$pacing['scene_tempo']}";
                     }
-                    if (!empty($pacing['transition_style'])) {
+                    if (! empty($pacing['transition_style'])) {
                         $styleDna[] = "- Transition Style: {$pacing['transition_style']}";
                     }
-                    if (!empty($pacing['tension_pattern'])) {
+                    if (! empty($pacing['tension_pattern'])) {
                         $styleDna[] = "- Tension Pattern: {$pacing['tension_pattern']}";
                     }
                 }
 
-                if (!empty($techniques['narrative'])) {
+                if (! empty($techniques['narrative'])) {
                     $narrative = $techniques['narrative'];
-                    if (!empty($narrative['pov_tendency'])) {
+                    if (! empty($narrative['pov_tendency'])) {
                         $styleDna[] = "- POV Tendency: {$narrative['pov_tendency']}";
                     }
-                    if (!empty($narrative['narrative_distance'])) {
+                    if (! empty($narrative['narrative_distance'])) {
                         $styleDna[] = "- Narrative Distance: {$narrative['narrative_distance']}";
                     }
-                    if (!empty($narrative['redundancy_avoidance'])) {
+                    if (! empty($narrative['redundancy_avoidance'])) {
                         $styleDna[] = "- Redundancy Avoidance: {$narrative['redundancy_avoidance']}";
                     }
                 }
@@ -486,36 +491,36 @@ class StreamLLMJob implements ShouldQueue
 
             // Format examples (include a few key examples)
             $examples = $authorStyle->examples_json;
-            if (!empty($examples)) {
-                $styleDna[] = "";
-                $styleDna[] = "STYLE EXAMPLES:";
-                
+            if (! empty($examples)) {
+                $styleDna[] = '';
+                $styleDna[] = 'STYLE EXAMPLES:';
+
                 // Add dialogue examples
-                if (!empty($examples['dialogue']) && count($examples['dialogue']) > 0) {
+                if (! empty($examples['dialogue']) && count($examples['dialogue']) > 0) {
                     $styleDna[] = "Dialogue Example: \"{$examples['dialogue'][0]}\"";
                 }
-                
+
                 // Add description examples
-                if (!empty($examples['description']) && count($examples['description']) > 0) {
+                if (! empty($examples['description']) && count($examples['description']) > 0) {
                     $styleDna[] = "Description Example: \"{$examples['description'][0]}\"";
                 }
 
-                if (!empty($examples['voice']) && count($examples['voice']) > 0) {
+                if (! empty($examples['voice']) && count($examples['voice']) > 0) {
                     $styleDna[] = "Voice Example: \"{$examples['voice'][0]}\"";
                 }
 
                 $adaptation = $authorStyle->adaptation_json;
-                if (!empty($adaptation['portable_traits'])) {
-                    $styleDna[] = "";
-                    $styleDna[] = "PORTABLE STYLE TRAITS:";
+                if (! empty($adaptation['portable_traits'])) {
+                    $styleDna[] = '';
+                    $styleDna[] = 'PORTABLE STYLE TRAITS:';
                     foreach (array_slice($adaptation['portable_traits'], 0, 5) as $trait) {
                         $styleDna[] = "- {$trait}";
                     }
                 }
 
-                if (!empty($adaptation['suppression_guidance'])) {
-                    $styleDna[] = "";
-                    $styleDna[] = "SUPPRESSION GUIDANCE:";
+                if (! empty($adaptation['suppression_guidance'])) {
+                    $styleDna[] = '';
+                    $styleDna[] = 'SUPPRESSION GUIDANCE:';
                     foreach (array_slice($adaptation['suppression_guidance'], 0, 5) as $guidance) {
                         $styleDna[] = "- {$guidance}";
                     }
@@ -523,7 +528,7 @@ class StreamLLMJob implements ShouldQueue
             }
 
             $result = implode("\n", $styleDna);
-            
+
             Log::info('Formatted AuthorStyle for generation', [
                 'author_profile_id' => $authorProfileId,
                 'author_name' => $authorStyle->author_name,
@@ -539,6 +544,7 @@ class StreamLLMJob implements ShouldQueue
                 'error' => $e->getMessage(),
                 'session_id' => $this->sessionId,
             ]);
+
             return '';
         }
     }
@@ -554,7 +560,7 @@ class StreamLLMJob implements ShouldQueue
 
         Log::info('Making streaming request to Python service', [
             'session_id' => $this->sessionId,
-            'url' => $pythonServiceUrl . '/api/stream',
+            'url' => $pythonServiceUrl.'/api/stream',
             'model' => $requestData['model'] ?? 'unknown',
             'provider' => $requestData['provider'] ?? 'unknown',
         ]);
@@ -566,22 +572,24 @@ class StreamLLMJob implements ShouldQueue
                     if ($exception instanceof \Illuminate\Http\Client\ConnectionException) {
                         Log::warning('Connection error, retrying...', [
                             'session_id' => $this->sessionId,
-                            'error' => $exception->getMessage()
+                            'error' => $exception->getMessage(),
                         ]);
+
                         return true;
                     }
-                    
+
                     if ($exception instanceof \Illuminate\Http\Client\RequestException) {
                         $status = $exception->response?->status();
                         if ($status && $status >= 500 && $status < 600) {
                             Log::warning('Server error, retrying...', [
                                 'session_id' => $this->sessionId,
-                                'status' => $status
+                                'status' => $status,
                             ]);
+
                             return true;
                         }
                     }
-                    
+
                     return false;
                 })
                 ->withHeaders([
@@ -594,36 +602,36 @@ class StreamLLMJob implements ShouldQueue
                     'read_timeout' => $this->timeout,
                     'connect_timeout' => 30,
                 ])
-                ->post($pythonServiceUrl . '/api/stream', $requestData);
+                ->post($pythonServiceUrl.'/api/stream', $requestData);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 $statusCode = $response->status();
                 $body = $response->body();
-                
+
                 Log::error('Python service returned error', [
                     'session_id' => $this->sessionId,
                     'status' => $statusCode,
-                    'body' => $body
+                    'body' => $body,
                 ]);
-                
+
                 // Provide specific error messages based on status code
                 if ($statusCode === 429) {
                     throw new \Exception('Generation quota exceeded. Please try again later.');
                 } elseif ($statusCode === 401 || $statusCode === 403) {
                     throw new \Exception('AI service authentication failed. Please check your API keys.');
                 } elseif ($statusCode === 400) {
-                    throw new \Exception('Invalid generation request: ' . $body);
+                    throw new \Exception('Invalid generation request: '.$body);
                 } elseif ($statusCode >= 500) {
                     throw new \Exception('AI service is temporarily unavailable. Please try again later.');
                 } else {
-                    throw new \Exception('Failed to connect to Python service (HTTP ' . $statusCode . '): ' . $body);
+                    throw new \Exception('Failed to connect to Python service (HTTP '.$statusCode.'): '.$body);
                 }
             }
 
             $body = $response->getBody();
             $buffer = '';
 
-            while (!$body->eof()) {
+            while (! $body->eof()) {
                 $chunk = $body->read(1024);
                 $buffer .= $chunk;
 
@@ -635,7 +643,7 @@ class StreamLLMJob implements ShouldQueue
                 }
             }
 
-            if (!empty($buffer)) {
+            if (! empty($buffer)) {
                 $this->processStreamLine($buffer, $fullText, $chunkIndex);
             }
 
@@ -661,17 +669,16 @@ class StreamLLMJob implements ShouldQueue
             Log::error('Connection error during streaming', [
                 'session_id' => $this->sessionId,
                 'error' => $e->getMessage(),
-                'url' => $pythonServiceUrl
+                'url' => $pythonServiceUrl,
             ]);
             throw new \Exception('Failed to connect to AI service. Please check your connection and try again.');
-
         } catch (\Exception $e) {
             Log::error('Streaming error', [
                 'session_id' => $this->sessionId,
                 'error' => $e->getMessage(),
                 'type' => get_class($e),
                 'chunks_received' => $chunkIndex,
-                'text_length' => strlen($fullText)
+                'text_length' => strlen($fullText),
             ]);
             throw $e;
         }
@@ -682,7 +689,7 @@ class StreamLLMJob implements ShouldQueue
      * Each chunk is a word + its trailing whitespace.
      * This creates a typewriter effect for real-time generation.
      *
-     * @param string $text The text to split
+     * @param  string  $text  The text to split
      * @return array Array of text chunks (one word + whitespace each)
      */
     private function chunkTextByWords(string $text): array
@@ -696,8 +703,8 @@ class StreamLLMJob implements ShouldQueue
         foreach ($tokens as $token) {
             if (preg_match('/^\s+$/', $token)) {
                 // Whitespace: attach to current word and flush
-                if (!empty($currentWord)) {
-                    $chunks[] = $currentWord . $token;
+                if (! empty($currentWord)) {
+                    $chunks[] = $currentWord.$token;
                     $currentWord = '';
                 } else {
                     // Standalone whitespace (edge case)
@@ -705,7 +712,7 @@ class StreamLLMJob implements ShouldQueue
                 }
             } else {
                 // Word token: start new word
-                if (!empty($currentWord)) {
+                if (! empty($currentWord)) {
                     // Previous word had no trailing space
                     $chunks[] = $currentWord;
                 }
@@ -714,7 +721,7 @@ class StreamLLMJob implements ShouldQueue
         }
 
         // Flush remaining word
-        if (!empty($currentWord)) {
+        if (! empty($currentWord)) {
             $chunks[] = $currentWord;
         }
 
@@ -727,25 +734,26 @@ class StreamLLMJob implements ShouldQueue
     private function processStreamLine(string $line, string &$fullText, int &$chunkIndex): void
     {
         $line = trim($line);
-        
-        if (empty($line) || !str_starts_with($line, 'data: ')) {
+
+        if (empty($line) || ! str_starts_with($line, 'data: ')) {
             return;
         }
 
         $data = substr($line, 6);
-        
+
         if ($data === '[DONE]') {
             return;
         }
 
         try {
             $decoded = json_decode($data, true);
-            
+
             if (json_last_error() !== JSON_ERROR_NONE) {
                 Log::warning('Invalid JSON in stream', [
                     'session_id' => $this->sessionId,
                     'data' => $data,
                 ]);
+
                 return;
             }
 
@@ -758,8 +766,8 @@ class StreamLLMJob implements ShouldQueue
             }
 
             $textChunk = $decoded['chunk'] ?? '';
-            
-            if (!empty($textChunk)) {
+
+            if (! empty($textChunk)) {
                 $fullText .= $textChunk;
 
                 // Split into word-level chunks for smoother frontend streaming display
@@ -801,28 +809,29 @@ class StreamLLMJob implements ShouldQueue
         if (empty($generatedText)) {
             Log::warning('Attempted to save empty generated text', [
                 'session_id' => $this->sessionId,
-                'chapter_order' => $this->chapterOrder
+                'chapter_order' => $this->chapterOrder,
             ]);
+
             return;
         }
 
         try {
             DB::transaction(function () use ($generatedText) {
                 $versionControlService = app(VersionControlService::class);
-                
+
                 // Keep the original prompt content intact (including guidance markers)
                 // The guidance was already extracted and sent to the AI, but we don't remove it from the editor
                 $baseContent = $this->prompt;
                 $finalContent = $baseContent;
-                
+
                 if ($baseContent !== '') {
-                    if (!str_ends_with($baseContent, "\n") && !str_starts_with($generatedText, "\n")) {
-                        if (!str_ends_with($baseContent, " ")) {
-                            $finalContent .= " ";
+                    if (! str_ends_with($baseContent, "\n") && ! str_starts_with($generatedText, "\n")) {
+                        if (! str_ends_with($baseContent, ' ')) {
+                            $finalContent .= ' ';
                         }
                     }
                 }
-                
+
                 $finalContent .= $generatedText;
 
                 if ($this->isRegenerate && $this->regenerateNodeId) {
@@ -841,7 +850,7 @@ class StreamLLMJob implements ShouldQueue
                     $currentState = $versionControlService->getCurrentState($this->projectId, $this->chapterOrder);
                     $parentNodeId = $currentState ? $currentState['node_id'] : null;
                     $parentVersionIndex = $currentState ? $currentState['version_index'] : null;
-                    
+
                     $nodeId = $versionControlService->createNode(
                         $this->projectId,
                         $this->chapterOrder,
@@ -850,7 +859,7 @@ class StreamLLMJob implements ShouldQueue
                         $parentNodeId,
                         $parentVersionIndex
                     );
-                    
+
                     Log::info('Created new generation node', [
                         'session_id' => $this->sessionId,
                         'chapter_order' => $this->chapterOrder,
@@ -879,20 +888,19 @@ class StreamLLMJob implements ShouldQueue
                 'session_id' => $this->sessionId,
                 'chapter_order' => $this->chapterOrder,
                 'error' => $e->getMessage(),
-                'code' => $e->getCode()
+                'code' => $e->getCode(),
             ]);
-            
-            throw new \Exception('Failed to save generated content to database. Please try again.');
 
+            throw new \Exception('Failed to save generated content to database. Please try again.');
         } catch (\Exception $e) {
             Log::error('Error saving generated content', [
                 'session_id' => $this->sessionId,
                 'chapter_order' => $this->chapterOrder,
                 'error' => $e->getMessage(),
-                'type' => get_class($e)
+                'type' => get_class($e),
             ]);
-            
-            throw new \Exception('Failed to save generated content: ' . $e->getMessage());
+
+            throw new \Exception('Failed to save generated content: '.$e->getMessage());
         }
     }
 
@@ -921,13 +929,13 @@ class StreamLLMJob implements ShouldQueue
         // Determine error type and provide user-friendly message
         $errorType = 'generation_failed';
         $errorMessage = 'Generation failed after multiple attempts. Please try again.';
-        
+
         if ($exception instanceof \Illuminate\Http\Client\ConnectionException) {
             $errorType = 'connection_error';
             $errorMessage = 'Failed to connect to AI service. Please check your connection and try again.';
         } elseif ($exception instanceof \Illuminate\Http\Client\RequestException) {
             $status = $exception->response?->status();
-            
+
             if ($status === 429) {
                 $errorType = 'quota_exceeded';
                 $errorMessage = 'Generation quota exceeded. Please try again later.';

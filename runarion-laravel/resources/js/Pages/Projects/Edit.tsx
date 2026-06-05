@@ -111,7 +111,7 @@ export default function ProjectSettings({
             }),
             {
                 onSuccess: () => {},
-                onError: (errors) => {},
+                onError: (_errors) => {},
             }
         );
     };

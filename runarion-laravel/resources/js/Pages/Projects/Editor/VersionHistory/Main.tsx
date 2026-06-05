@@ -25,7 +25,6 @@ import {
     History,
     Save,
     Trash2,
-    Edit,
     ChevronRight,
     ChevronDown,
     Clock,
@@ -34,6 +33,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
+import { http } from "@/Lib/http";
 
 interface Snapshot {
     id: string;
@@ -143,10 +143,6 @@ export default function VersionHistoryPage({
         setIsSaving(true);
 
         try {
-            const csrfToken =
-                document
-                    .querySelector('meta[name="csrf-token"]')
-                    ?.getAttribute("content") || "";
             const url = `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots`;
 
             console.log("Saving snapshot:", {
@@ -155,28 +151,26 @@ export default function VersionHistoryPage({
                 description: snapshotDescription,
             });
 
-            const response = await fetch(url, {
+            const response = await http(url, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
                     Accept: "application/json",
-                    "X-CSRF-TOKEN": csrfToken,
-                    "X-Requested-With": "XMLHttpRequest",
                 },
-                body: JSON.stringify({
+                data: {
                     name: snapshotName || null,
                     description: snapshotDescription || null,
-                }),
+                },
             });
 
             console.log("Response status:", response.status);
 
             let data;
             try {
-                data = await response.json();
+                data = response.data;
                 console.log("Response data:", data);
             } catch (jsonError) {
-                const text = await response.text();
+                const text = (typeof response.data === "string" ? response.data : JSON.stringify(response.data ?? ""));
                 console.error("Failed to parse JSON response:", text);
                 toast.error(
                     `Server error: ${response.status} ${response.statusText}`,
@@ -185,7 +179,7 @@ export default function VersionHistoryPage({
                 return;
             }
 
-            if (response.ok && data.success) {
+            if (response.status >= 200 && response.status < 300 && data.success) {
                 setLocalSnapshots([data.snapshot, ...localSnapshots]);
                 setSnapshotName("");
                 setSnapshotDescription("");
@@ -221,25 +215,19 @@ export default function VersionHistoryPage({
         setIsLoading(true);
 
         try {
-            const csrfToken =
-                document
-                    .querySelector('meta[name="csrf-token"]')
-                    ?.getAttribute("content") || "";
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots/${snapshotId}/load`,
                 {
                     method: "POST",
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN": csrfToken,
-                        "X-Requested-With": "XMLHttpRequest",
                     },
                 },
             );
 
-            const data = await response.json();
+            const data = response.data;
 
-            if (response.ok && data.success) {
+            if (response.status >= 200 && response.status < 300 && data.success) {
                 setLocalChapters(data.chapters);
                 toast.success(
                     "Snapshot loaded successfully! Redirecting to editor...",
@@ -283,25 +271,19 @@ export default function VersionHistoryPage({
         setIsDeleting(true);
 
         try {
-            const csrfToken =
-                document
-                    .querySelector('meta[name="csrf-token"]')
-                    ?.getAttribute("content") || "";
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots/${snapshotId}`,
                 {
                     method: "DELETE",
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN": csrfToken,
-                        "X-Requested-With": "XMLHttpRequest",
                     },
                 },
             );
 
-            const data = await response.json();
+            const data = response.data;
 
-            if (response.ok && data.success) {
+            if (response.status >= 200 && response.status < 300 && data.success) {
                 setLocalSnapshots(
                     localSnapshots.filter((s) => s.id !== snapshotId),
                 );

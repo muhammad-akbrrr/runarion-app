@@ -30,8 +30,6 @@ interface EntityListProps {
 
 export default function EntityList({
     entities,
-    relationships,
-    onEdit,
     onDelete,
     onBulkDelete,
     onSelect,
@@ -76,13 +74,6 @@ export default function EntityList({
         return new Set();
     });
     
-    // Get relationship count for each entity
-    const getRelationshipCount = (entityName: string) => {
-        return relationships.filter(
-            (rel) => rel.source === entityName || rel.target === entityName
-        ).length;
-    };
-
     // Get activation keys from entity settings
     const getActivationKeys = (entity: Entity): string[] => {
         const settings = entity.properties?._settings;
@@ -204,9 +195,6 @@ export default function EntityList({
 
         // Calculate totals for bulk actions
         const totalSelected = selectedIds.size;
-        const allGroupedSelected = Object.values(groupedEntities).every(catEntities => 
-            catEntities.every(e => selectedIds.has(e.vertex_id))
-        );
 
         return (
             <div className="space-y-4">
@@ -366,8 +354,6 @@ export default function EntityList({
 
     // Non-grouped view (table format)
     const allSelected = visibleEntities.length > 0 && visibleEntities.every(e => selectedIds.has(e.vertex_id));
-    const someSelected = selectedIds.size > 0 && selectedIds.size < visibleEntities.length;
-
     return (
         <div className="border rounded-lg overflow-hidden bg-white">
             {/* Bulk Actions Bar */}

@@ -2,13 +2,13 @@
 
 namespace App\Services\CloudStorage\Providers;
 
-use App\Services\CloudStorage\CloudStorageProviderInterface;
 use App\Models\Workspace;
+use App\Services\CloudStorage\CloudStorageProviderInterface;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Redirect;
 use Justus\FlysystemOneDrive\OneDriveAdapter;
 use League\Flysystem\Filesystem;
 
@@ -44,7 +44,7 @@ class OneDriveProvider implements CloudStorageProviderInterface
             ->where('user_id', $request->user()->id)
             ->value('role');
 
-        if (!in_array($userRole, ['owner', 'admin'])) {
+        if (! in_array($userRole, ['owner', 'admin'])) {
             abort(403, 'You are not authorized to update this workspace.');
         }
 
@@ -58,9 +58,9 @@ class OneDriveProvider implements CloudStorageProviderInterface
         ]);
 
         $accessToken = $response['access_token'] ?? null;
-        if (!$accessToken) {
+        if (! $accessToken) {
             return Redirect::route('workspace.edit.cloud-storage', [
-                'workspace_id' => $workspaceId
+                'workspace_id' => $workspaceId,
             ])->with('error', 'Failed to retrieve access token.');
         }
 
@@ -78,7 +78,7 @@ class OneDriveProvider implements CloudStorageProviderInterface
         ]);
 
         return Redirect::route('workspace.edit.cloud-storage', [
-            'workspace_id' => $workspaceId
+            'workspace_id' => $workspaceId,
         ])->with('success', 'OneDrive connected successfully.');
     }
 
@@ -87,9 +87,9 @@ class OneDriveProvider implements CloudStorageProviderInterface
         $cloudStorage = DB::table('workspaces')->where('id', $workspaceId)->value('cloud_storage');
         $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
 
-        if (!isset($cloudStorage['onedrive']) || !$cloudStorage['onedrive']['enabled']) {
+        if (! isset($cloudStorage['onedrive']) || ! $cloudStorage['onedrive']['enabled']) {
             return Redirect::route('workspace.edit.cloud-storage', [
-                'workspace_id' => $workspaceId
+                'workspace_id' => $workspaceId,
             ])->with('info', 'OneDrive is not connected.');
         }
 
@@ -100,7 +100,7 @@ class OneDriveProvider implements CloudStorageProviderInterface
         ]);
 
         return Redirect::route('workspace.edit.cloud-storage', [
-            'workspace_id' => $workspaceId
+            'workspace_id' => $workspaceId,
         ])->with('success', 'OneDrive disconnected successfully.');
     }
 

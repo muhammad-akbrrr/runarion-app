@@ -26,10 +26,10 @@ import {
     CollapsibleContent,
     CollapsibleTrigger,
 } from "@/Components/ui/collapsible";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { Checkbox } from "@/Components/ui/checkbox";
 import { Badge } from "@/Components/ui/badge";
 import { ScrollArea } from "@/Components/ui/scroll-area";
+import { http } from "@/Lib/http";
 import {
     HelpCircle,
     Play,
@@ -41,11 +41,6 @@ import {
     ArrowRight,
     Quote,
     Loader2,
-    BookOpen,
-    Users,
-    MessageSquare,
-    TrendingUp,
-    TrendingDown,
     Trash2,
 } from "lucide-react";
 
@@ -148,7 +143,7 @@ export default function SentimentTab({
     selectedModel,
 }: SentimentTabProps) {
     const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
-    const [useAllCharacters, setUseAllCharacters] = useState<boolean>(true);
+    const [, setUseAllCharacters] = useState<boolean>(true);
     const [focusMode, setFocusMode] = useState<"all" | "selected" | "1-to-1">(
         "all"
     );
@@ -158,25 +153,22 @@ export default function SentimentTab({
     const [characters, setCharacters] = useState<Character[]>([]);
     const [loadingCharacters, setLoadingCharacters] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [scanningChanges, setScanningChanges] = useState(false);
+    const [scanningChanges] = useState(false);
     const [deletingInteractions, setDeletingInteractions] = useState(false);
     const [showConfirmDialog, setShowConfirmDialog] = useState(false);
     const [characterSearch, setCharacterSearch] = useState("");
 
     // Results state - NEW: separate interactions and relationships
     const [interactions, setInteractions] = useState<Interaction[]>([]);
-    const [chapterResults, setChapterResults] = useState<ChapterResult[]>([]);
+    const [, setChapterResults] = useState<ChapterResult[]>([]);
     const [aggregatedRelationships, setAggregatedRelationships] = useState<
         AggregatedRelationship[]
     >([]);
     const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-    const [resultViewMode, setResultViewMode] = useState<
-        "relationships" | "interactions" | "chapters"
-    >("relationships");
     const [isV2Results, setIsV2Results] = useState(false); // Track if current results are V2 (chapter-based)
 
     // Change scanner state
-    const [changes, setChanges] = useState<{
+    const [changes] = useState<{
         new_relationships: AggregatedRelationship[];
         modified_relationships: RelationshipChange[];
         potentially_removed: RelationshipChange[];
@@ -186,7 +178,7 @@ export default function SentimentTab({
             relationship_type: string;
         }[];
     } | null>(null);
-    const [changeSummary, setChangeSummary] = useState<{
+    const [changeSummary] = useState<{
         new_count: number;
         modified_count: number;
         removed_count: number;
@@ -205,7 +197,7 @@ export default function SentimentTab({
 
     const loadChapters = async () => {
         try {
-            const response = await fetch(
+            const response = await http(
                 route("editor.project.chapters", {
                     workspace_id: workspaceId,
                     project_id: projectId,
@@ -217,8 +209,8 @@ export default function SentimentTab({
                     },
                 }
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 if (data.chapters) {
                     setChapters(data.chapters);
                 }
@@ -238,7 +230,7 @@ export default function SentimentTab({
                 }) + "?category=character";
             console.log("[SentimentTab] Loading characters from:", url);
 
-            const response = await fetch(url, {
+            const response = await http(url, {
                 headers: {
                     Accept: "application/json",
                     "X-Requested-With": "XMLHttpRequest",
@@ -247,15 +239,15 @@ export default function SentimentTab({
 
             console.log("[SentimentTab] Response status:", response.status);
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 console.log("[SentimentTab] Loaded characters:", data);
                 setCharacters(data.entities || []);
             } else {
                 console.error(
                     "[SentimentTab] Failed to load characters:",
                     response.status,
-                    await response.text()
+                    (typeof response.data === "string" ? response.data : JSON.stringify(response.data ?? ""))
                 );
             }
         } catch (error) {
@@ -281,7 +273,7 @@ export default function SentimentTab({
         setAggregatedRelationships([]);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 route("auditor.extract-relationships", {
                     workspace_id: workspaceId,
                     project_id: projectId,
@@ -291,12 +283,8 @@ export default function SentimentTab({
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         character_ids:
                             focusMode === "all" ? null : selectedCharacters,
                         chapter_orders: useAllChapters
@@ -305,12 +293,12 @@ export default function SentimentTab({
                         model: selectedModel,
                         provider: "gemini",
                         focus_mode: focusMode, // Send focus mode to backend
-                    }),
+                    },
                 }
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
 
                 // Check if this is V2 response (chapter-based analysis)
                 const isV2 =
@@ -393,7 +381,7 @@ export default function SentimentTab({
                     }
                 }
             } else {
-                const error = await response.json();
+                const error = response.data;
                 alert(
                     `Failed to extract relationships: ${
                         error.error || "Unknown error"
@@ -412,52 +400,6 @@ export default function SentimentTab({
         }
     };
 
-    const handleScanChanges = async () => {
-        setScanningChanges(true);
-        setChanges(null);
-        setChangeSummary(null);
-
-        try {
-            const response = await fetch(
-                route("auditor.scan-relationship-changes", {
-                    workspace_id: workspaceId,
-                    project_id: projectId,
-                }),
-                {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
-                    },
-                    body: JSON.stringify({
-                        model: selectedModel,
-                        provider: "gemini",
-                    }),
-                }
-            );
-
-            if (response.ok) {
-                const data = await response.json();
-                setChanges(data.changes || null);
-                setChangeSummary(data.summary || null);
-            } else {
-                const error = await response.json();
-                alert(
-                    `Failed to scan changes: ${error.error || "Unknown error"}`
-                );
-            }
-        } catch (error: any) {
-            console.error("Error scanning changes:", error);
-            alert(`Failed to scan changes: ${error?.message || String(error)}`);
-        } finally {
-            setScanningChanges(false);
-        }
-    };
-
     const handleDeleteAllInteractions = async () => {
         if (
             !confirm(
@@ -470,7 +412,7 @@ export default function SentimentTab({
         setDeletingInteractions(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 route("auditor.delete-all-interactions", {
                     workspace_id: workspaceId,
                     project_id: projectId,
@@ -479,16 +421,12 @@ export default function SentimentTab({
                     method: "DELETE",
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
                 }
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 if (data.deleted_count === 0) {
                     alert(
                         "No interactions to delete. The database is already clean!"
@@ -502,7 +440,7 @@ export default function SentimentTab({
                 setAggregatedRelationships([]);
                 setChapterResults([]);
             } else {
-                const error = await response.json();
+                const error = response.data;
                 alert(
                     `Failed to delete interactions: ${
                         error.error || "Unknown error"
@@ -544,34 +482,9 @@ export default function SentimentTab({
         return "text-green-600 bg-green-50";
     };
 
-    const getSentimentLabel = (score: number): string => {
-        if (score < -50) return "Very Negative";
-        if (score < -20) return "Negative";
-        if (score < 20) return "Neutral";
-        if (score < 50) return "Positive";
-        return "Very Positive";
-    };
-
-    const getInteractionKey = (
-        interaction: Interaction,
-        index: number
-    ): string => {
-        return `${interaction.source_character}|${interaction.target_character}|${interaction.chapter_number}|${index}`;
-    };
-
     const getRelationshipKey = (rel: AggregatedRelationship): string => {
         return `${rel.source}|${rel.target}|${rel.relationship_type}`;
     };
-
-    // Group interactions by chapter
-    const interactionsByChapter = interactions.reduce((acc, interaction) => {
-        const chNum = interaction.chapter_number;
-        if (!acc[chNum]) {
-            acc[chNum] = [];
-        }
-        acc[chNum].push(interaction);
-        return acc;
-    }, {} as Record<number, Interaction[]>);
 
     return (
         <div className="space-y-4">

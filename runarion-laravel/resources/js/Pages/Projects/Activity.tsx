@@ -11,7 +11,6 @@ import {
     DropdownMenu,
     DropdownMenuTrigger,
     DropdownMenuContent,
-    DropdownMenuItem,
     DropdownMenuCheckboxItem,
 } from "@/Components/ui/dropdown-menu";
 import { ChevronDown, ArrowUpDown } from "lucide-react";
@@ -129,7 +128,6 @@ const columns: ColumnDef<Activity>[] = [
 export default function ProjectActivity({
     workspaceId,
     projectId,
-    project,
 }: Props) {
     // Sorting state
     const [sorting, setSorting] = useState<SortingState>([]);

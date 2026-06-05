@@ -42,7 +42,7 @@ class ProfileController extends Controller
                 'lowercase',
                 'email',
                 'max:255',
-                'unique:users,email,' . $request->user()->id,
+                'unique:users,email,'.$request->user()->id,
             ],
             'notifications' => 'nullable|array',
             'notifications.*' => 'boolean',
@@ -75,14 +75,16 @@ class ProfileController extends Controller
                         if ($value === 'true' || $value === '1') {
                             return true;
                         }
+
                         return false;
                     }
+
                     return (bool) $value;
                 },
                 $validated['notifications']
             );
-        };
-        
+        }
+
         if ($request->hasFile('photo')) {
             $prevAvatarUrl = DB::table('users')
                 ->where('id', $request->user()->id)
@@ -91,7 +93,7 @@ class ProfileController extends Controller
                 $prevAvatarUrl = substr($prevAvatarUrl, strlen('/storage/'));
                 Storage::disk('public')->delete($prevAvatarUrl);
             }
-            $validated['avatar_url'] = '/storage/' . Storage::disk('public')
+            $validated['avatar_url'] = '/storage/'.Storage::disk('public')
                 ->putFile('user_photos', $request->file('photo'));
         }
         unset($validated['photo']);

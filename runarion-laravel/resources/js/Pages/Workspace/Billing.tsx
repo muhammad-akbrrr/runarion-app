@@ -10,8 +10,6 @@ import { CircleCheck, Info } from "lucide-react";
 
 export default function Billing({
     workspaceId,
-    isUserAdmin,
-    isUserOwner,
 }: PageProps<{
     workspaceId: string;
     isUserAdmin: boolean;

@@ -39,7 +39,7 @@ return new class extends Migration
                 'start_scene',
                 'end_scene',
                 'scene_count',
-                'scene_titles'
+                'scene_titles',
             ]);
         });
     }

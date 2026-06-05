@@ -1,6 +1,5 @@
 // resources/js/Pages/Dashboard.tsx
 
-import React from "react";
 import { Head, usePage } from "@inertiajs/react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/Components/ui/card";
 import AuthenticatedLayout, { BreadcrumbItem } from "@/Layouts/AuthenticatedLayout";

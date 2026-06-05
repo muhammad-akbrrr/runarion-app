@@ -4,10 +4,11 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     /**
      * Run the migrations.
-     * 
+     *
      * Creates tables for the Advisor feature - a Cursor-style AI chat assistant
      * that has full story context and can suggest inline edits.
      */
@@ -21,12 +22,12 @@ return new class extends Migration {
             $table->text('system_instructions')->nullable();
             $table->string('model')->default('gemini-2.5-flash');
             $table->timestamps();
-            
+
             $table->foreign('project_id')
                 ->references('id')
                 ->on('projects')
                 ->onDelete('cascade');
-            
+
             // Index for listing recent chats by project
             $table->index(['project_id', 'updated_at']);
         });
@@ -39,12 +40,12 @@ return new class extends Migration {
             $table->text('content');
             $table->jsonb('metadata')->nullable(); // For pending_edits, token_count, chapter references, etc.
             $table->timestamps();
-            
+
             $table->foreign('chat_id')
                 ->references('id')
                 ->on('advisor_chats')
                 ->onDelete('cascade');
-            
+
             // Index for fetching messages in order
             $table->index(['chat_id', 'created_at']);
         });
@@ -59,4 +60,3 @@ return new class extends Migration {
         Schema::dropIfExists('advisor_chats');
     }
 };
-

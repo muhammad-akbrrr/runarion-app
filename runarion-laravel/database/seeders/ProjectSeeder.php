@@ -3,15 +3,15 @@
 namespace Database\Seeders;
 
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
-use Illuminate\Database\Seeder;
+use App\Models\Folder;
 use App\Models\Projects;
 use App\Models\Workspace;
-use App\Models\Folder;
 use App\Models\WorkspaceMember;
+use Illuminate\Database\Seeder;
 
 /**
  * Project Seeder
- * 
+ *
  * Seeds the projects table with initial data.
  * Creates sample projects within each folder of each workspace.
  * Also creates corresponding ProjectContent and ProjectNodeEditor records.
@@ -20,7 +20,7 @@ class ProjectSeeder extends Seeder
 {
     /**
      * Run the database seeds.
-     * 
+     *
      * For each workspace:
      * 1. Gets all folders in the workspace
      * 2. For each folder:
@@ -30,8 +30,6 @@ class ProjectSeeder extends Seeder
      *    - Projects are associated with their parent folder and workspace
      *    - Creates ProjectContent with realistic chapter data
      *    - Creates ProjectNodeEditor for node editor functionality
-     * 
-     * @return void
      */
     public function run(): void
     {
@@ -46,7 +44,7 @@ class ProjectSeeder extends Seeder
                 ->with('user')
                 ->first();
 
-            if (!$owner || !$owner->user) {
+            if (! $owner || ! $owner->user) {
                 return; // Skip if no owner found
             }
 
@@ -58,8 +56,8 @@ class ProjectSeeder extends Seeder
                     $project = Projects::factory()->create([
                         'workspace_id' => $workspace->id,
                         'folder_id' => $folder->id,
-                        'name' => "Project " . ($i + 1) . " in " . $folder->name,
-                        'slug' => "project-" . $workspace->id . "-" . $folder->id . "-" . ($i + 1),
+                        'name' => 'Project '.($i + 1).' in '.$folder->name,
+                        'slug' => 'project-'.$workspace->id.'-'.$folder->id.'-'.($i + 1),
                         'original_author' => $owner->user->id,
                         'completed_onboarding' => fake()->boolean(),
                     ]);
@@ -75,7 +73,7 @@ class ProjectSeeder extends Seeder
                         }
                     }
 
-                    if (!$hasOriginalAuthor) {
+                    if (! $hasOriginalAuthor) {
                         $access[] = [
                             'user' => [
                                 'id' => (string) $owner->user->id,
@@ -83,7 +81,7 @@ class ProjectSeeder extends Seeder
                                 'email' => $owner->user->email,
                                 'avatar_url' => $owner->user->profile_photo_url ?? null,
                             ],
-                            'role' => 'admin'
+                            'role' => 'admin',
                         ];
                         $project->access = $access;
                         $project->save();

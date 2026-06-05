@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\Workspace;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Storage;
 
 class OneDriveService
 {
@@ -14,7 +14,7 @@ class OneDriveService
     {
         $workspace = Workspace::find($workspaceId);
 
-        if (!$workspace || !$workspace->isCloudConnected($this->provider)) {
+        if (! $workspace || ! $workspace->isCloudConnected($this->provider)) {
             return null;
         }
 
@@ -31,6 +31,7 @@ class OneDriveService
             return Storage::build($config);
         } catch (\Exception $e) {
             report($e);
+
             return null;
         }
     }
@@ -38,6 +39,7 @@ class OneDriveService
     public function isConnected(string $workspaceId): bool
     {
         $workspace = Workspace::find($workspaceId);
+
         return $workspace?->isCloudConnected($this->provider) ?? false;
     }
 }

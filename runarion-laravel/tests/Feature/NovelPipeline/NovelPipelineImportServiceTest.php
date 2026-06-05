@@ -77,7 +77,7 @@ test('completed pipeline runs import rewritten chapters into project content', f
         ],
         [
             'title' => 'Departure',
-            'content' => "Another rewritten chapter closes the arc.",
+            'content' => 'Another rewritten chapter closes the arc.',
         ],
     ]);
 

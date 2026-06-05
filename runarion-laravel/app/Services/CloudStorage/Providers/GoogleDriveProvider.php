@@ -2,18 +2,18 @@
 
 namespace App\Services\CloudStorage\Providers;
 
-use App\Services\CloudStorage\CloudStorageProviderInterface;
 use App\Models\Workspace;
+use App\Services\CloudStorage\CloudStorageProviderInterface;
 use Google\Client as GoogleClient;
 use Google\Service\Drive;
 use Google\Service\Drive\DriveFile;
-use Masbug\Flysystem\GoogleDriveAdapter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Redirect;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Redirect;
 use League\Flysystem\Filesystem;
+use Masbug\Flysystem\GoogleDriveAdapter;
 
 class GoogleDriveProvider implements CloudStorageProviderInterface
 {
@@ -21,7 +21,7 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
 
     public function redirect(Request $request, string $workspaceId)
     {
-        $client = new GoogleClient();
+        $client = new GoogleClient;
         $client->setClientId(config('services.google.drive.client_id'));
         $client->setClientSecret(config('services.google.drive.client_secret'));
         $client->setRedirectUri(config('services.google.drive.redirect_uri'));
@@ -41,7 +41,7 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
             ])->with('error', 'Google Drive authorization was cancelled.');
         }
 
-        $state       = json_decode($request->state);
+        $state = json_decode($request->state);
         $workspaceId = $state->workspace_id;
 
         // Permission check
@@ -50,12 +50,12 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
             ->where('user_id', $request->user()->id)
             ->value('role');
 
-        if (!in_array($userRole, ['owner', 'admin'])) {
+        if (! in_array($userRole, ['owner', 'admin'])) {
             abort(403, 'You are not authorized to update this workspace.');
         }
 
         // Get access token
-        $client = new GoogleClient();
+        $client = new GoogleClient;
         $client->setClientId(config('services.google.drive.client_id'));
         $client->setClientSecret(config('services.google.drive.client_secret'));
         $client->setRedirectUri(config('services.google.drive.redirect_uri'));
@@ -75,7 +75,7 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
         $driveService = new Drive($client);
 
         // Check if folder already exists
-        $query = "name = '" . self::FOLDER_NAME . "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+        $query = "name = '".self::FOLDER_NAME."' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
         $results = $driveService->files->listFiles([
             'q' => $query,
             'spaces' => 'drive',
@@ -105,10 +105,10 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
 
         $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
         $cloudStorage['google_drive'] = [
-            'enabled'        => true,
-            'connected_at'   => now()->toIso8601String(),
-            'refresh_token'  => Crypt::encryptString($token['refresh_token']),
-            'folder_id'      => $folderId, // Store the folder ID for reference
+            'enabled' => true,
+            'connected_at' => now()->toIso8601String(),
+            'refresh_token' => Crypt::encryptString($token['refresh_token']),
+            'folder_id' => $folderId, // Store the folder ID for reference
         ];
 
         DB::table('workspaces')->where('id', $workspaceId)->update([
@@ -125,15 +125,15 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
         $cloudStorage = DB::table('workspaces')->where('id', $workspaceId)->value('cloud_storage');
         $cloudStorage = $cloudStorage ? json_decode($cloudStorage, true) : [];
 
-        if (!isset($cloudStorage['google_drive']) || !$cloudStorage['google_drive']['enabled']) {
+        if (! isset($cloudStorage['google_drive']) || ! $cloudStorage['google_drive']['enabled']) {
             return Redirect::route('workspace.edit.cloud-storage', [
-                'workspace_id' => $workspaceId
+                'workspace_id' => $workspaceId,
             ])->with('info', 'Google Drive is not connected.');
         }
 
         try {
             $refreshToken = Crypt::decryptString($cloudStorage['google_drive']['refresh_token']);
-            $client = new GoogleClient();
+            $client = new GoogleClient;
             $client->setClientId(config('services.google.drive.client_id'));
             $client->setClientSecret(config('services.google.drive.client_secret'));
             $client->revokeToken($refreshToken);
@@ -148,7 +148,7 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
         ]);
 
         return Redirect::route('workspace.edit.cloud-storage', [
-            'workspace_id' => $workspaceId
+            'workspace_id' => $workspaceId,
         ])->with('success', 'Google Drive disconnected successfully.');
     }
 
@@ -163,7 +163,7 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
 
         $refreshToken = Crypt::decryptString($data['refresh_token']);
 
-        $client = new GoogleClient();
+        $client = new GoogleClient;
         $client->setClientId(config('services.google.drive.client_id'));
         $client->setClientSecret(config('services.google.drive.client_secret'));
         $client->setAccessType('offline');
@@ -174,10 +174,10 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
 
         // Fetch the shared folder ID - first check if we have it stored
         $folderId = $data['folder_id'] ?? null;
-        
-        if (!$folderId) {
+
+        if (! $folderId) {
             // If not stored, try to find it
-            $query = "name = '" . self::FOLDER_NAME . "' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
+            $query = "name = '".self::FOLDER_NAME."' and mimeType = 'application/vnd.google-apps.folder' and trashed = false";
             $results = $service->files->listFiles([
                 'q' => $query,
                 'spaces' => 'drive',
@@ -196,23 +196,23 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
                 ]);
 
                 $folderId = $createdFolder->id;
-                
+
                 // Store the folder ID for future use
                 $cloudStorage = $workspace->cloud_storage;
                 $cloudStorage['google_drive']['folder_id'] = $folderId;
                 $workspace->cloud_storage = $cloudStorage;
                 $workspace->save();
-                
+
                 Log::info("Created Google Drive folder with ID: {$folderId}");
             } else {
                 $folderId = $results->getFiles()[0]->getId();
-                
+
                 // Store the folder ID for future use
                 $cloudStorage = $workspace->cloud_storage;
                 $cloudStorage['google_drive']['folder_id'] = $folderId;
                 $workspace->cloud_storage = $cloudStorage;
                 $workspace->save();
-                
+
                 Log::info("Found existing Google Drive folder with ID: {$folderId}");
             }
         }
@@ -224,20 +224,20 @@ class GoogleDriveProvider implements CloudStorageProviderInterface
                 'spaces' => 'drive',
                 'fields' => 'files(id, name, mimeType)',
             ]);
-            
-            Log::info("Files in Google Drive folder:", [
+
+            Log::info('Files in Google Drive folder:', [
                 'folder_id' => $folderId,
                 'file_count' => count($filesList->getFiles()),
-                'files' => array_map(function($file) {
+                'files' => array_map(function ($file) {
                     return [
                         'id' => $file->getId(),
                         'name' => $file->getName(),
                         'mimeType' => $file->getMimeType(),
                     ];
-                }, $filesList->getFiles())
+                }, $filesList->getFiles()),
             ]);
         } catch (\Exception $e) {
-            Log::error("Error listing Google Drive files: " . $e->getMessage());
+            Log::error('Error listing Google Drive files: '.$e->getMessage());
         }
 
         // Configure the adapter with proper options

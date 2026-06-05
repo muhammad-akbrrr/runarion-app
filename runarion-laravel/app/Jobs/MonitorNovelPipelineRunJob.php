@@ -14,7 +14,6 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use RuntimeException;
 
 class MonitorNovelPipelineRunJob implements ShouldQueue
 {
@@ -26,15 +25,14 @@ class MonitorNovelPipelineRunJob implements ShouldQueue
 
     public function __construct(
         private readonly string $pipelineRunId,
-    ) {
-    }
+    ) {}
 
     public function handle(
         PythonServiceClient $pythonClient,
         NovelPipelineImportService $importService,
     ): void {
         $run = PipelineRun::query()->find($this->pipelineRunId);
-        if (!$run || !$run->project_id) {
+        if (! $run || ! $run->project_id) {
             return;
         }
 
@@ -43,8 +41,9 @@ class MonitorNovelPipelineRunJob implements ShouldQueue
         }
 
         $lock = Cache::lock("pipeline-monitor:{$run->id}", 30);
-        if (!$lock->get()) {
+        if (! $lock->get()) {
             self::dispatch($this->pipelineRunId)->delay(now()->addSeconds(10));
+
             return;
         }
 
@@ -62,7 +61,7 @@ class MonitorNovelPipelineRunJob implements ShouldQueue
                 $freshRun->error_message = $status['error_message'] ?? null;
                 $freshRun->failed_phase = $status['failed_phase'] ?? null;
                 $freshRun->metadata = $status['metadata'] ?? $freshRun->metadata;
-                $freshRun->completed_at = !empty($status['completed_at']) ? $status['completed_at'] : $freshRun->completed_at;
+                $freshRun->completed_at = ! empty($status['completed_at']) ? $status['completed_at'] : $freshRun->completed_at;
                 $freshRun->save();
             });
 
@@ -83,11 +82,13 @@ class MonitorNovelPipelineRunJob implements ShouldQueue
                     $run->error_message ?: 'Novel pipeline failed.',
                     true,
                 ));
+
                 return;
             }
 
             if ($run->status === PipelineRun::STATUS_COMPLETED) {
                 $this->importCompletedRun($run, $status, $pythonClient, $importService);
+
                 return;
             }
 
@@ -137,7 +138,7 @@ class MonitorNovelPipelineRunJob implements ShouldQueue
             ]);
 
             $freshRun = PipelineRun::query()->find($run->id);
-            if (!$freshRun) {
+            if (! $freshRun) {
                 throw $exception;
             }
 

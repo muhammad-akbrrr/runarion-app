@@ -17,8 +17,8 @@ class EmailVerificationPromptController extends Controller
     {
         return $request->user()->hasVerifiedEmail()
                     ? redirect()->intended(route('workspace.dashboard', [
-                        'workspace_id' => $request->user()->getActiveWorkspaceId()
-                      ], absolute: false))
+                        'workspace_id' => $request->user()->getActiveWorkspaceId(),
+                    ], absolute: false))
                     : Inertia::render('Auth/VerifyEmail', ['status' => session('status')]);
     }
 }

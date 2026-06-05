@@ -1,15 +1,9 @@
 import { useState, useEffect } from "react";
+import { http } from "@/Lib/http";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/Components/ui/select";
-import { X, Plus, Trash2, HelpCircle, Edit } from "lucide-react";
+import { X, Plus, HelpCircle, Edit } from "lucide-react";
 import { Switch } from "@/Components/ui/switch";
 import {
     Tooltip,
@@ -144,27 +138,23 @@ export default function SettingsTab({
                 updatedProperties: updatedProperties,
             });
 
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/entities/${entity.vertex_id}`,
                 {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
                         "Accept": "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         name: entity.name,
                         properties: updatedProperties,
-                    }),
+                    },
                 }
             );
 
-            if (response.ok) {
-                const responseData = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const responseData = response.data;
                 console.log("Settings saved successfully. Response:", responseData);
                 // Trigger reload of entity data - this will refresh the entity with updated properties
                 await onSettingsUpdated();
@@ -175,7 +165,7 @@ export default function SettingsTab({
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
-                    const error = await response.json();
+                    const error = response.data;
                     errorMessage = error.error || error.message || errorMessage;
                 } catch (e) {
                     console.error("Error parsing response:", e);

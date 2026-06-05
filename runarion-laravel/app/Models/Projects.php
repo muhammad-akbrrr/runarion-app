@@ -10,13 +10,13 @@ use Illuminate\Validation\Rule;
 
 /**
  * Projects Model
- * 
+ *
  * mewakili project yang ada pada workspace, setiap project bisa disimpan di folder
  * memiliki setting & konfigurasi tersendiri
  */
 class Projects extends Model
 {
-    use HasFactory, SoftDeletes, HasUlids;
+    use HasFactory, HasUlids, SoftDeletes;
 
     protected $fillable = [
         'workspace_id',
@@ -97,7 +97,7 @@ class Projects extends Model
      */
     public function validateAccess(): bool
     {
-        if (!$this->access) {
+        if (! $this->access) {
             return true;
         }
 
@@ -110,7 +110,7 @@ class Projects extends Model
         $originalAuthorHasAdminRole = false;
 
         foreach ($this->access as $access) {
-            if (!in_array($access['user']['id'], $workspaceMemberIds)) {
+            if (! in_array($access['user']['id'], $workspaceMemberIds)) {
                 return false;
             }
 
@@ -122,7 +122,7 @@ class Projects extends Model
         }
 
         // Original author must exist in access array and have admin role
-        if ($this->original_author && (!$originalAuthorExists || !$originalAuthorHasAdminRole)) {
+        if ($this->original_author && (! $originalAuthorExists || ! $originalAuthorHasAdminRole)) {
             return false;
         }
 

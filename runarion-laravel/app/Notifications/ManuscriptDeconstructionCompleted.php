@@ -3,7 +3,6 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
 
@@ -39,7 +38,7 @@ class ManuscriptDeconstructionCompleted extends Notification
         return (new MailMessage)
             ->subject('Manuscript Deconstruction Completed')
             ->line('Your manuscript deconstruction job has completed.')
-            ->line('Request ID: ' . $this->requestId)
+            ->line('Request ID: '.$this->requestId)
             ->line('Thank you for using our application!');
     }
 

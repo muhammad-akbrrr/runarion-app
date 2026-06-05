@@ -2,16 +2,17 @@
 
 namespace App\Models;
 
+use App\Services\GraphConstants;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use App\Services\GraphConstants;
 
 class NovelGraphVertex extends Model
 {
     use HasFactory, SoftDeletes;
+
     protected $table = 'novel_graph_vertices';
 
     protected $fillable = [
@@ -29,9 +30,13 @@ class NovelGraphVertex extends Model
     ];
 
     public const TYPE_CHARACTER = GraphConstants::ENTITY_CHARACTER;
+
     public const TYPE_LOCATION = GraphConstants::ENTITY_LOCATION;
+
     public const TYPE_ITEM = GraphConstants::ENTITY_ITEM;
+
     public const TYPE_THEME = GraphConstants::ENTITY_THEME;
+
     public const TYPE_PLOT_POINT = GraphConstants::ENTITY_PLOT_POINT;
 
     public static function getTypeOptions(): array

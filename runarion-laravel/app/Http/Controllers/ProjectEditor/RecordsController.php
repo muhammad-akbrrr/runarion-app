@@ -3,15 +3,13 @@
 namespace App\Http\Controllers\ProjectEditor;
 
 use App\Http\Controllers\Controller;
+use App\Models\Projects;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use App\Models\Projects;
-use App\Models\NovelGraphVertex;
-use App\Models\NovelGraphEdge;
 
 class RecordsController extends Controller
 {
@@ -39,7 +37,7 @@ class RecordsController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -48,13 +46,13 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->post($this->getPythonServiceUrl() . '/api/records/entity', [
+                ->post($this->getPythonServiceUrl().'/api/records/entity', [
                     'project_id' => $project_id,
                     'name' => $request->input('name'),
                     'type' => $request->input('type'),
@@ -67,20 +65,22 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error creating entity', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to create entity',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception creating entity', [
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to create entity: ' . $e->getMessage()
+                'error' => 'Failed to create entity: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -95,7 +95,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -103,9 +103,9 @@ class RecordsController extends Controller
             // Accept both 'type' and 'category' query params for backward compatibility
             $type = $request->query('type') ?? $request->query('category');
 
-            $url = $this->getPythonServiceUrl() . '/api/records/entities/' . $project_id;
+            $url = $this->getPythonServiceUrl().'/api/records/entities/'.$project_id;
             if ($type) {
-                $url .= '?type=' . urlencode($type);
+                $url .= '?type='.urlencode($type);
             }
 
             $response = Http::timeout(30)->get($url);
@@ -115,19 +115,21 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error listing entities', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to list entities',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception listing entities', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to list entities: ' . $e->getMessage()
+                'error' => 'Failed to list entities: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -142,14 +144,14 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->get($this->getPythonServiceUrl() . '/api/records/entity/' . $vertex_id, [
-                    'project_id' => $project_id
+                ->get($this->getPythonServiceUrl().'/api/records/entity/'.$vertex_id, [
+                    'project_id' => $project_id,
                 ]);
 
             if ($response->successful()) {
@@ -157,15 +159,16 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Entity not found',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception getting entity', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to get entity: ' . $e->getMessage()
+                'error' => 'Failed to get entity: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -183,7 +186,7 @@ class RecordsController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -192,13 +195,13 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->put($this->getPythonServiceUrl() . '/api/records/entity/' . $vertex_id, [
+                ->put($this->getPythonServiceUrl().'/api/records/entity/'.$vertex_id, [
                     'project_id' => $project_id,
                     'name' => $request->input('name'),
                     'properties' => $request->input('properties'),
@@ -209,19 +212,21 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error updating entity', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to update entity',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception updating entity', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to update entity: ' . $e->getMessage()
+                'error' => 'Failed to update entity: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -236,32 +241,34 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->delete($this->getPythonServiceUrl() . '/api/records/entity/' . $vertex_id . '?project_id=' . urlencode($project_id));
+                ->delete($this->getPythonServiceUrl().'/api/records/entity/'.$vertex_id.'?project_id='.urlencode($project_id));
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 Log::error('Python service error deleting entity', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to delete entity',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception deleting entity', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to delete entity: ' . $e->getMessage()
+                'error' => 'Failed to delete entity: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -282,7 +289,7 @@ class RecordsController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -291,13 +298,13 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->post($this->getPythonServiceUrl() . '/api/records/relationship', [
+                ->post($this->getPythonServiceUrl().'/api/records/relationship', [
                     'project_id' => $project_id,
                     'source_id' => $request->input('source'), // Frontend sends vertex IDs
                     'target_id' => $request->input('target'), // Frontend sends vertex IDs
@@ -311,19 +318,21 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error creating relationship', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to create relationship',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception creating relationship', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to create relationship: ' . $e->getMessage()
+                'error' => 'Failed to create relationship: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -338,16 +347,16 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $type = $request->query('type');
-            
-            $url = $this->getPythonServiceUrl() . '/api/records/relationships/' . $project_id;
+
+            $url = $this->getPythonServiceUrl().'/api/records/relationships/'.$project_id;
             if ($type) {
-                $url .= '?type=' . urlencode($type);
+                $url .= '?type='.urlencode($type);
             }
 
             $response = Http::timeout(30)->get($url);
@@ -357,19 +366,21 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error listing relationships', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to list relationships',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception listing relationships', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to list relationships: ' . $e->getMessage()
+                'error' => 'Failed to list relationships: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -384,7 +395,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -395,7 +406,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(30)
-                ->put($this->getPythonServiceUrl() . '/api/records/relationship/' . $edge_id, [
+                ->put($this->getPythonServiceUrl().'/api/records/relationship/'.$edge_id, [
                     'project_id' => $project_id,
                     'type' => $request->input('type'),
                     'properties' => $request->input('properties'),
@@ -406,19 +417,21 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error updating relationship', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to update relationship',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception updating relationship', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to update relationship: ' . $e->getMessage()
+                'error' => 'Failed to update relationship: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -430,32 +443,34 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->delete($this->getPythonServiceUrl() . '/api/records/relationship/' . $edge_id . '?project_id=' . urlencode($project_id));
+                ->delete($this->getPythonServiceUrl().'/api/records/relationship/'.$edge_id.'?project_id='.urlencode($project_id));
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 Log::error('Python service error deleting relationship', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to delete relationship',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception deleting relationship', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to delete relationship: ' . $e->getMessage()
+                'error' => 'Failed to delete relationship: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -473,7 +488,7 @@ class RecordsController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -482,7 +497,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -492,7 +507,7 @@ class RecordsController extends Controller
             $vertexLabel = str_replace(' ', '', $vertexLabel);
 
             $response = Http::timeout(30)
-                ->post($this->getPythonServiceUrl() . '/api/records/entity-type', [
+                ->post($this->getPythonServiceUrl().'/api/records/entity-type', [
                     'vertex_label' => $vertexLabel,
                 ]);
 
@@ -518,20 +533,21 @@ class RecordsController extends Controller
                         'name' => $request->input('name'),
                         'vertex_label' => $vertexLabel,
                         'field_schema' => $request->input('field_schema', []),
-                    ]
+                    ],
                 ], 201);
             } else {
                 return response()->json([
                     'error' => 'Failed to create collection type',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception creating collection type', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to create collection type: ' . $e->getMessage()
+                'error' => 'Failed to create collection type: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -546,7 +562,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -581,14 +597,15 @@ class RecordsController extends Controller
                 'collection_types' => [
                     'system' => $systemTypes,
                     'custom' => $customTypes,
-                ]
+                ],
             ], 200);
         } catch (\Exception $e) {
             Log::error('Exception listing collection types', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to list collection types: ' . $e->getMessage()
+                'error' => 'Failed to list collection types: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -606,7 +623,7 @@ class RecordsController extends Controller
         if ($validator->fails()) {
             return response()->json([
                 'error' => 'Validation failed',
-                'errors' => $validator->errors()
+                'errors' => $validator->errors(),
             ], 422);
         }
 
@@ -615,7 +632,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -636,14 +653,15 @@ class RecordsController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Collection type updated successfully'
+                'message' => 'Collection type updated successfully',
             ], 200);
         } catch (\Exception $e) {
             Log::error('Exception updating collection type', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to update collection type: ' . $e->getMessage()
+                'error' => 'Failed to update collection type: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -658,7 +676,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -666,7 +684,7 @@ class RecordsController extends Controller
             // Check if any entities use this type
             $entityCount = DB::table('novel_graph_vertices')
                 ->where('project_id', $project_id)
-                ->where('entity_type', function($query) use ($type_id) {
+                ->where('entity_type', function ($query) use ($type_id) {
                     $query->select('name')
                         ->from('record_entity_types')
                         ->where('id', $type_id);
@@ -675,7 +693,7 @@ class RecordsController extends Controller
 
             if ($entityCount > 0) {
                 return response()->json([
-                    'error' => "Cannot delete collection type: {$entityCount} entities are using this type. Please delete or reassign those entities first."
+                    'error' => "Cannot delete collection type: {$entityCount} entities are using this type. Please delete or reassign those entities first.",
                 ], 400);
             }
 
@@ -686,14 +704,15 @@ class RecordsController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Collection type deleted successfully'
+                'message' => 'Collection type deleted successfully',
             ], 200);
         } catch (\Exception $e) {
             Log::error('Exception deleting collection type', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to delete collection type: ' . $e->getMessage()
+                'error' => 'Failed to delete collection type: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -708,7 +727,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -725,13 +744,13 @@ class RecordsController extends Controller
         ]);
 
         // Validate that at least one option is enabled
-        if (!($validated['enable_record_keeper'] ?? false) && empty($validated['category'])) {
+        if (! ($validated['enable_record_keeper'] ?? false) && empty($validated['category'])) {
             return response()->json(['error' => 'At least one of Record Keeper or Category must be enabled'], 400);
         }
 
         try {
             $response = Http::timeout(300) // 5 minutes timeout for large manuscripts
-                ->post($this->getPythonServiceUrl() . '/api/auditor/summarize', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/summarize', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id, // Pass workspace_id for Laravel endpoint (primary method)
                     'enable_record_keeper' => $validated['enable_record_keeper'] ?? true,
@@ -748,27 +767,30 @@ class RecordsController extends Controller
                 Log::info('Summarization completed', [
                     'created' => $responseData['results']['record_keeper_entries_created'] ?? 0,
                     'updated' => $responseData['results']['record_keeper_entries_updated'] ?? 0,
-                    'errors' => count($responseData['results']['errors'] ?? [])
+                    'errors' => count($responseData['results']['errors'] ?? []),
                 ]);
+
                 return response()->json($responseData, 200);
             } else {
                 $errorBody = $response->json();
                 Log::error('Python service error summarizing', [
                     'status' => $response->status(),
                     'body' => $response->body(),
-                    'error' => $errorBody
+                    'error' => $errorBody,
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to summarize manuscript',
-                    'details' => $errorBody
+                    'details' => $errorBody,
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception summarizing manuscript', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to summarize manuscript: ' . $e->getMessage()
+                'error' => 'Failed to summarize manuscript: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -783,7 +805,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -799,7 +821,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(300) // 5 minutes timeout
-                ->post($this->getPythonServiceUrl() . '/api/auditor/extract', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/extract', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'categories' => $validated['categories'],
@@ -815,27 +837,30 @@ class RecordsController extends Controller
                     'created' => $responseData['results']['entities_created'] ?? 0,
                     'updated' => $responseData['results']['entities_updated'] ?? 0,
                     'categories' => array_keys($responseData['results']['categories_processed'] ?? []),
-                    'scan_mode' => $validated['scan_mode'] ?? 'incremental'
+                    'scan_mode' => $validated['scan_mode'] ?? 'incremental',
                 ]);
+
                 return response()->json($responseData, 200);
             } else {
                 $errorBody = $response->json();
                 Log::error('Python service error extracting entities', [
                     'status' => $response->status(),
                     'body' => $response->body(),
-                    'error' => $errorBody
+                    'error' => $errorBody,
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to extract entities',
-                    'details' => $errorBody
+                    'details' => $errorBody,
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception extracting entities', [
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
+
             return response()->json([
-                'error' => 'Failed to extract entities: ' . $e->getMessage()
+                'error' => 'Failed to extract entities: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -850,13 +875,13 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->get($this->getPythonServiceUrl() . '/api/records/categories', [
+                ->get($this->getPythonServiceUrl().'/api/records/categories', [
                     'project_id' => $project_id,
                 ]);
 
@@ -865,11 +890,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to get categories',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception getting categories', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -884,7 +910,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -897,18 +923,19 @@ class RecordsController extends Controller
             }
 
             $response = Http::timeout(30)
-                ->get($this->getPythonServiceUrl() . '/api/records/entities', $params);
+                ->get($this->getPythonServiceUrl().'/api/records/entities', $params);
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 return response()->json([
                     'error' => 'Failed to get entities',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception getting entities', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -923,13 +950,13 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->get($this->getPythonServiceUrl() . '/api/auditor/scan-status', [
+                ->get($this->getPythonServiceUrl().'/api/auditor/scan-status', [
                     'project_id' => $project_id,
                 ]);
 
@@ -938,11 +965,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to get scan status',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception getting scan status', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -957,7 +985,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -970,7 +998,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(300)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/check-consistency/records', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/check-consistency/records', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'categories' => $validated['categories'] ?? null,
@@ -983,11 +1011,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to check record consistency',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception checking record consistency', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1002,7 +1031,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1017,7 +1046,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(600) // 10 minutes for large stories
-                ->post($this->getPythonServiceUrl() . '/api/auditor/check-consistency/story', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/check-consistency/story', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'check_types' => $validated['check_types'] ?? null,
@@ -1031,11 +1060,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to check story consistency',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception checking story consistency', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1050,7 +1080,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1066,7 +1096,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(300)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/find-duplicates', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/find-duplicates', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'scope' => $validated['scope'] ?? 'all',
@@ -1081,11 +1111,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to find duplicates',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception finding duplicates', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1100,7 +1131,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1112,7 +1143,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(60)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/merge-entities', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/merge-entities', [
                     'project_id' => $project_id,
                     'source_vertex_id' => $validated['source_vertex_id'],
                     'target_vertex_id' => $validated['target_vertex_id'],
@@ -1123,13 +1154,15 @@ class RecordsController extends Controller
                 return response()->json($response->json(), 200);
             } else {
                 $pythonResponse = $response->json();
+
                 return response()->json([
                     'error' => $pythonResponse['error'] ?? 'Failed to merge entities',
-                    'details' => $pythonResponse
+                    'details' => $pythonResponse,
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception merging entities', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1144,7 +1177,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1156,7 +1189,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(120)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/refresh-properties', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/refresh-properties', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'vertex_id' => $validated['vertex_id'],
@@ -1169,11 +1202,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to refresh entity properties',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception refreshing entity properties', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1188,7 +1222,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1203,7 +1237,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(600) // 10 minute timeout for bulk operation (many entities)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/refresh-all-properties', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/refresh-all-properties', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'categories' => $validated['categories'] ?? null,
@@ -1217,11 +1251,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to refresh all properties',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception refreshing all properties', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1236,7 +1271,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1252,7 +1287,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(120)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/apply-fix', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/apply-fix', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'entity_name' => $validated['entity_name'],
@@ -1269,11 +1304,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to apply fix',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception applying consistency fix', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1289,7 +1325,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1306,7 +1342,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(120)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/fix-story-text', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/fix-story-text', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'issue_type' => $validated['issue_type'],
@@ -1324,11 +1360,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to generate story fix',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception generating story fix', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1344,7 +1381,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1362,7 +1399,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(180) // 3 minutes for batch processing
-                ->post($this->getPythonServiceUrl() . '/api/auditor/batch-fix-story-text', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/batch-fix-story-text', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'issues' => $validated['issues'],
@@ -1375,11 +1412,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to generate batch story fixes',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception generating batch story fixes', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1399,7 +1437,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1416,13 +1454,13 @@ class RecordsController extends Controller
 
         // Use V2 by default (chapter-based analysis)
         $useV2 = $validated['use_v2'] ?? true;
-        $endpoint = $useV2 
+        $endpoint = $useV2
             ? '/api/auditor/extract-relationships-v2'
             : '/api/auditor/extract-relationships';
 
         try {
             $response = Http::timeout(300) // 5 minutes for relationship extraction
-                ->post($this->getPythonServiceUrl() . $endpoint, [
+                ->post($this->getPythonServiceUrl().$endpoint, [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'character_ids' => $validated['character_ids'] ?? null,
@@ -1437,15 +1475,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error extracting relationships', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to extract relationships',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception extracting relationships', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1460,7 +1500,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1471,7 +1511,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(300)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/scan-relationship-changes', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/scan-relationship-changes', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'model' => $validated['model'] ?? 'gemini-2.5-flash',
@@ -1483,15 +1523,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error scanning relationship changes', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to scan relationship changes',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception scanning relationship changes', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1506,28 +1548,30 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(60)
-                ->delete($this->getPythonServiceUrl() . '/api/auditor/interactions/delete-all?project_id=' . urlencode($project_id));
+                ->delete($this->getPythonServiceUrl().'/api/auditor/interactions/delete-all?project_id='.urlencode($project_id));
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 Log::error('Python service error deleting interactions', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to delete interactions',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception deleting interactions', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1541,28 +1585,30 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(60)
-                ->delete($this->getPythonServiceUrl() . '/api/auditor/interactions/' . $vertex_id . '?project_id=' . urlencode($project_id));
+                ->delete($this->getPythonServiceUrl().'/api/auditor/interactions/'.$vertex_id.'?project_id='.urlencode($project_id));
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 Log::error('Python service error deleting interaction', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to delete interaction',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception deleting interaction', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1576,7 +1622,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1590,9 +1636,9 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(60)
-                ->put($this->getPythonServiceUrl() . '/api/auditor/interactions/' . $vertex_id, [
+                ->put($this->getPythonServiceUrl().'/api/auditor/interactions/'.$vertex_id, [
                     'project_id' => $project_id,
-                    ...$validated
+                    ...$validated,
                 ]);
 
             if ($response->successful()) {
@@ -1600,15 +1646,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error updating interaction', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to update interaction',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception updating interaction', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1622,7 +1670,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1640,9 +1688,9 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(60)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/interactions/create', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/interactions/create', [
                     'project_id' => $project_id,
-                    ...$validated
+                    ...$validated,
                 ]);
 
             if ($response->successful()) {
@@ -1650,15 +1698,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error creating interaction', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to create interaction',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception creating interaction', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1673,7 +1723,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1684,7 +1734,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(120)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/apply-relationship-changes', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/apply-relationship-changes', [
                     'project_id' => $project_id,
                     'changes' => $validated['changes'],
                 ]);
@@ -1694,15 +1744,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error applying relationship changes', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to apply relationship changes',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception applying relationship changes', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1721,7 +1773,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1730,7 +1782,7 @@ class RecordsController extends Controller
 
         try {
             $queryParams = ['project_id' => $project_id];
-            
+
             if ($sourceCharacter) {
                 $queryParams['source_character'] = $sourceCharacter;
             }
@@ -1739,22 +1791,24 @@ class RecordsController extends Controller
             }
 
             $response = Http::timeout(60)
-                ->get($this->getPythonServiceUrl() . '/api/auditor/interactions', $queryParams);
+                ->get($this->getPythonServiceUrl().'/api/auditor/interactions', $queryParams);
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 Log::error('Python service error getting interactions', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to get interactions',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception getting interactions', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1769,20 +1823,20 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         $sourceCharacter = $request->query('source_character');
         $targetCharacter = $request->query('target_character');
 
-        if (!$sourceCharacter || !$targetCharacter) {
+        if (! $sourceCharacter || ! $targetCharacter) {
             return response()->json(['error' => 'source_character and target_character are required'], 400);
         }
 
         try {
             $response = Http::timeout(60)
-                ->get($this->getPythonServiceUrl() . '/api/auditor/interactions/aggregate', [
+                ->get($this->getPythonServiceUrl().'/api/auditor/interactions/aggregate', [
                     'project_id' => $project_id,
                     'source_character' => $sourceCharacter,
                     'target_character' => $targetCharacter,
@@ -1793,15 +1847,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error aggregating interactions', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to aggregate interactions',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception aggregating interactions', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1815,7 +1871,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1828,7 +1884,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(120)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/relationships/synthesize', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/relationships/synthesize', [
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
                     'source_character' => $validated['source_character'],
@@ -1842,15 +1898,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error synthesizing relationship', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to synthesize relationship',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception synthesizing relationship', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1864,7 +1922,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1875,7 +1933,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(60)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/relationships/recalculate', [
+                ->post($this->getPythonServiceUrl().'/api/auditor/relationships/recalculate', [
                     'project_id' => $project_id,
                     'source_character' => $validated['source_character'],
                     'target_character' => $validated['target_character'],
@@ -1886,15 +1944,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error recalculating sentiment', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to recalculate sentiment',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception recalculating sentiment', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1908,7 +1968,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1919,7 +1979,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(60)
-                ->put($this->getPythonServiceUrl() . '/api/auditor/relationship/' . $edge_id . '/chapter-analyses', [
+                ->put($this->getPythonServiceUrl().'/api/auditor/relationship/'.$edge_id.'/chapter-analyses', [
                     'project_id' => $project_id,
                     'chapter_analyses' => $validated['chapter_analyses'],
                     'recalculate_overall' => $validated['recalculate_overall'] ?? true,
@@ -1930,15 +1990,17 @@ class RecordsController extends Controller
             } else {
                 Log::error('Python service error updating chapter analyses', [
                     'status' => $response->status(),
-                    'body' => $response->body()
+                    'body' => $response->body(),
                 ]);
+
                 return response()->json([
                     'error' => 'Failed to update chapter analyses',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception updating chapter analyses', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1952,24 +2014,25 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->get($this->getPythonServiceUrl() . '/api/auditor/emotional-tones/' . $project_id);
+                ->get($this->getPythonServiceUrl().'/api/auditor/emotional-tones/'.$project_id);
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 return response()->json([
                     'error' => 'Failed to get emotional tones',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception getting emotional tones', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -1983,7 +2046,7 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -1994,7 +2057,7 @@ class RecordsController extends Controller
 
         try {
             $response = Http::timeout(30)
-                ->post($this->getPythonServiceUrl() . '/api/auditor/emotional-tones/' . $project_id, [
+                ->post($this->getPythonServiceUrl().'/api/auditor/emotional-tones/'.$project_id, [
                     'name' => $validated['name'],
                     'description' => $validated['description'] ?? '',
                 ]);
@@ -2004,11 +2067,12 @@ class RecordsController extends Controller
             } else {
                 return response()->json([
                     'error' => 'Failed to create emotional tone',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception creating emotional tone', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
@@ -2022,27 +2086,26 @@ class RecordsController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
         try {
             $response = Http::timeout(30)
-                ->delete($this->getPythonServiceUrl() . '/api/auditor/emotional-tones/' . $project_id . '/' . $tone_id);
+                ->delete($this->getPythonServiceUrl().'/api/auditor/emotional-tones/'.$project_id.'/'.$tone_id);
 
             if ($response->successful()) {
                 return response()->json($response->json(), 200);
             } else {
                 return response()->json([
                     'error' => 'Failed to delete emotional tone',
-                    'details' => $response->json()
+                    'details' => $response->json(),
                 ], $response->status());
             }
         } catch (\Exception $e) {
             Log::error('Exception deleting emotional tone', ['error' => $e->getMessage()]);
+
             return response()->json(['error' => $e->getMessage()], 500);
         }
     }
 }
-
-

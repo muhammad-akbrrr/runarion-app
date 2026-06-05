@@ -10,12 +10,10 @@ import {
     RotateCcw,
     RotateCw,
     Send,
-    Book,
     SlidersHorizontal,
     RefreshCw,
     Loader2,
     Palette,
-    Network,
 } from "lucide-react";
 import { router } from "@inertiajs/react";
 import { useState, useEffect } from "react";

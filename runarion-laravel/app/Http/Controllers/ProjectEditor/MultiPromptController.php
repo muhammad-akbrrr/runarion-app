@@ -2,13 +2,13 @@
 
 namespace App\Http\Controllers\ProjectEditor;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
-use App\Models\Projects;
 use App\Models\ProjectContent;
+use App\Models\Projects;
 use App\Services\VersionControlService;
-use Inertia\Inertia;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
+use Inertia\Inertia;
 
 class MultiPromptController extends Controller
 {
@@ -28,7 +28,7 @@ class MultiPromptController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
@@ -37,7 +37,7 @@ class MultiPromptController extends Controller
         $chapters = [];
         if ($projectContent && $projectContent->content && is_array($projectContent->content)) {
             $chapters = $projectContent->content;
-            
+
             // Get current content from version control for each chapter
             foreach ($chapters as &$chapter) {
                 try {
@@ -49,7 +49,7 @@ class MultiPromptController extends Controller
                     Log::warning('Error getting version control info for chapter in multi-prompt', [
                         'project_id' => $project_id,
                         'chapter_order' => $chapter['order'] ?? null,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
                     ]);
                 }
             }

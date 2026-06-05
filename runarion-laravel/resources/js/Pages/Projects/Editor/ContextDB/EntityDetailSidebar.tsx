@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { http } from "@/Lib/http";
 import {
     X,
     Edit,
@@ -249,29 +250,25 @@ export default function EntityDetailSidebar({
         setSaving(true);
         onSavingChange?.(true);
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/records/entities/${entity.vertex_id}`,
                 {
                     method: "PUT",
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         name: editedName,
                         properties: editedProperties,
-                    }),
+                    },
                 },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 setIsEditing(false);
                 // Reload entity data to get updated properties
-                const updatedResponse = await fetch(
+                const updatedResponse = await http(
                     `/${workspaceId}/projects/${projectId}/editor/records/entities/${entity.vertex_id}`,
                     {
                         headers: {
@@ -279,8 +276,8 @@ export default function EntityDetailSidebar({
                         },
                     },
                 );
-                if (updatedResponse.ok) {
-                    const updatedData = await updatedResponse.json();
+                if (updatedResponse.status >= 200 && updatedResponse.status < 300) {
+                    const updatedData = updatedResponse.data;
                     if (updatedData.entity) {
                         setEditedProperties(
                             updatedData.entity.properties || {},
@@ -291,7 +288,7 @@ export default function EntityDetailSidebar({
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
-                    const error = await response.json();
+                    const error = response.data;
                     errorMessage = error.error || error.message || errorMessage;
                 } catch (e) {
                     console.error("Error parsing response:", e);
@@ -305,51 +302,6 @@ export default function EntityDetailSidebar({
             );
         } finally {
             setSaving(false);
-            onSavingChange?.(false);
-        }
-    };
-
-    const handleDeleteRelationship = async (edgeId: number) => {
-        if (!confirm("Are you sure you want to delete this relationship?")) {
-            return;
-        }
-
-        onSavingChange?.(true);
-        try {
-            const response = await fetch(
-                `/${workspaceId}/projects/${projectId}/editor/records/relationships/${edgeId}`,
-                {
-                    method: "DELETE",
-                    headers: {
-                        Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
-                    },
-                },
-            );
-
-            if (response.ok) {
-                onRelationshipDeleted();
-            } else {
-                let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                try {
-                    const error = await response.json();
-                    errorMessage = error.error || error.message || errorMessage;
-                } catch (e) {
-                    console.error("Error parsing response:", e);
-                }
-                alert(`Error: ${errorMessage}`);
-            }
-        } catch (error: any) {
-            console.error("Error deleting relationship:", error);
-            alert(
-                `Failed to delete relationship: ${
-                    error?.message || String(error)
-                }`,
-            );
-        } finally {
             onSavingChange?.(false);
         }
     };

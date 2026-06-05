@@ -26,11 +26,7 @@ import {
     Plus,
     Trash2,
     X,
-    Book,
-    Type,
-    Sparkles,
 } from "lucide-react";
-import { Switch } from "@/Components/ui/switch";
 import { SidebarSettingsProps, DEFAULT_SETTINGS, THINKING_MODELS, DEFAULT_THINKING_BUDGETS, MODEL_CONFIGS } from "@/types/project";
 
 export function SidebarContent({ 
@@ -51,7 +47,6 @@ export function SidebarContent({
     const currentPreset = settings.currentPreset ?? DEFAULT_SETTINGS.currentPreset;
     const authorProfile = settings.authorProfile ?? DEFAULT_SETTINGS.authorProfile;
     const aiModel = settings.aiModel ?? DEFAULT_SETTINGS.aiModel;
-    const selectionToolbarMode = settings.selectionToolbarMode ?? DEFAULT_SETTINGS.selectionToolbarMode;
     const memory = settings.memory ?? DEFAULT_SETTINGS.memory;
     const storyGenre = settings.storyGenre ?? DEFAULT_SETTINGS.storyGenre;
     const storyTone = settings.storyTone ?? DEFAULT_SETTINGS.storyTone;

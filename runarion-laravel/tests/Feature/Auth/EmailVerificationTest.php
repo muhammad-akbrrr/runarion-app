@@ -29,7 +29,7 @@ test('email can be verified', function () {
     Event::assertDispatched(Verified::class);
     expect($user->fresh()->hasVerifiedEmail())->toBeTrue();
     $response->assertRedirect(route('workspace.dashboard', [
-        'workspace_id' => $user->getActiveWorkspaceId()
+        'workspace_id' => $user->getActiveWorkspaceId(),
     ], absolute: false).'?verified=1');
 });
 

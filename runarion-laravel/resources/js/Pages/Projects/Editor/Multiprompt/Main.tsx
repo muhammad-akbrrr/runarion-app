@@ -1,8 +1,9 @@
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import { Head, router } from "@inertiajs/react";
-import { ChainBuilder } from "../ChainBuilder/ChainBuilder";
+import { ChainBuilder } from "./ChainBuilder/ChainBuilder";
 import { useState, useEffect } from "react";
+import { http } from "@/Lib/http";
 
 export default function ProjectEditorPage({
     workspaceId,
@@ -14,14 +15,17 @@ export default function ProjectEditorPage({
     project: Project;
 }>) {
     const [chapters, setChapters] = useState<ProjectChapter[]>([]);
-    const [projectSettings, setProjectSettings] = useState(project.settings || {});
+    const [projectSettings, setProjectSettings] = useState(
+        project.settings || {},
+    );
     const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         // Load chapters
-        fetch(`/${workspaceId}/projects/${projectId}/editor/chapters`)
-            .then((res) => res.json())
-            .then((data) => {
+        http.get<{ chapters?: ProjectChapter[] }>(
+            `/${workspaceId}/projects/${projectId}/editor/chapters`,
+        )
+            .then(({ data }) => {
                 if (data.chapters) {
                     setChapters(data.chapters);
                 }
@@ -37,12 +41,16 @@ export default function ProjectEditorPage({
     }, [project.settings]);
 
     // Get AI model from settings - log for debugging
-    const aiModel = projectSettings?.aiModel || project.settings?.aiModel || 'gemini-2.5-flash';
-    const authorProfile = projectSettings?.authorProfile || project.settings?.authorProfile;
-    
+    const aiModel =
+        projectSettings?.aiModel ||
+        project.settings?.aiModel ||
+        "gemini-2.5-flash";
+    const authorProfile =
+        projectSettings?.authorProfile || project.settings?.authorProfile;
+
     // Debug logging
     useEffect(() => {
-        console.log('Multi-Node: AI Model selection', {
+        console.log("Multi-Node: AI Model selection", {
             projectSettings_aiModel: projectSettings?.aiModel,
             project_settings_aiModel: project.settings?.aiModel,
             final_aiModel: aiModel,
@@ -55,36 +63,41 @@ export default function ProjectEditorPage({
         if (text && text.trim()) {
             try {
                 // Save content server-side first (avoids storage size limits)
-                const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-                const response = await fetch(
+                const response = await http(
                     `/${workspaceId}/projects/${projectId}/editor/chain-builder/apply-to-story`,
                     {
-                        method: 'POST',
+                        method: "POST",
                         headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'X-CSRF-TOKEN': csrfToken,
+                            "Content-Type": "application/json",
+                            Accept: "application/json",
                         },
-                        body: JSON.stringify({
+                        data: {
                             result_text: text,
                             // chapter_order: optional, defaults to last chapter
-                        }),
-                    }
+                        },
+                    },
                 );
 
-                if (response.ok) {
+                if (response.status >= 200 && response.status < 300) {
                     // Content saved successfully, navigate to editor
-                    router.visit(`/${workspaceId}/projects/${projectId}/editor`, {
-                        preserveScroll: false,
-                    });
+                    router.visit(
+                        `/${workspaceId}/projects/${projectId}/editor`,
+                        {
+                            preserveScroll: false,
+                        },
+                    );
                 } else {
-                    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
-                    console.error('Failed to apply result:', error);
-                    alert(`Failed to save content: ${error.error || 'Please try again.'}`);
+                    const error = response.data.catch(() => ({
+                        error: "Unknown error",
+                    }));
+                    console.error("Failed to apply result:", error);
+                    alert(
+                        `Failed to save content: ${error.error || "Please try again."}`,
+                    );
                 }
             } catch (error) {
-                console.error('Error applying result:', error);
-                alert('Failed to save content. Please try again.');
+                console.error("Error applying result:", error);
+                alert("Failed to save content. Please try again.");
             }
         }
     };
@@ -97,7 +110,10 @@ export default function ProjectEditorPage({
             isSaving={isLoading}
         >
             <Head title="Multi-Node Prompt Builder" />
-            <div className="w-full h-full" style={{ minHeight: 'calc(100vh - 4rem)' }}>
+            <div
+                className="w-full h-full"
+                style={{ minHeight: "calc(100vh - 4rem)" }}
+            >
                 <ChainBuilder
                     workspaceId={workspaceId}
                     projectId={projectId}

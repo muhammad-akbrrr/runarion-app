@@ -28,21 +28,19 @@ import { PageProps, Project, ProjectChapter } from "@/types";
 import type { AuthorStyle } from "@/types/files";
 import type { PipelineLock } from "@/types/project";
 import AddChapterDialog from "./Partials/AddChapterDialog";
-import { useProjectEditor } from "./hooks";
-import { PendingEditsProvider } from "./contexts/PendingEditsContext";
+import { useProjectEditor } from "./Hooks";
+import { PendingEditsProvider } from "./Contexts/PendingEditsContext";
 import { MagicWandButton } from "@/Components/MagicWandButton";
-import { findBestMatch } from "./utils/fuzzyTextMatch";
+import { findBestMatch } from "./Utils/fuzzyTextMatch";
 import {
     getPlainTextFromEditor,
     replaceTextInLexicalEditor,
     insertChainBuilderResult,
-} from "./utils/lexicalTextReplace";
-import {
-    isLexicalJSON,
-    extractTextFromNode,
-} from "./utils/lexicalTextExtract";
+} from "./Utils/lexicalTextReplace";
+import { isLexicalJSON, extractTextFromNode } from "./Utils/lexicalTextExtract";
 import { toast } from "sonner";
-import { useWorkspacePipelineEvents } from "@/hooks/useWorkspacePipelineEvents";
+import { useWorkspacePipelineEvents } from "@/Hooks/useWorkspacePipelineEvents";
+import { http } from "@/Lib/http";
 
 /**
  * Calculate word count from content (handles both Lexical JSON and plain text)
@@ -84,7 +82,6 @@ export default function ProjectEditorPage({
     chapters?: ProjectChapter[];
 }>) {
     const {
-        errors,
         authorStyles: rawAuthorStyles,
         projectPipelineLock: rawProjectPipelineLock,
         flash,
@@ -95,9 +92,7 @@ export default function ProjectEditorPage({
 
     // Get author styles from page props (provided by controller)
     const authorStyles =
-        (
-            rawAuthorStyles as AuthorStyle[] | undefined
-        )?.map((style) => ({
+        (rawAuthorStyles as AuthorStyle[] | undefined)?.map((style) => ({
             id: style.id,
             name: style.name,
             status: style.status,
@@ -119,7 +114,6 @@ export default function ProjectEditorPage({
         selectedChapterOrder,
         isStreaming,
         streamingText,
-        streamError,
         isRegenerating,
         baseContent,
         isColorCoded,
@@ -130,8 +124,6 @@ export default function ProjectEditorPage({
         handleSettingChange,
         handleGenerateText,
         handleRegenerateText,
-        handleCancelGeneration,
-        saveContent,
         smartSave,
         flushSettingsBeforeNavigation,
     } = useProjectEditor({
@@ -211,8 +203,8 @@ export default function ProjectEditorPage({
     // Kept for backward compatibility with any bookmarked URLs or edge cases.
     useEffect(() => {
         const urlParams = new URLSearchParams(window.location.search);
-        const chainResult = urlParams.get('chainBuilderResult');
-        const chainTimestamp = urlParams.get('chainBuilderTimestamp');
+        const chainResult = urlParams.get("chainBuilderResult");
+        const chainTimestamp = urlParams.get("chainBuilderTimestamp");
 
         if (chainResult && chainTimestamp && editorRef.current) {
             // Process only once per timestamp
@@ -225,30 +217,29 @@ export default function ProjectEditorPage({
             insertChainBuilderResult(editorRef.current, chainResult)
                 .then(() => {
                     // Mark as processed
-                    sessionStorage.setItem(processedKey, 'true');
+                    sessionStorage.setItem(processedKey, "true");
 
                     // Clean up URL params
                     const newUrl = window.location.pathname;
-                    window.history.replaceState({}, '', newUrl);
+                    window.history.replaceState({}, "", newUrl);
 
                     // Show success toast
-                    toast.success('Chain builder result appended to story');
+                    toast.success("Chain builder result appended to story");
 
                     // Save the updated content
                     if (selectedChapter && editorRef.current) {
                         const updatedJson = JSON.stringify(
-                            editorRef.current.getEditorState().toJSON()
+                            editorRef.current.getEditorState().toJSON(),
                         );
-                        smartSave(
-                            selectedChapter.order,
-                            updatedJson,
-                            "manual",
-                        );
+                        smartSave(selectedChapter.order, updatedJson, "manual");
                     }
                 })
                 .catch((error) => {
-                    console.error('Failed to insert chain builder result:', error);
-                    toast.error('Failed to append chain builder result');
+                    console.error(
+                        "Failed to insert chain builder result:",
+                        error,
+                    );
+                    toast.error("Failed to append chain builder result");
                 });
         }
     }, [projectId, selectedChapter, smartSave]);
@@ -262,10 +253,22 @@ export default function ProjectEditorPage({
             isPipelineLocked,
             contentLength: (content ?? "").length, // Handle null content
         });
-        if (selectedChapter && !isInteracting && !isStreaming && !isPipelineLocked) {
+        if (
+            selectedChapter &&
+            !isInteracting &&
+            !isStreaming &&
+            !isPipelineLocked
+        ) {
             smartSave(selectedChapter.order, content, "manual");
         }
-    }, [selectedChapter, content, smartSave, isInteracting, isStreaming, isPipelineLocked]);
+    }, [
+        selectedChapter,
+        content,
+        smartSave,
+        isInteracting,
+        isStreaming,
+        isPipelineLocked,
+    ]);
 
     // Add Chapter Dialog state
     const [addChapterDialogOpen, setAddChapterDialogOpen] = useState(false);
@@ -276,7 +279,9 @@ export default function ProjectEditorPage({
     // Handler for adding a new chapter
     const handleAddChapterClick = async () => {
         if (isPipelineLocked) {
-            toast.error("This project is locked while the novel pipeline is processing.");
+            toast.error(
+                "This project is locked while the novel pipeline is processing.",
+            );
             return;
         }
         if (!newChapterName.trim()) return;
@@ -346,7 +351,9 @@ export default function ProjectEditorPage({
 
     const handleSaveChapterEdit = async () => {
         if (isPipelineLocked) {
-            toast.error("This project is locked while the novel pipeline is processing.");
+            toast.error(
+                "This project is locked while the novel pipeline is processing.",
+            );
             return;
         }
         if (!editingChapter || !editingChapterName.trim()) return;
@@ -355,33 +362,24 @@ export default function ProjectEditorPage({
         setEditChapterLoading(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/chapter/${editingChapter.order}`,
                 {
                     method: "PATCH",
-                    headers: {
-                        "Content-Type": "application/json",
-                        Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
-                    },
-                    body: JSON.stringify({
+                    data: {
                         chapter_name: editingChapterName.trim(),
-                    }),
+                    },
                 },
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
                 // Reload the page to get updated chapters
                 router.reload();
                 setEditChapterDialogOpen(false);
                 setEditingChapter(null);
                 setEditingChapterName("");
             } else {
-                const error = await response.json();
+                const error = response.data;
                 setEditChapterError(error.error || "Failed to update chapter");
             }
         } catch (error: any) {
@@ -395,7 +393,9 @@ export default function ProjectEditorPage({
     // Handle delete chapter
     const handleDeleteChapter = async (chapter: ProjectChapter) => {
         if (isPipelineLocked) {
-            toast.error("This project is locked while the novel pipeline is processing.");
+            toast.error(
+                "This project is locked while the novel pipeline is processing.",
+            );
             return;
         }
         if (
@@ -407,25 +407,21 @@ export default function ProjectEditorPage({
         }
 
         try {
-            const response = await fetch(
+            const response = await http(
                 `/${workspaceId}/projects/${projectId}/editor/chapter/${chapter.order}`,
                 {
                     method: "DELETE",
                     headers: {
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
                 },
             );
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 // Reload the page to get updated chapters
                 router.reload();
             } else {
-                const error = await response.json();
+                const error = response.data;
                 alert(error.error || "Failed to delete chapter");
             }
         } catch (error: any) {
@@ -448,7 +444,9 @@ export default function ProjectEditorPage({
         onSwitchVersion: versionControl.switchVersion,
         onRegenerate: () => {
             if (isPipelineLocked) {
-                toast.error("This project is locked while the novel pipeline is processing.");
+                toast.error(
+                    "This project is locked while the novel pipeline is processing.",
+                );
                 return;
             }
             handleRegenerateText();
@@ -608,7 +606,9 @@ export default function ProjectEditorPage({
                                     <Button
                                         variant="outline"
                                         className="flex flex-row justify-between items-center w-50 overflow-hidden"
-                                        disabled={isGenerating || isPipelineLocked}
+                                        disabled={
+                                            isGenerating || isPipelineLocked
+                                        }
                                     >
                                         <p className="truncate">
                                             {selectedChapter
@@ -638,7 +638,8 @@ export default function ProjectEditorPage({
                                                         <DropdownMenuRadioItem
                                                             value={chapter.order.toString()}
                                                             disabled={
-                                                                isGenerating || isPipelineLocked
+                                                                isGenerating ||
+                                                                isPipelineLocked
                                                             }
                                                             className="flex items-center justify-between"
                                                         >
@@ -667,7 +668,8 @@ export default function ProjectEditorPage({
                                                                         );
                                                                     }}
                                                                     disabled={
-                                                                        isGenerating || isPipelineLocked
+                                                                        isGenerating ||
+                                                                        isPipelineLocked
                                                                     }
                                                                 >
                                                                     <Edit className="h-3 w-3" />
@@ -691,7 +693,8 @@ export default function ProjectEditorPage({
                                                                         );
                                                                     }}
                                                                     disabled={
-                                                                        isGenerating || isPipelineLocked
+                                                                        isGenerating ||
+                                                                        isPipelineLocked
                                                                     }
                                                                 >
                                                                     <Trash2 className="h-3 w-3" />
@@ -843,7 +846,9 @@ export default function ProjectEditorPage({
                             <EditorToolbar
                                 onSend={() => {
                                     if (isPipelineLocked) {
-                                        toast.error("This project is locked while the novel pipeline is processing.");
+                                        toast.error(
+                                            "This project is locked while the novel pipeline is processing.",
+                                        );
                                         return;
                                     }
                                     // Get current editor content directly before generating

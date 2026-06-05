@@ -172,7 +172,7 @@ export default function OnboardingDialog({
                     setIsProcessing(false);
                     handleClose();
                 },
-                onError: (errors: any) => {
+                onError: (_errors: any) => {
                     setIsProcessing(false);
                 },
             },
@@ -228,7 +228,7 @@ export default function OnboardingDialog({
                 onSuccess: () => {
                     setIsProcessing(false);
                 },
-                onError: (errors: any) => {
+                onError: (_errors: any) => {
                     setIsProcessing(false);
                 },
             },

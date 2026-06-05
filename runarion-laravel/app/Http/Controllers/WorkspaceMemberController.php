@@ -18,13 +18,12 @@ class WorkspaceMemberController extends Controller
     /**
      * Get the existence and membership status of users based on their emails within a workspace.
      *
-     * @param array $emails An array of email addresses to check.
-     * @param string $workspaceId The id of the workspace to check membership against.
-     *
-     * @return array{is_exists: bool, is_member: bool}[] 
-     * An array with the same length as the $emails array. Each element has keys:
-     *               - 'is_exists' (bool):  true if a user with the corresponding email exists
-     *               - 'is_member' (bool):  true if the user is a member of the workspace
+     * @param  array  $emails  An array of email addresses to check.
+     * @param  string  $workspaceId  The id of the workspace to check membership against.
+     * @return array{is_exists: bool, is_member: bool}[]
+     *                                                   An array with the same length as the $emails array. Each element has keys:
+     *                                                   - 'is_exists' (bool):  true if a user with the corresponding email exists
+     *                                                   - 'is_member' (bool):  true if the user is a member of the workspace
      */
     private function getExistAndMembershipStatus(array $emails, string $workspaceId): array
     {
@@ -120,7 +119,7 @@ class WorkspaceMemberController extends Controller
             ->fromSub($unionQuery, 'combined');
 
         $totalMembers = $combinedMembers->count();
-            
+
         $members = $combinedMembers
             ->orderByRaw("CASE WHEN role = 'owner' THEN 1 WHEN role = 'admin' THEN 2 ELSE 3 END")
             ->orderByRaw("COALESCE(name, '')")
@@ -136,7 +135,7 @@ class WorkspaceMemberController extends Controller
                 'is_verified' => $member->email_verified_at !== null,
             ])
             ->toArray();
-        
+
         return Inertia::render('Workspace/Member', [
             'workspaceId' => $workspace_id,
             'limit' => $limit,
@@ -182,18 +181,18 @@ class WorkspaceMemberController extends Controller
         ]);
         $targetUserRole = $validated['role'];
         $targetUserEmails = $validated['user_emails'];
-        
+
         $workspace = DB::table('workspaces')->where('id', $workspace_id)->first();
-        if (!$workspace) {
+        if (! $workspace) {
             abort(401, 'Workspace not found.');
         }
 
         $userRole = $request->attributes->get('user_role');
 
-        $isAuthorized = $targetUserRole === 'admin' ? 
-            $userRole === 'owner' : 
+        $isAuthorized = $targetUserRole === 'admin' ?
+            $userRole === 'owner' :
             in_array($userRole, ['admin', 'owner']);
-        if (!$isAuthorized) {
+        if (! $isAuthorized) {
             abort(403, "You are not authorized to assign {$targetUserRole} to this workspace.");
         }
 
@@ -206,12 +205,12 @@ class WorkspaceMemberController extends Controller
             $this->sendInvitation(
                 $workspace_id,
                 $workspace->name,
-                $targetUserEmails[$index], 
-                $status['is_exists'], 
+                $targetUserEmails[$index],
+                $status['is_exists'],
                 $targetUserRole
             );
         }
-        
+
         return Redirect::route('workspace.edit.member', ['workspace_id' => $workspace_id]);
     }
 
@@ -239,7 +238,7 @@ class WorkspaceMemberController extends Controller
             $query = DB::table('workspace_members')
                 ->where('workspace_id', $workspace_id)
                 ->where('user_id', $targetUserId);
-        } else if ($targetUserEmail !== null) {
+        } elseif ($targetUserEmail !== null) {
             $query = DB::table('workspace_invitations')
                 ->where('workspace_id', $workspace_id)
                 ->where('user_email', $targetUserEmail);
@@ -248,7 +247,7 @@ class WorkspaceMemberController extends Controller
         }
 
         $query->update(['role' => $targetUserRole]);
-        
+
         return Redirect::route('workspace.edit.member', ['workspace_id' => $workspace_id]);
     }
 
@@ -265,7 +264,7 @@ class WorkspaceMemberController extends Controller
         $targetUserEmail = $validated['user_email'] ?? null;
 
         $userRole = $request->attributes->get('user_role');
-        
+
         if ($userRole !== 'owner' && $userRole !== 'admin') {
             abort(403, 'You are not authorized to remove members from this workspace.');
         }
@@ -274,7 +273,7 @@ class WorkspaceMemberController extends Controller
             $query = DB::table('workspace_members')
                 ->where('workspace_id', $workspace_id)
                 ->where('user_id', $targetUserId);
-        } else if ($targetUserEmail !== null) {
+        } elseif ($targetUserEmail !== null) {
             $query = DB::table('workspace_invitations')
                 ->where('workspace_id', $workspace_id)
                 ->where('user_email', $targetUserEmail);
@@ -329,7 +328,6 @@ class WorkspaceMemberController extends Controller
         return Redirect::route('workspace.dashboard', ['workspace_id' => $defaultWorkspaceId]);
     }
 
-    
     /**
      * Accept a workspace invitation
      */
@@ -340,21 +338,21 @@ class WorkspaceMemberController extends Controller
             ->where('token', $token)
             ->where('expired_at', '>', Carbon::now())
             ->first();
-        
-        if (!$invitation) {
+
+        if (! $invitation) {
             return Inertia::render('Workspace/Invitation', [
-                'status' => 'invalid'
+                'status' => 'invalid',
             ]);
         }
 
         // Find user id by email
         $userId = DB::table('users')->where('email', $invitation->user_email)->value('id');
-        if (!$userId) {
+        if (! $userId) {
             return Inertia::render('Workspace/Invitation', [
                 'status' => 'unregistered',
             ]);
         }
-        
+
         // Add user to workspace
         DB::table('workspace_members')->insert([
             'id' => Str::ulid()->toString(),
@@ -362,14 +360,14 @@ class WorkspaceMemberController extends Controller
             'user_id' => $userId,
             'role' => $invitation->role,
         ]);
-        
+
         // Delete the invitation
         DB::table('workspace_invitations')
             ->where('id', $invitation->id)
             ->delete();
-        
+
         return Inertia::render('Workspace/Invitation', [
-                'status' => 'success',
-            ]);
+            'status' => 'success',
+        ]);
     }
 }

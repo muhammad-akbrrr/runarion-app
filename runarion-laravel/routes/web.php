@@ -1,15 +1,15 @@
 <?php
 
-use Inertia\Inertia;
-use Illuminate\Support\Facades\Route;
-use Illuminate\Foundation\Application;
+use App\Http\Controllers\CloudStorageController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\FileManagerController;
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\WorkspaceController;
 use App\Http\Controllers\WorkspaceMemberController;
-use App\Http\Controllers\ProjectController;
-use App\Http\Controllers\CloudStorageController;
+use Illuminate\Foundation\Application;
+use Illuminate\Support\Facades\Route;
+use Inertia\Inertia;
 
 Route::get('/', function () {
     return Inertia::render('Welcome', [
@@ -24,7 +24,7 @@ Route::get('/', function () {
 Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/dashboard', [DashboardController::class, 'show'])->name('workspace.dashboard');
 
-    Route::get('/dashboard', fn() => '')->name('raw.workspace.dashboard');
+    Route::get('/dashboard', fn () => '')->name('raw.workspace.dashboard');
 });
 
 // Projects Routes
@@ -36,8 +36,8 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::delete('/{workspace_id}/projects/{project_id}', [ProjectController::class, 'destroyProject'])->middleware('project-unlocked')->name('workspace.projects.destroy');
     Route::delete('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'destroyFolder'])->name('workspace.folders.destroy');
 
-    Route::get('/projects', fn() => '')->name('raw.workspace.projects');
-    Route::get('/projects/folder/{folder_id}', fn() => '')->name('raw.workspace.folders.open');
+    Route::get('/projects', fn () => '')->name('raw.workspace.projects');
+    Route::get('/projects/folder/{folder_id}', fn () => '')->name('raw.workspace.folders.open');
 });
 
 // File Manager Routes
@@ -48,7 +48,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::patch('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'updateAuthorStyle'])->name('workspace.files.author-styles.update');
     Route::delete('/{workspace_id}/files/author-styles/{author_style_id}', [FileManagerController::class, 'deleteAuthorStyle'])->name('workspace.files.author-styles.delete');
 
-    Route::get('/files', fn() => '')->name('raw.workspace.files');
+    Route::get('/files', fn () => '')->name('raw.workspace.files');
 });
 
 // Project Settings Routes
@@ -62,10 +62,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/settings/backups', [ProjectController::class, 'backups'])->name('workspace.projects.edit.backups');
     Route::get('/{workspace_id}/projects/{project_id}/settings/activity', [ProjectController::class, 'activity'])->name('workspace.projects.edit.activity');
 
-    Route::get('/projects/{project_id}/settings', fn() => '')->name('raw.workspace.projects.edit');
-    Route::get('/projects/{project_id}/settings/access', fn() => '')->name('raw.workspace.projects.edit.access');
-    Route::get('/projects/{project_id}/settings/backups', fn() => '')->name('raw.workspace.projects.edit.backups');
-    Route::get('/projects/{project_id}/settings/activity', fn() => '')->name('raw.workspace.projects.edit.activity');
+    Route::get('/projects/{project_id}/settings', fn () => '')->name('raw.workspace.projects.edit');
+    Route::get('/projects/{project_id}/settings/access', fn () => '')->name('raw.workspace.projects.edit.access');
+    Route::get('/projects/{project_id}/settings/backups', fn () => '')->name('raw.workspace.projects.edit.backups');
+    Route::get('/projects/{project_id}/settings/activity', fn () => '')->name('raw.workspace.projects.edit.activity');
 });
 
 // User Settings Routes
@@ -89,10 +89,10 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::get('/{workspace_id}/settings/billing', [WorkspaceController::class, 'editBilling'])->name('workspace.edit.billing');
     Route::delete('/{workspace_id}', [WorkspaceController::class, 'destroy'])->name('workspace.destroy');
 
-    Route::get('/settings', fn() => '')->name('raw.workspace.edit');
-    Route::get('/settings/cloud-storage', fn() => '')->name('raw.workspace.edit.cloud-storage');
-    Route::get('/settings/llm', fn() => '')->name('raw.workspace.edit.llm');
-    Route::get('/settings/billing', fn() => '')->name('raw.workspace.edit.billing');
+    Route::get('/settings', fn () => '')->name('raw.workspace.edit');
+    Route::get('/settings/cloud-storage', fn () => '')->name('raw.workspace.edit.cloud-storage');
+    Route::get('/settings/llm', fn () => '')->name('raw.workspace.edit.llm');
+    Route::get('/settings/billing', fn () => '')->name('raw.workspace.edit.billing');
 });
 
 // Workspace Members Routes
@@ -104,7 +104,7 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::delete('/{workspace_id}/settings/members', [WorkspaceMemberController::class, 'remove'])->name('workspace.remove.member');
     Route::delete('/{workspace_id}/leave', [WorkspaceMemberController::class, 'leave'])->name('workspace.leave');
 
-    Route::get('/settings/members', fn() => '')->name('raw.workspace.edit.member');
+    Route::get('/settings/members', fn () => '')->name('raw.workspace.edit.member');
 });
 
 // OAuth callback & connect/disconnect
@@ -120,14 +120,14 @@ Route::middleware(['auth'])->group(function () {
                 ->name('cloudstorage.disconnect');
 
             // file operations
-            Route::get ('/{provider}/files',              [CloudStorageController::class, 'listFiles'])
+            Route::get('/{provider}/files', [CloudStorageController::class, 'listFiles'])
                 ->name('cloudstorage.files.list');
-            Route::post('/{provider}/files/upload',       [CloudStorageController::class, 'upload'])
+            Route::post('/{provider}/files/upload', [CloudStorageController::class, 'upload'])
                 ->name('cloudstorage.files.upload');
-            Route::get ('/{provider}/files/download/{path}', [CloudStorageController::class, 'download'])
+            Route::get('/{provider}/files/download/{path}', [CloudStorageController::class, 'download'])
                 ->where('path', '.*')
                 ->name('cloudstorage.files.download');
-            Route::delete('/{provider}/files/{path}',     [CloudStorageController::class, 'delete'])
+            Route::delete('/{provider}/files/{path}', [CloudStorageController::class, 'delete'])
                 ->where('path', '.*')
                 ->name('cloudstorage.files.delete');
         });
@@ -136,5 +136,5 @@ Route::middleware(['auth'])->group(function () {
 // Workspace invitation accept route (no auth required)
 Route::get('/workspace-invitation/{token}', [WorkspaceMemberController::class, 'accept'])->name('workspace-invitation.accept');
 
-require __DIR__ . '/auth.php';
-require __DIR__ . '/editor.php';
+require __DIR__.'/auth.php';
+require __DIR__.'/editor.php';

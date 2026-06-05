@@ -15,8 +15,7 @@ class NovelPipelineImportService
     public function __construct(
         private readonly VersionControlService $versionControl,
         private readonly LexicalContentSerializer $lexicalContentSerializer,
-    ) {
-    }
+    ) {}
 
     public function importCompletedRun(PipelineRun $run): void
     {
@@ -26,13 +25,13 @@ class NovelPipelineImportService
             return;
         }
 
-        if (!$lockedRun->project_id) {
+        if (! $lockedRun->project_id) {
             throw new RuntimeException('Pipeline run is missing project linkage.');
         }
 
         $project = Projects::query()->findOrFail($lockedRun->project_id);
 
-        if (!$lockedRun->project_snapshot_id) {
+        if (! $lockedRun->project_snapshot_id) {
             $snapshotId = $this->versionControl->createSnapshot(
                 $project->id,
                 'Pre-pipeline rewrite import',

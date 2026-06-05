@@ -1,4 +1,4 @@
-import { Link, router } from "@inertiajs/react";
+import { Link } from "@inertiajs/react";
 import { Ellipsis } from "lucide-react";
 import { Badge } from "@/Components/ui/badge";
 import type { PipelineLock } from "@/types/project";

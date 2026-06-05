@@ -13,14 +13,11 @@ export default function ProjectEditorPage({
     projectId: string;
     project: Project;
 }>) {
-    const [isSaving, setIsSaving] = useState(false);
     const [isIndicatorVisible, setIsIndicatorVisible] = useState(false);
     const indicatorDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
     // Debounced handler for save state changes - keeps indicator visible for 1.5s after save completes
     const handleSavingChange = useCallback((saving: boolean) => {
-        setIsSaving(saving);
-
         if (saving) {
             // Show indicator immediately when saving starts
             setIsIndicatorVisible(true);

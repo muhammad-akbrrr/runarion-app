@@ -12,8 +12,7 @@ class RejectLockedProjectMutations
 {
     public function __construct(
         private readonly ProjectPipelineStateService $pipelineStateService,
-    ) {
-    }
+    ) {}
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -24,12 +23,12 @@ class RejectLockedProjectMutations
         $workspaceId = $request->route('workspace_id');
         $projectId = $request->route('project_id');
 
-        if (!$workspaceId || !$projectId) {
+        if (! $workspaceId || ! $projectId) {
             return $next($request);
         }
 
         $lock = $this->pipelineStateService->getProjectLock($workspaceId, $projectId);
-        if (!$lock) {
+        if (! $lock) {
             return $next($request);
         }
 

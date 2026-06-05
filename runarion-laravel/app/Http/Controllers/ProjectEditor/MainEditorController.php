@@ -2,26 +2,26 @@
 
 namespace App\Http\Controllers\ProjectEditor;
 
-use Illuminate\Http\Request;
-use App\Models\Projects;
-use App\Models\ProjectContent;
-use App\Http\Controllers\Controller;
-use App\Models\AuthorStyle;
-use Inertia\Inertia;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
-use App\Jobs\StreamLLMJob;
-use App\Events\ProjectContentUpdated;
 use App\Events\LLMStreamCompleted;
-use Illuminate\Support\Facades\Http;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Cache;
+use App\Events\OperationStateChanged;
+use App\Events\ProjectContentUpdated;
+use App\Http\Controllers\Controller;
+use App\Jobs\StreamLLMJob;
+use App\Models\AuthorStyle;
+use App\Models\ProjectContent;
+use App\Models\Projects;
 use App\Services\AuthorStyleFormatter;
 use App\Services\NovelPipelineOrchestratorService;
 use App\Services\ProjectPipelineStateService;
 use App\Services\VersionControlService;
-use App\Events\OperationStateChanged;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Inertia\Inertia;
 
 class MainEditorController extends Controller
 {
@@ -35,6 +35,7 @@ class MainEditorController extends Controller
     ) {
         $this->versionControl = $versionControl;
     }
+
     /**
      * Show the project editor page for a specific project.
      */
@@ -45,7 +46,7 @@ class MainEditorController extends Controller
                 ->where('workspace_id', $workspace_id)
                 ->first();
 
-            if (!$project) {
+            if (! $project) {
                 return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
                     ->withErrors(['project' => 'Project not found']);
             }
@@ -72,7 +73,7 @@ class MainEditorController extends Controller
                         Log::warning('Error getting version control info for chapter', [
                             'project_id' => $project_id,
                             'chapter_order' => $chapter['order'] ?? null,
-                            'error' => $e->getMessage()
+                            'error' => $e->getMessage(),
                         ]);
                         // Continue with default content
                     }
@@ -97,10 +98,11 @@ class MainEditorController extends Controller
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
+
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
-                ->withErrors(['editor' => 'Failed to load editor: ' . $e->getMessage()]);
+                ->withErrors(['editor' => 'Failed to load editor: '.$e->getMessage()]);
         }
     }
 
@@ -175,6 +177,7 @@ class MainEditorController extends Controller
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id])
                 ->with('success', 'Novel pipeline processing started. Your project will unlock once the rewritten manuscript is ready.');
         }
+
         return response()->json(['error' => 'Invalid method'], 400);
     }
 
@@ -192,7 +195,7 @@ class MainEditorController extends Controller
             ->firstOrFail();
 
         $projectContent = ProjectContent::where('project_id', $project_id)->first();
-        if (!$projectContent) {
+        if (! $projectContent) {
             // If no content exists, create a new ProjectContent
             $projectContent = ProjectContent::create([
                 'project_id' => $project_id,
@@ -208,9 +211,12 @@ class MainEditorController extends Controller
         foreach ($chapters as $chapter) {
             $existingName = strtolower(trim($chapter['chapter_name']));
             if ($existingName === $normalizedNewName) {
-                return back()->withErrors([
-                    'chapter_name' => "A chapter named '{$chapter['chapter_name']}' already exists."
-                ]);
+                return response()->json([
+                    'success' => false,
+                    'errors' => [
+                        'chapter_name' => "A chapter named '{$chapter['chapter_name']}' already exists.",
+                    ],
+                ], 422);
             }
         }
 
@@ -226,7 +232,7 @@ class MainEditorController extends Controller
             Log::warning('Error cleaning up version control when creating new chapter', [
                 'project_id' => $project_id,
                 'chapter_order' => $newOrder,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
 
@@ -241,9 +247,10 @@ class MainEditorController extends Controller
         $projectContent->content = $chapters;
         $projectContent->save();
 
-        return redirect()->route('workspace.projects.editor', [
-            'workspace_id' => $workspace_id,
-            'project_id' => $project_id,
+        return response()->json([
+            'success' => true,
+            'chapter' => $newChapter,
+            'chapters' => $chapters,
         ]);
     }
 
@@ -256,7 +263,7 @@ class MainEditorController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return response()->json(['error' => 'Project not found'], 404);
         }
 
@@ -277,7 +284,7 @@ class MainEditorController extends Controller
                     Log::warning('Error getting version control content for chapter in getChapters', [
                         'project_id' => $project_id,
                         'chapter_order' => $chapter['order'] ?? null,
-                        'error' => $e->getMessage()
+                        'error' => $e->getMessage(),
                     ]);
                     // Keep existing content if any
                 }
@@ -286,7 +293,7 @@ class MainEditorController extends Controller
 
         return response()->json([
             'success' => true,
-            'chapters' => $chapters
+            'chapters' => $chapters,
         ], 200);
     }
 
@@ -303,7 +310,7 @@ class MainEditorController extends Controller
         // Ensure at least one field is provided
         if (empty($validated)) {
             return response()->json([
-                'error' => 'At least chapter_name or content must be provided'
+                'error' => 'At least chapter_name or content must be provided',
             ], 422);
         }
 
@@ -322,7 +329,7 @@ class MainEditorController extends Controller
                     $existingName = strtolower(trim($chapter['chapter_name']));
                     if ($existingName === $normalizedNewName) {
                         return response()->json([
-                            'error' => "A chapter named '{$chapter['chapter_name']}' already exists."
+                            'error' => "A chapter named '{$chapter['chapter_name']}' already exists.",
                         ], 422);
                     }
                 }
@@ -344,9 +351,9 @@ class MainEditorController extends Controller
             }
         }
 
-        if (!$updated) {
+        if (! $updated) {
             return response()->json([
-                'error' => 'Chapter not found'
+                'error' => 'Chapter not found',
             ], 404);
         }
 
@@ -356,7 +363,7 @@ class MainEditorController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Chapter updated successfully',
-            'chapters' => $chapters
+            'chapters' => $chapters,
         ], 200);
     }
 
@@ -385,7 +392,7 @@ class MainEditorController extends Controller
             'order_to_delete' => $order,
             'chapters_before' => $chapterCountBefore,
             'chapters_after' => $chapterCountAfter,
-            'deleted' => $chapterCountBefore - $chapterCountAfter
+            'deleted' => $chapterCountBefore - $chapterCountAfter,
         ]);
 
         // Build mapping of old orders to new orders for version control reordering
@@ -413,20 +420,20 @@ class MainEditorController extends Controller
             Log::warning('Error cleaning up version control for deleted chapter', [
                 'project_id' => $project_id,
                 'chapter_order' => $order,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
         }
 
         // Reorder version control data for remaining chapters
         // Only reorder chapters that actually changed order
-        if (!empty($oldOrders)) {
+        if (! empty($oldOrders)) {
             try {
                 $this->versionControl->reorderChapters($project_id, $oldOrders);
             } catch (\Exception $e) {
                 Log::warning('Error reordering version control data after chapter deletion', [
                     'project_id' => $project_id,
                     'order_mapping' => $oldOrders,
-                    'error' => $e->getMessage()
+                    'error' => $e->getMessage(),
                 ]);
             }
         }
@@ -434,7 +441,7 @@ class MainEditorController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Chapter deleted successfully',
-            'chapters' => $reorderedChapters
+            'chapters' => $reorderedChapters,
         ], 200);
     }
 
@@ -454,7 +461,7 @@ class MainEditorController extends Controller
             ->firstOrFail();
 
         // Use database transaction for consistency
-        DB::transaction(function () use ($validated, $project_id, $workspace_id) {
+        DB::transaction(function () use ($validated, $project_id) {
             $projectContent = ProjectContent::where('project_id', $project_id)->firstOrFail();
             $chapters = $projectContent->content ?? [];
 
@@ -571,7 +578,7 @@ class MainEditorController extends Controller
                 ->firstOrFail();
 
             $user = Auth::user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['error' => 'User not authenticated'], 401);
             }
 
@@ -583,7 +590,7 @@ class MainEditorController extends Controller
 
             // Verify the chapter exists
             $projectContent = ProjectContent::where('project_id', $project_id)->first();
-            if (!$projectContent) {
+            if (! $projectContent) {
                 return response()->json(['error' => 'Project content not found'], 404);
             }
 
@@ -593,14 +600,14 @@ class MainEditorController extends Controller
                 if (isset($chapter['order']) && $chapter['order'] === $validated['order']) {
                     $chapterExists = true;
                     // If chapter_name wasn't provided, look it up from database
-                    if (!$chapterName) {
+                    if (! $chapterName) {
                         $chapterName = $chapter['chapter_name'] ?? 'Untitled';
                     }
                     break;
                 }
             }
 
-            if (!$chapterExists) {
+            if (! $chapterExists) {
                 return response()->json(['error' => 'Chapter not found'], 404);
             }
 
@@ -644,34 +651,37 @@ class MainEditorController extends Controller
                 $chapterName // chapter name for AI context
             );
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            return response()->json([
+                'success' => true,
+                'session_id' => $sessionId,
+                'chapter_order' => $validated['order'],
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::warning('Validation error in text generation', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ]);
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
-            ])->withErrors($e->errors());
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors(),
+            ], 422);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             Log::error('Project or chapter not found for generation', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
-            ])->withErrors(['generation' => 'Project or chapter not found. Please refresh the page.']);
+            return response()->json([
+                'success' => false,
+                'errors' => [
+                    'generation' => 'Project or chapter not found. Please refresh the page.',
+                ],
+            ], 404);
 
         } catch (\Exception $e) {
             Log::error('Error starting text generation', [
@@ -695,10 +705,12 @@ class MainEditorController extends Controller
                 $errorMessage = 'Request timed out. Please try again.';
             }
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
-            ])->withErrors(['generation' => $errorMessage]);
+            return response()->json([
+                'success' => false,
+                'errors' => [
+                    'generation' => $errorMessage,
+                ],
+            ], 500);
         }
     }
 
@@ -713,7 +725,7 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'has_content' => $request->has('content'),
                 'has_settings' => $request->has('settings'),
-                'request_id' => Str::uuid()->toString()
+                'request_id' => Str::uuid()->toString(),
             ]);
 
             $validated = $request->validate([
@@ -811,12 +823,12 @@ class MainEditorController extends Controller
                                     $contentData['content'] ?? ''
                                 );
 
-                                if (!$updated) {
+                                if (! $updated) {
                                     Log::warning('Failed to update version control, but ProjectContent saved', [
                                         'project_id' => $project_id,
                                         'chapter_order' => $contentData['order'],
                                         'node_id' => $currentState['node_id'],
-                                        'version_index' => $currentState['version_index']
+                                        'version_index' => $currentState['version_index'],
                                     ]);
                                 }
                             } else {
@@ -839,7 +851,7 @@ class MainEditorController extends Controller
                                 'chapter_order' => $contentData['order'],
                                 'content_length' => strlen($contentData['content'] ?? ''),
                                 'trigger' => $contentData['trigger'] ?? 'manual',
-                                'version_control_updated' => isset($currentState)
+                                'version_control_updated' => isset($currentState),
                             ]);
 
                             // Broadcast content update event
@@ -869,7 +881,7 @@ class MainEditorController extends Controller
 
                             Log::info('Settings updated', [
                                 'project_id' => $project_id,
-                                'settings_keys' => array_keys($validated['settings'])
+                                'settings_keys' => array_keys($validated['settings']),
                             ]);
                         }
                     });
@@ -897,7 +909,7 @@ class MainEditorController extends Controller
                             'max_attempts' => $maxAttempts,
                             'delay_ms' => $delay,
                             'project_id' => $project_id,
-                            'error' => $e->getMessage()
+                            'error' => $e->getMessage(),
                         ]);
 
                         continue;
@@ -913,7 +925,7 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'content_updated' => isset($validated['content']),
                 'settings_updated' => isset($validated['settings']),
-                'attempts' => $attempt + 1
+                'attempts' => $attempt + 1,
             ]);
 
             // For XHR/Inertia PATCH requests, return the updated chapters as JSON
@@ -921,28 +933,34 @@ class MainEditorController extends Controller
             return response()->json([
                 'success' => true,
                 'chapters' => $updatedChapters,
-                'message' => 'Content saved successfully'
+                'message' => 'Content saved successfully',
             ]);
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::warning('Validation error in unified save', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ]);
 
-            return back()->withErrors($e->errors())->withInput();
+            return response()->json([
+                'success' => false,
+                'errors' => $e->errors(),
+            ], 422);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             Log::error('Project not found in unified save', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
-                'error' => $e->getMessage()
+                'error' => $e->getMessage(),
             ]);
 
-            return back()->withErrors([
-                'save' => 'Project not found. Please refresh the page.'
-            ])->setStatusCode(404);
+            return response()->json([
+                'success' => false,
+                'errors' => [
+                    'save' => 'Project not found. Please refresh the page.',
+                ],
+            ], 404);
 
         } catch (\Illuminate\Database\QueryException $e) {
             Log::error('Database error in unified save', [
@@ -950,7 +968,7 @@ class MainEditorController extends Controller
                 'project_id' => $project_id,
                 'error' => $e->getMessage(),
                 'code' => $e->getCode(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
             $errorMessage = 'Failed to save changes due to a database error. Please try again.';
@@ -964,21 +982,27 @@ class MainEditorController extends Controller
                 $errorMessage = 'Content is too large. Please reduce the size and try again.';
             }
 
-            return back()->withErrors([
-                'save' => $errorMessage
-            ])->setStatusCode(500);
+            return response()->json([
+                'success' => false,
+                'errors' => [
+                    'save' => $errorMessage,
+                ],
+            ], 500);
 
         } catch (\Exception $e) {
             Log::error('Unexpected error in unified save', [
                 'workspace_id' => $workspace_id,
                 'project_id' => $project_id,
                 'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
+                'trace' => $e->getTraceAsString(),
             ]);
 
-            return back()->withErrors([
-                'save' => 'An unexpected error occurred. Please try again.'
-            ])->setStatusCode(500);
+            return response()->json([
+                'success' => false,
+                'errors' => [
+                    'save' => 'An unexpected error occurred. Please try again.',
+                ],
+            ], 500);
         }
     }
 
@@ -998,7 +1022,7 @@ class MainEditorController extends Controller
                 ->firstOrFail();
 
             $user = Auth::user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['error' => 'User not authenticated'], 401);
             }
 
@@ -1033,7 +1057,7 @@ class MainEditorController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to cancel text generation: ' . $e->getMessage(),
+                'message' => 'Failed to cancel text generation: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1073,13 +1097,13 @@ class MainEditorController extends Controller
                 ->firstOrFail();
 
             $user = Auth::user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['error' => 'User not authenticated'], 401);
             }
 
             // Check if regeneration is possible
             $navigationInfo = $this->versionControl->getNavigationInfo($project_id, $validated['order']);
-            if (!$navigationInfo['canRegenerate']) {
+            if (! $navigationInfo['canRegenerate']) {
                 return response()->json(['error' => 'Cannot regenerate - no parent content available'], 400);
             }
 
@@ -1088,7 +1112,7 @@ class MainEditorController extends Controller
 
             // Extract chapter_name (prioritize request, fallback to lookup)
             $chapterName = $validated['chapter_name'] ?? null;
-            if (!$chapterName) {
+            if (! $chapterName) {
                 $projectContent = ProjectContent::where('project_id', $project_id)->first();
                 if ($projectContent && $projectContent->content) {
                     foreach ($projectContent->content as $chapter) {
@@ -1103,7 +1127,7 @@ class MainEditorController extends Controller
 
             // Get current state to know which node we're regenerating
             $currentState = $this->versionControl->getCurrentState($project_id, $validated['order']);
-            if (!$currentState) {
+            if (! $currentState) {
                 return response()->json(['error' => 'Cannot find current state'], 400);
             }
 
@@ -1156,9 +1180,10 @@ class MainEditorController extends Controller
                 $chapterName // chapter name for AI context
             );
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            return response()->json([
+                'success' => true,
+                'session_id' => $sessionId,
+                'chapter_order' => $validated['order'],
             ]);
 
         } catch (\Exception $e) {
@@ -1168,16 +1193,20 @@ class MainEditorController extends Controller
             ]);
 
             if (str_contains($e->getMessage(), 'quota') || str_contains($e->getMessage(), 'limit')) {
-                return redirect()->route('workspace.projects.editor', [
-                    'workspace_id' => $workspace_id,
-                    'project_id' => $project_id,
-                ])->withErrors(['generation' => 'Generation quota exceeded. Please try again later.']);
+                return response()->json([
+                    'success' => false,
+                    'errors' => [
+                        'generation' => 'Generation quota exceeded. Please try again later.',
+                    ],
+                ], 500);
             }
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
-            ])->withErrors(['generation' => 'Failed to start text regeneration.']);
+            return response()->json([
+                'success' => false,
+                'errors' => [
+                    'generation' => 'Failed to start text regeneration.',
+                ],
+            ], 500);
         }
     }
 
@@ -1198,7 +1227,7 @@ class MainEditorController extends Controller
 
             $result = $this->versionControl->switchVersion($project_id, $validated['order'], $validated['version_index']);
 
-            if (!$result) {
+            if (! $result) {
                 return response()->json(['error' => 'Failed to switch version'], 400);
             }
 
@@ -1226,9 +1255,8 @@ class MainEditorController extends Controller
                 $navigationInfo
             ));
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            return response()->json([
+                'success' => true,
             ]);
 
         } catch (\Exception $e) {
@@ -1239,7 +1267,7 @@ class MainEditorController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to switch version: ' . $e->getMessage(),
+                'message' => 'Failed to switch version: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1269,7 +1297,7 @@ class MainEditorController extends Controller
 
             $result = $this->versionControl->undoToParent($project_id, $validated['order']);
 
-            if (!$result) {
+            if (! $result) {
                 broadcast(new OperationStateChanged(
                     $workspace_id,
                     $project_id,
@@ -1277,6 +1305,7 @@ class MainEditorController extends Controller
                     'undo',
                     false
                 ));
+
                 return response()->json(['error' => 'Cannot undo - no parent step available'], 400);
             }
 
@@ -1303,9 +1332,8 @@ class MainEditorController extends Controller
                 $navigationInfo
             ));
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            return response()->json([
+                'success' => true,
             ]);
 
         } catch (\Exception $e) {
@@ -1324,7 +1352,7 @@ class MainEditorController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to undo step: ' . $e->getMessage(),
+                'message' => 'Failed to undo step: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1345,7 +1373,7 @@ class MainEditorController extends Controller
 
             $result = $this->versionControl->redoToChild($project_id, $validated['order']);
 
-            if (!$result) {
+            if (! $result) {
                 return response()->json(['error' => 'Cannot redo - no child steps available'], 400);
             }
 
@@ -1373,9 +1401,8 @@ class MainEditorController extends Controller
                 $navigationInfo
             ));
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            return response()->json([
+                'success' => true,
             ]);
 
         } catch (\Exception $e) {
@@ -1386,7 +1413,7 @@ class MainEditorController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to redo step: ' . $e->getMessage(),
+                'message' => 'Failed to redo step: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1415,9 +1442,9 @@ class MainEditorController extends Controller
                 'chapter_order' => $validated['order'],
             ]);
 
-            return redirect()->route('workspace.projects.editor', [
-                'workspace_id' => $workspace_id,
-                'project_id' => $project_id,
+            return response()->json([
+                'success' => true,
+                'message' => 'Chapter history initialized successfully.',
             ]);
 
         } catch (\Exception $e) {
@@ -1428,7 +1455,7 @@ class MainEditorController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to initialize chapter history: ' . $e->getMessage(),
+                'message' => 'Failed to initialize chapter history: '.$e->getMessage(),
             ], 500);
         }
     }
@@ -1455,7 +1482,7 @@ class MainEditorController extends Controller
                 ->firstOrFail();
 
             $user = Auth::user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['error' => 'User not authenticated'], 401);
             }
 
@@ -1495,12 +1522,13 @@ class MainEditorController extends Controller
                 'provider' => $provider,
             ]);
 
-            if (!$response->successful()) {
+            if (! $response->successful()) {
                 $error = $response->json('error') ?? 'Failed to rewrite text';
                 Log::error('Rewrite API error', [
                     'status' => $response->status(),
                     'error' => $error,
                 ]);
+
                 return response()->json(['error' => $error], $response->status());
             }
 
@@ -1514,8 +1542,9 @@ class MainEditorController extends Controller
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::warning('Validation error in rewrite selection', [
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ]);
+
             return response()->json(['error' => 'Invalid request', 'details' => $e->errors()], 422);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -1526,7 +1555,8 @@ class MainEditorController extends Controller
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json(['error' => 'Failed to rewrite text: ' . $e->getMessage()], 500);
+
+            return response()->json(['error' => 'Failed to rewrite text: '.$e->getMessage()], 500);
         }
     }
 
@@ -1549,7 +1579,7 @@ class MainEditorController extends Controller
                 ->firstOrFail();
 
             $user = Auth::user();
-            if (!$user) {
+            if (! $user) {
                 return response()->json(['error' => 'User not authenticated'], 401);
             }
 
@@ -1589,7 +1619,7 @@ class MainEditorController extends Controller
                     'chapter_content' => $validated['chapter_content'] ?? null,
                 ]);
 
-                if (!$response->successful()) {
+                if (! $response->successful()) {
                     $errorBody = $response->body();
                     $errorData = $response->json();
                     $error = $errorData['error'] ?? $errorData['message'] ?? $errorBody ?? 'Failed to enhance text';
@@ -1602,16 +1632,17 @@ class MainEditorController extends Controller
 
                     return response()->json([
                         'error' => $error,
-                        'status' => $response->status()
+                        'status' => $response->status(),
                     ], $response->status());
                 }
 
                 $result = $response->json();
 
-                if (!isset($result['enhanced_text']) || empty($result['enhanced_text'])) {
+                if (! isset($result['enhanced_text']) || empty($result['enhanced_text'])) {
                     Log::error('Enhancement API returned empty result', [
-                        'result' => $result
+                        'result' => $result,
                     ]);
+
                     return response()->json(['error' => 'Enhancement API returned empty result'], 500);
                 }
 
@@ -1625,24 +1656,27 @@ class MainEditorController extends Controller
                     'error' => $e->getMessage(),
                     'url' => "{$pythonApiUrl}/api/enhance-text",
                 ]);
+
                 return response()->json([
                     'error' => 'Could not connect to enhancement service. Please check if the Python service is running.',
-                    'details' => $e->getMessage()
+                    'details' => $e->getMessage(),
                 ], 503);
             } catch (\Illuminate\Http\Client\RequestException $e) {
                 Log::error('Enhancement API request error', [
                     'error' => $e->getMessage(),
                     'response' => $e->response?->body(),
                 ]);
+
                 return response()->json([
-                    'error' => 'Enhancement service error: ' . $e->getMessage(),
+                    'error' => 'Enhancement service error: '.$e->getMessage(),
                 ], 500);
             }
 
         } catch (\Illuminate\Validation\ValidationException $e) {
             Log::warning('Validation error in enhance text', [
-                'errors' => $e->errors()
+                'errors' => $e->errors(),
             ]);
+
             return response()->json(['error' => 'Invalid request', 'details' => $e->errors()], 422);
 
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -1660,7 +1694,8 @@ class MainEditorController extends Controller
                 'trace' => $e->getTraceAsString(),
                 'trace' => $e->getTraceAsString(),
             ]);
-            return response()->json(['error' => 'Failed to enhance text: ' . $e->getMessage()], 500);
+
+            return response()->json(['error' => 'Failed to enhance text: '.$e->getMessage()], 500);
         }
     }
 
@@ -1693,7 +1728,7 @@ class MainEditorController extends Controller
 
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to get version control info: ' . $e->getMessage(),
+                'message' => 'Failed to get version control info: '.$e->getMessage(),
             ], 500);
         }
     }

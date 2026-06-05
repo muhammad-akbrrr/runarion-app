@@ -6,63 +6,97 @@ class GraphConstants
 {
     // Vertex Labels
     public const VERTEX_CHARACTER = 'Character';
+
     public const VERTEX_LOCATION = 'Location';
+
     public const VERTEX_ITEM = 'Item';
+
     public const VERTEX_THEME = 'Theme';
+
     public const VERTEX_PLOT_POINT = 'PlotPoint';
+
     public const VERTEX_RECORD_KEEPER = 'RecordKeeper';
+
     public const VERTEX_SCENE = 'Scene';
+
     public const VERTEX_DRAFT = 'Draft';
 
     // Edge Labels - Character Relationships
     public const EDGE_APPEARS_IN = 'APPEARS_IN';
+
     public const EDGE_INTERACTS_WITH = 'INTERACTS_WITH';
+
     public const EDGE_KNOWS = 'KNOWS';
+
     public const EDGE_LOVES = 'LOVES';
+
     public const EDGE_HATES = 'HATES';
+
     public const EDGE_FOLLOWS = 'FOLLOWS';
+
     public const EDGE_LEADS = 'LEADS';
 
     // Edge Labels - Location Relationships
     public const EDGE_LOCATED_IN = 'LOCATED_IN';
+
     public const EDGE_TRAVELS_TO = 'TRAVELS_TO';
+
     public const EDGE_CONTAINS = 'CONTAINS';
 
     // Edge Labels - Item Relationships
     public const EDGE_OWNS = 'OWNS';
+
     public const EDGE_USES = 'USES';
+
     public const EDGE_FINDS = 'FINDS';
+
     public const EDGE_LOSES = 'LOSES';
+
     public const EDGE_GIVES = 'GIVES';
+
     public const EDGE_TAKES = 'TAKES';
 
     // Edge Labels - Theme Relationships
     public const EDGE_REPRESENTS = 'REPRESENTS';
+
     public const EDGE_SYMBOLIZES = 'SYMBOLIZES';
+
     public const EDGE_EMBODIES = 'EMBODIES';
 
     // Edge Labels - Plot Relationships
     public const EDGE_CAUSES = 'CAUSES';
+
     public const EDGE_LEADS_TO = 'LEADS_TO';
+
     public const EDGE_PREVENTS = 'PREVENTS';
+
     public const EDGE_RESOLVES = 'RESOLVES';
+
     public const EDGE_CONFLICTS_WITH = 'CONFLICTS_WITH';
 
     // Edge Labels - Scene Relationships
     public const EDGE_HAPPENS_IN = 'HAPPENS_IN';
+
     public const EDGE_PRECEDES = 'PRECEDES';
+
     public const EDGE_FOLLOWS_FROM = 'FOLLOWS_FROM';
 
     // Edge Labels - Draft Relationships
     public const EDGE_BELONGS_TO = 'BELONGS_TO';
+
     public const EDGE_DERIVED_FROM = 'DERIVED_FROM';
 
     // Entity Types for Metadata
     public const ENTITY_CHARACTER = 'character';
+
     public const ENTITY_LOCATION = 'location';
+
     public const ENTITY_ITEM = 'item';
+
     public const ENTITY_THEME = 'theme';
+
     public const ENTITY_PLOT_POINT = 'plot_point';
+
     public const ENTITY_RECORD_KEEPER = 'record_keeper';
 
     public static function getVertexLabels(): array

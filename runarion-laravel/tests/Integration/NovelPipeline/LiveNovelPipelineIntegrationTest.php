@@ -68,7 +68,7 @@ test('live python onboarding flow imports rewritten manuscript content', functio
         }
 
         if (($status['status'] ?? null) === PipelineRun::STATUS_FAILED) {
-            $this->fail('Python pipeline failed during live integration: ' . ($status['error_message'] ?? 'unknown error'));
+            $this->fail('Python pipeline failed during live integration: '.($status['error_message'] ?? 'unknown error'));
         }
 
         usleep(500000);

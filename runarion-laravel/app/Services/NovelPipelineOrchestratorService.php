@@ -19,8 +19,7 @@ class NovelPipelineOrchestratorService
     public function __construct(
         private readonly PythonServiceClient $pythonClient,
         private readonly ProjectPipelineStateService $pipelineStateService,
-    ) {
-    }
+    ) {}
 
     public function startProjectPipeline(
         Projects $project,
@@ -67,7 +66,7 @@ class NovelPipelineOrchestratorService
         $runId = $response['pipeline_run_id'] ?? null;
         $draftId = $response['draft_id'] ?? null;
 
-        if (!$runId || !$draftId) {
+        if (! $runId || ! $draftId) {
             throw new RuntimeException('Python pipeline start response did not include a run ID and draft ID.');
         }
 
@@ -115,7 +114,7 @@ class NovelPipelineOrchestratorService
                 ->where('workspace_id', $project->workspace_id)
                 ->find($options['selected_author_style']);
 
-            if (!$style) {
+            if (! $style) {
                 throw ValidationException::withMessages([
                     'selectedAuthorStyle' => 'The selected author style could not be found.',
                 ]);
@@ -153,7 +152,7 @@ class NovelPipelineOrchestratorService
 
     private function applyTestingProviderOverride(array $payload): array
     {
-        if (!app()->environment('testing')) {
+        if (! app()->environment('testing')) {
             return $payload;
         }
 

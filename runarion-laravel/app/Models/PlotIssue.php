@@ -19,6 +19,7 @@ class PlotIssue extends Model
     ];
 
     public const TYPE_PLOT_HOLE = '01';
+
     public const TYPE_INCONSISTENCY = '02';
 
     public static function getIssueTypeOptions(): array

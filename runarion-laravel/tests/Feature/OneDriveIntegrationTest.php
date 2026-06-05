@@ -2,9 +2,9 @@
 
 namespace Tests\Feature;
 
-use Tests\TestCase;
 use App\Services\CloudStorage\CloudStorageProviderFactory;
 use App\Services\OneDriveService;
+use Tests\TestCase;
 
 class OneDriveIntegrationTest extends TestCase
 {
@@ -16,7 +16,7 @@ class OneDriveIntegrationTest extends TestCase
 
     public function test_onedrive_service_can_be_instantiated()
     {
-        $service = new OneDriveService();
+        $service = new OneDriveService;
         $this->assertInstanceOf(OneDriveService::class, $service);
     }
 

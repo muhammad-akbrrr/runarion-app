@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { http } from "@/Lib/http";
 import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
@@ -330,7 +331,7 @@ export default function EntityForm({
     useEffect(() => {
         const loadCollectionTypes = async () => {
             try {
-                const response = await fetch(
+                const response = await http(
                     `/${workspaceId}/projects/${projectId}/editor/records/collection-types`,
                     {
                         headers: {
@@ -339,8 +340,8 @@ export default function EntityForm({
                     }
                 );
 
-                if (response.ok) {
-                    const data = await response.json();
+                if (response.status >= 200 && response.status < 300) {
+                    const data = response.data;
                     const customTypes = (
                         data.collection_types?.custom || []
                     ).map((type: CollectionType) => ({
@@ -517,30 +518,26 @@ export default function EntityForm({
             );
             const vertexLabel = selectedTypeInfo?.vertex_label;
 
-            const response = await fetch(url, {
+            const response = await http(url, {
                 method,
                 headers: {
                     "Content-Type": "application/json",
                     Accept: "application/json",
-                    "X-CSRF-TOKEN":
-                        document
-                            .querySelector('meta[name="csrf-token"]')
-                            ?.getAttribute("content") || "",
                 },
-                body: JSON.stringify({
+                data: {
                     name,
                     type,
                     properties,
                     vertex_label: vertexLabel, // Pass vertex_label for custom types
-                }),
+                },
             });
 
-            if (response.ok) {
+            if (response.status >= 200 && response.status < 300) {
                 onSaved();
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
                 try {
-                    const error = await response.json();
+                    const error = response.data;
                     console.error("Entity save error:", error);
                     errorMessage = error.error || error.message || errorMessage;
                     if (error.details) {

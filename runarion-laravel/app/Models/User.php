@@ -3,16 +3,16 @@
 namespace App\Models;
 
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
-use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\DB;
 use Laravel\Sanctum\HasApiTokens;
 
 /**
  * User Model
- * 
+ *
  * mewakili user pada sistem dengan fitur autentikasi dan manajemen workspace
  * meng extend class authenticatable laravel untuk fitur autentikasi
  */
@@ -36,7 +36,7 @@ class User extends Authenticatable
         'last_project_id',
         'settings',
         'notifications',
-        'highlighted_projects'
+        'highlighted_projects',
     ];
 
     /**

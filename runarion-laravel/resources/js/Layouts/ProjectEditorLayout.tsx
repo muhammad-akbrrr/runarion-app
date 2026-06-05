@@ -84,11 +84,6 @@ interface ActionItem {
 // NAVIGATION DATA
 // ============================================================================
 
-const footerItems: ActionItem[] = [
-    { icon: Settings, label: "Settings" },
-    { icon: FileText, label: "Documentation" },
-];
-
 const commandActions: ActionItem[] = [
     { icon: FolderPlus, label: "Create a new folder" },
     { icon: Upload, label: "Upload new document" },
@@ -255,7 +250,6 @@ export default function ProjectEditorLayout({
     projectId,
     workspaceId,
     isSaving,
-    setIsSaving,
 }: ProjectEditorLayoutProps) {
     const {
         workspace_switching,

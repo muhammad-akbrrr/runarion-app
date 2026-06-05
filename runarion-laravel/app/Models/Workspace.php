@@ -6,18 +6,16 @@ use Illuminate\Database\Eloquent\Concerns\HasUlids;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
-use Illuminate\Validation\Rule;
-use App\Models\AuthorStyle;
 
 /**
  * Model Workspace
- * 
+ *
  * mewakili workspace dalam sistem yang dapat mengandung beberapa project dan user
  * termasuk fitur manajemen berlangganan dan billing
  */
 class Workspace extends Model
 {
-    use HasFactory, SoftDeletes, HasUlids;
+    use HasFactory, HasUlids, SoftDeletes;
 
     protected $fillable = [
         'name',
@@ -137,13 +135,15 @@ class Workspace extends Model
         $cloudStorage = $this->cloud_storage ?? [];
 
         $encrypted = $cloudStorage[$provider]['token'] ?? null;
-        if (!$encrypted)
+        if (! $encrypted) {
             return null;
+        }
 
         try {
             return \Crypt::decryptString($encrypted);
         } catch (\Exception $e) {
             report($e);
+
             return null;
         }
     }
@@ -155,7 +155,7 @@ class Workspace extends Model
     {
         $cloudStorage = $this->cloud_storage ?? [];
 
-        if (!isset($cloudStorage[$provider])) {
+        if (! isset($cloudStorage[$provider])) {
             $cloudStorage[$provider] = [];
         }
 
@@ -175,22 +175,22 @@ class Workspace extends Model
         }
 
         return match ($provider) {
-            'google_drive' => !empty($data['refresh_token']),
-            default => !empty($data['token']),
+            'google_drive' => ! empty($data['refresh_token']),
+            default => ! empty($data['token']),
         };
     }
-
 
     public function getCloudRefreshToken(string $provider): ?string
     {
         $data = $this->cloud_storage[$provider] ?? null;
-        if (!$data || empty($data['refresh_token'])) {
+        if (! $data || empty($data['refresh_token'])) {
             return null;
         }
         try {
             return \Crypt::decryptString($data['refresh_token']);
         } catch (\Throwable $e) {
             report($e);
+
             return null;
         }
     }

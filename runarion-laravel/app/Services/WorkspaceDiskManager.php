@@ -3,8 +3,8 @@
 namespace App\Services;
 
 use App\Models\Workspace;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Contracts\Filesystem\Filesystem;
+use Illuminate\Support\Facades\Storage;
 
 class WorkspaceDiskManager
 {
@@ -25,12 +25,12 @@ class WorkspaceDiskManager
     {
         $workspace = Workspace::find($workspaceId);
 
-        if (!$workspace || !is_array($workspace->cloud_storage)) {
+        if (! $workspace || ! is_array($workspace->cloud_storage)) {
             return Storage::disk('local');
         }
 
         foreach ($this->providers as $provider => $serviceClass) {
-            if (!empty($workspace->cloud_storage[$provider]['enabled'])) {
+            if (! empty($workspace->cloud_storage[$provider]['enabled'])) {
                 $service = app($serviceClass);
                 $disk = $service->getDisk($workspaceId);
                 if ($disk) {
@@ -64,4 +64,3 @@ class WorkspaceDiskManager
         return "projects/{$projectId}";
     }
 }
-

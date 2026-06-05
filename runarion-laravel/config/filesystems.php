@@ -41,7 +41,7 @@ return [
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),
-            'url' => env('APP_URL') . '/storage',
+            'url' => env('APP_URL').'/storage',
             'visibility' => 'public',
             'throw' => false,
             'report' => false,
@@ -59,7 +59,7 @@ return [
             'throw' => false,
             'report' => false,
         ],
-        
+
         'google_drive' => [
             'driver' => 'google_drive',
             'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
@@ -70,7 +70,7 @@ return [
             'throw' => false,
             'report' => false,
         ],
-        
+
         'dropbox' => [
             'driver' => 'dropbox',
             'client_id' => env('DROPBOX_CLIENT_ID'),

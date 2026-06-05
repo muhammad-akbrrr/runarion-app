@@ -23,7 +23,8 @@ import {
 } from "@/Components/ui/tooltip";
 import { Checkbox } from "@/Components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/Components/ui/radio-group";
-import { HelpCircle, Play, AlertCircle } from "lucide-react";
+import { HelpCircle, Play } from "lucide-react";
+import { http } from "@/Lib/http";
 
 interface SummarizerTabProps {
     workspaceId: string;
@@ -97,15 +98,15 @@ export default function SummarizerTab({
 
     const loadEntities = async () => {
         try {
-            const response = await fetch(
+            const response = await http(
                 route("records.entities.list", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                 }),
                 { headers: { Accept: "application/json" } }
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 setEntities(data.entities || []);
             }
         } catch (error) {
@@ -115,7 +116,7 @@ export default function SummarizerTab({
 
     const loadChapters = async () => {
         try {
-            const response = await fetch(
+            const response = await http(
                 route("editor.project.chapters", {
                     workspace_id: workspaceId,
                     project_id: projectId,
@@ -127,8 +128,8 @@ export default function SummarizerTab({
                     },
                 }
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 if (data.chapters) {
                     setChapters(data.chapters);
                 }
@@ -142,15 +143,15 @@ export default function SummarizerTab({
 
     const loadCollectionTypes = async () => {
         try {
-            const response = await fetch(
+            const response = await http(
                 route("records.collection-types.list", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                 }),
                 { headers: { Accept: "application/json" } }
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 const systemTypes = [
                     {
                         id: "character",
@@ -279,7 +280,7 @@ export default function SummarizerTab({
         setLoading(true);
 
         try {
-            const response = await fetch(
+            const response = await http(
                 route("auditor.summarize", {
                     workspace_id: workspaceId,
                     project_id: projectId,
@@ -289,12 +290,8 @@ export default function SummarizerTab({
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         enable_record_keeper: enableRecordKeeper,
                         category:
                             selectedCategory && selectedCategory !== "none"
@@ -318,12 +315,12 @@ export default function SummarizerTab({
                             : selectedChapters,
                         model: selectedModel,
                         provider: "gemini",
-                    }),
+                    },
                 }
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 const rkCreated =
                     data.results?.record_keeper_entries_created || 0;
                 const rkUpdated =
@@ -372,7 +369,7 @@ export default function SummarizerTab({
                     // TODO: Trigger entity reload in parent component
                 }
             } else {
-                const error = await response.json();
+                const error = response.data;
                 let errorMessage = `Failed to start summarization: ${
                     error.error || "Unknown error"
                 }`;

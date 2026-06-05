@@ -1,4 +1,3 @@
-import React from "react";
 import { StorageProvider } from "@/types/files";
 import { Cloud, Folder, HardDrive } from "lucide-react";
 

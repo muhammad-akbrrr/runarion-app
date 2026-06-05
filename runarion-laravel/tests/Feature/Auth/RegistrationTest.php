@@ -25,6 +25,6 @@ test('new users can register', function () {
 
     $this->assertAuthenticated();
     $response->assertRedirect(route('workspace.dashboard', [
-        'workspace_id' => $user->getActiveWorkspaceId()
+        'workspace_id' => $user->getActiveWorkspaceId(),
     ], absolute: false));
 });

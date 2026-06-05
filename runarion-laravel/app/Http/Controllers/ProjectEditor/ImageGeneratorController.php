@@ -2,9 +2,9 @@
 
 namespace App\Http\Controllers\ProjectEditor;
 
-use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Models\Projects;
+use Illuminate\Http\Request;
 use Inertia\Inertia;
 
 class ImageGeneratorController extends Controller
@@ -18,7 +18,7 @@ class ImageGeneratorController extends Controller
             ->where('workspace_id', $workspace_id)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 

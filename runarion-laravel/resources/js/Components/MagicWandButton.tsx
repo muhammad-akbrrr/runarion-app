@@ -6,6 +6,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from "@/Components/ui/tooltip";
+import { http } from "@/Lib/http";
 
 export type EnhancementMode = 
     | 'story_text' 
@@ -69,41 +70,33 @@ export function MagicWandButton({
         }
 
         try {
-            const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
             const url = route('editor.project.enhance-text', { workspace_id: workspaceId, project_id: projectId });
             
             console.log('Magic Wand API call:', { url, enhancementMode, model: aiModel });
             
-            const response = await fetch(url, {
+            const response = await http(url, {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json',
-                    'X-CSRF-TOKEN': csrfToken,
-                },
-                body: JSON.stringify({
+                data: {
                     text: text.trim(),
                     enhancement_mode: enhancementMode,
                     model: aiModel,
                     chapter_content: chapterContent || undefined,
-                }),
+                },
             });
 
             console.log('Magic Wand response status:', response.status);
 
-            if (!response.ok) {
+            if (!(response.status >= 200 && response.status < 300)) {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-                let errorDetails = null;
                 
                 try {
-                    const errorData = await response.json();
+                    const errorData = response.data;
                     errorMessage = errorData.error || errorData.message || errorData.details || errorMessage;
-                    errorDetails = errorData;
                     console.error('Magic Wand API error response:', errorData);
                 } catch (e) {
                     // Try to get text response if JSON parsing fails
                     try {
-                        const textResponse = await response.text();
+                        const textResponse = (typeof response.data === "string" ? response.data : JSON.stringify(response.data ?? ""));
                         console.error('Magic Wand error text response:', textResponse);
                         if (textResponse) {
                             errorMessage = textResponse.length > 200 ? textResponse.substring(0, 200) + '...' : textResponse;
@@ -127,11 +120,11 @@ export function MagicWandButton({
 
             let data;
             try {
-                data = await response.json();
+                data = response.data;
                 console.log('Magic Wand response data:', data);
             } catch (parseError) {
                 console.error('Magic Wand JSON parse error:', parseError);
-                const textResponse = await response.text();
+                const textResponse = (typeof response.data === "string" ? response.data : JSON.stringify(response.data ?? ""));
                 console.error('Magic Wand raw response:', textResponse);
                 throw new Error('Invalid response format from server');
             }
@@ -215,4 +208,3 @@ export function MagicWandButton({
 
     return button;
 }
-

@@ -1,14 +1,14 @@
 <?php
 
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\ProjectEditor\MainEditorController;
-use App\Http\Controllers\ProjectEditor\ProjectDatabaseController;
-use App\Http\Controllers\ProjectEditor\MultiPromptController;
-use App\Http\Controllers\ProjectEditor\ImageGeneratorController;
-use App\Http\Controllers\ProjectEditor\RecordsController;
 use App\Http\Controllers\ProjectEditor\AdvisorController;
 use App\Http\Controllers\ProjectEditor\ChainBuilderController;
+use App\Http\Controllers\ProjectEditor\ImageGeneratorController;
+use App\Http\Controllers\ProjectEditor\MainEditorController;
+use App\Http\Controllers\ProjectEditor\MultiPromptController;
+use App\Http\Controllers\ProjectEditor\ProjectDatabaseController;
+use App\Http\Controllers\ProjectEditor\RecordsController;
 use App\Http\Controllers\ProjectEditor\VersionHistoryController;
+use Illuminate\Support\Facades\Route;
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor', [MainEditorController::class, 'editor'])->name('workspace.projects.editor');
@@ -32,25 +32,25 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::post('/{workspace_id}/projects/{project_id}/editor/redo-step', [MainEditorController::class, 'redoStep'])->middleware('project-unlocked')->name('editor.project.redo-step');
     Route::get('/{workspace_id}/projects/{project_id}/editor/version-info', [MainEditorController::class, 'getVersionControlInfo'])->name('editor.project.version-info');
 
-    Route::get('/projects/{project_id}/editor', fn() => '')->name('raw.workspace.projects.editor');
+    Route::get('/projects/{project_id}/editor', fn () => '')->name('raw.workspace.projects.editor');
 });
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/database', [ProjectDatabaseController::class, 'database'])->name('workspace.projects.editor.database');
 
-    Route::get('/projects/{project_id}/editor/database', fn() => '')->name('raw.workspace.projects.editor.database');
+    Route::get('/projects/{project_id}/editor/database', fn () => '')->name('raw.workspace.projects.editor.database');
 });
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/multi-prompt', [MultiPromptController::class, 'multiPrompt'])->name('workspace.projects.editor.multiprompt');
 
-    Route::get('/projects/{project_id}/editor/multi-prompt', fn() => '')->name('raw.workspace.projects.editor.multiprompt');
+    Route::get('/projects/{project_id}/editor/multi-prompt', fn () => '')->name('raw.workspace.projects.editor.multiprompt');
 });
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/image', [ImageGeneratorController::class, 'imageGenerator'])->name('workspace.projects.editor.image');
 
-    Route::get('/projects/{project_id}/editor/image', fn() => '')->name('raw.workspace.projects.editor.image');
+    Route::get('/projects/{project_id}/editor/image', fn () => '')->name('raw.workspace.projects.editor.image');
 });
 
 // Version History Routes
@@ -62,7 +62,7 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::delete('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}', [VersionHistoryController::class, 'deleteSnapshot'])->middleware('project-unlocked')->name('version-history.snapshots.delete');
     Route::get('/{workspace_id}/projects/{project_id}/editor/version-history/chapters/{chapter_order}/tree', [VersionHistoryController::class, 'getChapterVersionTree'])->name('version-history.chapters.tree');
 
-    Route::get('/projects/{project_id}/editor/version-history', fn() => '')->name('raw.workspace.projects.editor.version-history');
+    Route::get('/projects/{project_id}/editor/version-history', fn () => '')->name('raw.workspace.projects.editor.version-history');
 });
 
 // Records System Routes
@@ -147,6 +147,7 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     // Messages
     Route::get('/{workspace_id}/projects/{project_id}/editor/advisor/chats/{chat_id}/messages', [AdvisorController::class, 'getMessages'])->name('advisor.messages.get');
     Route::post('/{workspace_id}/projects/{project_id}/editor/advisor/chats/{chat_id}/messages', [AdvisorController::class, 'sendMessage'])->middleware('project-unlocked')->name('advisor.messages.send');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/advisor/chats/{chat_id}/messages/cancel', [AdvisorController::class, 'cancelMessageStream'])->middleware('project-unlocked')->name('advisor.messages.cancel');
     Route::delete('/{workspace_id}/projects/{project_id}/editor/advisor/chats/{chat_id}/messages', [AdvisorController::class, 'clearMessages'])->middleware('project-unlocked')->name('advisor.messages.clear');
     Route::delete('/{workspace_id}/projects/{project_id}/editor/advisor/chats/{chat_id}/messages/{message_id}', [AdvisorController::class, 'deleteMessage'])->middleware('project-unlocked')->name('advisor.messages.delete');
 

@@ -16,8 +16,7 @@ class ResolveProjectEditor
     public function __construct(
         private readonly AuthorStyleFormatter $authorStyleFormatter,
         private readonly ProjectPipelineStateService $pipelineStateService,
-    ) {
-    }
+    ) {}
 
     /**
      * Handle an incoming request.
@@ -31,12 +30,13 @@ class ResolveProjectEditor
         $user = $request->user();
 
         // Handle raw routes (routes without workspace_id) - redirect to default workspace
-        if (!$workspaceId && $request->isMethod('get') && $user) {
+        if (! $workspaceId && $request->isMethod('get') && $user) {
             $routeName = $request->route()->getName();
             if (str_starts_with($routeName, 'raw.')) {
                 $routeName = substr($routeName, 4);
             }
             $defaultWorkspaceId = $request->user()->getActiveWorkspaceId();
+
             return redirect()->route($routeName, ['workspace_id' => $defaultWorkspaceId, 'project_id' => $projectId]);
         }
 
@@ -50,11 +50,11 @@ class ResolveProjectEditor
             ->select('workspace_members.role')
             ->first();
 
-        if (!$userWorkspace) {
+        if (! $userWorkspace) {
             abort(404, 'Workspace not found');
         }
 
-        if (!$userWorkspace->role) {
+        if (! $userWorkspace->role) {
             abort(403, 'You are not a member of this workspace');
         }
 
@@ -67,7 +67,7 @@ class ResolveProjectEditor
             ->where('is_active', true)
             ->first();
 
-        if (!$project) {
+        if (! $project) {
             abort(404, 'Project not found');
         }
 
@@ -88,7 +88,7 @@ class ResolveProjectEditor
             $hasProjectAccess = true;
         }
 
-        if (!$hasProjectAccess) {
+        if (! $hasProjectAccess) {
             abort(403, 'You do not have access to this project');
         }
 

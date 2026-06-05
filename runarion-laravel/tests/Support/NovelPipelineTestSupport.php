@@ -100,7 +100,7 @@ class NovelPipelineTestSupport
     {
         $candidates = [
             base_path("../runarion-python/tests/sample/input/{$filename}"),
-            '/var/www/python-test-samples/input/' . $filename,
+            '/var/www/python-test-samples/input/'.$filename,
         ];
 
         foreach ($candidates as $candidate) {
@@ -160,11 +160,11 @@ class NovelPipelineTestSupport
 
     public static function skipUnlessLivePythonEnabled(): void
     {
-        if (!filter_var(env('RUN_LIVE_PYTHON_INTEGRATION', false), FILTER_VALIDATE_BOOL)) {
+        if (! filter_var(env('RUN_LIVE_PYTHON_INTEGRATION', false), FILTER_VALIDATE_BOOL)) {
             throw new SkippedTestError('Live Python integration tests are disabled.');
         }
 
-        $url = rtrim((string) config('services.python.url', ''), '/') . '/health';
+        $url = rtrim((string) config('services.python.url', ''), '/').'/health';
 
         try {
             $response = Http::timeout(2)->get($url);
@@ -172,7 +172,7 @@ class NovelPipelineTestSupport
             throw new SkippedTestError('Python service is not reachable for live integration tests.');
         }
 
-        if (!$response->successful()) {
+        if (! $response->successful()) {
             throw new SkippedTestError('Python healthcheck failed for live integration tests.');
         }
     }

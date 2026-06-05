@@ -22,7 +22,8 @@ import {
     TooltipTrigger,
 } from "@/Components/ui/tooltip";
 import { Checkbox } from "@/Components/ui/checkbox";
-import { HelpCircle, Play, AlertCircle, Users } from "lucide-react";
+import { HelpCircle, Play } from "lucide-react";
+import { http } from "@/Lib/http";
 
 interface EntityExtractorTabProps {
     workspaceId: string;
@@ -83,7 +84,7 @@ export default function EntityExtractorTab({
 
     const loadChapters = async () => {
         try {
-            const response = await fetch(
+            const response = await http(
                 route("editor.project.chapters", {
                     workspace_id: workspaceId,
                     project_id: projectId,
@@ -95,8 +96,8 @@ export default function EntityExtractorTab({
                     },
                 }
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 if (data.chapters) {
                     setChapters(data.chapters);
                 }
@@ -108,15 +109,15 @@ export default function EntityExtractorTab({
 
     const loadCollectionTypes = async () => {
         try {
-            const response = await fetch(
+            const response = await http(
                 route("records.collection-types.list", {
                     workspace_id: workspaceId,
                     project_id: projectId,
                 }),
                 { headers: { Accept: "application/json" } }
             );
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 const systemTypes = [
                     {
                         id: "character",
@@ -166,9 +167,6 @@ export default function EntityExtractorTab({
     };
 
     const calculateEstimatedTime = () => {
-        const chaptersToProcess = useAllChapters
-            ? chapters.length
-            : selectedChapters.length;
         const categoriesToProcess = useAllCategories
             ? collectionTypes.length
             : selectedCategories.length;
@@ -209,7 +207,7 @@ export default function EntityExtractorTab({
                 ? ["all_categories"]
                 : selectedCategories;
 
-            const response = await fetch(
+            const response = await http(
                 route("auditor.extract", {
                     workspace_id: workspaceId,
                     project_id: projectId,
@@ -219,12 +217,8 @@ export default function EntityExtractorTab({
                     headers: {
                         "Content-Type": "application/json",
                         Accept: "application/json",
-                        "X-CSRF-TOKEN":
-                            document
-                                .querySelector('meta[name="csrf-token"]')
-                                ?.getAttribute("content") || "",
                     },
-                    body: JSON.stringify({
+                    data: {
                         categories: categories,
                         chapter_orders: useAllChapters
                             ? null
@@ -232,12 +226,12 @@ export default function EntityExtractorTab({
                         scan_mode: useAllChapters ? scanMode : "full", // If specific chapters selected, always use full
                         model: selectedModel,
                         provider: "gemini",
-                    }),
+                    },
                 }
             );
 
-            if (response.ok) {
-                const data = await response.json();
+            if (response.status >= 200 && response.status < 300) {
+                const data = response.data;
                 const created = data.results?.entities_created || 0;
                 const updated = data.results?.entities_updated || 0;
                 const categoriesProcessed =
@@ -281,7 +275,7 @@ export default function EntityExtractorTab({
                     );
                 }
             } else {
-                const error = await response.json();
+                const error = response.data;
                 let errorMessage = `Failed to extract entities: ${
                     error.error || "Unknown error"
                 }`;

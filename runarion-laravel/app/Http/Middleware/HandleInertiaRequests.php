@@ -69,7 +69,7 @@ class HandleInertiaRequests extends Middleware
             }
         } catch (\Exception $e) {
             // Log the error but don't break the application
-            \Log::error('Error loading Ziggy: ' . $e->getMessage());
+            \Log::error('Error loading Ziggy: '.$e->getMessage());
         }
 
         return $shared;
@@ -78,8 +78,6 @@ class HandleInertiaRequests extends Middleware
     /**
      * Handle an incoming request.
      *
-     * @param  \Illuminate\Http\Request  $request
-     * @param  \Closure  $next
      * @return mixed
      */
     public function handle(Request $request, \Closure $next)

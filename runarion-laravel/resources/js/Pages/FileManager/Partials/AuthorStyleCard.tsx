@@ -1,4 +1,3 @@
-import React from "react";
 import { AuthorStyle } from "@/types/files";
 import { Button } from "@/Components/ui/button";
 import { CirclePlus, Loader2, CheckCircle2, AlertCircle, Pencil, Trash2 } from "lucide-react";

@@ -5,8 +5,7 @@ import {
     DropdownMenuTrigger,
     DropdownMenuCheckboxItem,
 } from "@/Components/ui/dropdown-menu";
-import { DropdownMenuItem } from "@/Components/ui/dropdown-menu";
-import { ChevronDown, Ellipsis, ChevronLeft } from "lucide-react";
+import { ChevronDown, ChevronLeft } from "lucide-react";
 import { Input } from "@/Components/ui/input";
 import { FolderPlus } from "lucide-react";
 import AuthenticatedLayout, {
@@ -14,7 +13,6 @@ import AuthenticatedLayout, {
 } from "@/Layouts/AuthenticatedLayout";
 import { PageProps } from "@/types";
 import { Head, router, usePage } from "@inertiajs/react";
-import { Badge } from "@/Components/ui/badge";
 import { useState, useMemo, useEffect } from "react";
 import { Link } from "@inertiajs/react";
 import AddFolderDialog from "./Partials/AddFolderDialog";
@@ -24,40 +22,7 @@ import DeleteProjectDialog from "./Partials/DeleteProjectDialog";
 import { Project } from "@/types/project";
 import ItemCard from "./Partials/ItemCard";
 import { toast } from "sonner";
-import { useWorkspacePipelineEvents } from "@/hooks/useWorkspacePipelineEvents";
-
-const formatTimeAgo = (dateString: string): string => {
-    const date = new Date(dateString);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
-
-    if (diffInSeconds < 60) {
-        return `${diffInSeconds}s ago`;
-    }
-
-    const diffInMinutes = Math.floor(diffInSeconds / 60);
-    if (diffInMinutes < 60) {
-        return `${diffInMinutes}m ago`;
-    }
-
-    const diffInHours = Math.floor(diffInMinutes / 60);
-    if (diffInHours < 24) {
-        return `${diffInHours}h ago`;
-    }
-
-    const diffInDays = Math.floor(diffInHours / 24);
-    if (diffInDays < 30) {
-        return `${diffInDays}d ago`;
-    }
-
-    const diffInMonths = Math.floor(diffInDays / 30);
-    if (diffInMonths < 12) {
-        return `${diffInMonths}mo ago`;
-    }
-
-    const diffInYears = Math.floor(diffInMonths / 12);
-    return `${diffInYears}y ago`;
-};
+import { useWorkspacePipelineEvents } from "@/Hooks/useWorkspacePipelineEvents";
 
 export default function ProjectList({
     workspaceId,
@@ -125,7 +90,11 @@ export default function ProjectList({
             return catA.localeCompare(catB);
         });
     } else if (sortLastModified) {
-        sortedProjects.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+        sortedProjects.sort(
+            (a, b) =>
+                new Date(b.updated_at).getTime() -
+                new Date(a.updated_at).getTime(),
+        );
     } else if (sortAlphaAsc) {
         sortedProjects.sort((a, b) => a.name.localeCompare(b.name));
     } else if (sortAlphaDesc) {
@@ -137,12 +106,13 @@ export default function ProjectList({
         if (!searchValue.trim()) return sortedProjects;
         const search = searchValue.trim().toLowerCase();
         return sortedProjects.filter((project) =>
-            project.name.toLowerCase().includes(search)
+            project.name.toLowerCase().includes(search),
         );
     }, [searchValue, sortedProjects]);
 
     // Check if any sort or search is active
-    const isSortActive = sortCategory || sortLastModified || sortAlphaAsc || sortAlphaDesc;
+    const isSortActive =
+        sortCategory || sortLastModified || sortAlphaAsc || sortAlphaDesc;
     const isSearchActive = !!searchValue.trim();
     const isResultsActive = isSortActive || isSearchActive;
 
@@ -168,7 +138,7 @@ export default function ProjectList({
                 onFinish: () => setLoading(false),
                 only: ["folders"],
                 preserveScroll: true,
-            }
+            },
         );
     };
 
@@ -180,13 +150,13 @@ export default function ProjectList({
             route("workspace.projects.store", workspaceId),
             { name: projectName, folder_id: folder ? folder.id : undefined },
             {
-                onSuccess: (page) => {
+                onSuccess: (_page) => {
                     setProjectModalOpen(false);
                     setProjectName("");
                     // Backend redirects to editor - Inertia will follow the redirect automatically
                 },
                 onError: (errors) => {
-                    console.error('Error creating project:', errors);
+                    console.error("Error creating project:", errors);
                     setProjectLoading(false);
                 },
                 onFinish: () => {
@@ -195,7 +165,7 @@ export default function ProjectList({
                     setTimeout(() => setProjectLoading(false), 100);
                 },
                 preserveScroll: false, // Allow scroll reset on redirect
-            }
+            },
         );
     };
 
@@ -224,7 +194,7 @@ export default function ProjectList({
                     setDeleteProjectName("");
                     setDeleteProjectInput("");
                 },
-            }
+            },
         );
     };
 
@@ -248,7 +218,7 @@ export default function ProjectList({
                     setDeleteFolderDialogOpen(false);
                     setDeleteFolderId(null);
                 },
-            }
+            },
         );
     };
 
@@ -257,7 +227,7 @@ export default function ProjectList({
             route("workspace.projects.edit", {
                 workspace_id: workspaceId,
                 project_id: projectId,
-            })
+            }),
         );
     };
 
@@ -273,134 +243,297 @@ export default function ProjectList({
         reloadOnly: ["projects"],
     });
 
-    return (
-        isResultsActive ? (
-            <AuthenticatedLayout breadcrumbs={breadcrumbs}>
-                <Head title="Project Overview" />
-                <AddFolderDialog
-                    open={open}
-                    setOpen={setOpen}
-                    folderName={folderName}
-                    setFolderName={setFolderName}
-                    loading={loading}
-                    handleAddFolder={handleAddFolder}
-                />
+    return isResultsActive ? (
+        <AuthenticatedLayout breadcrumbs={breadcrumbs}>
+            <Head title="Project Overview" />
+            <AddFolderDialog
+                open={open}
+                setOpen={setOpen}
+                folderName={folderName}
+                setFolderName={setFolderName}
+                loading={loading}
+                handleAddFolder={handleAddFolder}
+            />
 
-                <AddProjectDialog
-                    open={projectModalOpen}
-                    setOpen={setProjectModalOpen}
-                    projectName={projectName}
-                    setProjectName={setProjectName}
-                    loading={projectLoading}
-                    handleAddProject={handleCreateProject}
-                />
+            <AddProjectDialog
+                open={projectModalOpen}
+                setOpen={setProjectModalOpen}
+                projectName={projectName}
+                setProjectName={setProjectName}
+                loading={projectLoading}
+                handleAddProject={handleCreateProject}
+            />
 
-                <DeleteProjectDialog
-                    open={deleteDialogOpen}
-                    setOpen={setDeleteDialogOpen}
-                    projectName={deleteProjectName}
-                    confirmationInput={deleteProjectInput}
-                    setConfirmationInput={setDeleteProjectInput}
-                    loading={deleteLoading}
-                    handleDelete={handleDeleteProject}
-                />
+            <DeleteProjectDialog
+                open={deleteDialogOpen}
+                setOpen={setDeleteDialogOpen}
+                projectName={deleteProjectName}
+                confirmationInput={deleteProjectInput}
+                setConfirmationInput={setDeleteProjectInput}
+                loading={deleteLoading}
+                handleDelete={handleDeleteProject}
+            />
 
-                <DeleteFolderDialog
-                    open={deleteFolderDialogOpen}
-                    setOpen={setDeleteFolderDialogOpen}
-                    loading={deleteFolderLoading}
-                    handleDelete={handleDeleteFolder}
-                />
+            <DeleteFolderDialog
+                open={deleteFolderDialogOpen}
+                setOpen={setDeleteFolderDialogOpen}
+                loading={deleteFolderLoading}
+                handleDelete={handleDeleteFolder}
+            />
 
-                <div>
-                    <div className="w-full flex flex-col gap-6 items-stretch justify-start">
-                        <div className="w-full flex flex-row gap-4 items-center justify-between">
-                            <div className="flex flex-row gap-2 items-stretch justify-start">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger>
-                                        <Button
-                                            variant="outline"
-                                            className="bg-white flex flex-row gap-2 items-center justify-start"
-                                        >
-                                            Sort by
-                                            <ChevronDown className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start">
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortCategory}
-                                            onCheckedChange={setSortCategory}
-                                        >
-                                            Category
-                                        </DropdownMenuCheckboxItem>
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortLastModified}
-                                            onCheckedChange={setSortLastModified}
-                                        >
-                                            Last Modified
-                                        </DropdownMenuCheckboxItem>
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortAlphaAsc}
-                                            onCheckedChange={setSortAlphaAsc}
-                                        >
-                                            Alphabetically (A-Z)
-                                        </DropdownMenuCheckboxItem>
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortAlphaDesc}
-                                            onCheckedChange={setSortAlphaDesc}
-                                        >
-                                            Alphabetically (Z-A)
-                                        </DropdownMenuCheckboxItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                                <Input
-                                    type="text"
-                                    placeholder="Search for projects"
-                                    className="lg:min-w-3xs bg-white"
-                                    value={searchValue}
-                                    onChange={e => setSearchValue(e.target.value)}
-                                />
-                            </div>
-                            <div className="flex flex-row gap-2 items-stretch justify-start">
-                                {/** Hide Add Folder button if inside a folder */}
-                                {!folder && (
+            <div>
+                <div className="w-full flex flex-col gap-6 items-stretch justify-start">
+                    <div className="w-full flex flex-row gap-4 items-center justify-between">
+                        <div className="flex flex-row gap-2 items-stretch justify-start">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger>
                                     <Button
-                                        variant="default"
-                                        onClick={() => setOpen(true)}
+                                        variant="outline"
+                                        className="bg-white flex flex-row gap-2 items-center justify-start"
                                     >
-                                        <FolderPlus className="h-4 w-4" />
+                                        Sort by
+                                        <ChevronDown className="h-4 w-4" />
                                     </Button>
-                                )}
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start">
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortCategory}
+                                        onCheckedChange={setSortCategory}
+                                    >
+                                        Category
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortLastModified}
+                                        onCheckedChange={setSortLastModified}
+                                    >
+                                        Last Modified
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortAlphaAsc}
+                                        onCheckedChange={setSortAlphaAsc}
+                                    >
+                                        Alphabetically (A-Z)
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortAlphaDesc}
+                                        onCheckedChange={setSortAlphaDesc}
+                                    >
+                                        Alphabetically (Z-A)
+                                    </DropdownMenuCheckboxItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <Input
+                                type="text"
+                                placeholder="Search for projects"
+                                className="lg:min-w-3xs bg-white"
+                                value={searchValue}
+                                onChange={(e) => setSearchValue(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex flex-row gap-2 items-stretch justify-start">
+                            {/** Hide Add Folder button if inside a folder */}
+                            {!folder && (
                                 <Button
                                     variant="default"
-                                    onClick={() => setProjectModalOpen(true)}
+                                    onClick={() => setOpen(true)}
                                 >
-                                    New Project
+                                    <FolderPlus className="h-4 w-4" />
                                 </Button>
+                            )}
+                            <Button
+                                variant="default"
+                                onClick={() => setProjectModalOpen(true)}
+                            >
+                                New Project
+                            </Button>
+                        </div>
+                    </div>
+                    {/* Results Section: Show for both folder and non-folder views when sort or search is active */}
+                    <div className="flex flex-col items-stretch justify-start gap-4">
+                        {folder ? (
+                            <Link
+                                href={route("workspace.projects", workspaceId)}
+                                className="flex items-center gap-2 w-fit text-gray-700 hover:text-gray-900 mb-2"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                                <span>Back</span>
+                            </Link>
+                        ) : (
+                            <p className="text-xl">Results</p>
+                        )}
+                        <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
+                            {filteredProjects.length === 0 ? (
+                                <div className="col-span-full flex flex-col items-center justify-center py-12">
+                                    <p className="text-gray-500">
+                                        {folder
+                                            ? "No projects in this folder"
+                                            : "You don't have any projects"}
+                                    </p>
+                                </div>
+                            ) : (
+                                filteredProjects.map((project) => (
+                                    <ItemCard
+                                        key={project.id}
+                                        variant="project"
+                                        item={project}
+                                        onDelete={openDeleteDialog}
+                                        onSettings={openProjectSettings}
+                                        workspaceId={workspaceId}
+                                    />
+                                ))
+                            )}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </AuthenticatedLayout>
+    ) : (
+        <AuthenticatedLayout breadcrumbs={breadcrumbs}>
+            <Head title="Project Overview" />
+            <AddFolderDialog
+                open={open}
+                setOpen={setOpen}
+                folderName={folderName}
+                setFolderName={setFolderName}
+                loading={loading}
+                handleAddFolder={handleAddFolder}
+            />
+
+            <AddProjectDialog
+                open={projectModalOpen}
+                setOpen={setProjectModalOpen}
+                projectName={projectName}
+                setProjectName={setProjectName}
+                loading={projectLoading}
+                handleAddProject={handleCreateProject}
+            />
+
+            <DeleteProjectDialog
+                open={deleteDialogOpen}
+                setOpen={setDeleteDialogOpen}
+                projectName={deleteProjectName}
+                confirmationInput={deleteProjectInput}
+                setConfirmationInput={setDeleteProjectInput}
+                loading={deleteLoading}
+                handleDelete={handleDeleteProject}
+            />
+
+            <DeleteFolderDialog
+                open={deleteFolderDialogOpen}
+                setOpen={setDeleteFolderDialogOpen}
+                loading={deleteFolderLoading}
+                handleDelete={handleDeleteFolder}
+            />
+
+            <div>
+                <div className="w-full flex flex-col gap-6 items-stretch justify-start">
+                    <div className="w-full flex flex-row gap-4 items-center justify-between">
+                        <div className="flex flex-row gap-2 items-stretch justify-start">
+                            <DropdownMenu>
+                                <DropdownMenuTrigger>
+                                    <Button
+                                        variant="outline"
+                                        className="bg-white flex flex-row gap-2 items-center justify-start"
+                                    >
+                                        Sort by
+                                        <ChevronDown className="h-4 w-4" />
+                                    </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent align="start">
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortCategory}
+                                        onCheckedChange={setSortCategory}
+                                    >
+                                        Category
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortLastModified}
+                                        onCheckedChange={setSortLastModified}
+                                    >
+                                        Last Modified
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortAlphaAsc}
+                                        onCheckedChange={setSortAlphaAsc}
+                                    >
+                                        Alphabetically (A-Z)
+                                    </DropdownMenuCheckboxItem>
+                                    <DropdownMenuCheckboxItem
+                                        checked={sortAlphaDesc}
+                                        onCheckedChange={setSortAlphaDesc}
+                                    >
+                                        Alphabetically (Z-A)
+                                    </DropdownMenuCheckboxItem>
+                                </DropdownMenuContent>
+                            </DropdownMenu>
+                            <Input
+                                type="text"
+                                placeholder="Search for projects"
+                                className="lg:min-w-3xs bg-white"
+                                value={searchValue}
+                                onChange={(e) => setSearchValue(e.target.value)}
+                            />
+                        </div>
+                        <div className="flex flex-row gap-2 items-stretch justify-start">
+                            {/** Hide Add Folder button if inside a folder */}
+                            {!folder && (
+                                <Button
+                                    variant="default"
+                                    onClick={() => setOpen(true)}
+                                >
+                                    <FolderPlus className="h-4 w-4" />
+                                </Button>
+                            )}
+                            <Button
+                                variant="default"
+                                onClick={() => setProjectModalOpen(true)}
+                            >
+                                New Project
+                            </Button>
+                        </div>
+                    </div>
+                    {/* Folders Section: Only show if folders exist and no folder is selected */}
+                    {folders.length > 0 && !folder && (
+                        <div className="flex flex-col items-stretch justify-start gap-4">
+                            <p className="text-xl">Folders</p>
+                            <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
+                                {folders.map((folderItem) => {
+                                    const projectCount = projects.filter(
+                                        (p) => p.folder_id === folderItem.id,
+                                    ).length;
+                                    return (
+                                        <ItemCard
+                                            key={folderItem.id}
+                                            variant="folder"
+                                            item={folderItem}
+                                            projectCount={projectCount}
+                                            onDelete={openDeleteFolderDialog}
+                                            workspaceId={workspaceId}
+                                        />
+                                    );
+                                })}
                             </div>
                         </div>
-                        {/* Results Section: Show for both folder and non-folder views when sort or search is active */}
+                    )}
+                    {/* Folder View: If a folder is selected, show back button and projects in folder */}
+                    {folder && (
                         <div className="flex flex-col items-stretch justify-start gap-4">
-                            {folder ? (
-                                <Link
-                                    href={route("workspace.projects", workspaceId)}
-                                    className="flex items-center gap-2 w-fit text-gray-700 hover:text-gray-900 mb-2"
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                    <span>Back</span>
-                                </Link>
-                            ) : (
-                                <p className="text-xl">Results</p>
-                            )}
+                            <Link
+                                href={route("workspace.projects", workspaceId)}
+                                className="flex items-center gap-2 w-fit text-gray-700 hover:text-gray-900 mb-2"
+                            >
+                                <ChevronLeft className="h-4 w-4" />
+                                <span>Back</span>
+                            </Link>
                             <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
-                                {filteredProjects.length === 0 ? (
+                                {projects.length === 0 ? (
                                     <div className="col-span-full flex flex-col items-center justify-center py-12">
                                         <p className="text-gray-500">
-                                            {folder ? "No projects in this folder" : "You don't have any projects"}
+                                            No projects in this folder
                                         </p>
                                     </div>
                                 ) : (
-                                    filteredProjects.map((project) => (
+                                    projects.map((project) => (
                                         <ItemCard
                                             key={project.id}
                                             variant="project"
@@ -413,198 +546,35 @@ export default function ProjectList({
                                 )}
                             </div>
                         </div>
-                    </div>
-                </div>
-            </AuthenticatedLayout>
-        ) : (
-            <AuthenticatedLayout breadcrumbs={breadcrumbs}>
-                <Head title="Project Overview" />
-                <AddFolderDialog
-                    open={open}
-                    setOpen={setOpen}
-                    folderName={folderName}
-                    setFolderName={setFolderName}
-                    loading={loading}
-                    handleAddFolder={handleAddFolder}
-                />
-
-                <AddProjectDialog
-                    open={projectModalOpen}
-                    setOpen={setProjectModalOpen}
-                    projectName={projectName}
-                    setProjectName={setProjectName}
-                    loading={projectLoading}
-                    handleAddProject={handleCreateProject}
-                />
-
-                <DeleteProjectDialog
-                    open={deleteDialogOpen}
-                    setOpen={setDeleteDialogOpen}
-                    projectName={deleteProjectName}
-                    confirmationInput={deleteProjectInput}
-                    setConfirmationInput={setDeleteProjectInput}
-                    loading={deleteLoading}
-                    handleDelete={handleDeleteProject}
-                />
-
-                <DeleteFolderDialog
-                    open={deleteFolderDialogOpen}
-                    setOpen={setDeleteFolderDialogOpen}
-                    loading={deleteFolderLoading}
-                    handleDelete={handleDeleteFolder}
-                />
-
-                <div>
-                    <div className="w-full flex flex-col gap-6 items-stretch justify-start">
-                        <div className="w-full flex flex-row gap-4 items-center justify-between">
-                            <div className="flex flex-row gap-2 items-stretch justify-start">
-                                <DropdownMenu>
-                                    <DropdownMenuTrigger>
-                                        <Button
-                                            variant="outline"
-                                            className="bg-white flex flex-row gap-2 items-center justify-start"
-                                        >
-                                            Sort by
-                                            <ChevronDown className="h-4 w-4" />
-                                        </Button>
-                                    </DropdownMenuTrigger>
-                                    <DropdownMenuContent align="start">
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortCategory}
-                                            onCheckedChange={setSortCategory}
-                                        >
-                                            Category
-                                        </DropdownMenuCheckboxItem>
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortLastModified}
-                                            onCheckedChange={setSortLastModified}
-                                        >
-                                            Last Modified
-                                        </DropdownMenuCheckboxItem>
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortAlphaAsc}
-                                            onCheckedChange={setSortAlphaAsc}
-                                        >
-                                            Alphabetically (A-Z)
-                                        </DropdownMenuCheckboxItem>
-                                        <DropdownMenuCheckboxItem
-                                            checked={sortAlphaDesc}
-                                            onCheckedChange={setSortAlphaDesc}
-                                        >
-                                            Alphabetically (Z-A)
-                                        </DropdownMenuCheckboxItem>
-                                    </DropdownMenuContent>
-                                </DropdownMenu>
-                                <Input
-                                    type="text"
-                                    placeholder="Search for projects"
-                                    className="lg:min-w-3xs bg-white"
-                                    value={searchValue}
-                                    onChange={e => setSearchValue(e.target.value)}
-                                />
-                            </div>
-                            <div className="flex flex-row gap-2 items-stretch justify-start">
-                                {/** Hide Add Folder button if inside a folder */}
-                                {!folder && (
-                                    <Button
-                                        variant="default"
-                                        onClick={() => setOpen(true)}
-                                    >
-                                        <FolderPlus className="h-4 w-4" />
-                                    </Button>
+                    )}
+                    {/* Projects Section: Only show if no folder is selected */}
+                    {!folder && (
+                        <div className="flex flex-col items-stretch justify-start gap-4">
+                            <p className="text-xl">Projects</p>
+                            <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
+                                {projects.length === 0 ? (
+                                    <div className="col-span-full flex flex-col items-center justify-center py-12">
+                                        <p className="text-gray-500">
+                                            You don't have any projects
+                                        </p>
+                                    </div>
+                                ) : (
+                                    projects.map((project) => (
+                                        <ItemCard
+                                            key={project.id}
+                                            variant="project"
+                                            item={project}
+                                            onDelete={openDeleteDialog}
+                                            onSettings={openProjectSettings}
+                                            workspaceId={workspaceId}
+                                        />
+                                    ))
                                 )}
-                                <Button
-                                    variant="default"
-                                    onClick={() => setProjectModalOpen(true)}
-                                >
-                                    New Project
-                                </Button>
                             </div>
                         </div>
-                        {/* Folders Section: Only show if folders exist and no folder is selected */}
-                        {folders.length > 0 && !folder && (
-                            <div className="flex flex-col items-stretch justify-start gap-4">
-                                <p className="text-xl">Folders</p>
-                                <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
-                                    {folders.map((folderItem) => {
-                                        const projectCount = projects.filter(
-                                            (p) => p.folder_id === folderItem.id
-                                        ).length;
-                                        return (
-                                            <ItemCard
-                                                key={folderItem.id}
-                                                variant="folder"
-                                                item={folderItem}
-                                                projectCount={projectCount}
-                                                onDelete={openDeleteFolderDialog}
-                                                workspaceId={workspaceId}
-                                            />
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        )}
-                        {/* Folder View: If a folder is selected, show back button and projects in folder */}
-                        {folder && (
-                            <div className="flex flex-col items-stretch justify-start gap-4">
-                                <Link
-                                    href={route("workspace.projects", workspaceId)}
-                                    className="flex items-center gap-2 w-fit text-gray-700 hover:text-gray-900 mb-2"
-                                >
-                                    <ChevronLeft className="h-4 w-4" />
-                                    <span>Back</span>
-                                </Link>
-                                <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
-                                    {projects.length === 0 ? (
-                                        <div className="col-span-full flex flex-col items-center justify-center py-12">
-                                            <p className="text-gray-500">
-                                                No projects in this folder
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        projects.map((project) => (
-                                            <ItemCard
-                                                key={project.id}
-                                                variant="project"
-                                                item={project}
-                                                onDelete={openDeleteDialog}
-                                                onSettings={openProjectSettings}
-                                                workspaceId={workspaceId}
-                                            />
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                        {/* Projects Section: Only show if no folder is selected */}
-                        {!folder && (
-                            <div className="flex flex-col items-stretch justify-start gap-4">
-                                <p className="text-xl">Projects</p>
-                                <div className="grid lg:grid-cols-4 md:grid-cols-2 gap-4">
-                                    {projects.length === 0 ? (
-                                        <div className="col-span-full flex flex-col items-center justify-center py-12">
-                                            <p className="text-gray-500">
-                                                You don't have any projects
-                                            </p>
-                                        </div>
-                                    ) : (
-                                        projects.map((project) => (
-                                            <ItemCard
-                                                key={project.id}
-                                                variant="project"
-                                                item={project}
-                                                onDelete={openDeleteDialog}
-                                                onSettings={openProjectSettings}
-                                                workspaceId={workspaceId}
-                                            />
-                                        ))
-                                    )}
-                                </div>
-                            </div>
-                        )}
-                    </div>
+                    )}
                 </div>
-            </AuthenticatedLayout>
-        )
+            </div>
+        </AuthenticatedLayout>
     );
 }

@@ -4,7 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration {
+return new class extends Migration
+{
     public function up(): void
     {
         Schema::create('drafts', function (Blueprint $table) {
@@ -17,7 +18,7 @@ return new class extends Migration {
             $table->integer('word_count')->nullable(); // Track word count for processing
             $table->enum('status', [
                 'pending',
-                'processing', 
+                'processing',
                 'stage_1_complete',
                 'stage_2_complete',
                 'stage_3_complete',
@@ -25,7 +26,7 @@ return new class extends Migration {
                 'stage_5_complete',
                 'stage_6_complete',
                 'completed',
-                'failed'
+                'failed',
             ])->default('pending');
             $table->timestamp('processing_started_at')->nullable();
             $table->timestamp('processing_completed_at')->nullable();
