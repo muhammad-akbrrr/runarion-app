@@ -79,7 +79,6 @@ export default defineConfig({
     },
     cacheDir: "node_modules/.vite",
     build: {
-        manifest: true,
         outDir: "public/build",
         rollupOptions: {
             output: {
