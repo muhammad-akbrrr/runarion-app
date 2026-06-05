@@ -32,6 +32,12 @@ services:
     build:
       context: ./runarion-laravel
       dockerfile: dockerfile.staging
+      args:
+        VITE_APP_NAME: ${VITE_APP_NAME:-Runarion}
+        VITE_REVERB_APP_KEY: ${VITE_REVERB_APP_KEY}
+        VITE_REVERB_CLIENT_HOST: ${VITE_REVERB_CLIENT_HOST:-${STAGING_DOMAIN}}
+        VITE_REVERB_PORT: ${VITE_REVERB_PORT:-443}
+        VITE_REVERB_SCHEME: ${VITE_REVERB_SCHEME:-https}
     image: ${REGISTRY:-localhost}/runarion-laravel:${TAG:-staging}
     depends_on:
       postgres-db:
