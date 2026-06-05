@@ -5,6 +5,25 @@ log() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
+sync_frontend_build() {
+    local source_dir="/opt/runarion/public-build"
+    local target_dir="/srv/public/build"
+
+    if [ ! -f "${source_dir}/manifest.json" ]; then
+        log "Missing built frontend manifest at ${source_dir}/manifest.json"
+        exit 1
+    fi
+
+    mkdir -p "$target_dir"
+    find "$target_dir" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp -a "${source_dir}/." "$target_dir/"
+
+    if [ ! -f "${target_dir}/manifest.json" ]; then
+        log "Failed to publish frontend manifest to ${target_dir}/manifest.json"
+        exit 1
+    fi
+}
+
 fail_if_missing_env() {
     local missing=()
 
@@ -42,6 +61,7 @@ warm_laravel_runtime() {
 
 fail_if_missing_env
 prepare_runtime_dirs
+sync_frontend_build
 warm_laravel_runtime
 
 log "Starting Laravel staging runtime: $*"

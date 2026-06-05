@@ -5,8 +5,10 @@ services:
       dockerfile: staging/caddy/dockerfile
     image: ${REGISTRY:-localhost}/runarion-caddy:${TAG:-staging}
     depends_on:
-      - laravel-php
-      - laravel-reverb
+      laravel-php:
+        condition: service_healthy
+      laravel-reverb:
+        condition: service_started
     ports:
       - "${STAGING_HTTP_PORT:-80}:80"
       - "${STAGING_HTTPS_PORT:-443}:443"
@@ -16,6 +18,7 @@ services:
       - caddy_data:/data
       - caddy_config:/config
       - laravel_storage:/srv/storage:ro
+      - laravel_public_build:/srv/public/build:ro
     networks:
       - runarion-network
     restart: unless-stopped
@@ -97,11 +100,12 @@ services:
       ONEDRIVE_REDIRECT_URI: ${ONEDRIVE_REDIRECT_URI:-}
     volumes:
       - laravel_storage:/srv/storage
+      - laravel_public_build:/srv/public/build
     networks:
       - runarion-network
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "php-fpm -t >/dev/null 2>&1 && test -f /srv/public/index.php"]
+      test: ["CMD-SHELL", "php-fpm -t >/dev/null 2>&1 && test -f /srv/public/index.php && test -f /srv/public/build/manifest.json"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -379,6 +383,7 @@ networks:
 volumes:
   caddy_data:
   caddy_config:
+  laravel_public_build:
   laravel_storage:
   postgres_data:
   python_uploads:

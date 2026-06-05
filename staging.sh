@@ -526,6 +526,48 @@ wait_for_https_up() {
     return 1
 }
 
+verify_frontend_assets() {
+    local homepage
+    local asset_path
+    local asset_headers
+    local asset_status
+    local asset_type
+
+    echo "Verifying staged frontend assets..."
+
+    homepage="$(curl -kfsS --resolve "${STAGING_DOMAIN}:${STAGING_HTTPS_PORT}:127.0.0.1" "https://${STAGING_DOMAIN}:${STAGING_HTTPS_PORT}/" || true)"
+    if [ -z "$homepage" ]; then
+        echo "Error: Failed to fetch staging homepage."
+        dc logs --tail 120 caddy laravel-php || true
+        return 1
+    fi
+
+    asset_path="$(printf '%s' "$homepage" | grep -oE '/build/assets/[^"]+\.js' | head -n 1 || true)"
+    if [ -z "$asset_path" ]; then
+        echo "Error: No built JavaScript asset reference was found in the staging homepage."
+        dc logs --tail 120 caddy laravel-php || true
+        return 1
+    fi
+
+    asset_headers="$(curl -ksSI --resolve "${STAGING_DOMAIN}:${STAGING_HTTPS_PORT}:127.0.0.1" "https://${STAGING_DOMAIN}:${STAGING_HTTPS_PORT}${asset_path}" || true)"
+    asset_status="$(printf '%s\n' "$asset_headers" | awk 'toupper($1) ~ /^HTTP\\// {code=$2} END {print code}')"
+    asset_type="$(printf '%s\n' "$asset_headers" | awk -F': ' 'tolower($1) == "content-type" {print tolower($2)}' | tail -n 1 | tr -d '\r')"
+
+    if [ "$asset_status" != "200" ]; then
+        echo "Error: Frontend asset ${asset_path} returned HTTP ${asset_status:-unknown}."
+        dc logs --tail 120 caddy laravel-php || true
+        return 1
+    fi
+
+    if ! printf '%s' "$asset_type" | grep -q "javascript"; then
+        echo "Error: Frontend asset ${asset_path} returned unexpected Content-Type '${asset_type:-missing}'."
+        dc logs --tail 120 caddy laravel-php || true
+        return 1
+    fi
+
+    echo "Frontend assets are reachable with a JavaScript MIME type."
+}
+
 run_readiness_checks() {
     wait_for_service_healthy postgres-db 60 || return 1
     wait_for_service_healthy redis 60 || return 1
@@ -534,6 +576,7 @@ run_readiness_checks() {
     wait_for_python || return 1
     wait_for_edge_http_redirect 40 || return 1
     wait_for_https_up 60 || return 1
+    verify_frontend_assets || return 1
     return 0
 }
 
@@ -622,7 +665,7 @@ Usage: ./staging.sh [command] [service]
 
 Commands:
   start    Build and start staging services, run migrations, then run readiness checks
-  restart  Restart staging services, rerun migrations, then rerun readiness checks
+  restart  Restart existing staging containers without rebuilding images, rerun migrations, then rerun readiness checks
   doctor   Run readiness and diagnostic checks without changing containers
   migrate  Run 'php artisan migrate --force' via the staging ops profile
   status   Show container status for the staging stack
