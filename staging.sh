@@ -550,7 +550,7 @@ verify_frontend_assets() {
     fi
 
     asset_headers="$(curl -ksSI --resolve "${STAGING_DOMAIN}:${STAGING_HTTPS_PORT}:127.0.0.1" "https://${STAGING_DOMAIN}:${STAGING_HTTPS_PORT}${asset_path}" || true)"
-    asset_status="$(printf '%s\n' "$asset_headers" | awk 'toupper($1) ~ /^HTTP\\// {code=$2} END {print code}')"
+    asset_status="$(printf '%s\n' "$asset_headers" | awk 'toupper($1) ~ /^HTTP\// {code=$2} END {print code}')"
     asset_type="$(printf '%s\n' "$asset_headers" | awk -F': ' 'tolower($1) == "content-type" {print tolower($2)}' | tail -n 1 | tr -d '\r')"
 
     if [ "$asset_status" != "200" ]; then
