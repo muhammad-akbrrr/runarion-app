@@ -4,7 +4,6 @@ Tests that all stages can be imported, initialized, and basic functionality work
 """
 
 import sys
-import os
 
 def test_stage_imports():
     """Test that all stages can be imported successfully."""
@@ -19,6 +18,19 @@ def test_stage_imports():
         from src.services.deconstructor.stage_6_enhancement import EnhancementStage
         from src.services.deconstructor.stage_7_chaptering import ChapteringStage
         from src.services.deconstructor.orchestrator import DeconstructorOrchestrator
+        imported_stages = (
+            PDFIngestionStage,
+            TextCleaningStage,
+            SceneDetectionStage,
+            SceneBySceneAnalysisStage,
+            ProgressiveGraphAnalysisStage,
+            ComprehensiveReportingStage,
+            CoherenceCheckStage,
+            EnhancementStage,
+            ChapteringStage,
+            DeconstructorOrchestrator,
+        )
+        assert all(imported_stages)
         print("✓ All stage imports successful")
         return True
     except ImportError as e:

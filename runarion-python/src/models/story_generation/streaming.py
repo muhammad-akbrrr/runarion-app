@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, Dict, List, Generator
+from typing import Optional
 from src.models.request import BaseGenerationRequest
 
 class StreamingRequest(BaseModel):

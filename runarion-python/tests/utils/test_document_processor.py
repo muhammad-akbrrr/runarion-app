@@ -1,5 +1,3 @@
-import os
-import sys
 import logging
 
 # Add src to Python path for imports

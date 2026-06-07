@@ -13,7 +13,6 @@ This service handles:
 
 import logging
 import json
-import os
 import uuid
 import hashlib
 from typing import Dict, Any, List, Optional, Tuple
@@ -307,7 +306,7 @@ class AuditorService:
                 try:
                     chapter_scans = json.loads(chapter_scans)
                 except (json.JSONDecodeError, TypeError):
-                    logger.warning(f"Failed to parse chapter_scans JSON, using empty dict")
+                    logger.warning("Failed to parse chapter_scans JSON, using empty dict")
                     chapter_scans = {}
             
             # Ensure it's a dict
@@ -386,7 +385,7 @@ class AuditorService:
                         missing_count = sum(1 for name in entities_extracted_names[:10] 
                                           if name.lower() not in current_entity_names)
                         if missing_count > len(entities_extracted_names[:10]) // 2:
-                            extraction_warning = f"Some extracted entities have been deleted"
+                            extraction_warning = "Some extracted entities have been deleted"
                 
                 # VERIFICATION: Check if record keeper entry exists
                 record_keeper_warning = None
@@ -1242,7 +1241,7 @@ ANALYSIS:"""
                         excerpt = content
                     else:
                         half = early_chapter_budget // 2
-                        excerpt = content[:half] + f"\n[... middle section ...]\n" + content[-half:]
+                        excerpt = content[:half] + "\n[... middle section ...]\n" + content[-half:]
                 
                 if excerpt:
                     chapter_content_parts.append(f"=== CHAPTER {ch_num}: {ch_name} ===\n{excerpt}")
@@ -3499,7 +3498,7 @@ OUTPUT (JSON only):"""
                 instruction += f"- Think carefully about what \"{cat_name}\" means in the context of a story/narrative\n"
                 instruction += f"- Identify ALL entities that could be classified as \"{cat_name}\"\n"
                 instruction += f"- Consider: What would a reader identify as a \"{cat_name}\" in this text?\n"
-                instruction += f"- Be creative and thorough - the user created this category for a reason\n"
+                instruction += "- Be creative and thorough - the user created this category for a reason\n"
                 instruction += f"- If \"{cat_name}\" suggests groups/organizations, look for collectives, tribes, factions, guilds, etc.\n"
                 instruction += f"- If \"{cat_name}\" suggests concepts/ideas, look for abstract themes, philosophies, beliefs, etc.\n"
                 instruction += f"- If \"{cat_name}\" suggests events, look for occurrences, incidents, phenomena, etc.\n"

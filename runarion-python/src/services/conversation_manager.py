@@ -358,7 +358,6 @@ class ConversationManager:
                     for chapter in sorted_chapters:
                         chapter_order_num = chapter.get("order")
                         chapter_content = chapter.get("content", "").strip()
-                        chapter_name = chapter.get("chapter_name", "Untitled")
                         
                         # Only include chapters with actual content
                         if chapter_content:
@@ -499,4 +498,3 @@ class ConversationManager:
         except Exception as e:
             logger.error(f"Failed to initialize conversation for project {project_id}: {e}")
             return False
-

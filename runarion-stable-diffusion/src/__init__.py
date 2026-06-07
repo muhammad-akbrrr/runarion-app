@@ -1,3 +1,0 @@
-"""
-Stable Diffusion API package
-"""

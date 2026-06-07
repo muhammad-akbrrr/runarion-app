@@ -3,7 +3,7 @@ Standardized API response utilities for consistent response formatting.
 Provides helper functions to create standardized responses across all endpoints.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from datetime import datetime
 from flask import jsonify
 import logging

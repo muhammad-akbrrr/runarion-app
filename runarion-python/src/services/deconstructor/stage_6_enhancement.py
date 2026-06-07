@@ -7,7 +7,6 @@ import json
 import logging
 import re
 from typing import Dict, Any, List, Optional
-from datetime import datetime
 from ulid import ULID
 from .prompt_template import DeconstructorPrompts
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
@@ -859,7 +858,7 @@ class EnhancementStage(BasePipelineStage):
                     manuscript_parts.append(scene_header + scene_content)
             
             if not manuscript_parts:
-                self.logger.warning(f"No content found to generate manuscript")
+                self.logger.warning("No content found to generate manuscript")
                 return None
             
             # Combine all scenes

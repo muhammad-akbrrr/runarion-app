@@ -4,7 +4,6 @@ Auditor API - Flask blueprint for manuscript analysis and summarization
 
 from flask import Blueprint, request, jsonify, current_app
 import logging
-from typing import Dict, Any, List
 
 logger = logging.getLogger(__name__)
 

@@ -2,10 +2,10 @@
 
 import os
 from abc import ABC, abstractmethod
-from typing import Optional, Tuple, Literal, List, Dict, Generator
+from typing import Optional, Literal, Generator
 from flask import current_app
 
-from src.models.request import BaseGenerationRequest, GenerationConfig
+from src.models.request import BaseGenerationRequest
 from src.models.response import BaseGenerationResponse, UsageMetadata, QuotaMetadata
 from src.services.quota_manager import QuotaManager
 from src.utils.tokenizer import TokenizerManager

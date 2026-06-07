@@ -449,7 +449,7 @@ class StyleAnalyzerOrchestrator:
         try:
             self._create_author_style(author_style_id, author_name, caller)
             self._mark_reprofile_status(author_style_id, "processing")
-            logger.info(f"run_pipeline: Created/updated author_style record in DB")
+            logger.info("run_pipeline: Created/updated author_style record in DB")
         except Exception as e:
             logger.error(str(e), exc_info=True)
             self._mark_reprofile_status(author_style_id, "failed", str(e))

@@ -109,7 +109,11 @@ def advisor_chat():
         max_output_tokens = json_data.get("max_output_tokens", 4000)  # Increased default for detailed responses
         temperature = json_data.get("temperature", 0.8)
         
-        current_app.logger.info(f"Advisor chat request: model={model_key}, story_context_len={len(story_context)}, history_len={len(conversation_history)}, thinking_budget={thinking_budget}, max_tokens={max_output_tokens}, temp={temperature}")
+        current_app.logger.info(
+            f"Advisor chat request: project_id={project_id}, model={model_key}, "
+            f"story_context_len={len(story_context)}, history_len={len(conversation_history)}, "
+            f"thinking_budget={thinking_budget}, max_tokens={max_output_tokens}, temp={temperature}"
+        )
         
         # Get model config
         model_config = MODEL_CONFIGS.get(model_key, MODEL_CONFIGS["gemini-2.5-flash"])
@@ -211,11 +215,11 @@ def advisor_chat():
                         continue
                 
                 if chunk_count == 0:
-                    current_app.logger.warning(f"Stream complete with NO content - possible safety block or empty response")
+                    current_app.logger.warning("Stream complete with NO content - possible safety block or empty response")
                     yield f"data: {json.dumps({'error': 'No response generated. The content may have been blocked by safety filters or the model returned an empty response.'})}\n\n"
                 else:
                     current_app.logger.info(f"Stream complete: {chunk_count} chunks, {total_chars} total chars (~{total_chars//4} tokens)")
-                yield f"data: [DONE]\n\n"
+                yield "data: [DONE]\n\n"
                 
             except Exception as e:
                 current_app.logger.error(f"Advisor streaming error: {e}")

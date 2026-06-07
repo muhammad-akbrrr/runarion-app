@@ -7,7 +7,7 @@ Rebuilt from database tables each pipeline run - not persisted.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 
 
 @dataclass

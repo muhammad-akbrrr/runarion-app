@@ -1,7 +1,7 @@
 # utils/tokenizer.py
 
 import tiktoken
-from typing import List, Dict, Union, Optional
+from typing import List, Dict
 from flask import current_app
 
 class TokenizerManager:

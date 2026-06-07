@@ -2,7 +2,6 @@
 
 import time
 import uuid
-import openai
 from flask import current_app
 from openai import OpenAI
 from typing import Dict, Generator

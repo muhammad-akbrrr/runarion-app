@@ -9,7 +9,6 @@ Tests pure logic with no database or LLM dependencies:
 """
 
 import sys
-import os
 import json
 import logging
 
@@ -25,7 +24,7 @@ from src.services.novel_writer.stage_3_quality import (
 )
 from src.services.novel_writer.stage_4_improvement import REVISION_ACTIONS
 from src.services.novel_writer.base_stage import (
-    BasePipelineStage, PipelineStageContext, PipelineStageResult
+    PipelineStageContext, PipelineStageResult
 )
 from src.models.novel_writer.status import NovelWriterStatus
 from src.models.deconstructor.status import DraftStatus
@@ -468,6 +467,11 @@ def test_revision_actions_defined():
         assert action.strip(), f"Revision action for {dim} must not be empty"
 
     print("  Revision actions defined: OK")
+
+
+def test_expansion_factors_defined():
+    """Backward-compatible alias for the revision actions completeness check."""
+    test_revision_actions_defined()
 
 
 def test_quality_assessment_json_parsing():

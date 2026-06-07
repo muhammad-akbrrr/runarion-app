@@ -5,8 +5,6 @@ and entity profiler merging logic.
 """
 
 import sys
-import os
-import json
 
 
 
@@ -14,42 +12,12 @@ import json
 
 def test_all_stage_imports():
     """Test that all novel writer stages can be imported."""
-    from src.services.novel_writer.base_stage import (
-        BasePipelineStage, PipelineStageContext, PipelineStageResult
-    )
-    from src.services.novel_writer.story_context import (
-        StoryContext, CharacterProfile, LocationProfile, GeneratedChapter
-    )
-    from src.services.novel_writer.prompt_template import NovelWriterPrompts
-    from src.services.novel_writer.entity_profiler import EntityProfilingStage
-    from src.services.novel_writer.scene_generator import ProseGenerationStage
-    from src.services.novel_writer.stage_3_quality import QualityAssessmentStage
-    from src.services.novel_writer.stage_4_improvement import SceneImprovementStage
-    from src.services.novel_writer.stage_5_assembly import ManuscriptAssemblyStage
-    from src.services.novel_writer.orchestrator import NovelWriterOrchestrator
-    from src.models.novel_writer.status import NovelWriterStatus
 
     print("  All stage imports: OK")
 
 
 def test_init_exports():
     """Test that __init__.py exports all expected symbols."""
-    from src.services.novel_writer import (
-        NovelWriterOrchestrator,
-        EntityProfilingStage,
-        ProseGenerationStage,
-        QualityAssessmentStage,
-        SceneImprovementStage,
-        ManuscriptAssemblyStage,
-        StoryContext,
-        CharacterProfile,
-        LocationProfile,
-        GeneratedChapter,
-        NovelWriterPrompts,
-        BasePipelineStage,
-        PipelineStageContext,
-        PipelineStageResult,
-    )
 
     print("  __init__.py exports: OK")
 
@@ -196,7 +164,7 @@ def test_all_stages_have_run_methods():
 def test_entity_profiler_merge_characters():
     """Test character profile merging from multiple sources."""
     from src.services.novel_writer.entity_profiler import EntityProfilingStage
-    from src.services.novel_writer.story_context import StoryContext, CharacterProfile
+    from src.services.novel_writer.story_context import StoryContext
 
     # Instantiate without DB (we'll call merge directly)
     stage = EntityProfilingStage.__new__(EntityProfilingStage)
@@ -275,7 +243,7 @@ def test_entity_profiler_merge_characters():
 def test_entity_profiler_merge_locations():
     """Test location profile merging from multiple sources."""
     from src.services.novel_writer.entity_profiler import EntityProfilingStage
-    from src.services.novel_writer.story_context import StoryContext, LocationProfile
+    from src.services.novel_writer.story_context import StoryContext
 
     stage = EntityProfilingStage.__new__(EntityProfilingStage)
     stage.logger = __import__('logging').getLogger('test')

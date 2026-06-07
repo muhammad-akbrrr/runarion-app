@@ -3,19 +3,15 @@ PDF generation utilities for test output.
 Converts enhanced manuscript data from database to formatted PDF documents.
 """
 
-import os
-import sys
-from datetime import datetime
 from typing import Optional, Dict, Any, List
 
 # Add src to path for database utilities
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.pagesizes import letter, A4
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle
+    from reportlab.lib.pagesizes import A4
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import inch
     REPORTLAB_AVAILABLE = True
 except ImportError:
     REPORTLAB_AVAILABLE = False
@@ -376,7 +372,7 @@ def generate_text_output(db_pool, draft_id: str, output_path: str) -> bool:
             
             # Statistics
             stats = manuscript_data['processing_stats']
-            f.write(f"\nProcessing Statistics:\n")
+            f.write("\nProcessing Statistics:\n")
             f.write(f"- Text Chunks: {stats['total_chunks']}\n")
             f.write(f"- Scenes Extracted: {stats['total_scenes']}\n")
             f.write(f"- Plot Issues Found: {stats['total_issues']}\n")
@@ -385,7 +381,7 @@ def generate_text_output(db_pool, draft_id: str, output_path: str) -> bool:
                 f.write(f"- Processing Time: {stats['processing_time']/60:.1f} minutes\n")
             
             # Pipeline stages
-            f.write(f"\nPipeline Stages Completed:\n")
+            f.write("\nPipeline Stages Completed:\n")
             stages = [
                 "1. PDF Ingestion",
                 "2. Text Cleaning", 
@@ -400,7 +396,7 @@ def generate_text_output(db_pool, draft_id: str, output_path: str) -> bool:
             
             # Scenes
             if manuscript_data['scenes']:
-                f.write(f"\n\nEXTRACTED SCENES\n")
+                f.write("\n\nEXTRACTED SCENES\n")
                 f.write("-" * 30 + "\n")
                 
                 for scene in manuscript_data['scenes'][:5]:  # First 5 scenes
@@ -419,7 +415,7 @@ def generate_text_output(db_pool, draft_id: str, output_path: str) -> bool:
             
             # Plot issues
             if manuscript_data['plot_issues']:
-                f.write(f"\n\nPLOT ISSUES & SUGGESTIONS\n")
+                f.write("\n\nPLOT ISSUES & SUGGESTIONS\n")
                 f.write("-" * 30 + "\n")
                 
                 for issue in manuscript_data['plot_issues']:

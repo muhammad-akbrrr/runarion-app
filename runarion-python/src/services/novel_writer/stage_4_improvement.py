@@ -3,14 +3,12 @@ Stage 4: Scene Improvement for the novel writer pipeline.
 Iteratively improves flagged chapters based on quality assessment feedback.
 """
 
-import json
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any
 
 from .base_stage import BasePipelineStage, PipelineStageContext, PipelineStageResult
 from .story_context import StoryContext, GeneratedChapter
 from .prompt_template import NovelWriterPrompts
-from .stage_3_quality import DIMENSION_WEIGHTS, ALL_DIMENSIONS
 from src.utils.llm_retry import call_llm_with_retry
 
 logger = logging.getLogger(__name__)

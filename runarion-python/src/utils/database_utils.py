@@ -8,7 +8,7 @@ import json
 import re
 import logging
 import time
-from typing import Any, Optional, Dict, List, Union, Callable
+from typing import Any, Dict, List, Callable
 from functools import wraps
 import psycopg2
 from contextlib import contextmanager

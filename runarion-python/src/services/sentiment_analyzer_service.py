@@ -746,7 +746,7 @@ Return JSON only:
             if focus_mode == '1-to-1' and len(selected_chars) != 2:
                 return {'error': f'1-to-1 mode requires exactly 2 characters. Found: {len(selected_chars)}', 'success': False}
             
-            logger.info(f"=== V2 EXTRACTION START ===")
+            logger.info("=== V2 EXTRACTION START ===")
             logger.info(f"Mode: {focus_mode}, Characters: {len(selected_chars)}, Chapters: {len(chapters_to_process)}")
             
             # Debug: Log chapter details
@@ -806,7 +806,7 @@ Return JSON only:
                 # This is on top of the per-chapter delays
                 time.sleep(2)  # 2 second delay between each character pair analysis
             
-            logger.info(f"=== V2 EXTRACTION COMPLETE ===")
+            logger.info("=== V2 EXTRACTION COMPLETE ===")
             logger.info(f"Relationships analyzed: {len(relationships)}")
             
             return {
@@ -964,7 +964,7 @@ Return JSON only:
                 props = rel.get('properties', {})
                 
                 if not props:
-                    logger.warning(f"Relationship found but properties is empty/None")
+                    logger.warning("Relationship found but properties is empty/None")
                     return rel
                 
                 logger.debug(f"Properties keys: {list(props.keys())}")
@@ -973,8 +973,8 @@ Return JSON only:
                 chapter_analyses_raw = props.get('chapter_analyses')
                 
                 if chapter_analyses_raw is None:
-                    logger.warning(f"chapter_analyses key not found in properties")
-                    logger.info(f"Found existing relationship with 0 chapter analyses")
+                    logger.warning("chapter_analyses key not found in properties")
+                    logger.info("Found existing relationship with 0 chapter analyses")
                     return rel
                 
                 # Parse chapter_analyses
@@ -1000,10 +1000,10 @@ Return JSON only:
                 except json.JSONDecodeError as parse_err:
                     logger.error(f"JSON decode error for chapter_analyses: {parse_err}")
                     logger.debug(f"Raw chapter_analyses value: {str(chapter_analyses_raw)[:200]}...")
-                    logger.info(f"Found existing relationship with 0 chapter analyses (parse error)")
+                    logger.info("Found existing relationship with 0 chapter analyses (parse error)")
                 except Exception as parse_err:
                     logger.error(f"Unexpected error parsing chapter_analyses: {parse_err}", exc_info=True)
-                    logger.info(f"Found existing relationship with 0 chapter analyses (error)")
+                    logger.info("Found existing relationship with 0 chapter analyses (error)")
                     
                 return rel
             else:
@@ -1363,7 +1363,7 @@ Return JSON only:
                 logger.error(f"1-to-1 mode requires exactly 2 characters but got {len(characters_to_process)}: {characters_to_process}")
                 return {'error': f'1-to-1 mode requires exactly 2 characters. Found: {len(characters_to_process)}. Check that both selected characters exist.'}
             
-            logger.info(f"=== EXTRACTION START ===")
+            logger.info("=== EXTRACTION START ===")
             logger.info(f"Focus mode: {focus_mode}")
             logger.info(f"Processing {len(characters_to_process)} characters across {len(chapters_to_process)} chapters")
             logger.info(f"Characters: {characters_to_process}")
@@ -1436,7 +1436,7 @@ Return JSON only:
             # ALL/SELECTED MODE: DECONSTRUCTOR PATTERN - One character at a time
             # ============================================================
             else:
-                logger.info(f"=== DECONSTRUCTOR PATTERN ===")
+                logger.info("=== DECONSTRUCTOR PATTERN ===")
                 character_results = []
                 
                 for character_name in characters_to_process:
@@ -1495,7 +1495,7 @@ Return JSON only:
                 focused_characters=characters_to_process if focus_mode == '1-to-1' else None
             )
             
-            logger.info(f"=== EXTRACTION COMPLETE ===")
+            logger.info("=== EXTRACTION COMPLETE ===")
             logger.info(f"Total interactions: {len(all_interactions)}")
             logger.info(f"Relationships built: {len(aggregated_relationships)}")
             
@@ -2015,7 +2015,7 @@ Return JSON only:
                     logger.warning(f"Response may be truncated for {chapter_name}, attempting to salvage")
                 else:
                     logger.error(f"No JSON object found in response for {chapter_name}")
-                    return {'error': f'No JSON found in AI response'}
+                    return {'error': 'No JSON found in AI response'}
             else:
                 json_text = json_match.group()
             

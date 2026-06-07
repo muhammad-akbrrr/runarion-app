@@ -11,12 +11,10 @@ AGE-First Architecture:
 - Clear error messages
 """
 
-import sys
 import os
 import ulid
 import json
 from datetime import datetime
-from pathlib import Path
 
 # Add src to Python path for imports
 
@@ -29,7 +27,6 @@ from src.services.deconstructor.stage_4_analysis.analyzer_4b import ProgressiveG
 from src.services.generation_engine import GenerationEngine
 from src.models.request import BaseGenerationRequest, GenerationConfig, CallerInfo
 from src.models.deconstructor.status import DraftStatus
-from src.utils.database_utils import utf8_database_connection
 from src.services.deconstructor.base_stage import PipelineStageContext
 
 # Import Flask app to set up application context
@@ -254,7 +251,7 @@ class AgeGraphIntegrationTest:
                     properties={'context': relationship['context']}
                 )
                 
-                assert edge_id is not None, f"Relationship creation must return valid ID"
+                assert edge_id is not None, "Relationship creation must return valid ID"
                 created_relationships.append((edge_id, relationship))
                 print(f"   Created AGE relationship {edge_id}: {relationship['source']} -{relationship['type']}-> {relationship['target']}")
             
@@ -306,7 +303,7 @@ class AgeGraphIntegrationTest:
             assert result.success, f"Stage 4B must succeed with AGE: {result.data.get('error', '')}"
             
             result_data = result.to_dict()
-            print(f"   Stage 4B executed successfully")
+            print("   Stage 4B executed successfully")
             print(f"   Scenes processed: {result_data.get('scenes_processed', 0)}")
             print(f"   Entities created: {result_data.get('entities_created', 0)}")
             print(f"   Relationships created: {result_data.get('relationships_created', 0)}")

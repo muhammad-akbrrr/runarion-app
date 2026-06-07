@@ -48,7 +48,7 @@ class EndToEndPipelineTest:
         if not os.path.exists(self.input_path):
             raise FileNotFoundError(f"Input file not found: {self.input_path}")
         
-        print(f"🔄 Initializing E2E Pipeline Test")
+        print("🔄 Initializing E2E Pipeline Test")
         print(f"   Input: {self.input_path}")
         print(f"   Draft ID: {self.draft_id}")
         
@@ -220,13 +220,13 @@ class EndToEndPipelineTest:
             ))
             
             conn.commit()
-            print(f"✓ Draft record created in database")
+            print("✓ Draft record created in database")
     
     def run_pipeline(self):
         """Run the complete 7-stage deconstruction pipeline."""
-        print(f"🚀 Starting complete pipeline execution...")
-        print(f"   This will process through all 7 stages using real LLM calls")
-        print(f"   Expected duration: 5-15 minutes depending on file size and LLM response times")
+        print("🚀 Starting complete pipeline execution...")
+        print("   This will process through all 7 stages using real LLM calls")
+        print("   Expected duration: 5-15 minutes depending on file size and LLM response times")
         print()
         
         try:
@@ -263,7 +263,7 @@ class EndToEndPipelineTest:
     
     def cleanup_test_data(self):
         """Clean up test data from database."""
-        print(f"🧹 Cleaning up test data...")
+        print("🧹 Cleaning up test data...")
 
         try:
             with utf8_database_connection(self.db_pool) as conn:
@@ -303,7 +303,7 @@ class EndToEndPipelineTest:
                     cursor.execute("DELETE FROM drafts WHERE id = %s", (self.draft_id,))
                     if cursor.rowcount > 0:
                         conn.commit()
-                        print(f"✓ At least removed draft record")
+                        print("✓ At least removed draft record")
             except:
                 pass
     
@@ -348,7 +348,7 @@ class EndToEndPipelineTest:
                     print(f"   {stage_num}: {stage_name.title()} ✓")
             
             print("\n💡 Next Steps:")
-            print(f"   1. Review database tables for detailed results")
+            print("   1. Review database tables for detailed results")
             print(f"   2. Use draft ID {self.draft_id} to query specific data")
             print()
             

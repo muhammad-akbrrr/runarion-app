@@ -1,9 +1,7 @@
 import logging
-import os
 
 import google.generativeai as genai
 import tiktoken
-from dotenv import load_dotenv
 from transformers import AutoTokenizer
 from vertexai.preview import tokenization
 from vertexai.tokenization._tokenizers import PreviewTokenizer

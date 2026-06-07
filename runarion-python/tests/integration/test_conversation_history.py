@@ -7,10 +7,8 @@ Tests the full conversation history flow including:
 - Integration with generation API
 """
 
-import sys
 import os
 import pytest
-from datetime import datetime, timezone
 
 # Add src to path
 
@@ -22,7 +20,6 @@ from psycopg2 import pool
 @pytest.fixture
 def db_pool():
     """Create database connection pool for testing."""
-    import os
     from dotenv import load_dotenv
     
     load_dotenv()

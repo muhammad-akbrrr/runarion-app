@@ -9,7 +9,7 @@ import time
 from typing import Dict, Any, List, Tuple
 from .prompt_template import DeconstructorPrompts
 from src.utils.database_utils import clean_text_for_database
-from src.utils.json_response_parser import parse_scene_detection_response, JSONResponseParser
+from src.utils.json_response_parser import parse_scene_detection_response
 from src.config.deconstructor_config import Stage3Config
 from src.utils.llm_retry import call_llm_with_retry
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
@@ -580,7 +580,6 @@ class SceneDetectionStage(BasePipelineStage):
 
             if previous_scene_count < soft_min:
                 # Too few scenes, ask for more
-                adjustment = "MORE"
                 instruction = (
                     f"Previous attempt found only {previous_scene_count} scenes. "
                     f"Look for additional real transitions and aim near {target} scenes "
@@ -588,7 +587,6 @@ class SceneDetectionStage(BasePipelineStage):
                 )
             elif previous_scene_count > soft_max:
                 # Too many scenes, ask for fewer
-                adjustment = "FEWER"
                 instruction = (
                     f"Previous attempt found {previous_scene_count} scenes. "
                     f"Merge only minor or artificial splits and aim near {target} scenes "
@@ -596,7 +594,6 @@ class SceneDetectionStage(BasePipelineStage):
                 )
             else:
                 # This shouldn't happen since we only retry for invalid counts
-                adjustment = "OPTIMAL"
                 instruction = (
                     f"Analyze the text and identify distinct scenes with their boundaries and metadata. "
                     f"Aim near {target} scenes (preferred band {soft_min}-{soft_max})."

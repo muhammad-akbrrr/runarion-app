@@ -8,7 +8,6 @@ import traceback
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime
-from contextlib import contextmanager
 
 from src.utils.logging_config import get_pipeline_logger
 from src.utils.database_utils import ensure_utf8_json
@@ -156,7 +155,7 @@ class DeconstructorOrchestrator:
                 # ROLLBACK cross-stage transaction
                 if pipeline_conn:
                     pipeline_conn.rollback()
-                    logger.warning(f"✗ Cross-stage transaction rolled back (Stage 1 validation failure)")
+                    logger.warning("✗ Cross-stage transaction rolled back (Stage 1 validation failure)")
 
                 self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
                 pipeline_results.update({
@@ -208,7 +207,7 @@ class DeconstructorOrchestrator:
                 # ROLLBACK cross-stage transaction
                 if pipeline_conn:
                     pipeline_conn.rollback()
-                    logger.warning(f"✗ Cross-stage transaction rolled back (Stage 3 validation failure)")
+                    logger.warning("✗ Cross-stage transaction rolled back (Stage 3 validation failure)")
 
                 self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
                 pipeline_results.update({
@@ -317,8 +316,8 @@ class DeconstructorOrchestrator:
             issues_found = stage_5_result.get('issues_found', 0)
             if issues_found < 0:  # Negative value indicates failure
                 error_msg = (
-                    f"Stage 5 coherence check failed. "
-                    f"Possible causes: truncated AI responses, parsing failures, or database errors."
+                    "Stage 5 coherence check failed. "
+                    "Possible causes: truncated AI responses, parsing failures, or database errors."
                 )
                 logger.error(error_msg)
                 pipeline_conn.rollback()
@@ -377,7 +376,7 @@ class DeconstructorOrchestrator:
                 # ROLLBACK cross-stage transaction
                 if pipeline_conn:
                     pipeline_conn.rollback()
-                    logger.warning(f"✗ Cross-stage transaction rolled back (Stage 7 validation failure)")
+                    logger.warning("✗ Cross-stage transaction rolled back (Stage 7 validation failure)")
 
                 self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_msg)
                 pipeline_results.update({
@@ -388,7 +387,7 @@ class DeconstructorOrchestrator:
                 })
                 return pipeline_results
 
-            print(f"✅ VALIDATION PASSED - Stage 7 validated successfully")
+            print("✅ VALIDATION PASSED - Stage 7 validated successfully")
             logger.info(f"Stage 7 completed and validated for draft {draft_id}")
 
             # Validate pipeline success by checking all stage results
@@ -431,7 +430,7 @@ class DeconstructorOrchestrator:
                 # Pipeline failed validation - rollback everything
                 if pipeline_conn:
                     pipeline_conn.rollback()
-                    logger.warning(f"✗ Cross-stage transaction rolled back (pipeline validation failure)")
+                    logger.warning("✗ Cross-stage transaction rolled back (pipeline validation failure)")
 
                 # Collect failed stage information
                 failed_stages = [
@@ -473,7 +472,7 @@ class DeconstructorOrchestrator:
             # ROLLBACK cross-stage transaction on exception
             if pipeline_conn:
                 pipeline_conn.rollback()
-                logger.error(f"✗ Cross-stage transaction rolled back due to exception")
+                logger.error("✗ Cross-stage transaction rolled back due to exception")
 
             # Update draft status to failed
             self._update_draft_status(draft_id, DraftStatus.FAILED.value, error_message=error_message)

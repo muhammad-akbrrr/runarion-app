@@ -31,7 +31,7 @@ from datetime import datetime
 from typing import Optional
 
 import ulid as ulid_lib
-from flask import Blueprint, current_app, jsonify, request
+from flask import Blueprint, current_app, request
 from psycopg2.pool import SimpleConnectionPool
 from pydantic import BaseModel, Field, ValidationError
 from werkzeug.utils import secure_filename

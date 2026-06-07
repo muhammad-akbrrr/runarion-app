@@ -3,9 +3,7 @@ Stage 4B: Progressive Graph Analysis
 Builds knowledge graph using Apache AGE to map character relationships and story elements.
 """
 
-import json
 import logging
-import os
 from typing import Dict, Any, List, Tuple, Optional
 from ..prompt_template import DeconstructorPrompts
 from src.utils.json_response_parser import parse_graph_analysis_response

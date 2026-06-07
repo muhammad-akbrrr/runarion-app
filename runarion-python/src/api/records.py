@@ -4,7 +4,6 @@ Records API - Flask blueprint for records system CRUD operations
 
 from flask import Blueprint, request, jsonify
 import logging
-from typing import Dict, Any
 
 logger = logging.getLogger(__name__)
 
@@ -302,6 +301,8 @@ def create_relationship():
             )
         
         if edge_id:
+            source_name = str(source_id)
+            target_name = str(target_id)
             return jsonify({
                 'success': True,
                 'edge_id': str(edge_id),  # Convert to string to avoid JS precision loss
@@ -447,4 +448,3 @@ def create_entity_type():
     except Exception as e:
         logger.error(f"Error creating entity type: {e}")
         return jsonify({'error': str(e)}), 500
-

@@ -526,8 +526,6 @@ class RecordsManager:
         try:
             with self.graph_service.get_age_connection() as conn:
                 with conn.cursor() as cursor:
-                    safe_draft_id = self.graph_service._escape_cypher_string(graph_draft_id)
-                    
                     # Always use the most permissive delete query (by ID only, no property filters)
                     # This ensures we can delete ALL vertices regardless of their structure, properties, or draft_id
                     # Some records may have been created with different structures or missing properties
@@ -977,7 +975,7 @@ class RecordsManager:
                             logger.info(f"Updated relationship: {source_name} -> {target_name} with sentiment_score: {properties.get('sentiment_score')}")
                             return edge_id
                         else:
-                            logger.warning(f"Failed to update relationship, will create new one")
+                            logger.warning("Failed to update relationship, will create new one")
             
             # No existing relationship or update failed - create new one
             return self.create_relationship(
@@ -2289,4 +2287,3 @@ class RecordsManager:
         finally:
             if conn:
                 self.db_pool.putconn(conn)
-

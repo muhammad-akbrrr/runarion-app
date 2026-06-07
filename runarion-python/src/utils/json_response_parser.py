@@ -6,7 +6,7 @@ Handles various AI response formats consistently across all pipeline stages.
 import json
 import re
 import logging
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 from enum import Enum
 
 logger = logging.getLogger(__name__)
@@ -475,7 +475,7 @@ class JSONResponseParser:
             # Reconstruct valid JSON
             repaired = f'{{"old_text": "{old_text_escaped}", "new_text": "{new_text_escaped}", "explanation": "{explanation_escaped}"}}'
             
-            logger.debug(f"Reconstructed JSON with escaped quotes")
+            logger.debug("Reconstructed JSON with escaped quotes")
             return repaired
             
         except Exception as e:
@@ -610,8 +610,6 @@ class JSONResponseParser:
                 logger.warning(f"Scene {i + 1} is not a dictionary, skipping")
                 continue
             
-            # Ensure required fields exist
-            required_fields = ['title', 'setting', 'characters', 'summary']
             scene_dict = {
                 'scene_number': scene.get('scene_number', i + 1),
                 'title': scene.get('title', f'Scene {i + 1}'),

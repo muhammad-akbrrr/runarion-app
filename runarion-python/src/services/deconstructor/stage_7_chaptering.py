@@ -26,12 +26,10 @@ If you see deprecation warnings in logs, update calling code.
 
 import json
 import logging
-import re
-from typing import Dict, Any, List, Tuple, Optional
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 from ulid import ULID
 from .prompt_template import DeconstructorPrompts
-from src.utils.database_utils import clean_text_for_database, ensure_utf8_json
 from src.utils.llm_retry import call_llm_with_retry
 from .base_stage import BasePipelineStage, PipelineStageResult, PipelineStageContext
 

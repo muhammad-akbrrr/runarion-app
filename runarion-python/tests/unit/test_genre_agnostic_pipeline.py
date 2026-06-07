@@ -1,5 +1,3 @@
-import os
-import sys
 import logging
 from io import BytesIO
 

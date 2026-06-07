@@ -6,7 +6,7 @@ into a StoryContext object. Pure data aggregation - zero LLM calls.
 
 import json
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Optional
 
 from .base_stage import BasePipelineStage, PipelineStageContext, PipelineStageResult
 from .rewrite_policy import compile_rewrite_policy

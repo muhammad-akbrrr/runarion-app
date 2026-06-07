@@ -2,13 +2,11 @@ from flask import Blueprint, request, jsonify, current_app, Response, stream_wit
 import json
 import traceback
 from pydantic import ValidationError
-from src.models.request import BaseGenerationRequest
 from src.services.generation_engine import GenerationEngine
 from src.services.usecase_handler.mock_handler import MockHandler
 from src.services.usecase_handler.story_handler import StoryHandler
 from src.services.usecase_handler.graph_layout_handler import GraphLayoutHandler
 from src.services.conversation_manager import ConversationManager
-from src.models.response import BaseGenerationResponse
 from src.models.story_generation.prompt_config import PromptConfig
 
 generate = Blueprint("generate", __name__)
