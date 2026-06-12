@@ -33,7 +33,7 @@ export default function AuthorStyleDeleteDialog({
         setIsDeleting(true);
 
         router.delete(
-            route("workspace.files.author-styles.delete", {
+            route("workspace.artifacts.author-styles.delete", {
                 workspace_id: workspaceId,
                 author_style_id: authorStyle.id,
             }),

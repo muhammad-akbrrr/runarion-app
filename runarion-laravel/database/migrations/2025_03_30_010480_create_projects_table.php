@@ -20,7 +20,6 @@ return new class extends Migration
             $table->string('slug');
             $table->json('settings')->nullable()->comment('For in-project settings like LLM settings, etc');
             $table->enum('category', ['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical'])->nullable();
-            $table->string('saved_in', 2)->default('01')->comment('01 = Server, 02 = GDrive, 03 = Dropbox, 04 = OneDrive');
             $table->text('description')->nullable();
             $table->json('access')->nullable();
             $table->boolean('is_active')->default(true);

@@ -9,7 +9,6 @@ import { toast } from "sonner";
 import { useWorkspacePipelineEvents } from "@/Hooks/useWorkspacePipelineEvents";
 
 // Import partials
-import StorageCards from "./Partials/StorageCards";
 import AuthorStyleCard from "./Partials/AuthorStyleCard";
 import ProjectsTable from "./Partials/ProjectsTable";
 import AuthorStyleDialog from "./Partials/AuthorStyleDialog";
@@ -17,13 +16,8 @@ import AuthorStyleEditDialog from "./Partials/AuthorStyleEditDialog";
 import AuthorStyleDeleteDialog from "./Partials/AuthorStyleDeleteDialog";
 
 export default function FileManager() {
-    const {
-        workspaceId,
-        storageProviders,
-        authorStyles,
-        projects,
-        flash,
-    } = usePage<PageProps<FileManagerProps>>().props;
+    const { workspaceId, authorStyles, projects, flash } =
+        usePage<PageProps<FileManagerProps>>().props;
     const [isAuthorStyleDialogOpen, setIsAuthorStyleDialogOpen] =
         useState(false);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -85,7 +79,7 @@ export default function FileManager() {
 
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Dashboard", path: "workspace.dashboard" },
-        { label: "File Manager", path: "workspace.files" },
+        { label: "Project Artifacts", path: "workspace.artifacts" },
     ].map((item) => ({
         ...item,
         param: { workspace_id: workspaceId },
@@ -93,12 +87,9 @@ export default function FileManager() {
 
     return (
         <AuthenticatedLayout breadcrumbs={breadcrumbs}>
-            <Head title="File Manager" />
+            <Head title="Project Artifacts" />
 
             <div className="space-y-6">
-                {/* Storage Cards Section */}
-                <StorageCards storageProviders={storageProviders} />
-
                 {/* Author Styles Section */}
                 <AuthorStyleCard
                     authorStyles={authorStyles}

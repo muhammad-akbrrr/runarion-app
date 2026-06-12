@@ -21,8 +21,6 @@ export interface Workspace {
     timezone: string | null;
     settings: Record<string, any> | null;
     permissions: Record<string, string[]> | null;
-    cloud_storage: Record<string, any> | null;
-    llm: Record<string, any> | null;
     billing_email: string | null;
     billing_name: string | null;
     billing_address: string | null;

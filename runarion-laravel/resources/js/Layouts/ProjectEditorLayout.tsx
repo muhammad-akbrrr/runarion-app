@@ -4,11 +4,9 @@ import {
     BookOpenText,
     Database,
     Network,
-    Paintbrush,
     Settings,
     FileText,
     Search,
-    MessageCircle,
     Share,
     Check,
     Loader2,
@@ -91,7 +89,7 @@ const commandActions: ActionItem[] = [
 ];
 
 const quickLinks: ActionItem[] = [
-    { icon: Folder, label: "File Manager" },
+    { icon: Folder, label: "Project Artifacts" },
     { icon: User, label: "Profile" },
     { icon: LayoutDashboard, label: "Dashboard" },
     { icon: HelpCircle, label: "Support" },
@@ -368,12 +366,6 @@ export default function ProjectEditorLayout({
             param: { workspace_id: workspaceId, project_id: projectId },
         },
         {
-            icon: Paintbrush,
-            label: "Image Editor",
-            path: "workspace.projects.editor.image",
-            param: { workspace_id: workspaceId, project_id: projectId },
-        },
-        {
             icon: History,
             label: "Version History",
             path: "workspace.projects.editor.version-history",
@@ -557,10 +549,6 @@ export default function ProjectEditorLayout({
                             </div>
                             {/* Right: Actions */}
                             <div className="flex justify-end gap-2">
-                                <Button variant="outline">
-                                    <MessageCircle className="h-4 w-4" />
-                                    Comment
-                                </Button>
                                 <Button>
                                     <Share className="h-4 w-4" />
                                     Share

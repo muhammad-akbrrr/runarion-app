@@ -1513,6 +1513,8 @@ class MainEditorController extends Controller
             $response = Http::timeout(60)->post("{$pythonApiUrl}/api/rewrite-selection", [
                 'project_id' => $project_id,
                 'workspace_id' => $workspace_id,
+                'user_id' => $user->id,
+                'session_id' => (string) Str::uuid(),
                 'selected_text' => $validated['selected_text'],
                 'context_before' => $validated['context_before'] ?? '',
                 'context_after' => $validated['context_after'] ?? '',
@@ -1616,6 +1618,8 @@ class MainEditorController extends Controller
                     'provider' => $provider,
                     'project_id' => $project_id,
                     'workspace_id' => $workspace_id,
+                    'user_id' => $user->id,
+                    'session_id' => (string) Str::uuid(),
                     'chapter_content' => $validated['chapter_content'] ?? null,
                 ]);
 

@@ -24,7 +24,7 @@ test('project list exposes pipeline lock props', function () {
             ->where('projects.0.pipelineLock.isLocked', true));
 });
 
-test('file manager exposes project pipeline lock props', function () {
+test('project artifacts exposes project pipeline lock props', function () {
     $context = NovelPipelineTestSupport::createWorkspaceContext();
     $run = NovelPipelineTestSupport::createPipelineRun([
         'workspace_id' => $context['workspace']->id,
@@ -38,7 +38,7 @@ test('file manager exposes project pipeline lock props', function () {
 
     $this
         ->actingAs($context['user'])
-        ->get(route('workspace.files', ['workspace_id' => $context['workspace']->id]))
+        ->get(route('workspace.artifacts', ['workspace_id' => $context['workspace']->id]))
         ->assertInertia(fn (Assert $page) => $page
             ->component('FileManager/Main')
             ->where('projects.0.id', $context['project']->id)

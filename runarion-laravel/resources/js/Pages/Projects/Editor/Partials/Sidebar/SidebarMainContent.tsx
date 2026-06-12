@@ -132,7 +132,7 @@ export function SidebarContent({
                 </Select>
                 {authorStyles?.length === 0 && (
                     <p className="text-xs text-amber-600">
-                        Create author styles in File Manager
+                        Create author styles in Project Artifacts
                     </p>
                 )}
             </div>

@@ -1,17 +1,5 @@
 import type { PipelineLock } from "./project";
 
-// Define the storage provider type
-export interface StorageProvider {
-  id: string;
-  name: string;
-  icon: string;
-  color: string;
-  used: number;
-  total: number;
-  percentage: number;
-  enabled: boolean;
-}
-
 // Define the author style type
 export interface AuthorStyle {
   id: string;
@@ -79,7 +67,6 @@ export interface Project {
   size: string;
   createdAt: string;
   sharedWith: string[];
-  savedIn: string;
   pipelineLock?: PipelineLock | null;
 }
 
@@ -87,7 +74,6 @@ export interface Project {
 export type FileManagerProps = {
   workspaceId: string;
   workspaceName: string;
-  storageProviders: StorageProvider[];
   authorStyles: AuthorStyle[];
   projects: Project[];
 };

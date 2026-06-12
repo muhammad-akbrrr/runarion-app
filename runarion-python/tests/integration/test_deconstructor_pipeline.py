@@ -174,16 +174,16 @@ class EndToEndPipelineTest:
                 test_workspace_id = str(ulid.ULID())  # Use full ULID format
                 cursor.execute("""
                     INSERT INTO workspaces (
-                        id, name, slug, is_active, monthly_quota, quota, 
-                        created_at, updated_at
+                        id, name, slug, is_active, monthly_token_quota,
+                        billing_cycle_anchor_at, created_at, updated_at
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """, (
                     test_workspace_id,
                     "Test Workspace",
                     "test-workspace-" + str(ulid.ULID())[:8],
                     True,
-                    50,
-                    50,
+                    25000000,
+                    datetime.now(),
                     datetime.now(),
                     datetime.now()
                 ))

@@ -68,6 +68,13 @@ class AdvisorStreamJob implements ShouldQueue
                 'thinking_budget' => $this->generationSettings['thinking_budget'] ?? 4096,
                 'max_output_tokens' => $this->generationSettings['max_output_tokens'] ?? 4000,
                 'temperature' => $this->generationSettings['temperature'] ?? 0.8,
+                'caller' => [
+                    'user_id' => (string) $chat->user_id,
+                    'workspace_id' => $this->workspaceId,
+                    'project_id' => $this->projectId,
+                    'session_id' => $this->sessionId,
+                    'api_keys' => [],
+                ],
             ];
 
             Log::info('Advisor stream started', [

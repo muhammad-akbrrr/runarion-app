@@ -22,30 +22,15 @@ class FileManagerController extends Controller
         private readonly ProjectPipelineStateService $pipelineStateService,
     ) {}
 
-    /**
-     * Display the file manager page.
-     *
-     * @param  string  $workspace_id
-     * @return \Inertia\Response
-     */
     public function show($workspace_id)
     {
-        // Get the workspace with its cloud storage settings
         $workspace = Workspace::findOrFail($workspace_id);
-
-        // Get storage providers from cloud_storage JSON column
-        $storageProviders = $this->getStorageProviders($workspace);
-
-        // Get author styles with their project counts
         $authorStyles = $this->getAuthorStyles($workspace_id);
-
-        // Get projects with their shared users
         $projects = $this->getProjects($workspace_id);
 
         return Inertia::render('FileManager/Main', [
             'workspaceId' => $workspace_id,
             'workspaceName' => $workspace->name,
-            'storageProviders' => $storageProviders,
             'authorStyles' => $authorStyles,
             'projects' => $projects,
         ]);
@@ -132,119 +117,8 @@ class FileManagerController extends Controller
             'file_paths' => $filePaths,
         ]);
 
-        return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
+        return redirect()->route('workspace.artifacts', ['workspace_id' => $workspace_id])
             ->with('success', 'Author style creation has been initiated. This may take a few minutes to complete.');
-    }
-
-    /**
-     * Get storage providers from workspace cloud_storage JSON column.
-     *
-     * @return array
-     */
-    private function getStorageProviders(Workspace $workspace)
-    {
-        $cloudStorage = $workspace->cloud_storage ?? [];
-        $storageProviders = [];
-
-        // Local Storage is always enabled and should be first
-        $storageProviders[] = [
-            'id' => 'local_storage',
-            'name' => 'Local Storage',
-            'icon' => 'HardDrive',
-            'color' => 'text-gray-500',
-            'used' => rand(50, 200), // Random usage for now
-            'total' => 500,
-            'percentage' => rand(10, 40), // Random percentage for now
-            'enabled' => true,
-        ];
-
-        // Google Drive
-        $googleDriveEnabled = isset($cloudStorage['google_drive']['enabled']) && $cloudStorage['google_drive']['enabled'];
-        if (isset($cloudStorage['google_drive'])) {
-            $storageProviders[] = [
-                'id' => 'google_drive',
-                'name' => 'Google Drive',
-                'icon' => 'Cloud',
-                'color' => 'text-blue-500',
-                'used' => rand(100, 180), // Random usage for now
-                'total' => 200,
-                'percentage' => rand(50, 90), // Random percentage for now
-                'enabled' => $googleDriveEnabled,
-            ];
-        }
-
-        // Dropbox
-        $dropboxEnabled = isset($cloudStorage['dropbox']['enabled']) && $cloudStorage['dropbox']['enabled'];
-        if (isset($cloudStorage['dropbox'])) {
-            $storageProviders[] = [
-                'id' => 'dropbox',
-                'name' => 'Dropbox',
-                'icon' => 'Dropbox',
-                'color' => 'text-indigo-500',
-                'used' => rand(20, 40), // Random usage for now
-                'total' => 50,
-                'percentage' => rand(40, 80), // Random percentage for now
-                'enabled' => $dropboxEnabled,
-            ];
-        }
-
-        // OneDrive
-        $oneDriveEnabled = isset($cloudStorage['onedrive']['enabled']) && $cloudStorage['onedrive']['enabled'];
-        if (isset($cloudStorage['onedrive'])) {
-            $storageProviders[] = [
-                'id' => 'onedrive',
-                'name' => 'OneDrive',
-                'icon' => 'Cloud',
-                'color' => 'text-sky-500',
-                'used' => rand(30, 60), // Random usage for now
-                'total' => 100,
-                'percentage' => rand(30, 60), // Random percentage for now
-                'enabled' => $oneDriveEnabled,
-            ];
-        }
-
-        // If the cloud storage providers don't exist in the workspace settings,
-        // add them as disabled by default
-        if (! isset($cloudStorage['google_drive'])) {
-            $storageProviders[] = [
-                'id' => 'google_drive',
-                'name' => 'Google Drive',
-                'icon' => 'Cloud',
-                'color' => 'text-blue-500',
-                'used' => 0,
-                'total' => 200,
-                'percentage' => 0,
-                'enabled' => false,
-            ];
-        }
-
-        if (! isset($cloudStorage['dropbox'])) {
-            $storageProviders[] = [
-                'id' => 'dropbox',
-                'name' => 'Dropbox',
-                'icon' => 'Dropbox',
-                'color' => 'text-indigo-500',
-                'used' => 0,
-                'total' => 50,
-                'percentage' => 0,
-                'enabled' => false,
-            ];
-        }
-
-        if (! isset($cloudStorage['onedrive'])) {
-            $storageProviders[] = [
-                'id' => 'onedrive',
-                'name' => 'OneDrive',
-                'icon' => 'Cloud',
-                'color' => 'text-sky-500',
-                'used' => 0,
-                'total' => 100,
-                'percentage' => 0,
-                'enabled' => false,
-            ];
-        }
-
-        return $storageProviders;
     }
 
     /**
@@ -298,7 +172,7 @@ class FileManagerController extends Controller
                 return response()->json(['success' => true, 'message' => 'Author style deleted successfully.']);
             }
 
-            return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
+            return redirect()->route('workspace.artifacts', ['workspace_id' => $workspace_id])
                 ->with('success', 'Author style deleted successfully.');
 
         } catch (\Exception $e) {
@@ -402,7 +276,7 @@ class FileManagerController extends Controller
                 ]);
             }
 
-            return redirect()->route('workspace.files', ['workspace_id' => $workspace_id])
+            return redirect()->route('workspace.artifacts', ['workspace_id' => $workspace_id])
                 ->with('success', 'Author style updated successfully.');
 
         } catch (\Exception $e) {
@@ -464,7 +338,7 @@ class FileManagerController extends Controller
     {
         $projects = Projects::where('workspace_id', $workspace_id)
             ->where('is_active', true)
-            ->select('id', 'name', 'created_at', 'updated_at', 'access', 'saved_in')
+            ->select('id', 'name', 'created_at', 'updated_at', 'access')
             ->get();
 
         $locks = $this->pipelineStateService->getLocksForProjects(
@@ -485,16 +359,6 @@ class FileManagerController extends Controller
                 }
             }
 
-            // Map saved_in codes to provider names
-            $savedInMap = [
-                '01' => 'Local Storage',
-                '02' => 'Google Drive',
-                '03' => 'Dropbox',
-                '04' => 'OneDrive',
-            ];
-
-            $savedIn = $savedInMap[$project->saved_in] ?? 'Local Storage';
-
             // Calculate a fake size for now
             $size = rand(1, 10).'.'.rand(1, 9).' MB';
 
@@ -504,7 +368,6 @@ class FileManagerController extends Controller
                 'size' => $size, // Fake size for now
                 'createdAt' => $project->created_at->format('Y-m-d'),
                 'sharedWith' => $sharedWith,
-                'savedIn' => $savedIn,
                 'pipelineLock' => $locks[$project->id] ?? null,
             ];
         }

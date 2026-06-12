@@ -368,15 +368,16 @@ Rewritten text:"""
         
         # Create a caller for the request
         caller = QuotaCaller.from_request_data(
-            user_id=1,  # Default user ID (will use default API keys)
+            user_id=json_data.get("user_id", 1),
             workspace_id=workspace_id or "system",
             project_id=project_id or "system",
-            session_id="rewrite-selection",
+            session_id=json_data.get("session_id", "rewrite-selection"),
             api_keys={}  # Will use default API keys from environment
         )
         
         req_obj = BaseGenerationRequest(
-            usecase="novel_pipeline",
+            usecase="editor_rewrite",
+            feature="rewrite_selection",
             provider=provider,
             model=model,
             prompt=prompt,
@@ -389,7 +390,7 @@ Rewritten text:"""
         )
         
         engine = GenerationEngine(req_obj)
-        response = engine.generate(skip_quota=True)
+        response = engine.generate()
         
         if not response or not response.text:
             return jsonify({"error": "Failed to generate rewrite"}), 500
@@ -539,15 +540,16 @@ Enhanced text:"""
         
         # Create a caller for the request
         caller = QuotaCaller.from_request_data(
-            user_id=1,  # Default user ID (will use default API keys)
+            user_id=json_data.get("user_id", 1),
             workspace_id=workspace_id or "system",
             project_id=project_id or "system",
-            session_id="enhance-text",
+            session_id=json_data.get("session_id", "enhance-text"),
             api_keys={}  # Will use default API keys from environment
         )
         
         req_obj = BaseGenerationRequest(
-            usecase="novel_pipeline",
+            usecase="editor_enhancement",
+            feature="enhance_text",
             provider=provider,
             model=model,
             prompt=prompt,
@@ -560,7 +562,7 @@ Enhanced text:"""
         )
         
         engine = GenerationEngine(req_obj)
-        response = engine.generate(skip_quota=True)
+        response = engine.generate()
         
         if not response or not response.text:
             return jsonify({"error": "Failed to generate enhancement"}), 500

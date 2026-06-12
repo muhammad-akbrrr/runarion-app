@@ -24,6 +24,10 @@ return new class extends Migration
             $table->string('provider')->nullable();
             $table->string('model_used')->nullable();
             $table->string('key_used')->nullable();
+            $table->string('usecase')->nullable();
+            $table->string('feature')->nullable();
+            $table->string('token_basis')->default('gemini');
+            $table->uuid('workspace_usage_period_id')->nullable();
 
             // Prompt and generation
             $table->text('prompt')->nullable();
@@ -36,6 +40,9 @@ return new class extends Migration
             $table->integer('input_tokens')->nullable();
             $table->integer('output_tokens')->nullable();
             $table->integer('total_tokens')->nullable();
+            $table->unsignedBigInteger('billable_input_tokens')->nullable();
+            $table->unsignedBigInteger('billable_output_tokens')->nullable();
+            $table->unsignedBigInteger('billable_total_tokens')->nullable();
             $table->integer('processing_time_ms')->nullable();
 
             // Error info

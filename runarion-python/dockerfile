@@ -6,6 +6,9 @@ ENV PYTHONUNBUFFERED 1
 ENV PATH="/app/venv/bin:$PATH"
 ENV PYTHONPATH="/app"
 ENV PIP_NO_CACHE_DIR=1
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_DEFAULT_TIMEOUT=120
+ENV PIP_RETRIES=10
 
 # Install system dependencies
 RUN apt-get update && apt-get install -y \
@@ -31,7 +34,8 @@ COPY requirements.txt .
 
 # Install Python dependencies
 RUN . /app/venv/bin/activate && \
-  python -m pip install --no-cache-dir -r requirements.txt
+  python -m pip install --upgrade pip setuptools wheel && \
+  python -m pip install --no-cache-dir --prefer-binary -r requirements.txt
 
 # Copy project files
 COPY . .

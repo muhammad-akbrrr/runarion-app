@@ -108,7 +108,6 @@ export interface Project {
     slug: string;
     settings: Record<string, any> | null;
     category: ProjectCategory | null;
-    saved_in: string;
     description: string | null;
     access: ProjectAccess[] | null;
     current_user_access: ProjectAccess | null;

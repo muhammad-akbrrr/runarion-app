@@ -7,13 +7,7 @@ import {
     SidebarMenuItem,
 } from "@/Components/ui/sidebar";
 import { Link } from "@inertiajs/react";
-import {
-    Activity,
-    Database,
-    LucideProps,
-    Settings,
-    Shield,
-} from "lucide-react";
+import { Database, LucideProps, Settings, Shield } from "lucide-react";
 import { RouteParams } from "../../../../vendor/tightenco/ziggy/src/js";
 
 interface SidebarItem {
@@ -45,11 +39,6 @@ export default function ProjectSettingsSidebar({
             label: "Backups",
             icon: Database,
             path: "workspace.projects.edit.backups",
-        },
-        {
-            label: "Activity",
-            icon: Activity,
-            path: "workspace.projects.edit.activity",
         },
     ].map((item) =>
         workspaceId

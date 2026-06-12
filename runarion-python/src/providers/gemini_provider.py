@@ -248,26 +248,22 @@ class GeminiProvider(BaseProvider):
         start_time = time.time()
         request_id = str(uuid.uuid4())
         provider_request_id = None
-        quota_generation_count = 0 if skip_quota else 1
         
         # Build Gemini generation config
         gemini_kwargs = self._build_gemini_kwargs(self.request.generation_config)
         current_app.logger.info(f"Gemini generation kwargs: {gemini_kwargs}")
 
-        # Skip quota check if skip_quota is True
-        if not skip_quota:
-            try:
-                self._check_quota()
-            except Exception as e:
-                current_app.logger.error(f"Gemini Quota error with model {self.model}: {e}")
-                response = self._build_error_response(
-                    request_id=request_id,
-                    provider_request_id=provider_request_id or "",
-                    error_message=f"Gemini Quota error: {str(e)}",
-                )
-                if not skip_quota:
-                    self._log_generation_to_db(response)
-                return response
+        try:
+            self._begin_usage_metering()
+        except Exception as e:
+            current_app.logger.error(f"Gemini Quota error with model {self.model}: {e}")
+            response = self._build_error_response(
+                request_id=request_id,
+                provider_request_id=provider_request_id or "",
+                error_message=f"Gemini Quota error: {str(e)}",
+            )
+            self._log_generation_to_db(response)
+            return response
 
         try:
             # Create the model — with graceful fallback for penalty params
@@ -295,8 +291,8 @@ class GeminiProvider(BaseProvider):
                     provider_request_id=provider_request_id,
                     error_message=error_message
                 )
-                if not skip_quota:
-                    self._log_generation_to_db(response)
+                self.quota_manager.finalize_usage(self.usage_reservation, 0)
+                self._log_generation_to_db(response)
                 return response
 
             generated_text = ""
@@ -317,10 +313,7 @@ class GeminiProvider(BaseProvider):
             total_tokens = getattr(usage, "total_token_count", 0)
 
             processing_time_ms = int((time.time() - start_time) * 1000)
-
-            # Skip quota update if skip_quota is True
-            if not skip_quota:
-                self._update_quota(quota_generation_count)
+            billable_usage = self._finalize_usage_metering(generated_text)
 
             response = self._build_response(
                 generated_text=generated_text,
@@ -331,26 +324,21 @@ class GeminiProvider(BaseProvider):
                 processing_time_ms=processing_time_ms,
                 request_id=request_id,
                 provider_request_id=provider_request_id,
-                quota_generation_count=quota_generation_count,
+                quota_generation_count=1,
             )
-
-            # Skip logging to DB if skip_quota is True
-            if not skip_quota:
-                self._log_generation_to_db(response)
+            self._log_generation_to_db(response, billable_usage=billable_usage)
                 
             return response
 
         except Exception as e:
             current_app.logger.error(f"Gemini API error with model {self.model}: {e}")
+            self.quota_manager.finalize_usage(self.usage_reservation, 0)
             response = self._build_error_response(
                 request_id=request_id,
                 provider_request_id=provider_request_id or "",
                 error_message=f"Gemini API error: {str(e)}",
             )
-            
-            # Skip logging to DB if skip_quota is True
-            if not skip_quota:
-                self._log_generation_to_db(response)
+            self._log_generation_to_db(response)
                 
             return response
     
@@ -366,10 +354,9 @@ class GeminiProvider(BaseProvider):
         start_time = time.time()
         request_id = str(uuid.uuid4())
         provider_request_id = None
-        quota_generation_count = 1
         
         try:
-            self._check_quota()
+            self._begin_usage_metering()
         except Exception as e:
             current_app.logger.error(f"Gemini Quota error with model {self.model}: {e}")
             response = self._build_error_response(
@@ -462,9 +449,11 @@ class GeminiProvider(BaseProvider):
 
             current_app.logger.info(f"Gemini streaming completed. Chunks: {chunk_count}, Generated length: {len(generated_text)}, Finish reason: {finish_reason}")
 
-            # Final usage data (Gemini stream does NOT return this currently, set 0s safely)
             processing_time_ms = int((time.time() - start_time) * 1000)
-            self._update_quota(quota_generation_count)
+            billable_usage = self._finalize_usage_metering(generated_text)
+            input_tokens = billable_usage["billable_input_tokens"]
+            output_tokens = billable_usage["billable_output_tokens"]
+            total_tokens = billable_usage["billable_total_tokens"]
 
             response = self._build_response(
                 generated_text=generated_text,
@@ -475,16 +464,17 @@ class GeminiProvider(BaseProvider):
                 processing_time_ms=processing_time_ms,
                 request_id=request_id,
                 provider_request_id=provider_request_id or "",
-                quota_generation_count=quota_generation_count
+                quota_generation_count=1
             )
 
-            self._log_generation_to_db(response)
+            self._log_generation_to_db(response, billable_usage=billable_usage)
 
         except Exception as e:
             import traceback
             current_app.logger.error(f"Gemini streaming error with model {self.model}: {e}")
             current_app.logger.error(f"Traceback: {traceback.format_exc()}")
             current_app.logger.error(f"Generated so far: {len(generated_text)} chars")
+            billable_usage = self._finalize_usage_metering(generated_text)
             
             # Log the error response
             error_response = self._build_error_response(
@@ -492,7 +482,7 @@ class GeminiProvider(BaseProvider):
                 provider_request_id=provider_request_id or "",
                 error_message=f"Gemini streaming error: {str(e)}"
             )
-            self._log_generation_to_db(error_response)
+            self._log_generation_to_db(error_response, billable_usage=billable_usage)
             yield f"Error: {str(e)}"
         
         

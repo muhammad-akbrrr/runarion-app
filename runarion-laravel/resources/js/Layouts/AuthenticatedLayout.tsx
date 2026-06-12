@@ -134,9 +134,9 @@ export default function AuthenticatedLayout({
             path: "workspace.projects",
         },
         {
-            label: "File Manager",
+            label: "Project Artifacts",
             icon: Folder,
-            path: "workspace.files",
+            path: "workspace.artifacts",
         },
     ].map((item) =>
         workspaceId

@@ -183,7 +183,7 @@ export default function AuthorStyleEditDialog({
         setError(null);
 
         router.patch(
-            route("workspace.files.author-styles.update", {
+            route("workspace.artifacts.author-styles.update", {
                 workspace_id: workspaceId,
                 author_style_id: authorStyle.id,
             }),

@@ -38,7 +38,6 @@ class ProjectsFactory extends Factory
             'slug' => fn (array $attributes) => Str::slug($attributes['name']),
             'settings' => null,
             'category' => fake()->optional(0.8)->randomElement(['horror', 'sci-fi', 'fantasy', 'romance', 'thriller', 'mystery', 'adventure', 'comedy', 'dystopian', 'crime', 'fiction', 'biography', 'historical']),
-            'saved_in' => fake()->randomElement(['01', '02', '03', '04']),
             'description' => fake()->optional(0.7)->paragraph(),
             'access' => null,
             'is_active' => true,

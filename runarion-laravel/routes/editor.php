@@ -2,7 +2,6 @@
 
 use App\Http\Controllers\ProjectEditor\AdvisorController;
 use App\Http\Controllers\ProjectEditor\ChainBuilderController;
-use App\Http\Controllers\ProjectEditor\ImageGeneratorController;
 use App\Http\Controllers\ProjectEditor\MainEditorController;
 use App\Http\Controllers\ProjectEditor\MultiPromptController;
 use App\Http\Controllers\ProjectEditor\ProjectDatabaseController;
@@ -45,12 +44,6 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/multi-prompt', [MultiPromptController::class, 'multiPrompt'])->name('workspace.projects.editor.multiprompt');
 
     Route::get('/projects/{project_id}/editor/multi-prompt', fn () => '')->name('raw.workspace.projects.editor.multiprompt');
-});
-
-Route::middleware(['auth', 'project-editor'])->group(function () {
-    Route::get('/{workspace_id}/projects/{project_id}/editor/image', [ImageGeneratorController::class, 'imageGenerator'])->name('workspace.projects.editor.image');
-
-    Route::get('/projects/{project_id}/editor/image', fn () => '')->name('raw.workspace.projects.editor.image');
 });
 
 // Version History Routes

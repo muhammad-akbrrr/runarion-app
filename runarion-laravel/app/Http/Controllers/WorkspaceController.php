@@ -4,9 +4,9 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Redirect;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Inertia\Inertia;
@@ -78,10 +78,7 @@ class WorkspaceController extends Controller
         ]);
     }
 
-    /**
-     * Display form to update cloud storage of the workspace.
-     */
-    public function editCloudStorage(Request $request, string $workspace_id): RedirectResponse|Response
+    public function usage(Request $request, string $workspace_id): RedirectResponse|Response
     {
         $userRole = $request->attributes->get('user_role');
         $isUserOwner = $userRole === 'owner';
@@ -89,55 +86,83 @@ class WorkspaceController extends Controller
 
         $workspace = DB::table('workspaces')
             ->where('id', $workspace_id)
-            ->first(['id', 'cloud_storage']);
+            ->first(['id', 'name', 'monthly_token_quota', 'billing_cycle_anchor_at']);
 
-        $cloudStorage = $workspace->cloud_storage ? json_decode($workspace->cloud_storage, true) : [];
-
-        $cloudStorage = array_map(
-            fn ($m) => [
-                'enabled' => $m['enabled'] ?? false,
-                'connected_at' => $m['connected_at'] ?? null,
-                'has_token' => isset($m['token']),
-            ],
-            $cloudStorage
-        );
-
-        return Inertia::render('Workspace/CloudStorage', [
-            'workspaceId' => $workspace_id,
-            'data' => $cloudStorage,
-            'isUserAdmin' => $isUserAdmin,
-            'isUserOwner' => $isUserOwner,
-        ]);
-    }
-
-    /**
-     * Display form to update LLM of the workspace.
-     */
-    public function editLLM(Request $request, string $workspace_id): RedirectResponse|Response
-    {
-        $userRole = $request->attributes->get('user_role');
-        $isUserOwner = $userRole === 'owner';
-        $isUserAdmin = $userRole === 'admin';
-
-        $llm = DB::table('workspaces')
-            ->where('id', $workspace_id)
-            ->value('llm');
-
-        $llm = $llm ? json_decode($llm, true) : [];
-
-        foreach ($llm as $key => $value) {
-            $apiKeyExists = isset($value['api_key']) && $value['api_key'] !== '';
-            $llm[$key] = [
-                'enabled' => $value['enabled'] && $apiKeyExists,
-                'api_key_exists' => $apiKeyExists,
-            ];
+        if (! $workspace) {
+            abort(401, 'Workspace not found.');
         }
 
-        return Inertia::render('Workspace/LLM', [
+        $quota = (int) ($workspace->monthly_token_quota ?? 25000000);
+
+        $currentPeriod = null;
+        if (Schema::hasTable('workspace_usage_periods')) {
+            $currentPeriod = DB::table('workspace_usage_periods')
+                ->where('workspace_id', $workspace_id)
+                ->orderByDesc('period_start_at')
+                ->first();
+        }
+
+        $featureBreakdown = [];
+        $projectBreakdown = [];
+
+        if (Schema::hasTable('generation_logs')) {
+            $logsQuery = DB::table('generation_logs')
+                ->where('generation_logs.workspace_id', $workspace_id)
+                ->where('generation_logs.success', true);
+
+            if ($currentPeriod) {
+                $logsQuery
+                    ->where('generation_logs.created_at', '>=', $currentPeriod->period_start_at)
+                    ->where('generation_logs.created_at', '<', $currentPeriod->period_end_at);
+            }
+
+            $featureBreakdown = (clone $logsQuery)
+                ->selectRaw("COALESCE(feature, 'other') as label, COALESCE(SUM(billable_total_tokens), SUM(total_tokens), 0) as total")
+                ->groupBy('label')
+                ->orderByDesc('total')
+                ->get()
+                ->map(fn ($row) => [
+                    'label' => $row->label,
+                    'percentage' => $quota > 0 ? round((((int) $row->total) / $quota) * 100, 2) : 0,
+                ])
+                ->all();
+
+            $projectBreakdown = (clone $logsQuery)
+                ->leftJoin('projects', 'generation_logs.project_id', '=', 'projects.id')
+                ->selectRaw("COALESCE(projects.name, 'Workspace-wide') as label, COALESCE(SUM(generation_logs.billable_total_tokens), SUM(generation_logs.total_tokens), 0) as total")
+                ->groupBy('label')
+                ->orderByDesc('total')
+                ->limit(5)
+                ->get()
+                ->map(fn ($row) => [
+                    'label' => $row->label,
+                    'percentage' => $quota > 0 ? round((((int) $row->total) / $quota) * 100, 2) : 0,
+                ])
+                ->all();
+        }
+
+        $usedTokens = (int) ($currentPeriod->tokens_consumed ?? 0);
+        $reservedTokens = (int) ($currentPeriod->tokens_reserved ?? $usedTokens);
+        $effectiveUsed = max($usedTokens, $reservedTokens);
+        $usedPercentage = $quota > 0 ? min(100, round(($effectiveUsed / $quota) * 100, 2)) : 0;
+        $remainingPercentage = max(0, round(100 - $usedPercentage, 2));
+
+        return Inertia::render('Workspace/Usage', [
             'workspaceId' => $workspace_id,
-            'data' => $llm,
+            'workspaceName' => $workspace->name,
             'isUserAdmin' => $isUserAdmin,
             'isUserOwner' => $isUserOwner,
+            'usage' => [
+                'usedPercentage' => $usedPercentage,
+                'remainingPercentage' => $remainingPercentage,
+                'daysLeft' => $currentPeriod && ! empty($currentPeriod->period_end_at)
+                    ? max(0, now()->diffInDays(\Illuminate\Support\Carbon::parse($currentPeriod->period_end_at), false))
+                    : null,
+                'featureBreakdown' => $featureBreakdown,
+                'projectBreakdown' => $projectBreakdown,
+                'periodStartAt' => $currentPeriod->period_start_at ?? null,
+                'periodEndAt' => $currentPeriod->period_end_at ?? null,
+            ],
         ]);
     }
 
@@ -231,83 +256,6 @@ class WorkspaceController extends Controller
             ->update($validated);
 
         return Redirect::route('workspace.edit', ['workspace_id' => $workspace_id]);
-    }
-
-    /**
-     * Update cloud storage of the workspace.
-     */
-    public function updateCloudStorage(Request $request, string $workspace_id): RedirectResponse
-    {
-        $this->canUpdate($request);
-
-        $validated = $request->validate([
-            'cloud_storage' => 'array',
-            'cloud_storage.*' => 'array',
-        ]);
-
-        DB::table('workspaces')
-            ->where('id', $workspace_id)
-            ->update($validated);
-
-        return Redirect::route('workspace.edit.cloud-storage', ['workspace_id' => $workspace_id]);
-    }
-
-    /**
-     * Update LLM of the workspace.
-     */
-    public function updateLLM(Request $request, string $workspace_id): RedirectResponse
-    {
-        $this->canUpdate($request);
-
-        $validated = $request->validate([
-            'llm_key' => 'required|string',
-            'enabled' => 'required|boolean',
-            'api_key' => 'nullable|string',
-            'delete_api_key' => 'nullable|boolean',
-        ]);
-
-        $llmKey = $validated['llm_key'];
-        $enabled = $validated['enabled'];
-        $apiKey = $validated['api_key'] ?? null;
-        $deleteApiKey = $validated['delete_api_key'] ?? null;
-
-        if ($enabled && $deleteApiKey) {
-            abort(400, 'Cannot enable LLM with deleted API key.');
-        }
-
-        $llm = DB::table('workspaces')
-            ->where('id', $workspace_id)
-            ->value('llm');
-        $llm = $llm ? json_decode($llm, true) : [];
-
-        if ($deleteApiKey) {
-            $llm[$llmKey] = [
-                'enabled' => false,
-                'api_key' => null,
-            ];
-        } elseif ($apiKey !== null && $apiKey !== '' && $enabled) {
-            $llm[$llmKey] = [
-                'enabled' => true,
-                'api_key' => Crypt::encryptString($apiKey),
-            ];
-        } else {
-            if (! isset($llm[$llmKey])) {
-                $llm[$llmKey] = [
-                    'enabled' => $enabled,
-                    'api_key' => null,
-                ];
-            } else {
-                $llm[$llmKey]['enabled'] = $enabled;
-            }
-        }
-
-        DB::table('workspaces')
-            ->where('id', $workspace_id)
-            ->update([
-                'llm' => json_encode($llm),
-            ]);
-
-        return Redirect::route('workspace.edit.llm', ['workspace_id' => $workspace_id]);
     }
 
     /**

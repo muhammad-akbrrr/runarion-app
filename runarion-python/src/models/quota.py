@@ -51,8 +51,6 @@ class WorkspaceQuota(BaseModel):
     timezone: Optional[str]
     settings: Optional[Dict[str, Any]]
     permissions: Optional[Dict[str, Any]]
-    cloud_storage: Optional[Dict[str, Any]]
-    llm: Optional[Dict[str, Any]]
     billing_email: Optional[str]
     billing_name: Optional[str]
     billing_address: Optional[str]
@@ -70,4 +68,5 @@ class WorkspaceQuota(BaseModel):
     created_at: Optional[datetime]
     updated_at: Optional[datetime]
     deleted_at: Optional[datetime]
-    quota: Optional[int] = 0
+    monthly_token_quota: Optional[int] = 25000000
+    billing_cycle_anchor_at: Optional[datetime] = None

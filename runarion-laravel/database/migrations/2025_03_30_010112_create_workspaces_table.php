@@ -19,8 +19,6 @@ return new class extends Migration
             $table->string('timezone')->nullable();
             $table->json('settings')->nullable(); // For workspace-specific settings
             $table->json('permissions')->nullable();
-            $table->json('cloud_storage')->nullable();
-            $table->json('llm')->nullable();
             $table->string('billing_email')->nullable();
             $table->string('billing_name')->nullable();
             $table->string('billing_address')->nullable();
@@ -35,8 +33,8 @@ return new class extends Migration
             $table->timestamp('trial_ends_at')->nullable();
             $table->timestamp('subscription_ends_at')->nullable();
             $table->boolean('is_active')->default(true);
-            $table->integer('monthly_quota')->default(50);
-            $table->integer('quota')->default(50);
+            $table->unsignedBigInteger('monthly_token_quota')->default(25000000);
+            $table->timestamp('billing_cycle_anchor_at')->nullable();
             $table->timestamps();
             $table->softDeletes();
         });

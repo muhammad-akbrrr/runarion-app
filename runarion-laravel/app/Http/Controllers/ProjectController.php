@@ -173,7 +173,6 @@ class ProjectController extends Controller
             $project->slug = Str::slug($validated['name']);
             $project->original_author = $request->user()->id;
             $project->folder_id = empty($validated['folder_id']) || $validated['folder_id'] === null ? null : $validated['folder_id'];
-            $project->saved_in = '01'; // Default to server storage
             $project->completed_onboarding = false; // Show onboarding dialog for new projects
             $project->is_active = true; // Ensure project is active
 
@@ -385,7 +384,6 @@ class ProjectController extends Controller
             'name' => 'required|string|max:255',
             'category' => 'nullable|string',
             'description' => 'nullable|string',
-            'storageLocation' => 'required|string|in:01,02,03,04',
             'folder_id' => 'nullable|string|exists:folders,id',
         ]);
 
@@ -405,7 +403,6 @@ class ProjectController extends Controller
         $project->slug = Str::slug($validated['name']);
         $project->category = $validated['category'] === 'none' ? null : $validated['category'];
         $project->description = $validated['description'];
-        $project->saved_in = $validated['storageLocation'];
         $project->folder_id = $validated['folder_id'] === 'none' ? null : $validated['folder_id'];
 
         $project->save();
@@ -675,23 +672,4 @@ class ProjectController extends Controller
         ]);
     }
 
-    /**
-     * Show the activity settings page for a specific project.
-     */
-    public function activity(Request $request, string $workspace_id, string $project_id)
-    {
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->first();
-
-        if (! $project) {
-            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
-        }
-
-        return Inertia::render('Projects/Activity', [
-            'workspaceId' => $workspace_id,
-            'projectId' => $project_id,
-            'project' => $project,
-        ]);
-    }
 }

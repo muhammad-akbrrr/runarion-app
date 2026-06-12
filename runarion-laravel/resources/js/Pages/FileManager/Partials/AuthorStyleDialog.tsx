@@ -105,7 +105,7 @@ export default function AuthorStyleDialog({
 
         // Submit the form to the backend
         router.post(
-            route("workspace.files.author-styles.store", {
+            route("workspace.artifacts.author-styles.store", {
                 workspace_id: workspaceId,
             }),
             formData,

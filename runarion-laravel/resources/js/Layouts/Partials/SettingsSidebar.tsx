@@ -8,11 +8,10 @@ import {
 } from "@/Components/ui/sidebar";
 import { Link } from "@inertiajs/react";
 import {
-    Bot,
-    Cloud,
     DollarSign,
     LayoutGrid,
     LucideProps,
+    PieChart,
     Settings,
     User as SingleUser,
     Users,
@@ -37,16 +36,11 @@ export default function SettingsSidebar({ workspaceId }: SettingsSidebarProps) {
         { label: "General", icon: Settings, path: "workspace.edit" },
         { label: "Members", icon: Users, path: "workspace.edit.member" },
         {
-            label: "Cloud Storage",
-            icon: Cloud,
-            path: "workspace.edit.cloud-storage",
+            label: "Usage",
+            icon: PieChart,
+            path: "workspace.edit.usage",
         },
-        { label: "LLM Integration", icon: Bot, path: "workspace.edit.llm" },
-        {
-            label: "Plans & Billing",
-            icon: DollarSign,
-            path: "workspace.edit.billing",
-        },
+        { label: "Plans & Billing", icon: DollarSign, path: "workspace.edit.billing" },
     ].map((item) =>
         workspaceId
             ? {

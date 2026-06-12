@@ -41,7 +41,6 @@ class NovelPipelineTestSupport
             'slug' => Str::slug($overrides['project_name'] ?? 'Pipeline Test Project'),
             'settings' => null,
             'category' => null,
-            'saved_in' => '01',
             'description' => null,
             'access' => [[
                 'user' => [

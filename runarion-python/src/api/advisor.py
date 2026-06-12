@@ -9,9 +9,8 @@ This provides a Cursor-style chat interface that:
 
 from flask import Blueprint, request, jsonify, current_app, Response, stream_with_context
 import json
-import os
-from google import genai
-from google.genai.types import GenerateContentConfig, SafetySetting, HarmCategory, HarmBlockThreshold, ThinkingConfig
+from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
+from src.services.generation_engine import GenerationEngine
 
 advisor = Blueprint("advisor", __name__)
 
@@ -37,15 +36,6 @@ MODEL_CONFIGS = {
     },
 }
 
-# Safety settings - BLOCK_NONE for creative writing
-SAFETY_SETTINGS = [
-    SafetySetting(category=HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=HarmBlockThreshold.BLOCK_NONE),
-    SafetySetting(category=HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=HarmBlockThreshold.BLOCK_NONE),
-    SafetySetting(category=HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=HarmBlockThreshold.BLOCK_NONE),
-    SafetySetting(category=HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=HarmBlockThreshold.BLOCK_NONE),
-    SafetySetting(category=HarmCategory.HARM_CATEGORY_CIVIC_INTEGRITY, threshold=HarmBlockThreshold.BLOCK_NONE),
-]
-
 DEFAULT_SYSTEM_INSTRUCTIONS = """You are an expert writing advisor and creative assistant. You have access to the full story context and can help with:
 
 1. **Story Analysis**: Analyze plot, characters, pacing, themes, and narrative structure
@@ -69,14 +59,43 @@ IMPORTANT RULES:
 - Reference specific parts of the story when relevant.
 - Chapters are numbered starting from 1 (Chapter 1, Chapter 2, etc.). There is NO Chapter 0.
 - When referencing chapters, use the chapter name if available, or "Chapter N" where N starts at 1."""
+def build_advisor_request(json_data: dict, stream: bool) -> GenerationEngine:
+    model_key = json_data.get("model", "gemini-2.5-flash")
+    system_instructions = json_data.get("system_instructions") or DEFAULT_SYSTEM_INSTRUCTIONS
+    story_context = json_data.get("story_context", "")
+    conversation_history = json_data.get("conversation_history", [])
+    caller_data = json_data.get("caller") or {}
 
+    full_system = build_full_system_prompt(system_instructions, story_context)
+    gemini_history = convert_history_to_gemini_format(conversation_history)
 
-def get_gemini_client():
-    """Get or create a Gemini client."""
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise ValueError("GEMINI_API_KEY not set")
-    return genai.Client(api_key=api_key)
+    caller = CallerInfo(
+        user_id=str(caller_data.get("user_id", "")),
+        workspace_id=str(caller_data.get("workspace_id", "")),
+        project_id=str(caller_data.get("project_id", json_data.get("project_id", ""))),
+        session_id=caller_data.get("session_id"),
+        api_keys=caller_data.get("api_keys") or {},
+    )
+
+    req_obj = BaseGenerationRequest(
+        usecase="advisor",
+        feature="advisor_chat",
+        provider="gemini",
+        model=model_key,
+        prompt="Continue the advisory conversation using the full story context and prior messages.",
+        instruction=full_system,
+        generation_config=GenerationConfig(
+            temperature=json_data.get("temperature", 0.8),
+            max_output_tokens=json_data.get("max_output_tokens", 4000),
+            thinking_budget=json_data.get("thinking_budget", 4096),
+            stream=stream,
+        ),
+        caller=caller,
+    )
+
+    engine = GenerationEngine(req_obj)
+    engine.provider_instance.set_conversation_history(gemini_history)
+    return engine
 
 
 @advisor.route("/advisor/chat", methods=["POST"])
@@ -98,15 +117,12 @@ def advisor_chat():
     try:
         json_data = request.get_json()
         
+        project_id = json_data.get("project_id", "unknown")
         model_key = json_data.get("model", "gemini-2.5-flash")
-        system_instructions = json_data.get("system_instructions") or DEFAULT_SYSTEM_INSTRUCTIONS
         story_context = json_data.get("story_context", "")
         conversation_history = json_data.get("conversation_history", [])
-        project_id = json_data.get("project_id", "unknown")
-        
-        # Generation settings from request
         thinking_budget = json_data.get("thinking_budget", 4096)
-        max_output_tokens = json_data.get("max_output_tokens", 4000)  # Increased default for detailed responses
+        max_output_tokens = json_data.get("max_output_tokens", 4000)
         temperature = json_data.get("temperature", 0.8)
         
         current_app.logger.info(
@@ -115,104 +131,21 @@ def advisor_chat():
             f"thinking_budget={thinking_budget}, max_tokens={max_output_tokens}, temp={temperature}"
         )
         
-        # Get model config
-        model_config = MODEL_CONFIGS.get(model_key, MODEL_CONFIGS["gemini-2.5-flash"])
-        
-        # Build the full prompt with story context
-        full_system = build_full_system_prompt(system_instructions, story_context)
-        
-        # Convert conversation history to Gemini format
-        gemini_history = convert_history_to_gemini_format(conversation_history)
+        engine = build_advisor_request(json_data, stream=True)
         
         def generate():
             try:
-                client = get_gemini_client()
-                
-                # Build thinking config if supported
-                thinking_cfg = None
-                actual_max_tokens = max_output_tokens
-                
-                if model_config.get("supports_thinking") and thinking_budget > 0:
-                    thinking_cfg = ThinkingConfig(
-                        thinking_budget=thinking_budget,
-                        include_thoughts=False
-                    )
-                    # Add thinking budget to max tokens so model has room for both
-                    actual_max_tokens = thinking_budget + max_output_tokens
-                
-                current_app.logger.info(f"Generation config: thinking_budget={thinking_budget}, max_output={max_output_tokens}, actual_max={actual_max_tokens}, temp={temperature}")
-                
-                # Build generation config
-                gen_config = GenerateContentConfig(
-                    system_instruction=full_system,
-                    temperature=temperature,
-                    max_output_tokens=actual_max_tokens,
-                    safety_settings=SAFETY_SETTINGS,
-                    thinking_config=thinking_cfg,
-                )
-                
-                # Stream the response
-                current_app.logger.info(f"Starting Gemini streaming with model: {model_config['model_name']}")
-                
-                stream = client.models.generate_content_stream(
-                    model=model_config["model_name"],
-                    contents=gemini_history,
-                    config=gen_config,
-                )
-                
                 total_chars = 0
                 chunk_count = 0
-                
-                for chunk in stream:
-                    try:
-                        text = None
-                        
-                        # Method 1: Try direct text access (works for most models)
-                        try:
-                            if hasattr(chunk, 'text') and chunk.text:
-                                text = chunk.text
-                        except Exception as text_err:
-                            current_app.logger.debug(f"Direct text access failed: {text_err}")
-                        
-                        # Method 2: Extract from candidates/parts (more reliable)
-                        if not text and hasattr(chunk, 'candidates') and chunk.candidates:
-                            for cand in chunk.candidates:
-                                # Check for finish reason that might indicate blocked content
-                                if hasattr(cand, 'finish_reason') and cand.finish_reason:
-                                    current_app.logger.debug(f"Candidate finish_reason: {cand.finish_reason}")
-                                
-                                if hasattr(cand, 'content') and cand.content:
-                                    if hasattr(cand.content, 'parts') and cand.content.parts:
-                                        for part in cand.content.parts:
-                                            # Skip thinking parts
-                                            is_thought = getattr(part, 'thought', False)
-                                            if is_thought:
-                                                continue
-                                            
-                                            part_text = getattr(part, 'text', None)
-                                            if part_text:
-                                                text = part_text
-                                                break
-                                    if text:
-                                        break
-                        
-                        if text:
-                            total_chars += len(text)
-                            chunk_count += 1
-                            yield f"data: {json.dumps({'chunk': text, 'type': 'content'})}\n\n"
-                        else:
-                            # Log chunk structure for debugging empty responses
-                            if chunk_count == 0:
-                                current_app.logger.debug(f"Empty chunk received. Chunk type: {type(chunk)}, attrs: {dir(chunk)}")
-                                if hasattr(chunk, 'candidates'):
-                                    for i, cand in enumerate(chunk.candidates):
-                                        current_app.logger.debug(f"Candidate {i}: finish_reason={getattr(cand, 'finish_reason', None)}, safety_ratings={getattr(cand, 'safety_ratings', None)}")
-                                        
-                    except Exception as chunk_err:
-                        current_app.logger.warning(f"Chunk processing error: {chunk_err}")
-                        import traceback
-                        current_app.logger.debug(f"Chunk error traceback: {traceback.format_exc()}")
+
+                for text in engine.provider_instance.generate_stream():
+                    if not text:
                         continue
+                    if text.startswith("Error:"):
+                        raise RuntimeError(text.removeprefix("Error:").strip())
+                    total_chars += len(text)
+                    chunk_count += 1
+                    yield f"data: {json.dumps({'chunk': text, 'type': 'content'})}\n\n"
                 
                 if chunk_count == 0:
                     current_app.logger.warning("Stream complete with NO content - possible safety block or empty response")
@@ -252,57 +185,14 @@ def advisor_chat_sync():
     try:
         json_data = request.get_json()
         
-        model_key = json_data.get("model", "gemini-2.5-flash")
-        system_instructions = json_data.get("system_instructions") or DEFAULT_SYSTEM_INSTRUCTIONS
-        story_context = json_data.get("story_context", "")
-        conversation_history = json_data.get("conversation_history", [])
-        
-        model_config = MODEL_CONFIGS.get(model_key, MODEL_CONFIGS["gemini-2.5-flash"])
-        
-        full_system = build_full_system_prompt(system_instructions, story_context)
-        gemini_history = convert_history_to_gemini_format(conversation_history)
-        
-        client = get_gemini_client()
-        
-        # Build thinking config if supported
-        thinking_config = None
-        max_tokens = model_config["max_tokens"]
-        
-        if model_config.get("supports_thinking"):
-            thinking_budget = model_config.get("thinking_budget", 2048)
-            thinking_config = ThinkingConfig(
-                thinking_budget=thinking_budget,
-                include_thoughts=False
-            )
-            max_tokens = thinking_budget + model_config["max_tokens"]
-        
-        gen_config = GenerateContentConfig(
-            system_instruction=full_system,
-            temperature=0.8,
-            max_output_tokens=max_tokens,
-            safety_settings=SAFETY_SETTINGS,
-            thinking_config=thinking_config,
-        )
-        
-        response = client.models.generate_content(
-            model=model_config["model_name"],
-            contents=gemini_history,
-            config=gen_config,
-        )
-        
-        # Extract text from response
-        response_text = ""
-        if response.candidates:
-            candidate = response.candidates[0]
-            if candidate.content and candidate.content.parts:
-                response_text = "".join(
-                    part.text for part in candidate.content.parts 
-                    if hasattr(part, "text") and part.text and not getattr(part, 'thought', False)
-                )
+        engine = build_advisor_request(json_data, stream=False)
+        response = engine.generate()
+        response_text = response.text if response.success else ""
         
         return jsonify({
-            "success": True,
+            "success": response.success,
             "response": response_text,
+            "error": response.error_message,
         })
         
     except Exception as e:

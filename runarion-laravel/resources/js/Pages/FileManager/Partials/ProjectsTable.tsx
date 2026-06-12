@@ -231,7 +231,7 @@ export default function ProjectsTable({
     return (
         <div className="space-y-4">
             <div className="flex justify-between items-center">
-                <h2 className="text-xl">Project Files</h2>
+                <h2 className="text-xl">Workspace Projects</h2>
                 <Button variant="outline" onClick={handleViewAll}>
                     View All
                 </Button>
@@ -271,12 +271,11 @@ export default function ProjectsTable({
                                     onClick={() => handleSort("createdAt")}
                                 >
                                     <div className="flex items-center">
-                                        Created At
+                                        Created
                                         <ArrowUpDown className="ml-2 h-4 w-4" />
                                     </div>
                                 </TableHead>
                                 <TableHead>Shared With</TableHead>
-                                <TableHead>Saved In</TableHead>
                                 <TableHead className="w-[60px]">
                                     Actions
                                 </TableHead>
@@ -347,11 +346,6 @@ export default function ProjectsTable({
                                                     Not shared
                                                 </span>
                                             )}
-                                        </TableCell>
-                                        <TableCell>
-                                            <Badge variant="outline">
-                                                {project.savedIn}
-                                            </Badge>
                                         </TableCell>
                                         <TableCell>
                                             <DropdownMenu>

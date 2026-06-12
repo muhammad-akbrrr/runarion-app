@@ -8,6 +8,7 @@ from flask import current_app
 from src.models.request import BaseGenerationRequest
 from src.models.response import BaseGenerationResponse, UsageMetadata, QuotaMetadata
 from src.services.quota_manager import QuotaManager
+from src.utils.token_counter import TokenCounter
 from src.utils.tokenizer import TokenizerManager
 
 class BaseProvider(ABC):
@@ -22,6 +23,11 @@ class BaseProvider(ABC):
         self.instruction = self._format_instruction(request.instruction)
         self.quota_manager = self._get_quota_manager()
         self.remaining_quota = None
+        self.usage_reservation = None
+        self.billable_token_counter = TokenCounter(
+            provider="gemini",
+            model=os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash"),
+        )
         
         # Process tokenization for phrase bias, banned tokens, and stop sequences
         self._process_tokenization()
@@ -49,15 +55,53 @@ class BaseProvider(ABC):
     def _get_quota_manager(self) -> QuotaManager:
         return QuotaManager()
 
-    def _check_quota(self):
-        self.remaining_quota = self.quota_manager.check_quota(self.request.caller)
+    def _estimate_billable_input_tokens(self) -> int:
+        segments = [self.instruction, self.prompt]
 
-    def _update_quota(self, quota_generation_count: int):
-        self.quota_manager.update_quota(
+        conversation_history = getattr(self, "conversation_history", None) or []
+        for message in conversation_history:
+            role = message.get("role", "")
+            parts = message.get("parts", [])
+            text = " ".join(
+                part.get("text", "")
+                for part in parts
+                if isinstance(part, dict) and part.get("text")
+            )
+            segments.append(f"{role}: {text}".strip())
+
+        combined_text = "\n\n".join(segment for segment in segments if segment)
+        return self.billable_token_counter.safe_count(combined_text)
+
+    def _estimate_reserved_tokens(self) -> int:
+        estimated_input_tokens = self._estimate_billable_input_tokens()
+        estimated_output_tokens = max(1, int(self.request.generation_config.max_output_tokens or 0))
+        return max(estimated_input_tokens + estimated_output_tokens, 1)
+
+    def _begin_usage_metering(self):
+        self.usage_reservation = self.quota_manager.reserve_tokens(
             caller=self.request.caller,
-            expected_quota=self.remaining_quota,
-            quota_generation_count=quota_generation_count
+            estimated_tokens=self._estimate_reserved_tokens(),
         )
+
+    def _finalize_usage_metering(self, generated_text: str) -> dict:
+        billable_input_tokens = self._estimate_billable_input_tokens()
+        billable_output_tokens = self.billable_token_counter.safe_count(generated_text or "")
+        billable_total_tokens = billable_input_tokens + billable_output_tokens
+        workspace_usage_period_id = (self.usage_reservation or {}).get("workspace_usage_period_id")
+
+        self.quota_manager.finalize_usage(
+            reservation=self.usage_reservation,
+            actual_total_tokens=billable_total_tokens,
+        )
+        self.usage_reservation = None
+
+        return {
+            "billable_input_tokens": billable_input_tokens,
+            "billable_output_tokens": billable_output_tokens,
+            "billable_total_tokens": billable_total_tokens,
+            "token_basis": "gemini",
+            "workspace_usage_period_id": workspace_usage_period_id,
+        }
 
     def _resolve_api_key(self) -> tuple[str, Literal["own", "default"]]:
         key = self.request.caller.api_keys.get(self.request.provider)
@@ -151,7 +195,7 @@ class BaseProvider(ABC):
         input_tokens: int = 0,
         output_tokens: int = 0,
         total_tokens: int = 0,
-        quota_generation_count: int = 0,
+        quota_generation_count: int = 1,
         processing_time_ms: int = 0,
         provider_request_id: Optional[str] = None
     ) -> BaseGenerationResponse:
@@ -216,15 +260,23 @@ class BaseProvider(ABC):
             error_message=error_message
         )
 
-    def _log_generation_to_db(self, response: BaseGenerationResponse):
+    def _log_generation_to_db(self, response: BaseGenerationResponse, billable_usage: Optional[dict] = None):
         try:
             # Truncate potentially long inputs to prevent DB issues
             MAX_TEXT_LENGTH = 1000  # Adjust based on your database column size
             truncated_prompt = (self.request.prompt or "")[:MAX_TEXT_LENGTH]
             truncated_instruction = (self.instruction or "")[:MAX_TEXT_LENGTH]
             truncated_generated_text = (response.text or "")[:MAX_TEXT_LENGTH]
-            
-            with self.quota_manager.connection_pool.getconn() as conn:
+
+            billable_usage = billable_usage or {
+                "billable_input_tokens": None,
+                "billable_output_tokens": None,
+                "billable_total_tokens": None,
+                "token_basis": "gemini",
+                "workspace_usage_period_id": None,
+            }
+
+            with self.quota_manager.get_connection() as conn:
                 with conn.cursor() as cursor:
                     cursor.execute("""
                         INSERT INTO generation_logs (
@@ -236,6 +288,10 @@ class BaseProvider(ABC):
                             provider,
                             model_used,
                             key_used,
+                            usecase,
+                            feature,
+                            token_basis,
+                            workspace_usage_period_id,
                             prompt,
                             instruction,
                             generated_text,
@@ -244,12 +300,16 @@ class BaseProvider(ABC):
                             input_tokens,
                             output_tokens,
                             total_tokens,
+                            billable_input_tokens,
+                            billable_output_tokens,
+                            billable_total_tokens,
                             processing_time_ms,
                             error_message,
                             created_at
                         ) VALUES (
                             %s::UUID, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                            %s, %s, NOW()
                         )
                         ON CONFLICT (request_id) DO NOTHING
                     """, (
@@ -261,6 +321,10 @@ class BaseProvider(ABC):
                         response.provider,
                         response.model_used,
                         response.key_used,
+                        self.request.usecase,
+                        self.request.feature or self.request.usecase,
+                        billable_usage["token_basis"],
+                        billable_usage["workspace_usage_period_id"],
                         truncated_prompt,
                         truncated_instruction,
                         truncated_generated_text,
@@ -269,6 +333,9 @@ class BaseProvider(ABC):
                         response.metadata.input_tokens,
                         response.metadata.output_tokens,
                         response.metadata.total_tokens,
+                        billable_usage["billable_input_tokens"],
+                        billable_usage["billable_output_tokens"],
+                        billable_usage["billable_total_tokens"],
                         response.metadata.processing_time_ms,
                         response.error_message
                     ))

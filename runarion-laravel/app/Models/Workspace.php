@@ -24,8 +24,8 @@ class Workspace extends Model
         'timezone',
         'settings',
         'permissions',
-        'cloud_storage',
-        'llm',
+        'monthly_token_quota',
+        'billing_cycle_anchor_at',
         'billing_email',
         'billing_name',
         'billing_address',
@@ -45,8 +45,8 @@ class Workspace extends Model
     protected $casts = [
         'settings' => 'array',
         'permissions' => 'array',
-        'cloud_storage' => 'array',
-        'llm' => 'array',
+        'monthly_token_quota' => 'integer',
+        'billing_cycle_anchor_at' => 'datetime',
         'trial_ends_at' => 'datetime',
         'subscription_ends_at' => 'datetime',
         'is_active' => 'boolean',
@@ -66,8 +66,8 @@ class Workspace extends Model
             'timezone' => ['nullable', 'string', 'timezone'],
             'settings' => ['nullable', 'array'],
             'permissions' => ['nullable', 'array'],
-            'cloud_storage' => ['nullable', 'array'],
-            'llm' => ['nullable', 'array'],
+            'monthly_token_quota' => ['nullable', 'integer', 'min:0'],
+            'billing_cycle_anchor_at' => ['nullable', 'date'],
             'billing_email' => ['nullable', 'email'],
             'billing_name' => ['nullable', 'string', 'max:255'],
             'billing_address' => ['nullable', 'string', 'max:255'],
@@ -125,78 +125,5 @@ class Workspace extends Model
     public function authorStyles()
     {
         return $this->hasMany(AuthorStyle::class, 'workspace_id');
-    }
-
-    /**
-     * Get the Cloud Storage token for the workspace.
-     */
-    public function getCloudToken(string $provider): ?string
-    {
-        $cloudStorage = $this->cloud_storage ?? [];
-
-        $encrypted = $cloudStorage[$provider]['token'] ?? null;
-        if (! $encrypted) {
-            return null;
-        }
-
-        try {
-            return \Crypt::decryptString($encrypted);
-        } catch (\Exception $e) {
-            report($e);
-
-            return null;
-        }
-    }
-
-    /**
-     * Set the Cloud Storage token for the workspace.
-     */
-    public function setCloudToken(string $provider, ?string $plainToken): void
-    {
-        $cloudStorage = $this->cloud_storage ?? [];
-
-        if (! isset($cloudStorage[$provider])) {
-            $cloudStorage[$provider] = [];
-        }
-
-        $cloudStorage[$provider]['token'] = $plainToken
-            ? \Crypt::encryptString($plainToken)
-            : null;
-
-        $this->cloud_storage = $cloudStorage;
-    }
-
-    public function isCloudConnected(string $provider): bool
-    {
-        $data = $this->cloud_storage[$provider] ?? [];
-
-        if (empty($data['enabled'])) {
-            return false;
-        }
-
-        return match ($provider) {
-            'google_drive' => ! empty($data['refresh_token']),
-            default => ! empty($data['token']),
-        };
-    }
-
-    public function getCloudRefreshToken(string $provider): ?string
-    {
-        $data = $this->cloud_storage[$provider] ?? null;
-        if (! $data || empty($data['refresh_token'])) {
-            return null;
-        }
-        try {
-            return \Crypt::decryptString($data['refresh_token']);
-        } catch (\Throwable $e) {
-            report($e);
-
-            return null;
-        }
-    }
-
-    public function getCloudFolderId(string $provider): ?string
-    {
-        return $this->cloud_storage[$provider]['folder_id'] ?? null;
     }
 }

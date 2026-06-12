@@ -68,6 +68,7 @@ class GenerationConfig(BaseModel):
 
 class BaseGenerationRequest(BaseModel):
     usecase: str = "mock"
+    feature: Optional[str] = None
     provider: str = "gemini"
     model: Optional[str] = None
     prompt: Optional[str] = None

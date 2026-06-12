@@ -9,13 +9,7 @@ import {
 import { Textarea } from "@/Components/ui/textarea";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
-import {
-    Select,
-    SelectContent,
-    SelectItem,
-    SelectTrigger,
-    SelectValue,
-} from "@/Components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/Components/ui/select";
 import { Separator } from "@/Components/ui/separator";
 import { Transition } from "@headlessui/react";
 import AuthenticatedLayout, {
@@ -42,15 +36,7 @@ interface FormData extends Record<string, string> {
     category: string;
     folder_id: string;
     description: string;
-    storageLocation: string;
 }
-
-const STORAGE_LOCATIONS = {
-    "01": "Server",
-    "02": "Google Drive",
-    "03": "Dropbox",
-    "04": "OneDrive",
-} as const;
 
 const CATEGORIES: ProjectCategory[] = [
     "horror",
@@ -99,7 +85,6 @@ export default function ProjectSettings({
             category: project.category || "none",
             folder_id: project.folder_id || "none",
             description: project.description || "",
-            storageLocation: project.saved_in || "01",
         });
 
     const submit: FormEventHandler = (e) => {
@@ -252,38 +237,6 @@ export default function ProjectSettings({
                             </Select>
                             <div className="text-sm text-destructive -mt-1.5">
                                 {errors.folder_id || "\u00A0"}
-                            </div>
-                        </div>
-
-                        <div className="space-y-1 flex flex-col gap-1">
-                            <Label htmlFor="storageLocation">
-                                Save Project In
-                            </Label>
-                            <Select
-                                value={data.storageLocation}
-                                onValueChange={(value) =>
-                                    setData("storageLocation", value)
-                                }
-                            >
-                                <SelectTrigger
-                                    id="storageLocation"
-                                    size="default"
-                                    className="w-full hover:cursor-pointer"
-                                >
-                                    <SelectValue placeholder="Select storage location" />
-                                </SelectTrigger>
-                                <SelectContent position="popper">
-                                    {Object.entries(STORAGE_LOCATIONS).map(
-                                        ([code, label]) => (
-                                            <SelectItem key={code} value={code}>
-                                                {label}
-                                            </SelectItem>
-                                        )
-                                    )}
-                                </SelectContent>
-                            </Select>
-                            <div className="text-sm text-destructive -mt-1.5">
-                                {errors.storageLocation || "\u00A0"}
                             </div>
                         </div>
 

@@ -60,33 +60,6 @@ return [
             'report' => false,
         ],
 
-        'google_drive' => [
-            'driver' => 'google_drive',
-            'client_id' => env('GOOGLE_DRIVE_CLIENT_ID'),
-            'client_secret' => env('GOOGLE_DRIVE_CLIENT_SECRET'),
-            'refresh_token' => null, // Will be set dynamically per workspace
-            'folder_id' => null, // Optional: root folder ID for this disk
-            'team_drive_id' => null, // Optional: Team Drive ID
-            'throw' => false,
-            'report' => false,
-        ],
-
-        'dropbox' => [
-            'driver' => 'dropbox',
-            'client_id' => env('DROPBOX_CLIENT_ID'),
-            'client_secret' => env('DROPBOX_CLIENT_SECRET'),
-            'authorization_token' => null, // dynamically injected per workspace
-        ],
-
-        'onedrive' => [
-            'driver' => 'onedrive',
-            'client_id' => env('ONEDRIVE_CLIENT_ID'),
-            'client_secret' => env('ONEDRIVE_CLIENT_SECRET'),
-            'access_token' => null, // dynamically injected per workspace
-            'throw' => false,
-            'report' => false,
-        ],
-
     ],
 
     /*
