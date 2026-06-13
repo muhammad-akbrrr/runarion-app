@@ -19,7 +19,6 @@ import {
     HelpCircle,
     Keyboard,
     X,
-    History,
 } from "lucide-react";
 import { Link, router, usePage } from "@inertiajs/react";
 import {
@@ -363,12 +362,6 @@ export default function ProjectEditorLayout({
             icon: Network,
             label: "Multi-Prompt",
             path: "workspace.projects.editor.multiprompt",
-            param: { workspace_id: workspaceId, project_id: projectId },
-        },
-        {
-            icon: History,
-            label: "Version History",
-            path: "workspace.projects.editor.version-history",
             param: { workspace_id: workspaceId, project_id: projectId },
         },
     ];

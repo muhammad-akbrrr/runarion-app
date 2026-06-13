@@ -9,10 +9,15 @@ export default function ProjectEditorPage({
     workspaceId,
     projectId,
     project,
+    multipromptState,
 }: PageProps<{
     workspaceId: string;
     projectId: string;
     project: Project;
+    multipromptState?: {
+        graph_state?: Record<string, unknown> | null;
+        templates?: unknown[] | null;
+    } | null;
 }>) {
     const [chapters, setChapters] = useState<ProjectChapter[]>([]);
     const [projectSettings, setProjectSettings] = useState(
@@ -119,6 +124,8 @@ export default function ProjectEditorPage({
                     projectId={projectId}
                     project={project}
                     chapters={chapters}
+                    persistedGraphState={multipromptState?.graph_state || null}
+                    persistedTemplates={multipromptState?.templates || []}
                     aiModel={aiModel}
                     authorProfile={authorProfile}
                     settings={projectSettings || project.settings || {}}

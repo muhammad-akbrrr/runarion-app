@@ -200,6 +200,11 @@ class ChainBuilderController extends Controller
                         'session_id' => 'chain-builder',
                         'api_keys' => (object) [],
                     ],
+                    'quota_context' => [
+                        'mode' => 'strict',
+                        'workflow_id' => 'chain-builder',
+                        'workflow_kind' => 'chain_builder_execute_node',
+                    ],
                 ]);
 
             if ($response->successful()) {
@@ -380,6 +385,11 @@ class ChainBuilderController extends Controller
                         'project_id' => $project_id,
                         'session_id' => 'chain-builder-auto-build',
                         'api_keys' => (object) [],
+                    ],
+                    'quota_context' => [
+                        'mode' => 'strict',
+                        'workflow_id' => 'chain-builder-auto-build',
+                        'workflow_kind' => 'chain_builder_generate_layout',
                     ],
                 ]);
 
@@ -615,6 +625,11 @@ class ChainBuilderController extends Controller
                         'session_id' => 'chain-builder-wand',
                         'api_keys' => (object) [],
                     ],
+                    'quota_context' => [
+                        'mode' => 'strict',
+                        'workflow_id' => 'chain-builder-wand',
+                        'workflow_kind' => 'chain_builder_generate_instruction',
+                    ],
                 ]);
 
             if ($response->successful()) {
@@ -755,6 +770,11 @@ class ChainBuilderController extends Controller
                         'project_id' => $project_id,
                         'session_id' => 'chain-builder-refine',
                         'api_keys' => (object) [],
+                    ],
+                    'quota_context' => [
+                        'mode' => 'strict',
+                        'workflow_id' => 'chain-builder-refine',
+                        'workflow_kind' => 'chain_builder_refine_layout',
                     ],
                 ]);
 
@@ -1157,6 +1177,11 @@ class ChainBuilderController extends Controller
                     'project_id' => $project_id,
                     'session_id' => 'chain-builder-auto-build-enhance',
                     'api_keys' => (object) [],
+                ],
+                'quota_context' => [
+                    'mode' => 'strict',
+                    'workflow_id' => 'chain-builder-auto-build-enhance',
+                    'workflow_kind' => 'chain_builder_prompt_assist',
                 ],
             ]);
 

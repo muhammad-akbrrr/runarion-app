@@ -42,6 +42,7 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
 
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/multi-prompt', [MultiPromptController::class, 'multiPrompt'])->name('workspace.projects.editor.multiprompt');
+    Route::put('/{workspace_id}/projects/{project_id}/editor/multi-prompt/state', [MultiPromptController::class, 'saveState'])->middleware('project-unlocked')->name('workspace.projects.editor.multiprompt.state');
 
     Route::get('/projects/{project_id}/editor/multi-prompt', fn () => '')->name('raw.workspace.projects.editor.multiprompt');
 });
@@ -50,10 +51,9 @@ Route::middleware(['auth', 'project-editor'])->group(function () {
 Route::middleware(['auth', 'project-editor'])->group(function () {
     Route::get('/{workspace_id}/projects/{project_id}/editor/version-history', [VersionHistoryController::class, 'index'])->name('workspace.projects.editor.version-history');
     Route::post('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots', [VersionHistoryController::class, 'createSnapshot'])->middleware('project-unlocked')->name('version-history.snapshots.create');
-    Route::post('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}/load', [VersionHistoryController::class, 'loadSnapshot'])->middleware('project-unlocked')->name('version-history.snapshots.load');
+    Route::post('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}/restore', [VersionHistoryController::class, 'restoreSnapshot'])->middleware('project-unlocked')->name('version-history.snapshots.restore');
     Route::put('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}', [VersionHistoryController::class, 'updateSnapshot'])->middleware('project-unlocked')->name('version-history.snapshots.update');
     Route::delete('/{workspace_id}/projects/{project_id}/editor/version-history/snapshots/{snapshot_id}', [VersionHistoryController::class, 'deleteSnapshot'])->middleware('project-unlocked')->name('version-history.snapshots.delete');
-    Route::get('/{workspace_id}/projects/{project_id}/editor/version-history/chapters/{chapter_order}/tree', [VersionHistoryController::class, 'getChapterVersionTree'])->name('version-history.chapters.tree');
 
     Route::get('/projects/{project_id}/editor/version-history', fn () => '')->name('raw.workspace.projects.editor.version-history');
 });

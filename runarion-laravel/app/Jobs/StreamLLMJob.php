@@ -244,11 +244,12 @@ class StreamLLMJob implements ShouldQueue
                 'workspace_id' => $this->workspaceId,
                 'project_id' => $this->projectId, // Required for conversation history
                 'session_id' => $this->sessionId,
-                'api_keys' => [
-                    'openai' => env('OPENAI_API_KEY', ''),
-                    'gemini' => env('GEMINI_API_KEY', ''),
-                    'deepseek' => env('DEEPSEEK_API_KEY', ''),
-                ],
+                'api_keys' => [],
+            ],
+            'quota_context' => [
+                'mode' => 'strict',
+                'workflow_id' => $this->sessionId,
+                'workflow_kind' => $this->isRegenerate ? 'llm_regeneration' : 'llm_stream',
             ],
         ];
     }

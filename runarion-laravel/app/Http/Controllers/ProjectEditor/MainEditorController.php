@@ -12,7 +12,7 @@ use App\Models\ProjectContent;
 use App\Models\Projects;
 use App\Services\AuthorStyleFormatter;
 use App\Services\NovelPipelineOrchestratorService;
-use App\Services\ProjectPipelineStateService;
+use App\Services\ProjectOperationStateService;
 use App\Services\VersionControlService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -31,7 +31,7 @@ class MainEditorController extends Controller
         VersionControlService $versionControl,
         private readonly AuthorStyleFormatter $authorStyleFormatter,
         private readonly NovelPipelineOrchestratorService $novelPipelineOrchestrator,
-        private readonly ProjectPipelineStateService $projectPipelineStateService,
+        private readonly ProjectOperationStateService $projectOperationStateService,
     ) {
         $this->versionControl = $versionControl;
     }
@@ -83,7 +83,7 @@ class MainEditorController extends Controller
             $authorStyles = $this->authorStyleFormatter->formatCollection(
                 AuthorStyle::where('workspace_id', $workspace_id)->get()
             );
-            $projectPipelineLock = $this->projectPipelineStateService->getProjectLock($workspace_id, $project_id);
+            $projectPipelineLock = $this->projectOperationStateService->getProjectLock($workspace_id, $project_id);
 
             return Inertia::render('Projects/Editor/Main', [
                 'workspaceId' => $workspace_id,

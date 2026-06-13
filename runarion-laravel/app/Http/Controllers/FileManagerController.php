@@ -7,7 +7,7 @@ use App\Models\AuthorStyle;
 use App\Models\Projects;
 use App\Models\Workspace;
 use App\Services\AuthorStyleFormatter;
-use App\Services\ProjectPipelineStateService;
+use App\Services\ProjectOperationStateService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -19,7 +19,7 @@ class FileManagerController extends Controller
 {
     public function __construct(
         private readonly AuthorStyleFormatter $authorStyleFormatter,
-        private readonly ProjectPipelineStateService $pipelineStateService,
+        private readonly ProjectOperationStateService $operationStateService,
     ) {}
 
     public function show($workspace_id)
@@ -88,9 +88,9 @@ class FileManagerController extends Controller
             return back()->withErrors(['project_id' => 'The selected project does not belong to this workspace.'])->withInput();
         }
 
-        if ($this->pipelineStateService->getProjectLock($workspace_id, $project->id)) {
+        if ($this->operationStateService->getProjectLock($workspace_id, $project->id)) {
             return back()->withErrors([
-                'project_id' => 'This project is currently locked while the novel pipeline is processing.',
+                'project_id' => 'This project is currently locked by an active operation.',
             ])->withInput();
         }
 
@@ -143,12 +143,12 @@ class FileManagerController extends Controller
                 return back()->withErrors(['error' => 'Author style not found.']);
             }
 
-            if ($authorStyle->project_id && $this->pipelineStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
+            if ($authorStyle->project_id && $this->operationStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
                 if ($request->wantsJson()) {
-                    return response()->json(['error' => 'This author style is attached to a project that is currently processing.'], 423);
+                    return response()->json(['error' => 'This author style is attached to a project that is currently locked.'], 423);
                 }
 
-                return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
+                return back()->withErrors(['error' => 'This author style is attached to a project that is currently locked.']);
             }
 
             // Clean up related data in Python's tables
@@ -211,12 +211,12 @@ class FileManagerController extends Controller
                 return back()->withErrors(['error' => 'Author style not found.']);
             }
 
-            if ($authorStyle->project_id && $this->pipelineStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
+            if ($authorStyle->project_id && $this->operationStateService->getProjectLock($workspace_id, $authorStyle->project_id)) {
                 if ($request->wantsJson()) {
-                    return response()->json(['error' => 'This author style is attached to a project that is currently processing.'], 423);
+                    return response()->json(['error' => 'This author style is attached to a project that is currently locked.'], 423);
                 }
 
-                return back()->withErrors(['error' => 'This author style is attached to a project that is currently processing.']);
+                return back()->withErrors(['error' => 'This author style is attached to a project that is currently locked.']);
             }
 
             // Update allowed fields
@@ -341,7 +341,7 @@ class FileManagerController extends Controller
             ->select('id', 'name', 'created_at', 'updated_at', 'access')
             ->get();
 
-        $locks = $this->pipelineStateService->getLocksForProjects(
+        $locks = $this->operationStateService->getLocksForProjects(
             $workspace_id,
             $projects->pluck('id')->all(),
         );

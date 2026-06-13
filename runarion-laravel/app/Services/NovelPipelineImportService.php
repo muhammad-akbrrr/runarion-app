@@ -6,7 +6,9 @@ use App\Models\Chapter;
 use App\Models\ChapterState;
 use App\Models\PipelineRun;
 use App\Models\ProjectContent;
+use App\Models\ProjectSnapshot;
 use App\Models\Projects;
+use App\Services\ProjectSnapshotService;
 use Illuminate\Support\Facades\DB;
 use RuntimeException;
 
@@ -14,6 +16,7 @@ class NovelPipelineImportService
 {
     public function __construct(
         private readonly VersionControlService $versionControl,
+        private readonly ProjectSnapshotService $projectSnapshotService,
         private readonly LexicalContentSerializer $lexicalContentSerializer,
     ) {}
 
@@ -32,11 +35,13 @@ class NovelPipelineImportService
         $project = Projects::query()->findOrFail($lockedRun->project_id);
 
         if (! $lockedRun->project_snapshot_id) {
-            $snapshotId = $this->versionControl->createSnapshot(
+            $snapshotId = $this->projectSnapshotService->createSnapshot(
                 $project->id,
                 'Pre-pipeline rewrite import',
                 'Automatic snapshot created before importing the rewritten manuscript.',
-                $lockedRun->user_id
+                $lockedRun->user_id,
+                ProjectSnapshot::KIND_PIPELINE_IMPORT,
+                true,
             );
 
             $lockedRun->project_snapshot_id = $snapshotId;

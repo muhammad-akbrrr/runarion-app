@@ -311,20 +311,31 @@ class GeminiProvider(BaseProvider):
             input_tokens = getattr(usage, "prompt_token_count", 0)
             output_tokens = getattr(usage, "candidates_token_count", 0)
             total_tokens = getattr(usage, "total_token_count", 0)
+            reasoning_tokens = max(total_tokens - input_tokens - output_tokens, 0)
 
             processing_time_ms = int((time.time() - start_time) * 1000)
-            billable_usage = self._finalize_usage_metering(generated_text)
+            normalized_usage = self._normalize_usage(
+                generated_text=generated_text,
+                provider_input_tokens=input_tokens,
+                provider_output_tokens=output_tokens,
+                provider_reasoning_tokens=reasoning_tokens,
+                provider_total_tokens=total_tokens,
+                usage_source="provider" if total_tokens > 0 else "estimated",
+            )
+            billable_usage = self._finalize_usage_metering(generated_text, normalized_usage=normalized_usage)
 
             response = self._build_response(
                 generated_text=generated_text,
                 finish_reason=finish_reason,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                total_tokens=total_tokens,
+                input_tokens=normalized_usage["input_tokens"],
+                output_tokens=normalized_usage["output_tokens"],
+                reasoning_tokens=normalized_usage["reasoning_tokens"],
+                total_tokens=normalized_usage["total_tokens"],
                 processing_time_ms=processing_time_ms,
                 request_id=request_id,
                 provider_request_id=provider_request_id,
                 quota_generation_count=1,
+                usage_source=normalized_usage["usage_source"],
             )
             self._log_generation_to_db(response, billable_usage=billable_usage)
                 
@@ -377,6 +388,8 @@ class GeminiProvider(BaseProvider):
         output_tokens = 0
         total_tokens = 0
         finish_reason = "stop"
+        reasoning_tokens = 0
+        latest_usage = None
 
         try:
             # Streaming API call - with graceful fallback for penalty params
@@ -404,6 +417,9 @@ class GeminiProvider(BaseProvider):
             # Process each chunk from the stream
             for chunk in stream:
                 chunk_count += 1
+                chunk_usage = getattr(chunk, "usage_metadata", None)
+                if chunk_usage is not None:
+                    latest_usage = chunk_usage
                 
                 # Get response ID if available
                 if hasattr(chunk, 'response_id'):
@@ -450,21 +466,34 @@ class GeminiProvider(BaseProvider):
             current_app.logger.info(f"Gemini streaming completed. Chunks: {chunk_count}, Generated length: {len(generated_text)}, Finish reason: {finish_reason}")
 
             processing_time_ms = int((time.time() - start_time) * 1000)
-            billable_usage = self._finalize_usage_metering(generated_text)
-            input_tokens = billable_usage["billable_input_tokens"]
-            output_tokens = billable_usage["billable_output_tokens"]
-            total_tokens = billable_usage["billable_total_tokens"]
+            if latest_usage is not None:
+                input_tokens = getattr(latest_usage, "prompt_token_count", 0)
+                output_tokens = getattr(latest_usage, "candidates_token_count", 0)
+                total_tokens = getattr(latest_usage, "total_token_count", 0)
+                reasoning_tokens = max(total_tokens - input_tokens - output_tokens, 0)
+
+            normalized_usage = self._normalize_usage(
+                generated_text=generated_text,
+                provider_input_tokens=input_tokens,
+                provider_output_tokens=output_tokens,
+                provider_reasoning_tokens=reasoning_tokens,
+                provider_total_tokens=total_tokens,
+                usage_source="provider" if total_tokens > 0 else "estimated",
+            )
+            billable_usage = self._finalize_usage_metering(generated_text, normalized_usage=normalized_usage)
 
             response = self._build_response(
                 generated_text=generated_text,
                 finish_reason=finish_reason,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                total_tokens=total_tokens,
+                input_tokens=normalized_usage["input_tokens"],
+                output_tokens=normalized_usage["output_tokens"],
+                reasoning_tokens=normalized_usage["reasoning_tokens"],
+                total_tokens=normalized_usage["total_tokens"],
                 processing_time_ms=processing_time_ms,
                 request_id=request_id,
                 provider_request_id=provider_request_id or "",
-                quota_generation_count=1
+                quota_generation_count=1,
+                usage_source=normalized_usage["usage_source"],
             )
 
             self._log_generation_to_db(response, billable_usage=billable_usage)

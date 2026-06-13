@@ -32,7 +32,7 @@ test('locked project mutations return 423 for json requests', function () {
 
     $response
         ->assertStatus(423)
-        ->assertJsonPath('message', 'This project is locked while the novel pipeline is processing. Please wait for it to finish before making changes.')
+        ->assertJsonPath('message', 'This project is locked by an active operation. Please wait for it to finish before making changes.')
         ->assertJsonPath('lock.isLocked', true);
 });
 

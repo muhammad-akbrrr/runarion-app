@@ -14,6 +14,7 @@ from src.models.request import (
     BaseGenerationRequest,
     CallerInfo,
     GenerationConfig,
+    QuotaContext,
     rewrite_policy_to_dict,
 )
 from src.utils.api_response import DeconstructorResponse, validation_error, internal_error, error
@@ -182,6 +183,11 @@ def start_novel_generation():
             model=model,
             caller=caller,
             generation_config=generation_config,
+            quota_context=QuotaContext(
+                mode="admitted_workflow",
+                workflow_id=draft_id,
+                workflow_kind="novel_writer",
+            ),
         )
 
         generation_engine = GenerationEngine(generation_request)

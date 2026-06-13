@@ -55,6 +55,9 @@ class AuditorService:
         Returns:
             QuotaCaller instance
         """
+        if not workspace_id:
+            raise ValueError("workspace_id is required for metered auditor LLM calls")
+
         user_id = 1  # Default fallback
         api_keys = {}  # Will use default API keys from environment
         
@@ -83,7 +86,7 @@ class AuditorService:
         
         return QuotaCaller.from_request_data(
             user_id=user_id,
-            workspace_id=workspace_id or project_id,  # Fallback to project_id if workspace_id not available
+            workspace_id=workspace_id,
             project_id=project_id,
             session_id=str(uuid.uuid4()),
             api_keys=api_keys
@@ -4005,4 +4008,3 @@ EXTRACTED ENTITIES:"""
         # This will analyze how each entity appears across chapters
         # and update entity summaries in their properties
         pass
-

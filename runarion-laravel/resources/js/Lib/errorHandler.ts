@@ -149,7 +149,7 @@ export function getUserFriendlyMessage(error: any, context?: ErrorContext): stri
             return 'Invalid input. Please check your data and try again.';
 
         case ErrorType.LOCKED:
-            return error.message || error.error || 'This project is locked while the novel pipeline is processing.';
+            return error.message || error.error || 'This project is locked by an active operation.';
         
         case ErrorType.AUTHENTICATION:
             return 'Authentication failed. Please refresh the page and log in again.';

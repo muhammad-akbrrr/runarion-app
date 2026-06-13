@@ -57,7 +57,13 @@ class QuotaManager:
 
         return period_start, period_end
 
-    def reserve_tokens(self, caller: CallerInfo, estimated_tokens: int) -> dict:
+    def reserve_tokens(
+        self,
+        caller: CallerInfo,
+        estimated_tokens: int,
+        quota_mode: str = "strict",
+        workflow_id: str | None = None,
+    ) -> dict:
         workspace_id = self._require_workspace(caller)
         estimated_tokens = max(1, int(estimated_tokens))
 
@@ -124,7 +130,7 @@ class QuotaManager:
 
                     usage_period_id, period_quota, tokens_reserved, tokens_consumed = usage_row
                     remaining = int(period_quota) - int(tokens_reserved) - int(tokens_consumed)
-                    if remaining < estimated_tokens:
+                    if quota_mode == "strict" and remaining < estimated_tokens:
                         raise ValueError("No quota remaining")
 
                     cursor.execute(
@@ -141,6 +147,8 @@ class QuotaManager:
                         "workspace_usage_period_id": str(usage_period_id),
                         "workspace_id": workspace_id,
                         "reserved_tokens": estimated_tokens,
+                        "quota_mode": quota_mode,
+                        "workflow_id": workflow_id,
                         "token_quota": int(period_quota),
                         "period_start_at": period_start_at,
                         "period_end_at": period_end_at,

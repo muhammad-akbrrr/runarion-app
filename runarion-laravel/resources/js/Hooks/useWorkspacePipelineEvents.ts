@@ -6,7 +6,9 @@ import "@/echo";
 export interface WorkspacePipelineEvent {
     workspace_id: string;
     project_id: string;
-    run_id: string;
+    run_id?: string;
+    operation_id?: string;
+    operation_type?: string;
     status: string;
     phase: string;
     is_locked: boolean;
@@ -43,6 +45,43 @@ export function useWorkspacePipelineEvents({
                 if (event?.message && event.should_toast !== false) {
                     const toastKey = [
                         event.run_id,
+                        event.status,
+                        event.phase,
+                        event.is_locked ? "locked" : "unlocked",
+                    ].join(":");
+
+                    if (!seenToastKeys.current.has(toastKey)) {
+                        seenToastKeys.current.add(toastKey);
+
+                        const notify =
+                            event.status === "failed"
+                                ? toast.error
+                                : event.is_locked
+                                  ? toast.info
+                                  : toast.success;
+
+                        notify(event.message);
+                    }
+                }
+
+                onEvent?.(event);
+
+                router.reload({
+                    only: reloadOnly,
+                });
+            },
+        );
+        channel?.listen(
+            ".project.operation.lifecycle.updated",
+            (event: WorkspacePipelineEvent) => {
+                if (projectId && event?.project_id !== projectId) {
+                    return;
+                }
+
+                if (event?.message && event.should_toast !== false) {
+                    const toastKey = [
+                        event.operation_id || event.run_id || event.project_id,
+                        event.operation_type || "project_operation",
                         event.status,
                         event.phase,
                         event.is_locked ? "locked" : "unlocked",

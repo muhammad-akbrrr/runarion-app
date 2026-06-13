@@ -20,6 +20,13 @@ class ProjectNodeEditor extends Model
 
     protected $fillable = [
         'project_id',
+        'graph_state',
+        'templates',
+    ];
+
+    protected $casts = [
+        'graph_state' => 'array',
+        'templates' => 'array',
     ];
 
     /**

@@ -75,6 +75,11 @@ class AdvisorStreamJob implements ShouldQueue
                     'session_id' => $this->sessionId,
                     'api_keys' => [],
                 ],
+                'quota_context' => [
+                    'mode' => 'strict',
+                    'workflow_id' => $this->sessionId,
+                    'workflow_kind' => 'advisor_chat',
+                ],
             ];
 
             Log::info('Advisor stream started', [

@@ -4,7 +4,7 @@ namespace App\Http\Middleware;
 
 use App\Models\AuthorStyle;
 use App\Services\AuthorStyleFormatter;
-use App\Services\ProjectPipelineStateService;
+use App\Services\ProjectOperationStateService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -15,7 +15,7 @@ class ResolveProjectEditor
 {
     public function __construct(
         private readonly AuthorStyleFormatter $authorStyleFormatter,
-        private readonly ProjectPipelineStateService $pipelineStateService,
+        private readonly ProjectOperationStateService $operationStateService,
     ) {}
 
     /**
@@ -140,7 +140,7 @@ class ResolveProjectEditor
             AuthorStyle::where('workspace_id', $workspaceId)->get()
         );
 
-        $projectPipelineLock = $this->pipelineStateService->getProjectLock($workspaceId, $projectId);
+        $projectOperationLock = $this->operationStateService->getProjectLock($workspaceId, $projectId);
 
         Inertia::share([
             'auth' => [
@@ -152,7 +152,8 @@ class ResolveProjectEditor
             'force_project_editor_loader' => session()->pull('force_project_editor_loader', false),
             'project_completed_onboarding' => $project->completed_onboarding ?? false,
             'authorStyles' => $authorStyles,
-            'projectPipelineLock' => $projectPipelineLock,
+            'projectPipelineLock' => $projectOperationLock,
+            'projectOperationLock' => $projectOperationLock,
         ]);
 
         $request->attributes->set('user_role', $userRole);

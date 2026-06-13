@@ -4,7 +4,7 @@ import traceback
 from typing import Literal, Optional, TypedDict
 
 from psycopg2 import errors
-from src.models.request import CallerInfo
+from src.models.request import CallerInfo, QuotaContext
 from src.models.style_analyzer.author_style import (
     AuthorStyle,
     AuthorStyleAdaptation,
@@ -426,6 +426,7 @@ class StyleAnalyzerOrchestrator:
         author_name: str,
         file_paths: list[str],
         caller: CallerInfo,
+        quota_context: Optional[QuotaContext] = None,
     ) -> StyleAnalyzerSuccess | StyleAnalyzerFailed:
         """
         Safely run the complete style analysis pipeline for the given author style ID and file paths.
@@ -495,7 +496,7 @@ class StyleAnalyzerOrchestrator:
             }
 
         try:
-            author_style = self.profiling_stage.run(author_style_id, caller)
+            author_style = self.profiling_stage.run(author_style_id, caller, quota_context=quota_context)
             status = "profiling_completed"
             error_text = None
         except Exception as e:

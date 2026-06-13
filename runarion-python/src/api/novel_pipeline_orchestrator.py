@@ -41,6 +41,7 @@ from src.models.request import (
     BaseGenerationRequest,
     CallerInfo,
     GenerationConfig,
+    QuotaContext,
     RewritePolicy,
     rewrite_policy_to_dict,
 )
@@ -417,6 +418,11 @@ def _run_phase_1(draft_id: str, manuscript_filename: str,
                 model=model,
                 caller=caller,
                 generation_config=GenerationConfig(**(generation_config_dict or {})),
+                quota_context=QuotaContext(
+                    mode="admitted_workflow",
+                    workflow_id=run_id,
+                    workflow_kind="novel_pipeline_phase_1",
+                ),
             )
             engine = GenerationEngine(generation_request)
             orchestrator = DeconstructorOrchestrator(
@@ -558,6 +564,11 @@ def _run_phase_2(author_name: str, file_paths: list,
                 author_name=author_name,
                 file_paths=file_paths,
                 caller=caller,
+                quota_context=QuotaContext(
+                    mode="admitted_workflow",
+                    workflow_id=run_id,
+                    workflow_kind="novel_pipeline_phase_2",
+                ),
             )
         elapsed = (datetime.now() - started).total_seconds()
         success = result.get('status') == 'profiling_completed'
@@ -641,6 +652,11 @@ def _run_phase_3(draft_id: str, user_id: str, workspace_id: str,
                 model=model,
                 caller=caller,
                 generation_config=gen_config,
+                quota_context=QuotaContext(
+                    mode="admitted_workflow",
+                    workflow_id=run_id,
+                    workflow_kind="novel_pipeline_phase_3",
+                ),
             )
             engine = GenerationEngine(generation_request)
             orchestrator = NovelWriterOrchestrator(

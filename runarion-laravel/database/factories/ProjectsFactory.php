@@ -7,6 +7,7 @@ use App\Models\ProjectNodeEditor;
 use App\Models\Projects;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
+use App\Services\ProjectSnapshotService;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -119,6 +120,11 @@ class ProjectsFactory extends Factory
             ProjectNodeEditor::factory()->create([
                 'project_id' => $project->id,
             ]);
+
+            app(ProjectSnapshotService::class)->ensureAnchorSnapshot(
+                $project->id,
+                $project->original_author
+            );
         });
     }
 }

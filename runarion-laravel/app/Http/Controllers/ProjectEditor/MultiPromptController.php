@@ -4,6 +4,7 @@ namespace App\Http\Controllers\ProjectEditor;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProjectContent;
+use App\Models\ProjectNodeEditor;
 use App\Models\Projects;
 use App\Services\VersionControlService;
 use Illuminate\Http\Request;
@@ -60,6 +61,43 @@ class MultiPromptController extends Controller
             'projectId' => $project_id,
             'project' => $project,
             'chapters' => $chapters,
+            'multipromptState' => ProjectNodeEditor::query()
+                ->where('project_id', $project_id)
+                ->first(['graph_state', 'templates']),
+        ]);
+    }
+
+    public function saveState(Request $request, string $workspace_id, string $project_id)
+    {
+        $validated = $request->validate([
+            'graph_state' => 'nullable|array',
+            'graph_state.nodes' => 'nullable|array',
+            'graph_state.edges' => 'nullable|array',
+            'graph_state.pan' => 'nullable|array',
+            'graph_state.zoom' => 'nullable|numeric',
+            'graph_state.execution_mode' => 'nullable|string',
+            'templates' => 'nullable|array',
+        ]);
+
+        $project = Projects::query()
+            ->where('id', $project_id)
+            ->where('workspace_id', $workspace_id)
+            ->first();
+
+        if (! $project) {
+            return response()->json(['error' => 'Project not found'], 404);
+        }
+
+        $nodeEditor = ProjectNodeEditor::query()->firstOrNew([
+            'project_id' => $project_id,
+        ]);
+
+        $nodeEditor->graph_state = $validated['graph_state'] ?? null;
+        $nodeEditor->templates = $validated['templates'] ?? $nodeEditor->templates;
+        $nodeEditor->save();
+
+        return response()->json([
+            'success' => true,
         ]);
     }
 }

@@ -9,7 +9,7 @@ This provides a Cursor-style chat interface that:
 
 from flask import Blueprint, request, jsonify, current_app, Response, stream_with_context
 import json
-from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
+from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig, QuotaContext
 from src.services.generation_engine import GenerationEngine
 
 advisor = Blueprint("advisor", __name__)
@@ -91,6 +91,11 @@ def build_advisor_request(json_data: dict, stream: bool) -> GenerationEngine:
             stream=stream,
         ),
         caller=caller,
+        quota_context=QuotaContext(
+            mode="strict",
+            workflow_id=caller.session_id,
+            workflow_kind="advisor_chat",
+        ),
     )
 
     engine = GenerationEngine(req_obj)

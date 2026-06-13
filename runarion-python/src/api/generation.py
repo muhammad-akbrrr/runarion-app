@@ -8,6 +8,7 @@ from src.services.usecase_handler.story_handler import StoryHandler
 from src.services.usecase_handler.graph_layout_handler import GraphLayoutHandler
 from src.services.conversation_manager import ConversationManager
 from src.models.story_generation.prompt_config import PromptConfig
+from src.models.request import QuotaContext
 
 generate = Blueprint("generate", __name__)
 
@@ -323,6 +324,9 @@ def rewrite_selection_route():
     
     if action == "custom" and not custom_instruction:
         return jsonify({"error": "custom_instruction is required for custom action"}), 400
+
+    if not workspace_id or not project_id:
+        return jsonify({"error": "workspace_id and project_id are required"}), 400
     
     try:
         # Build the prompt based on action
@@ -369,8 +373,8 @@ Rewritten text:"""
         # Create a caller for the request
         caller = QuotaCaller.from_request_data(
             user_id=json_data.get("user_id", 1),
-            workspace_id=workspace_id or "system",
-            project_id=project_id or "system",
+            workspace_id=workspace_id,
+            project_id=project_id,
             session_id=json_data.get("session_id", "rewrite-selection"),
             api_keys={}  # Will use default API keys from environment
         )
@@ -386,7 +390,12 @@ Rewritten text:"""
                 temperature=0.7,
                 stream=False
             ),
-            caller=caller
+            caller=caller,
+            quota_context=QuotaContext(
+                mode="strict",
+                workflow_id=json_data.get("session_id", "rewrite-selection"),
+                workflow_kind="rewrite_selection",
+            ),
         )
         
         engine = GenerationEngine(req_obj)
@@ -473,6 +482,8 @@ def enhance_text_route():
     
     if not text:
         return jsonify({"error": "text is required"}), 400
+    if not workspace_id or not project_id:
+        return jsonify({"error": "workspace_id and project_id are required"}), 400
     
     valid_modes = [
         "story_text", "chat_message", "property", "custom_instruction",
@@ -541,8 +552,8 @@ Enhanced text:"""
         # Create a caller for the request
         caller = QuotaCaller.from_request_data(
             user_id=json_data.get("user_id", 1),
-            workspace_id=workspace_id or "system",
-            project_id=project_id or "system",
+            workspace_id=workspace_id,
+            project_id=project_id,
             session_id=json_data.get("session_id", "enhance-text"),
             api_keys={}  # Will use default API keys from environment
         )
@@ -558,7 +569,12 @@ Enhanced text:"""
                 temperature=0.7,
                 stream=False
             ),
-            caller=caller
+            caller=caller,
+            quota_context=QuotaContext(
+                mode="strict",
+                workflow_id=json_data.get("session_id", "enhance-text"),
+                workflow_kind="enhance_text",
+            ),
         )
         
         engine = GenerationEngine(req_obj)

@@ -25,8 +25,8 @@ class BaseProvider(ABC):
         self.remaining_quota = None
         self.usage_reservation = None
         self.billable_token_counter = TokenCounter(
-            provider="gemini",
-            model=os.getenv("GEMINI_MODEL_NAME", "gemini-2.5-flash"),
+            provider=self.request.provider,
+            model=self.model,
         )
         
         # Process tokenization for phrase bias, banned tokens, and stop sequences
@@ -75,32 +75,84 @@ class BaseProvider(ABC):
     def _estimate_reserved_tokens(self) -> int:
         estimated_input_tokens = self._estimate_billable_input_tokens()
         estimated_output_tokens = max(1, int(self.request.generation_config.max_output_tokens or 0))
-        return max(estimated_input_tokens + estimated_output_tokens, 1)
+        estimated_reasoning_tokens = self._estimate_reasoning_tokens()
+        return max(estimated_input_tokens + estimated_output_tokens + estimated_reasoning_tokens, 1)
+
+    def _estimate_reasoning_tokens(self) -> int:
+        thinking_budget = getattr(self.request.generation_config, "thinking_budget", None)
+        if self.request.provider == "gemini" and thinking_budget and thinking_budget > 0:
+            return int(thinking_budget)
+        return 0
 
     def _begin_usage_metering(self):
         self.usage_reservation = self.quota_manager.reserve_tokens(
             caller=self.request.caller,
             estimated_tokens=self._estimate_reserved_tokens(),
+            quota_mode=self.request.quota_context.mode,
+            workflow_id=self.request.quota_context.workflow_id,
         )
 
-    def _finalize_usage_metering(self, generated_text: str) -> dict:
-        billable_input_tokens = self._estimate_billable_input_tokens()
-        billable_output_tokens = self.billable_token_counter.safe_count(generated_text or "")
-        billable_total_tokens = billable_input_tokens + billable_output_tokens
+    def _normalize_usage(
+        self,
+        generated_text: str,
+        provider_input_tokens: int = 0,
+        provider_output_tokens: int = 0,
+        provider_reasoning_tokens: int = 0,
+        provider_total_tokens: int = 0,
+        usage_source: str = "provider",
+    ) -> dict:
+        estimated_input_tokens = self._estimate_billable_input_tokens()
+        estimated_output_tokens = self.billable_token_counter.safe_count(generated_text or "")
+
+        input_tokens = max(int(provider_input_tokens or 0), 0)
+        output_tokens = max(int(provider_output_tokens or 0), 0)
+        reasoning_tokens = max(int(provider_reasoning_tokens or 0), 0)
+        total_tokens = max(int(provider_total_tokens or 0), 0)
+
+        if total_tokens > 0:
+            reasoning_tokens = max(reasoning_tokens, total_tokens - input_tokens - output_tokens)
+        elif usage_source != "provider":
+            input_tokens = estimated_input_tokens
+            output_tokens = estimated_output_tokens
+
+        billable_input_tokens = input_tokens or estimated_input_tokens
+        billable_output_tokens = output_tokens or estimated_output_tokens
+        billable_reasoning_tokens = reasoning_tokens
+        billable_total_tokens = total_tokens or (
+            billable_input_tokens + billable_output_tokens + billable_reasoning_tokens
+        )
+
+        return {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "reasoning_tokens": reasoning_tokens,
+            "total_tokens": total_tokens,
+            "billable_input_tokens": billable_input_tokens,
+            "billable_output_tokens": billable_output_tokens,
+            "billable_reasoning_tokens": billable_reasoning_tokens,
+            "billable_total_tokens": billable_total_tokens,
+            "token_basis": self.request.provider,
+            "usage_source": usage_source,
+        }
+
+    def _finalize_usage_metering(self, generated_text: str, normalized_usage: Optional[dict] = None) -> dict:
+        normalized_usage = normalized_usage or self._normalize_usage(
+            generated_text=generated_text,
+            usage_source="estimated",
+        )
         workspace_usage_period_id = (self.usage_reservation or {}).get("workspace_usage_period_id")
+        reserved_tokens = max(0, int((self.usage_reservation or {}).get("reserved_tokens", 0)))
 
         self.quota_manager.finalize_usage(
             reservation=self.usage_reservation,
-            actual_total_tokens=billable_total_tokens,
+            actual_total_tokens=normalized_usage["billable_total_tokens"],
         )
         self.usage_reservation = None
 
         return {
-            "billable_input_tokens": billable_input_tokens,
-            "billable_output_tokens": billable_output_tokens,
-            "billable_total_tokens": billable_total_tokens,
-            "token_basis": "gemini",
+            **normalized_usage,
             "workspace_usage_period_id": workspace_usage_period_id,
+            "reserved_tokens": reserved_tokens,
         }
 
     def _resolve_api_key(self) -> tuple[str, Literal["own", "default"]]:
@@ -194,17 +246,21 @@ class BaseProvider(ABC):
         finish_reason: str = "stop",
         input_tokens: int = 0,
         output_tokens: int = 0,
+        reasoning_tokens: int = 0,
         total_tokens: int = 0,
         quota_generation_count: int = 1,
         processing_time_ms: int = 0,
-        provider_request_id: Optional[str] = None
+        provider_request_id: Optional[str] = None,
+        usage_source: Optional[str] = None,
     ) -> BaseGenerationResponse:
         metadata = UsageMetadata(
             finish_reason=finish_reason,
             input_tokens=input_tokens,
             output_tokens=output_tokens,
+            reasoning_tokens=reasoning_tokens,
             total_tokens=total_tokens,
-            processing_time_ms=processing_time_ms
+            processing_time_ms=processing_time_ms,
+            usage_source=usage_source,
         )
 
         quota = QuotaMetadata(
@@ -236,6 +292,7 @@ class BaseProvider(ABC):
             finish_reason="error",
             input_tokens=0,
             output_tokens=0,
+            reasoning_tokens=0,
             total_tokens=0,
             processing_time_ms=0
         )
@@ -262,18 +319,15 @@ class BaseProvider(ABC):
 
     def _log_generation_to_db(self, response: BaseGenerationResponse, billable_usage: Optional[dict] = None):
         try:
-            # Truncate potentially long inputs to prevent DB issues
-            MAX_TEXT_LENGTH = 1000  # Adjust based on your database column size
-            truncated_prompt = (self.request.prompt or "")[:MAX_TEXT_LENGTH]
-            truncated_instruction = (self.instruction or "")[:MAX_TEXT_LENGTH]
-            truncated_generated_text = (response.text or "")[:MAX_TEXT_LENGTH]
-
             billable_usage = billable_usage or {
                 "billable_input_tokens": None,
                 "billable_output_tokens": None,
+                "billable_reasoning_tokens": None,
                 "billable_total_tokens": None,
-                "token_basis": "gemini",
+                "token_basis": self.request.provider,
                 "workspace_usage_period_id": None,
+                "reserved_tokens": None,
+                "usage_source": None,
             }
 
             with self.quota_manager.get_connection() as conn:
@@ -292,6 +346,8 @@ class BaseProvider(ABC):
                             feature,
                             token_basis,
                             workspace_usage_period_id,
+                            quota_mode,
+                            workflow_id,
                             prompt,
                             instruction,
                             generated_text,
@@ -299,17 +355,21 @@ class BaseProvider(ABC):
                             finish_reason,
                             input_tokens,
                             output_tokens,
+                            reasoning_tokens,
                             total_tokens,
                             billable_input_tokens,
                             billable_output_tokens,
+                            billable_reasoning_tokens,
                             billable_total_tokens,
+                            reserved_tokens,
+                            usage_source,
                             processing_time_ms,
                             error_message,
                             created_at
                         ) VALUES (
                             %s::UUID, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                             %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                            %s, %s, NOW()
+                            %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW()
                         )
                         ON CONFLICT (request_id) DO NOTHING
                     """, (
@@ -325,17 +385,23 @@ class BaseProvider(ABC):
                         self.request.feature or self.request.usecase,
                         billable_usage["token_basis"],
                         billable_usage["workspace_usage_period_id"],
-                        truncated_prompt,
-                        truncated_instruction,
-                        truncated_generated_text,
+                        self.request.quota_context.mode,
+                        self.request.quota_context.workflow_id,
+                        self.request.prompt or "",
+                        self.instruction or "",
+                        response.text or "",
                         response.success,
                         response.metadata.finish_reason,
                         response.metadata.input_tokens,
                         response.metadata.output_tokens,
+                        response.metadata.reasoning_tokens,
                         response.metadata.total_tokens,
                         billable_usage["billable_input_tokens"],
                         billable_usage["billable_output_tokens"],
+                        billable_usage["billable_reasoning_tokens"],
                         billable_usage["billable_total_tokens"],
+                        billable_usage["reserved_tokens"],
+                        billable_usage["usage_source"] or response.metadata.usage_source,
                         response.metadata.processing_time_ms,
                         response.error_message
                     ))

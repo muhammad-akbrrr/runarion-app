@@ -8,8 +8,10 @@ class UsageMetadata(BaseModel):
     finish_reason: str
     input_tokens: int
     output_tokens: int
+    reasoning_tokens: int = 0
     total_tokens: int
     processing_time_ms: int
+    usage_source: Optional[str] = None
 
 
 class QuotaMetadata(BaseModel):

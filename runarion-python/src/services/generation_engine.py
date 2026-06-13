@@ -40,7 +40,7 @@ class GenerationEngine:
             raise RuntimeError(f"Failed to instantiate provider '{self.provider_name}': {e}")
 
     def generate(self, skip_quota: bool = False) -> BaseGenerationResponse:
-        return self.provider_instance.generate(skip_quota=skip_quota)
+        return self.provider_instance.generate(skip_quota=False)
 
     
     def stream(self) -> Generator[str, None, None]:

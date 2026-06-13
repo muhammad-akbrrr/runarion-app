@@ -2,7 +2,7 @@
 
 namespace App\Http\Middleware;
 
-use App\Services\ProjectPipelineStateService;
+use App\Services\ProjectOperationStateService;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -11,7 +11,7 @@ use Symfony\Component\HttpFoundation\Response;
 class RejectLockedProjectMutations
 {
     public function __construct(
-        private readonly ProjectPipelineStateService $pipelineStateService,
+        private readonly ProjectOperationStateService $operationStateService,
     ) {}
 
     public function handle(Request $request, Closure $next): Response
@@ -27,12 +27,12 @@ class RejectLockedProjectMutations
             return $next($request);
         }
 
-        $lock = $this->pipelineStateService->getProjectLock($workspaceId, $projectId);
+        $lock = $this->operationStateService->getProjectLock($workspaceId, $projectId);
         if (! $lock) {
             return $next($request);
         }
 
-        $message = 'This project is locked while the novel pipeline is processing. Please wait for it to finish before making changes.';
+        $message = $lock['message'] ?? 'This project is locked by an active operation. Please wait for it to finish before making changes.';
 
         if ($request->expectsJson() || $request->wantsJson() || $request->ajax()) {
             return new JsonResponse([

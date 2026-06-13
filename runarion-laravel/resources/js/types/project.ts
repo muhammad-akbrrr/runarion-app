@@ -27,11 +27,14 @@ export interface ProjectAccess {
 
 export interface PipelineLock {
     isLocked: boolean;
-    runId: string;
+    runId?: string;
+    operationId?: string;
+    operationType?: string;
     draftId?: string | null;
     authorStyleId?: string | null;
     status: string;
     phase: string;
+    message?: string | null;
     errorMessage?: string | null;
     startedAt?: string | null;
     completedAt?: string | null;

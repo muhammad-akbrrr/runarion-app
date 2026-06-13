@@ -5,19 +5,19 @@ namespace App\Http\Controllers\ProjectEditor;
 use App\Http\Controllers\Controller;
 use App\Models\Projects;
 use App\Models\ProjectSnapshot;
-use App\Services\VersionControlService;
+use App\Services\ProjectSnapshotService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
-use Inertia\Inertia;
+use Symfony\Component\HttpFoundation\Response;
 
 class VersionHistoryController extends Controller
 {
-    protected VersionControlService $versionControl;
+    protected ProjectSnapshotService $projectSnapshots;
 
-    public function __construct(VersionControlService $versionControl)
+    public function __construct(ProjectSnapshotService $projectSnapshots)
     {
-        $this->versionControl = $versionControl;
+        $this->projectSnapshots = $projectSnapshots;
     }
 
     /**
@@ -25,41 +25,9 @@ class VersionHistoryController extends Controller
      */
     public function index(Request $request, string $workspace_id, string $project_id)
     {
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->first();
-
-        if (! $project) {
-            return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
-        }
-
-        // Get all snapshots
-        $snapshots = ProjectSnapshot::where('project_id', $project_id)
-            ->orderBy('created_at', 'desc')
-            ->with('creator:id,name')
-            ->get()
-            ->map(function ($snapshot) {
-                return [
-                    'id' => $snapshot->id,
-                    'name' => $snapshot->name,
-                    'description' => $snapshot->description,
-                    'created_at' => $snapshot->created_at->toISOString(),
-                    'created_by' => $snapshot->creator ? [
-                        'id' => $snapshot->creator->id,
-                        'name' => $snapshot->creator->name,
-                    ] : null,
-                ];
-            });
-
-        // Get all chapters with version info
-        $chapters = $this->versionControl->getAllChaptersVersionInfo($project_id);
-
-        return Inertia::render('Projects/Editor/VersionHistory/Main', [
-            'workspaceId' => $workspace_id,
-            'projectId' => $project_id,
-            'project' => $project,
-            'snapshots' => $snapshots,
-            'chapters' => $chapters,
+        return redirect()->route('workspace.projects.edit.backups', [
+            'workspace_id' => $workspace_id,
+            'project_id' => $project_id,
         ]);
     }
 
@@ -82,7 +50,7 @@ class VersionHistoryController extends Controller
         }
 
         try {
-            $snapshotId = $this->versionControl->createSnapshot(
+            $snapshotId = $this->projectSnapshots->createSnapshot(
                 $project_id,
                 $validated['name'] ?? null,
                 $validated['description'] ?? null,
@@ -99,16 +67,7 @@ class VersionHistoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'snapshot' => [
-                    'id' => $snapshot->id,
-                    'name' => $snapshot->name,
-                    'description' => $snapshot->description,
-                    'created_at' => $snapshot->created_at->toISOString(),
-                    'created_by' => $snapshot->creator ? [
-                        'id' => $snapshot->creator->id,
-                        'name' => $snapshot->creator->name,
-                    ] : null,
-                ],
+                'snapshot' => $this->formatSnapshot($snapshot),
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to create snapshot', [
@@ -127,7 +86,7 @@ class VersionHistoryController extends Controller
     /**
      * Load a snapshot
      */
-    public function loadSnapshot(Request $request, string $workspace_id, string $project_id, string $snapshot_id)
+    public function restoreSnapshot(Request $request, string $workspace_id, string $project_id, string $snapshot_id)
     {
         $project = Projects::where('id', $project_id)
             ->where('workspace_id', $workspace_id)
@@ -138,21 +97,22 @@ class VersionHistoryController extends Controller
         }
 
         try {
-            $success = $this->versionControl->loadSnapshot($project_id, $snapshot_id);
-
-            if (! $success) {
-                return response()->json(['error' => 'Snapshot not found'], 404);
-            }
-
-            // Refresh chapters data
-            $chapters = $this->versionControl->getAllChaptersVersionInfo($project_id);
+            $operation = $this->projectSnapshots->queueRestoreSnapshot($workspace_id, $project_id, $snapshot_id, Auth::id());
 
             return response()->json([
                 'success' => true,
-                'chapters' => $chapters,
-            ]);
+                'operation' => [
+                    'id' => $operation->id,
+                    'type' => $operation->operation_type,
+                    'phase' => $operation->phase,
+                    'is_locked' => true,
+                ],
+                'redirect_to' => route('workspace.projects', [
+                    'workspace_id' => $workspace_id,
+                ]),
+            ], Response::HTTP_ACCEPTED);
         } catch (\Exception $e) {
-            Log::error('Failed to load snapshot', [
+            Log::error('Failed to queue snapshot restore', [
                 'project_id' => $project_id,
                 'snapshot_id' => $snapshot_id,
                 'error' => $e->getMessage(),
@@ -160,7 +120,7 @@ class VersionHistoryController extends Controller
             ]);
 
             return response()->json([
-                'error' => 'Failed to load snapshot',
+                'error' => 'Failed to queue snapshot restore',
                 'message' => $e->getMessage(),
             ], 500);
         }
@@ -171,35 +131,9 @@ class VersionHistoryController extends Controller
      */
     public function deleteSnapshot(Request $request, string $workspace_id, string $project_id, string $snapshot_id)
     {
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->first();
-
-        if (! $project) {
-            return response()->json(['error' => 'Project not found'], 404);
-        }
-
-        try {
-            $snapshot = ProjectSnapshot::where('id', $snapshot_id)
-                ->where('project_id', $project_id)
-                ->first();
-
-            if (! $snapshot) {
-                return response()->json(['error' => 'Snapshot not found'], 404);
-            }
-
-            $snapshot->delete();
-
-            return response()->json(['success' => true]);
-        } catch (\Exception $e) {
-            Log::error('Failed to delete snapshot', [
-                'project_id' => $project_id,
-                'snapshot_id' => $snapshot_id,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Failed to delete snapshot'], 500);
-        }
+        return response()->json([
+            'error' => 'Snapshots are immutable and cannot be deleted.',
+        ], 405);
     }
 
     /**
@@ -233,11 +167,7 @@ class VersionHistoryController extends Controller
 
             return response()->json([
                 'success' => true,
-                'snapshot' => [
-                    'id' => $snapshot->id,
-                    'name' => $snapshot->name,
-                    'description' => $snapshot->description,
-                ],
+                'snapshot' => $this->formatSnapshot($snapshot->fresh(['creator:id,name'])),
             ]);
         } catch (\Exception $e) {
             Log::error('Failed to update snapshot', [
@@ -250,34 +180,29 @@ class VersionHistoryController extends Controller
         }
     }
 
-    /**
-     * Get version tree for a specific chapter
-     */
-    public function getChapterVersionTree(Request $request, string $workspace_id, string $project_id, int $chapter_order)
+    private function formatSnapshot(ProjectSnapshot $snapshot): array
     {
-        $project = Projects::where('id', $project_id)
-            ->where('workspace_id', $workspace_id)
-            ->first();
+        $snapshotData = $snapshot->snapshot_data ?? [];
 
-        if (! $project) {
-            return response()->json(['error' => 'Project not found'], 404);
-        }
-
-        try {
-            $versionTree = $this->versionControl->getChapterVersionTree($project_id, $chapter_order);
-
-            return response()->json([
-                'success' => true,
-                'version_tree' => $versionTree,
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Failed to get chapter version tree', [
-                'project_id' => $project_id,
-                'chapter_order' => $chapter_order,
-                'error' => $e->getMessage(),
-            ]);
-
-            return response()->json(['error' => 'Failed to get version tree'], 500);
-        }
+        return [
+            'id' => $snapshot->id,
+            'name' => $snapshot->name,
+            'description' => $snapshot->description,
+            'snapshot_kind' => $snapshot->snapshot_kind,
+            'is_immutable' => (bool) $snapshot->is_immutable,
+            'created_at' => $snapshot->created_at->toISOString(),
+            'created_by' => $snapshot->creator ? [
+                'id' => $snapshot->creator->id,
+                'name' => $snapshot->creator->name,
+            ] : null,
+            'summary' => [
+                'chapter_count' => count($snapshotData['project_content']['content'] ?? $snapshotData['chapters'] ?? []),
+                'chat_count' => count($snapshotData['advisor']['chats'] ?? []),
+                'message_count' => count($snapshotData['advisor']['messages'] ?? []),
+                'entity_count' => count($snapshotData['records']['entities'] ?? $snapshotData['entities'] ?? []),
+                'relationship_count' => count($snapshotData['records']['relationships'] ?? $snapshotData['relationships'] ?? []),
+                'has_multiprompt_state' => ! empty($snapshotData['multiprompt']['graph_state'] ?? null),
+            ],
+        ];
     }
 }

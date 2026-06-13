@@ -4,7 +4,7 @@ import os
 from math import ceil
 from typing import Literal, Optional, TypedDict
 
-from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig
+from src.models.request import BaseGenerationRequest, CallerInfo, GenerationConfig, QuotaContext
 from src.models.response import BaseGenerationResponse
 from src.models.style_analyzer import AuthorStyle
 from psycopg2.pool import SimpleConnectionPool
@@ -123,6 +123,7 @@ class ProfilingStage:
         text: str,
         mode: Literal["partial", "combined", "structured"],
         caller: CallerInfo,
+        quota_context: Optional[QuotaContext] = None,
         raise_errors: bool = False,
     ) -> BaseGenerationResponse:
         """
@@ -154,6 +155,11 @@ class ProfilingStage:
             instruction=instruction,
             generation_config=self.generation_config,
             caller=caller,
+            quota_context=quota_context or QuotaContext(
+                mode="admitted_workflow",
+                workflow_id=caller.session_id,
+                workflow_kind="author_style",
+            ),
         )
 
         engine = GenerationEngine(request)
@@ -296,7 +302,11 @@ class ProfilingStage:
         return style_chunks
 
     def _handle_partial_style(
-        self, author_style_id: str, chunk: StyleChunk, caller: CallerInfo
+        self,
+        author_style_id: str,
+        chunk: StyleChunk,
+        caller: CallerInfo,
+        quota_context: Optional[QuotaContext] = None,
     ) -> StyleWithId:
         """
         Performs style analysis for a single chunk and stores the result.
@@ -309,7 +319,7 @@ class ProfilingStage:
         Returns:
             StyleWithId: The analyzed style.
         """
-        response = self._call_llm(chunk["raw_text"], "partial", caller)
+        response = self._call_llm(chunk["raw_text"], "partial", caller, quota_context=quota_context)
 
         if response.success:
             # title is useful for next LLM calls
@@ -349,6 +359,7 @@ class ProfilingStage:
         author_style_id: str,
         styles: list[StyleWithId],
         caller: CallerInfo,
+        quota_context: Optional[QuotaContext] = None,
         recursion_depth: int = 0,
     ) -> StyleWithId:
         """
@@ -381,7 +392,7 @@ class ProfilingStage:
         # perform combined style analysis and store the result
         if total_token < self.document_processor.chunk_token_limit:
             response = self._call_llm(
-                "\n\n".join([s["text"] for s in styles]), "combined", caller
+                "\n\n".join([s["text"] for s in styles]), "combined", caller, quota_context=quota_context
             )
 
             if response.success:
@@ -430,17 +441,25 @@ class ProfilingStage:
                 author_style_id,
                 styles[start:end],
                 caller,
+                quota_context=quota_context,
                 recursion_depth=recursion_depth + 1,
             )  # this call here should reach the base case
             reduced_styles.append(combined_style)
 
         # recursively handle the reduced_styles
         return self._handle_combined_style(
-            author_style_id, reduced_styles, caller, recursion_depth=recursion_depth + 1
+            author_style_id,
+            reduced_styles,
+            caller,
+            quota_context=quota_context,
+            recursion_depth=recursion_depth + 1,
         )
 
     def _handle_structured_style(
-        self, combined_style: StyleWithId, caller: CallerInfo
+        self,
+        combined_style: StyleWithId,
+        caller: CallerInfo,
+        quota_context: Optional[QuotaContext] = None,
     ) -> AuthorStyle:
         """
         Converts the combined style text into a structured AuthorStyle object.
@@ -453,7 +472,7 @@ class ProfilingStage:
             AuthorStyle: The structured author style.
         """
         response = self._call_llm(
-            combined_style["text"], "structured", caller, raise_errors=True
+            combined_style["text"], "structured", caller, quota_context=quota_context, raise_errors=True
         )
 
         try:
@@ -461,7 +480,7 @@ class ProfilingStage:
         except Exception:
             # if parsing fails, try to call the LLM and parse the response once again
             response = self._call_llm(
-                combined_style["text"], "structured", caller, raise_errors=True
+                combined_style["text"], "structured", caller, quota_context=quota_context, raise_errors=True
             )
             author_style = self._parse_structured_response(response.text)
 
@@ -575,7 +594,12 @@ class ProfilingStage:
 
         return author_style
 
-    def run(self, author_style_id: str, caller: CallerInfo) -> AuthorStyle:
+    def run(
+        self,
+        author_style_id: str,
+        caller: CallerInfo,
+        quota_context: Optional[QuotaContext] = None,
+    ) -> AuthorStyle:
         """
         Executes the author style analysis process.
 
@@ -590,7 +614,7 @@ class ProfilingStage:
         chunks = self._chunk_samples(samples)
 
         partial_styles = [
-            self._handle_partial_style(author_style_id, chunk, caller)
+            self._handle_partial_style(author_style_id, chunk, caller, quota_context=quota_context)
             for chunk in chunks
         ]
 
@@ -605,9 +629,9 @@ class ProfilingStage:
             raise RuntimeError(error_text)
 
         combined_style = self._handle_combined_style(
-            author_style_id, partial_styles, caller
+            author_style_id, partial_styles, caller, quota_context=quota_context
         )
 
-        structured_style = self._handle_structured_style(combined_style, caller)
+        structured_style = self._handle_structured_style(combined_style, caller, quota_context=quota_context)
 
         return structured_style

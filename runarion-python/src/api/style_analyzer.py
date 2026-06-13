@@ -3,7 +3,7 @@ import os
 from typing import Literal, Optional
 
 from flask import Blueprint, current_app, jsonify, request
-from src.models.request import CallerInfo
+from src.models.request import CallerInfo, QuotaContext
 from psycopg2.pool import SimpleConnectionPool
 from pydantic import BaseModel, Field, ValidationError
 from src.services.style_analyzer import (
@@ -139,6 +139,11 @@ def analyze_author_style():
             author_name=data.author_name,
             file_paths=file_paths,
             caller=caller,
+            quota_context=QuotaContext(
+                mode="admitted_workflow",
+                workflow_id=author_style_id,
+                workflow_kind="author_style",
+            ),
         )
 
         if result["status"] == "profiling_completed":

@@ -89,6 +89,11 @@ export default function ProjectEditorPage({
     const projectPipelineLock =
         (rawProjectPipelineLock as PipelineLock | null | undefined) ?? null;
     const isPipelineLocked = Boolean(projectPipelineLock?.isLocked);
+    const lockMessage =
+        projectPipelineLock?.message ||
+        (projectPipelineLock?.operationType === "snapshot_restore"
+            ? "A snapshot restore is in progress for this project."
+            : "This project is locked by an active operation.");
 
     // Get author styles from page props (provided by controller)
     const authorStyles =
@@ -280,7 +285,7 @@ export default function ProjectEditorPage({
     const handleAddChapterClick = async () => {
         if (isPipelineLocked) {
             toast.error(
-                "This project is locked while the novel pipeline is processing.",
+                lockMessage,
             );
             return;
         }
@@ -352,7 +357,7 @@ export default function ProjectEditorPage({
     const handleSaveChapterEdit = async () => {
         if (isPipelineLocked) {
             toast.error(
-                "This project is locked while the novel pipeline is processing.",
+                lockMessage,
             );
             return;
         }
@@ -394,7 +399,7 @@ export default function ProjectEditorPage({
     const handleDeleteChapter = async (chapter: ProjectChapter) => {
         if (isPipelineLocked) {
             toast.error(
-                "This project is locked while the novel pipeline is processing.",
+                lockMessage,
             );
             return;
         }
@@ -445,7 +450,7 @@ export default function ProjectEditorPage({
         onRegenerate: () => {
             if (isPipelineLocked) {
                 toast.error(
-                    "This project is locked while the novel pipeline is processing.",
+                    lockMessage,
                 );
                 return;
             }
@@ -571,7 +576,7 @@ export default function ProjectEditorPage({
                 >
                     {projectPipelineLock?.isLocked && (
                         <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                            Novel pipeline is processing this project. Phase:{" "}
+                            {lockMessage} Phase:{" "}
                             {projectPipelineLock.phase.replaceAll("_", " ")}.
                         </div>
                     )}
@@ -847,7 +852,7 @@ export default function ProjectEditorPage({
                                 onSend={() => {
                                     if (isPipelineLocked) {
                                         toast.error(
-                                            "This project is locked while the novel pipeline is processing.",
+                                            lockMessage,
                                         );
                                         return;
                                     }

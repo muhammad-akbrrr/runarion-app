@@ -9,6 +9,7 @@ use App\Models\Projects;
 use App\Models\User;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
+use App\Services\ProjectSnapshotService;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
@@ -78,6 +79,8 @@ class NovelPipelineTestSupport
         ProjectNodeEditor::query()->create([
             'project_id' => $project->id,
         ]);
+
+        app(ProjectSnapshotService::class)->ensureAnchorSnapshot($project->id, $user->id);
 
         return compact('user', 'workspace', 'project');
     }

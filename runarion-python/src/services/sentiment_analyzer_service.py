@@ -47,6 +47,9 @@ class SentimentAnalyzerService:
         """
         Create a QuotaCaller for generation requests.
         """
+        if not workspace_id:
+            raise ValueError("workspace_id is required for metered relationship LLM calls")
+
         user_id = 1  # Default fallback
         api_keys = {}
         
@@ -72,7 +75,7 @@ class SentimentAnalyzerService:
         
         return QuotaCaller.from_request_data(
             user_id=user_id,
-            workspace_id=workspace_id or project_id,
+            workspace_id=workspace_id,
             project_id=project_id,
             session_id=str(uuid.uuid4()),
             api_keys=api_keys
@@ -2865,4 +2868,3 @@ Return JSON only:
         
         results['success'] = len(results['errors']) == 0
         return results
-

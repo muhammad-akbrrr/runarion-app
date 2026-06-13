@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { PageProps, Project } from "@/types";
 import { Head, router } from "@inertiajs/react";
@@ -21,64 +21,32 @@ import {
     CardHeader,
     CardTitle,
 } from "@/Components/ui/card";
-import {
-    History,
-    Save,
-    Trash2,
-    ChevronRight,
-    ChevronDown,
-    Clock,
-    User,
-    Loader2,
-} from "lucide-react";
+import { Clock, History, Loader2, Save, User } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { http } from "@/Lib/http";
+
+interface SnapshotSummary {
+    chapter_count: number;
+    chat_count: number;
+    message_count: number;
+    entity_count: number;
+    relationship_count: number;
+    has_multiprompt_state: boolean;
+}
 
 interface Snapshot {
     id: string;
     name: string | null;
     description: string | null;
+    snapshot_kind: string;
+    is_immutable: boolean;
     created_at: string;
     created_by: {
         id: number;
         name: string;
     } | null;
-}
-
-interface ChapterVersionInfo {
-    order: number;
-    chapter_name: string;
-    current_node_id: string | null;
-    current_version_index: number;
-    navigation_info: {
-        canUndo: boolean;
-        canRedo: boolean;
-        canRegenerate: boolean;
-        currentVersionIndex: number;
-        totalVersions: number;
-        versionDisplayText: string;
-    };
-    version_tree: VersionTreeNode[];
-}
-
-interface VersionTreeNode {
-    node_id: string;
-    parent_node_id: string | null;
-    parent_version_index: number | null;
-    is_user_generated: boolean;
-    generation_settings: any;
-    created_at: string | null;
-    is_current: boolean;
-    versions: VersionInfo[];
-}
-
-interface VersionInfo {
-    version_index: number;
-    content_preview: string;
-    content_length: number;
-    created_at: string | null;
-    is_current: boolean;
+    summary: SnapshotSummary;
 }
 
 export default function VersionHistoryPage({
@@ -86,47 +54,31 @@ export default function VersionHistoryPage({
     projectId,
     project,
     snapshots = [],
-    chapters = [],
+    summary,
 }: PageProps<{
     workspaceId: string;
     projectId: string;
     project: Project;
     snapshots?: Snapshot[];
-    chapters?: ChapterVersionInfo[];
+    summary: SnapshotSummary & { snapshot_count: number };
 }>) {
     const [localSnapshots, setLocalSnapshots] = useState<Snapshot[]>(snapshots);
-    const [localChapters, setLocalChapters] =
-        useState<ChapterVersionInfo[]>(chapters);
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
     const [snapshotName, setSnapshotName] = useState("");
     const [snapshotDescription, setSnapshotDescription] = useState("");
     const [isSaving, setIsSaving] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [isLoading, setIsLoading] = useState(false);
-    const [expandedChapters, setExpandedChapters] = useState<Set<number>>(
-        new Set(),
-    );
-    const [expandedNodes, setExpandedNodes] = useState<Set<string>>(new Set());
-
-    // Debounced saving indicator (stays visible 1.5s after operation completes)
+    const [isRestoring, setIsRestoring] = useState(false);
     const [isSavingIndicator, setIsSavingIndicator] = useState(false);
     const savingDebounceRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Combined raw saving state
-    const isOperationInProgress = isSaving || isDeleting || isLoading;
-
-    // Debounce the saving indicator
     useEffect(() => {
-        if (isOperationInProgress) {
-            // Show indicator immediately when operation starts
+        if (isSaving || isRestoring) {
             setIsSavingIndicator(true);
-            // Clear any pending "done" timer
             if (savingDebounceRef.current) {
                 clearTimeout(savingDebounceRef.current);
                 savingDebounceRef.current = null;
             }
         } else {
-            // Debounce hiding the indicator - wait 1.5s after operation ends
             savingDebounceRef.current = setTimeout(() => {
                 setIsSavingIndicator(false);
             }, 1500);
@@ -137,64 +89,41 @@ export default function VersionHistoryPage({
                 clearTimeout(savingDebounceRef.current);
             }
         };
-    }, [isOperationInProgress]);
+    }, [isSaving, isRestoring]);
 
     const handleSaveSnapshot = async () => {
         setIsSaving(true);
 
         try {
-            const url = `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots`;
-
-            console.log("Saving snapshot:", {
-                url,
-                name: snapshotName,
-                description: snapshotDescription,
-            });
-
-            const response = await http(url, {
-                method: "POST",
-                headers: {
-                    "Content-Type": "application/json",
-                    Accept: "application/json",
+            const response = await http(
+                `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots`,
+                {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json",
+                        Accept: "application/json",
+                    },
+                    data: {
+                        name: snapshotName || null,
+                        description: snapshotDescription || null,
+                    },
                 },
-                data: {
-                    name: snapshotName || null,
-                    description: snapshotDescription || null,
-                },
-            });
+            );
 
-            console.log("Response status:", response.status);
-
-            let data;
-            try {
-                data = response.data;
-                console.log("Response data:", data);
-            } catch (jsonError) {
-                const text = (typeof response.data === "string" ? response.data : JSON.stringify(response.data ?? ""));
-                console.error("Failed to parse JSON response:", text);
-                toast.error(
-                    `Server error: ${response.status} ${response.statusText}`,
-                );
-                setIsSaving(false);
-                return;
-            }
-
+            const data = response.data;
             if (response.status >= 200 && response.status < 300 && data.success) {
-                setLocalSnapshots([data.snapshot, ...localSnapshots]);
+                setLocalSnapshots((prev) => [data.snapshot, ...prev]);
                 setSnapshotName("");
                 setSnapshotDescription("");
                 setIsSaveDialogOpen(false);
-                toast.success("Snapshot saved successfully!");
-            } else {
-                console.error("Save failed:", data);
-                toast.error(
-                    data.error || data.message || "Failed to save snapshot",
-                );
+                toast.success("Manual snapshot created.");
+                return;
             }
+
+            toast.error(data.error || data.message || "Failed to create snapshot.");
         } catch (error) {
-            console.error("Save snapshot error:", error);
             toast.error(
-                `Failed to save snapshot: ${
+                `Failed to create snapshot: ${
                     error instanceof Error ? error.message : "Unknown error"
                 }`,
             );
@@ -203,20 +132,20 @@ export default function VersionHistoryPage({
         }
     };
 
-    const handleLoadSnapshot = async (snapshotId: string) => {
+    const handleRestoreSnapshot = async (snapshotId: string) => {
         if (
             !confirm(
-                "Are you sure you want to load this snapshot? This will restore all chapters to their saved state. You will need to refresh the editor to see the changes.",
+                "Restore this project snapshot? A pre-restore safety snapshot will be created automatically.",
             )
         ) {
             return;
         }
 
-        setIsLoading(true);
+        setIsRestoring(true);
 
         try {
             const response = await http(
-                `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots/${snapshotId}/load`,
+                `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots/${snapshotId}/restore`,
                 {
                     method: "POST",
                     headers: {
@@ -226,187 +155,46 @@ export default function VersionHistoryPage({
             );
 
             const data = response.data;
-
-            if (response.status >= 200 && response.status < 300 && data.success) {
-                setLocalChapters(data.chapters);
-                toast.success(
-                    "Snapshot loaded successfully! Redirecting to editor...",
-                );
-                // Redirect to main editor so user can see the restored content
+            if (response.status === 202 && data.success) {
+                toast.success("Snapshot restore started. Redirecting out of the editor...");
                 setTimeout(() => {
                     router.visit(
-                        route("workspace.projects.editor", {
-                            workspace_id: workspaceId,
-                            project_id: projectId,
-                        }),
+                        data.redirect_to ||
+                            route("workspace.projects", {
+                                workspace_id: workspaceId,
+                            }),
                     );
-                }, 1500);
-            } else {
-                console.error("Load snapshot failed:", data);
-                toast.error(
-                    data.error || data.message || "Failed to load snapshot",
-                );
+                }, 1200);
+                return;
             }
+
+            toast.error(data.error || data.message || "Failed to restore snapshot.");
         } catch (error) {
-            console.error("Load snapshot error:", error);
             toast.error(
-                `Failed to load snapshot: ${
+                `Failed to restore snapshot: ${
                     error instanceof Error ? error.message : "Unknown error"
                 }`,
             );
         } finally {
-            setIsLoading(false);
+            setIsRestoring(false);
         }
     };
 
-    const handleDeleteSnapshot = async (snapshotId: string) => {
-        if (
-            !confirm(
-                "Are you sure you want to delete this snapshot? This action cannot be undone.",
-            )
-        ) {
-            return;
+    const kindLabel = (kind: string) => {
+        switch (kind) {
+            case "anchor":
+                return "Original";
+            case "manual":
+                return "Manual";
+            case "autosave":
+                return "Auto";
+            case "pre_restore":
+                return "Pre-Restore";
+            case "pipeline_import":
+                return "Pipeline";
+            default:
+                return kind;
         }
-
-        setIsDeleting(true);
-
-        try {
-            const response = await http(
-                `/${workspaceId}/projects/${projectId}/editor/version-history/snapshots/${snapshotId}`,
-                {
-                    method: "DELETE",
-                    headers: {
-                        Accept: "application/json",
-                    },
-                },
-            );
-
-            const data = response.data;
-
-            if (response.status >= 200 && response.status < 300 && data.success) {
-                setLocalSnapshots(
-                    localSnapshots.filter((s) => s.id !== snapshotId),
-                );
-                toast.success("Snapshot deleted successfully!");
-            } else {
-                toast.error(data.error || "Failed to delete snapshot");
-            }
-        } catch (error) {
-            toast.error("Failed to delete snapshot");
-        } finally {
-            setIsDeleting(false);
-        }
-    };
-
-    const toggleChapter = (chapterOrder: number) => {
-        const newExpanded = new Set(expandedChapters);
-        if (newExpanded.has(chapterOrder)) {
-            newExpanded.delete(chapterOrder);
-        } else {
-            newExpanded.add(chapterOrder);
-        }
-        setExpandedChapters(newExpanded);
-    };
-
-    const toggleNode = (nodeId: string) => {
-        const newExpanded = new Set(expandedNodes);
-        if (newExpanded.has(nodeId)) {
-            newExpanded.delete(nodeId);
-        } else {
-            newExpanded.add(nodeId);
-        }
-        setExpandedNodes(newExpanded);
-    };
-
-    const renderVersionTree = (chapter: ChapterVersionInfo) => {
-        if (!expandedChapters.has(chapter.order)) {
-            return null;
-        }
-
-        return (
-            <div className="ml-2 space-y-2">
-                {chapter.version_tree.map((node, nodeIndex) => (
-                    <div
-                        key={node.node_id}
-                        className="border-l-2 border-gray-200 pl-4"
-                    >
-                        <div className="flex items-center gap-2 py-2">
-                            <button
-                                onClick={() => toggleNode(node.node_id)}
-                                className="flex items-center gap-2 text-sm text-gray-600 hover:text-gray-900"
-                            >
-                                {expandedNodes.has(node.node_id) ? (
-                                    <ChevronDown className="h-4 w-4" />
-                                ) : (
-                                    <ChevronRight className="h-4 w-4" />
-                                )}
-                                <span className="font-medium">
-                                    Node {nodeIndex + 1}
-                                    {node.is_current && (
-                                        <span className="ml-2 text-xs text-blue-600 font-normal">
-                                            (Current)
-                                        </span>
-                                    )}
-                                </span>
-                                {node.is_user_generated && (
-                                    <span className="text-xs text-gray-500">
-                                        (User)
-                                    </span>
-                                )}
-                            </button>
-                            <span className="text-xs text-gray-400">
-                                {node.created_at &&
-                                    formatDistanceToNow(
-                                        new Date(node.created_at),
-                                        { addSuffix: true },
-                                    )}
-                            </span>
-                        </div>
-                        {expandedNodes.has(node.node_id) && (
-                            <div className="ml-6 space-y-1">
-                                {node.versions.map((version) => (
-                                    <div
-                                        key={version.version_index}
-                                        className={`p-2 rounded text-sm ${
-                                            version.is_current
-                                                ? "bg-blue-50 border border-blue-200"
-                                                : "bg-gray-50 border border-gray-200"
-                                        }`}
-                                    >
-                                        <div className="flex items-center justify-between mb-1">
-                                            <span className="font-medium">
-                                                Version {version.version_index}
-                                                {version.is_current && (
-                                                    <span className="ml-2 text-xs text-blue-600">
-                                                        (Current)
-                                                    </span>
-                                                )}
-                                            </span>
-                                            <span className="text-xs text-gray-500">
-                                                {version.created_at &&
-                                                    formatDistanceToNow(
-                                                        new Date(
-                                                            version.created_at,
-                                                        ),
-                                                        { addSuffix: true },
-                                                    )}
-                                            </span>
-                                        </div>
-                                        <div className="text-xs text-gray-600 mt-1">
-                                            {version.content_preview}
-                                        </div>
-                                        <div className="text-xs text-gray-400 mt-1">
-                                            {version.content_length.toLocaleString()}{" "}
-                                            characters
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                ))}
-            </div>
-        );
     };
 
     return (
@@ -418,276 +206,194 @@ export default function VersionHistoryPage({
         >
             <Head title="Version History" />
 
-            <div className="w-full h-full flex flex-col bg-gray-50">
-                <div className="flex-1 flex gap-4 p-4 overflow-hidden min-h-0">
-                    {/* Left Sidebar - Snapshots */}
-                    <div className="w-80 flex flex-col bg-white rounded-lg shadow-sm border border-gray-200 min-h-0">
-                        <div className="p-4 border-b border-gray-200 shrink-0">
-                            <div className="flex items-center justify-between mb-4">
-                                <h2 className="text-lg font-semibold">
-                                    Snapshots
-                                </h2>
-                                <Button
-                                    onClick={() => setIsSaveDialogOpen(true)}
-                                    size="sm"
-                                    className="gap-2"
-                                >
-                                    <Save className="h-4 w-4" />
-                                    Save Current
-                                </Button>
+            <div className="w-full h-full bg-gray-50 p-4 md:p-6">
+                <div className="mx-auto flex max-w-6xl flex-col gap-4">
+                    <Card className="border-gray-200">
+                        <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                            <div className="space-y-1">
+                                <CardTitle className="flex items-center gap-2 text-xl">
+                                    <History className="h-5 w-5" />
+                                    Project Snapshots
+                                </CardTitle>
+                                <CardDescription>
+                                    Snapshots capture the full project state, not
+                                    just chapter text.
+                                </CardDescription>
                             </div>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
-                            {localSnapshots.length === 0 ? (
-                                <div className="text-center text-gray-500 py-8">
-                                    <History className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                                    <p>No snapshots yet</p>
-                                    <p className="text-sm mt-1">
-                                        Save your current state to create one
-                                    </p>
-                                </div>
-                            ) : (
-                                localSnapshots.map((snapshot) => (
-                                    <Card
-                                        key={snapshot.id}
-                                        className="hover:shadow-md transition-shadow py-4 gap-4"
-                                    >
-                                        <CardHeader className="px-4">
-                                            <div className="flex items-center justify-between gap-4">
-                                                <div className="flex-1 flex-col gap-1">
-                                                    <CardTitle className="text-sm font-medium">
-                                                        {snapshot.name ||
-                                                            "Unnamed Snapshot"}
-                                                    </CardTitle>
-                                                    {snapshot.description && (
-                                                        <CardDescription className="text-xs">
-                                                            {
-                                                                snapshot.description
-                                                            }
-                                                        </CardDescription>
-                                                    )}
-                                                </div>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    onClick={() =>
-                                                        handleDeleteSnapshot(
-                                                            snapshot.id,
-                                                        )
-                                                    }
-                                                    className="h-6 w-6 p-0"
-                                                >
-                                                    <Trash2 className="h-3 w-3" />
-                                                </Button>
+                            <Button
+                                onClick={() => setIsSaveDialogOpen(true)}
+                                className="gap-2"
+                            >
+                                <Save className="h-4 w-4" />
+                                Create Manual Snapshot
+                            </Button>
+                        </CardHeader>
+                        <CardContent className="grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+                            <Metric label="Snapshots" value={summary.snapshot_count} />
+                            <Metric label="Chapters" value={summary.chapter_count} />
+                            <Metric label="Chats" value={summary.chat_count} />
+                            <Metric label="Messages" value={summary.message_count} />
+                            <Metric label="Entities" value={summary.entity_count} />
+                            <Metric
+                                label="Multiprompt"
+                                value={summary.has_multiprompt_state ? "Saved" : "Empty"}
+                            />
+                        </CardContent>
+                    </Card>
+
+                    <div className="grid gap-4">
+                        {localSnapshots.length === 0 ? (
+                            <Card className="border-dashed border-gray-300 bg-white">
+                                <CardContent className="py-12 text-center text-gray-500">
+                                    <History className="mx-auto mb-3 h-10 w-10 text-gray-300" />
+                                    No snapshots available.
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            localSnapshots.map((snapshot) => (
+                                <Card key={snapshot.id} className="border-gray-200 bg-white">
+                                    <CardHeader className="gap-3 md:flex-row md:items-start md:justify-between">
+                                        <div className="space-y-2">
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <CardTitle className="text-base">
+                                                    {snapshot.name || "Untitled Snapshot"}
+                                                </CardTitle>
+                                                <span className="rounded-full bg-gray-100 px-2 py-1 text-xs font-medium text-gray-700">
+                                                    {kindLabel(snapshot.snapshot_kind)}
+                                                </span>
+                                                {snapshot.is_immutable && (
+                                                    <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">
+                                                        Immutable
+                                                    </span>
+                                                )}
                                             </div>
-                                        </CardHeader>
-                                        <CardContent className="px-4 flex flex-col gap-2">
-                                            <div className="flex items-center justify-between gap-4 text-xs text-gray-500">
-                                                <div className="flex items-center gap-1">
+                                            {snapshot.description && (
+                                                <CardDescription className="max-w-3xl text-sm">
+                                                    {snapshot.description}
+                                                </CardDescription>
+                                            )}
+                                            <div className="flex flex-wrap items-center gap-4 text-xs text-gray-500">
+                                                <span className="flex items-center gap-1">
                                                     <Clock className="h-3 w-3" />
                                                     {formatDistanceToNow(
-                                                        new Date(
-                                                            snapshot.created_at,
-                                                        ),
+                                                        new Date(snapshot.created_at),
                                                         { addSuffix: true },
                                                     )}
-                                                </div>
+                                                </span>
+                                                <span className="text-gray-400">
+                                                    {new Date(snapshot.created_at).toLocaleString()}
+                                                </span>
                                                 {snapshot.created_by && (
-                                                    <div className="flex items-center gap-1">
+                                                    <span className="flex items-center gap-1">
                                                         <User className="h-3 w-3" />
-                                                        {
-                                                            snapshot.created_by
-                                                                .name
-                                                        }
-                                                    </div>
+                                                        {snapshot.created_by.name}
+                                                    </span>
                                                 )}
                                             </div>
-                                            <Button
-                                                onClick={() =>
-                                                    handleLoadSnapshot(
-                                                        snapshot.id,
-                                                    )
-                                                }
-                                                size="sm"
-                                                variant="outline"
-                                                className="w-full"
-                                                disabled={isLoading}
-                                            >
-                                                {isLoading ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    "Load Snapshot"
-                                                )}
-                                            </Button>
-                                        </CardContent>
-                                    </Card>
-                                ))
-                            )}
-                        </div>
-                    </div>
+                                        </div>
 
-                    {/* Right Side - Chapter Version Trees */}
-                    <div className="flex-1 flex flex-col bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden min-h-0">
-                        <div className="p-4 border-b border-gray-200 shrink-0">
-                            <h2 className="text-lg font-semibold">
-                                Chapter Versions
-                            </h2>
-                            <p className="text-sm text-gray-500 mt-1">
-                                View and navigate through version history for
-                                each chapter
-                            </p>
-                        </div>
-                        <div className="flex-1 overflow-y-auto p-4 min-h-0">
-                            {localChapters.length === 0 ? (
-                                <div className="text-center text-gray-500 py-12">
-                                    <History className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                                    <p>No chapters with version history</p>
-                                </div>
-                            ) : (
-                                <div className="space-y-2">
-                                    {localChapters.map((chapter) => (
-                                        <Card
-                                            key={chapter.order}
-                                            className="hover:shadow-md transition-shadow py-4! gap-4!"
+                                        <Button
+                                            onClick={() => handleRestoreSnapshot(snapshot.id)}
+                                            variant="outline"
+                                            disabled={isRestoring}
                                         >
-                                            <CardHeader className="px-4! gap-4! grid-rows-1!">
-                                                <button
-                                                    onClick={() =>
-                                                        toggleChapter(
-                                                            chapter.order,
-                                                        )
-                                                    }
-                                                    className="flex items-center justify-between w-full text-left"
-                                                >
-                                                    <div className="flex items-center gap-2">
-                                                        {expandedChapters.has(
-                                                            chapter.order,
-                                                        ) ? (
-                                                            <ChevronDown className="h-4 w-4 text-gray-400" />
-                                                        ) : (
-                                                            <ChevronRight className="h-4 w-4 text-gray-400" />
-                                                        )}
-                                                        <CardTitle className="text-base font-medium">
-                                                            {
-                                                                chapter.chapter_name
-                                                            }
-                                                        </CardTitle>
-                                                    </div>
-                                                    <div className="text-xs text-gray-500">
-                                                        {
-                                                            chapter
-                                                                .navigation_info
-                                                                .totalVersions
-                                                        }{" "}
-                                                        version
-                                                        {chapter.navigation_info
-                                                            .totalVersions !== 1
-                                                            ? "s"
-                                                            : ""}
-                                                        {" • "}
-                                                        Current: v
-                                                        {
-                                                            chapter
-                                                                .navigation_info
-                                                                .currentVersionIndex
-                                                        }
-                                                    </div>
-                                                </button>
-                                            </CardHeader>
-                                            {expandedChapters.has(
-                                                chapter.order,
-                                            ) && (
-                                                <CardContent className="px-4!">
-                                                    {chapter.version_tree
-                                                        .length === 0 ? (
-                                                        <p className="text-sm text-gray-500">
-                                                            No version history
-                                                        </p>
-                                                    ) : (
-                                                        renderVersionTree(
-                                                            chapter,
-                                                        )
-                                                    )}
-                                                </CardContent>
+                                            {isRestoring ? (
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                            ) : (
+                                                "Restore Snapshot"
                                             )}
-                                        </Card>
-                                    ))}
-                                </div>
-                            )}
-                        </div>
+                                        </Button>
+                                    </CardHeader>
+                                    <CardContent className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                                        <Metric label="Chapters" value={snapshot.summary.chapter_count} />
+                                        <Metric label="Chats" value={snapshot.summary.chat_count} />
+                                        <Metric label="Messages" value={snapshot.summary.message_count} />
+                                        <Metric label="Entities" value={snapshot.summary.entity_count} />
+                                        <Metric label="Relations" value={snapshot.summary.relationship_count} />
+                                        <Metric
+                                            label="Multiprompt"
+                                            value={
+                                                snapshot.summary.has_multiprompt_state
+                                                    ? "Saved"
+                                                    : "Empty"
+                                            }
+                                        />
+                                    </CardContent>
+                                </Card>
+                            ))
+                        )}
                     </div>
                 </div>
             </div>
 
-            {/* Save Snapshot Dialog */}
             <Dialog open={isSaveDialogOpen} onOpenChange={setIsSaveDialogOpen}>
                 <DialogContent>
                     <DialogHeader>
-                        <DialogTitle>Save Current State</DialogTitle>
+                        <DialogTitle>Create Manual Snapshot</DialogTitle>
                         <DialogDescription>
-                            Create a snapshot of all chapters at their current
-                            versions. You can restore this state later.
+                            This captures the current project-wide state,
+                            including content, settings, chats, records, and
+                            multiprompt state.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-4 py-4">
+                    <div className="space-y-4 py-2">
                         <div className="space-y-2">
-                            <Label htmlFor="snapshot-name">
-                                Name (optional)
-                            </Label>
+                            <Label htmlFor="snapshot-name">Name</Label>
                             <Input
                                 id="snapshot-name"
-                                placeholder="e.g., Before major rewrite"
                                 value={snapshotName}
-                                onChange={(e) =>
-                                    setSnapshotName(e.target.value)
-                                }
+                                onChange={(e) => setSnapshotName(e.target.value)}
+                                placeholder="Before arc rewrite"
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label htmlFor="snapshot-description">
-                                Description (optional)
-                            </Label>
+                            <Label htmlFor="snapshot-description">Description</Label>
                             <Textarea
                                 id="snapshot-description"
-                                placeholder="Add a note about this snapshot..."
                                 value={snapshotDescription}
-                                onChange={(e) =>
-                                    setSnapshotDescription(e.target.value)
-                                }
-                                rows={3}
+                                onChange={(e) => setSnapshotDescription(e.target.value)}
+                                placeholder="Optional note about why this snapshot matters."
+                                rows={4}
                             />
                         </div>
                     </div>
                     <DialogFooter>
                         <Button
                             variant="outline"
-                            onClick={() => {
-                                setIsSaveDialogOpen(false);
-                                setSnapshotName("");
-                                setSnapshotDescription("");
-                            }}
+                            onClick={() => setIsSaveDialogOpen(false)}
+                            disabled={isSaving}
                         >
                             Cancel
                         </Button>
-                        <Button
-                            onClick={handleSaveSnapshot}
-                            disabled={isSaving}
-                        >
+                        <Button onClick={handleSaveSnapshot} disabled={isSaving}>
                             {isSaving ? (
-                                <>
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                    Saving...
-                                </>
+                                <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                                <>
-                                    <Save className="h-4 w-4 mr-2" />
-                                    Save Snapshot
-                                </>
+                                "Create Snapshot"
                             )}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
         </ProjectEditorLayout>
+    );
+}
+
+function Metric({
+    label,
+    value,
+}: {
+    label: string;
+    value: number | string;
+}) {
+    return (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-3">
+            <div className="text-xs uppercase tracking-wide text-gray-500">
+                {label}
+            </div>
+            <div className="mt-1 text-lg font-semibold text-gray-900">
+                {value}
+            </div>
+        </div>
     );
 }

@@ -51,7 +51,8 @@ class OpenAIProvider(BaseProvider):
             "top_p": config.nucleus_sampling,
             "logit_bias": logit_bias if logit_bias else None,
             "max_tokens": config.max_output_tokens, 
-            "stream": config.stream
+            "stream": config.stream,
+            "stream_options": {"include_usage": True} if config.stream else None,
         }
         
         return {k: v for k, v in openai_kwargs.items() if v is not None}
@@ -99,20 +100,34 @@ class OpenAIProvider(BaseProvider):
             input_tokens = getattr(usage, "prompt_tokens", 0)
             output_tokens = getattr(usage, "completion_tokens", 0)
             total_tokens = getattr(usage, "total_tokens", 0)
+            reasoning_tokens = 0
+            completion_details = getattr(usage, "completion_tokens_details", None)
+            if completion_details is not None:
+                reasoning_tokens = getattr(completion_details, "reasoning_tokens", 0) or 0
 
             processing_time_ms = int((time.time() - start_time) * 1000)
-            billable_usage = self._finalize_usage_metering(generated_text)
+            normalized_usage = self._normalize_usage(
+                generated_text=generated_text,
+                provider_input_tokens=input_tokens,
+                provider_output_tokens=output_tokens,
+                provider_reasoning_tokens=reasoning_tokens,
+                provider_total_tokens=total_tokens,
+                usage_source="provider",
+            )
+            billable_usage = self._finalize_usage_metering(generated_text, normalized_usage=normalized_usage)
 
             response = self._build_response(
                 generated_text=generated_text,
                 finish_reason=finish_reason,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                total_tokens=total_tokens,
+                input_tokens=normalized_usage["input_tokens"],
+                output_tokens=normalized_usage["output_tokens"],
+                reasoning_tokens=normalized_usage["reasoning_tokens"],
+                total_tokens=normalized_usage["total_tokens"],
                 processing_time_ms=processing_time_ms,
                 request_id=request_id,
                 provider_request_id=provider_request_id,
                 quota_generation_count=1,
+                usage_source=normalized_usage["usage_source"],
             )
             self._log_generation_to_db(response, billable_usage=billable_usage)
                 
@@ -163,12 +178,18 @@ class OpenAIProvider(BaseProvider):
         finish_reason = ""
         input_tokens = 0
         output_tokens = 0
+        reasoning_tokens = 0
         total_tokens = 0
+        latest_usage = None
 
         try:
             stream = self.client.chat.completions.create(**openai_kwargs)
 
             for chunk in stream:
+                chunk_usage = getattr(chunk, "usage", None)
+                if chunk_usage is not None:
+                    latest_usage = chunk_usage
+
                 if hasattr(chunk, 'choices') and chunk.choices:
                     choice = chunk.choices[0]
                     provider_request_id = getattr(chunk, 'id', provider_request_id)
@@ -181,29 +202,43 @@ class OpenAIProvider(BaseProvider):
 
             # Attempt to get usage metadata from the final response
             try:
-                usage = getattr(stream, 'usage', None)
+                usage = latest_usage or getattr(stream, 'usage', None)
                 if usage:
-                    input_tokens = getattr(usage, "input_tokens", 0)
-                    output_tokens = getattr(usage, "output_tokens", 0)
+                    input_tokens = getattr(usage, "prompt_tokens", 0) or getattr(usage, "input_tokens", 0)
+                    output_tokens = getattr(usage, "completion_tokens", 0) or getattr(usage, "output_tokens", 0)
                     total_tokens = getattr(usage, "total_tokens", 0)
+                    completion_details = getattr(usage, "completion_tokens_details", None)
+                    if completion_details is not None:
+                        reasoning_tokens = getattr(completion_details, "reasoning_tokens", 0) or 0
             except Exception as e:
                 current_app.logger.warning(f"Failed to parse usage metadata from stream: {e}")
 
             finish_reason = choice.finish_reason if hasattr(choice, 'finish_reason') else "stop"
 
             processing_time_ms = int((time.time() - start_time) * 1000)
-            billable_usage = self._finalize_usage_metering(generated_text)
+            usage_source = "provider" if total_tokens > 0 else "estimated"
+            normalized_usage = self._normalize_usage(
+                generated_text=generated_text,
+                provider_input_tokens=input_tokens,
+                provider_output_tokens=output_tokens,
+                provider_reasoning_tokens=reasoning_tokens,
+                provider_total_tokens=total_tokens,
+                usage_source=usage_source,
+            )
+            billable_usage = self._finalize_usage_metering(generated_text, normalized_usage=normalized_usage)
 
             response = self._build_response(
                 generated_text=generated_text,
                 finish_reason=finish_reason,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                total_tokens=total_tokens,
+                input_tokens=normalized_usage["input_tokens"],
+                output_tokens=normalized_usage["output_tokens"],
+                reasoning_tokens=normalized_usage["reasoning_tokens"],
+                total_tokens=normalized_usage["total_tokens"],
                 processing_time_ms=processing_time_ms,
                 request_id=request_id,
                 provider_request_id=provider_request_id or "",
                 quota_generation_count=1,
+                usage_source=normalized_usage["usage_source"],
             )
             self._log_generation_to_db(response, billable_usage=billable_usage)
 

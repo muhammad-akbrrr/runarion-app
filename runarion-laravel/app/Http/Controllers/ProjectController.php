@@ -6,9 +6,11 @@ use App\Models\Folder;
 use App\Models\ProjectContent;
 use App\Models\ProjectNodeEditor;
 use App\Models\Projects;
+use App\Models\ProjectSnapshot;
 use App\Models\Workspace;
 use App\Models\WorkspaceMember;
-use App\Services\ProjectPipelineStateService;
+use App\Services\ProjectOperationStateService;
+use App\Services\ProjectSnapshotService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -18,7 +20,8 @@ use Inertia\Response;
 class ProjectController extends Controller
 {
     public function __construct(
-        private readonly ProjectPipelineStateService $pipelineStateService,
+        private readonly ProjectOperationStateService $operationStateService,
+        private readonly ProjectSnapshotService $projectSnapshotService,
     ) {}
 
     public function show(Request $request, string $workspace_id): RedirectResponse|Response
@@ -33,7 +36,7 @@ class ProjectController extends Controller
             ->with(['author:id,name'])
             ->get();
 
-        $locks = $this->pipelineStateService->getLocksForProjects(
+        $locks = $this->operationStateService->getLocksForProjects(
             $workspace_id,
             $projects->pluck('id')->all(),
         );
@@ -79,7 +82,7 @@ class ProjectController extends Controller
             ->with(['author:id,name'])
             ->get();
 
-        $locks = $this->pipelineStateService->getLocksForProjects(
+        $locks = $this->operationStateService->getLocksForProjects(
             $workspace_id,
             $projects->pluck('id')->all(),
         );
@@ -226,6 +229,8 @@ class ProjectController extends Controller
             $projectNodeEditor = new ProjectNodeEditor;
             $projectNodeEditor->project_id = $project->id;
             $projectNodeEditor->save();
+
+            $this->projectSnapshotService->ensureAnchorSnapshot($project->id, $request->user()->id);
 
             // Redirect to the editor page for the new project
             return redirect()->route('workspace.projects.editor', [
@@ -665,11 +670,45 @@ class ProjectController extends Controller
             return redirect()->route('workspace.projects', ['workspace_id' => $workspace_id]);
         }
 
+        $snapshots = ProjectSnapshot::where('project_id', $project_id)
+            ->orderBy('created_at', 'desc')
+            ->with('creator:id,name')
+            ->get()
+            ->map(fn (ProjectSnapshot $snapshot) => $this->formatSnapshot($snapshot));
+
         return Inertia::render('Projects/Backups', [
             'workspaceId' => $workspace_id,
             'projectId' => $project_id,
             'project' => $project,
+            'snapshots' => $snapshots,
+            'summary' => $this->projectSnapshotService->getSnapshotSummary($project_id),
         ]);
+    }
+
+    private function formatSnapshot(ProjectSnapshot $snapshot): array
+    {
+        $snapshotData = $snapshot->snapshot_data ?? [];
+
+        return [
+            'id' => $snapshot->id,
+            'name' => $snapshot->name,
+            'description' => $snapshot->description,
+            'snapshot_kind' => $snapshot->snapshot_kind,
+            'is_immutable' => (bool) $snapshot->is_immutable,
+            'created_at' => $snapshot->created_at->toISOString(),
+            'created_by' => $snapshot->creator ? [
+                'id' => $snapshot->creator->id,
+                'name' => $snapshot->creator->name,
+            ] : null,
+            'summary' => [
+                'chapter_count' => count($snapshotData['project_content']['content'] ?? $snapshotData['chapters'] ?? []),
+                'chat_count' => count($snapshotData['advisor']['chats'] ?? []),
+                'message_count' => count($snapshotData['advisor']['messages'] ?? []),
+                'entity_count' => count($snapshotData['records']['entities'] ?? $snapshotData['entities'] ?? []),
+                'relationship_count' => count($snapshotData['records']['relationships'] ?? $snapshotData['relationships'] ?? []),
+                'has_multiprompt_state' => ! empty($snapshotData['multiprompt']['graph_state'] ?? null),
+            ],
+        ];
     }
 
 }

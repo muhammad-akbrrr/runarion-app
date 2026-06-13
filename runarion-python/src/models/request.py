@@ -66,6 +66,12 @@ class GenerationConfig(BaseModel):
     thinking_budget: Optional[int] = None
     include_thinking: Optional[bool] = False
 
+
+class QuotaContext(BaseModel):
+    mode: Literal["strict", "admitted_workflow"] = "strict"
+    workflow_id: Optional[str] = None
+    workflow_kind: Optional[str] = None
+
 class BaseGenerationRequest(BaseModel):
     usecase: str = "mock"
     feature: Optional[str] = None
@@ -75,6 +81,7 @@ class BaseGenerationRequest(BaseModel):
     instruction: Optional[object] = None
     generation_config: GenerationConfig
     caller: CallerInfo
+    quota_context: QuotaContext = Field(default_factory=QuotaContext)
 
 
 def rewrite_policy_to_dict(policy: Optional[RewritePolicy | dict]) -> dict:

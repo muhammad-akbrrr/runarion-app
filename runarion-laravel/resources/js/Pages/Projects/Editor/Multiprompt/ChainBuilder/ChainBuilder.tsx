@@ -41,6 +41,14 @@ interface ChainBuilderProps {
     projectId: string;
     project: any;
     chapters?: ProjectChapter[];
+    persistedGraphState?: {
+        nodes?: GraphNode[];
+        edges?: GraphEdge[];
+        pan?: { x: number; y: number };
+        zoom?: number;
+        execution_mode?: GraphExecutionMode;
+    } | null;
+    persistedTemplates?: GraphTemplate[];
     aiModel?: string;
     authorProfile?: string;
     settings?: Record<string, any>;
@@ -53,6 +61,8 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
     projectId,
     project,
     chapters = [],
+    persistedGraphState = null,
+    persistedTemplates = [],
     aiModel = "gemini-2.5-flash",
     authorProfile,
     settings,
@@ -164,6 +174,9 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
     // Templates State - collapsed by default
     const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
     const [templates, setTemplates] = useState<GraphTemplate[]>(() => {
+        if (persistedTemplates.length > 0) {
+            return persistedTemplates;
+        }
         const saved = localStorage.getItem(
             `chain_builder_templates_${projectId}`,
         );
@@ -337,27 +350,39 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
         // Only load once on mount, not on every projectId change
         if (hasLoadedRef.current) return;
 
-        const saved = localStorage.getItem(`chain_builder_${projectId}`);
-        if (saved) {
-            try {
-                const data = JSON.parse(saved);
-                // Load even if nodes array is empty (to restore deletions)
-                if (data.nodes !== undefined) {
-                    // Atomic update of both nodes and edges
-                    setGraphState({
-                        nodes: data.nodes || [],
-                        edges: data.edges || [],
-                    });
-                    setPan(data.pan || { x: 0, y: 0 });
-                    setZoom(data.zoom || 1);
+        if (persistedGraphState?.nodes !== undefined) {
+            setGraphState({
+                nodes: persistedGraphState.nodes || [],
+                edges: persistedGraphState.edges || [],
+            });
+            setPan(persistedGraphState.pan || { x: 0, y: 0 });
+            setZoom(persistedGraphState.zoom || 1);
+            if (persistedGraphState.execution_mode) {
+                setExecutionMode(persistedGraphState.execution_mode);
+            }
+        } else {
+            const saved = localStorage.getItem(`chain_builder_${projectId}`);
+            if (saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    // Load even if nodes array is empty (to restore deletions)
+                    if (data.nodes !== undefined) {
+                        // Atomic update of both nodes and edges
+                        setGraphState({
+                            nodes: data.nodes || [],
+                            edges: data.edges || [],
+                        });
+                        setPan(data.pan || { x: 0, y: 0 });
+                        setZoom(data.zoom || 1);
+                    }
+                } catch (e) {
+                    console.error("Failed to load graph", e);
                 }
-            } catch (e) {
-                console.error("Failed to load graph", e);
             }
         }
         // Always mark as loaded after attempting to load (or if no saved data)
         hasLoadedRef.current = true;
-    }, [projectId]);
+    }, [persistedGraphState, projectId]);
 
     // Initialize history with current state on mount
     useEffect(() => {
@@ -395,6 +420,29 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
             JSON.stringify({ nodes, edges, pan, zoom }),
         );
 
+        void http(
+            `/${workspaceId}/projects/${projectId}/editor/multi-prompt/state`,
+            {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    Accept: "application/json",
+                },
+                data: {
+                    graph_state: {
+                        nodes,
+                        edges,
+                        pan,
+                        zoom,
+                        execution_mode: executionMode,
+                    },
+                    templates,
+                },
+            },
+        ).catch((error) => {
+            console.error("Failed to persist chain builder state", error);
+        });
+
         // Debounce the "done" state - wait 1.5s after last change
         saveDebounceRef.current = setTimeout(() => {
             setIsSavingLocal(false);
@@ -405,7 +453,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                 clearTimeout(saveDebounceRef.current);
             }
         };
-    }, [nodes, edges, pan, zoom, projectId]);
+    }, [nodes, edges, pan, zoom, projectId, workspaceId, executionMode, templates]);
 
     // Templates persistence
     useEffect(() => {
