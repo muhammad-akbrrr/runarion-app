@@ -12,6 +12,8 @@ import { postJson } from "./utils";
 import CategoryEntityPicker, {
     type PickerMode,
 } from "./Shared/CategoryEntityPicker";
+import { toast } from "sonner";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 interface DuplicateFinderSectionProps extends SharedSectionProps {
     // Persisted state from parent
@@ -31,6 +33,7 @@ export default function DuplicateFinderSection({
     duplicates,
     onDuplicatesChange,
 }: DuplicateFinderSectionProps) {
+    const confirm = useConfirm();
     const [loadingDuplicates, setLoadingDuplicates] = useState(false);
     const [duplicateErrors, setDuplicateErrors] = useState<string[]>([]);
     const [merging, setMerging] = useState<string | null>(null);
@@ -91,7 +94,7 @@ export default function DuplicateFinderSection({
                             e.includes("RESOURCE_EXHAUSTED"),
                     );
                     if (hasRateLimit) {
-                        alert(
+                        toast.error(
                             "API rate limit exceeded. Please wait and try again, or use a paid API key.",
                         );
                     }
@@ -103,16 +106,16 @@ export default function DuplicateFinderSection({
                     errorData.error ||
                     "Unknown error";
                 if (errorMsg.includes("429") || errorMsg.includes("quota")) {
-                    alert(
+                    toast.error(
                         "API rate limit exceeded. Please wait and try again, or use a paid API key.",
                     );
                 } else {
-                    alert(`Failed to find duplicates: ${errorMsg}`);
+                    toast.error(`Failed to find duplicates: ${errorMsg}`);
                 }
             }
         } catch (error) {
             console.error("Error finding duplicates:", error);
-            alert(`Failed to find duplicates: ${error}`);
+            toast.error(`Failed to find duplicates: ${error}`);
         } finally {
             setLoadingDuplicates(false);
         }
@@ -137,9 +140,11 @@ export default function DuplicateFinderSection({
         if (!source || !target) return;
 
         if (
-            !confirm(
-                `Merge "${source.name}" into "${target.name}"?\n\nThis will:\n- Combine properties from both entities\n- Delete "${source.name}"\n- Keep "${target.name}" as the canonical entity`,
-            )
+            !(await confirm({
+                title: "Merge duplicate entities?",
+                description: `Merge "${source.name}" into "${target.name}"?\n\nThis will:\n- Combine properties from both entities\n- Delete "${source.name}"\n- Keep "${target.name}" as the canonical entity`,
+                actionLabel: "Merge entities",
+            }))
         ) {
             return;
         }
@@ -169,11 +174,11 @@ export default function DuplicateFinderSection({
                 const error = response.data;
                 const errorMsg =
                     error.details?.error || error.error || "Unknown error";
-                alert(`Failed to merge: ${errorMsg}`);
+                toast.error(`Failed to merge: ${errorMsg}`);
             }
         } catch (error) {
             console.error("Error merging entities:", error);
-            alert("Failed to merge entities");
+            toast.error("Failed to merge entities");
         } finally {
             setMerging(null);
         }

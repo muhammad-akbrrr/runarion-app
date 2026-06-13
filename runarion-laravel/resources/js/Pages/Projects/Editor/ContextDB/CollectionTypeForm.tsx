@@ -3,6 +3,7 @@ import { Button } from "@/Components/ui/button";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
 
 interface CollectionTypeFormProps {
     workspaceId: string;
@@ -61,11 +62,11 @@ export default function CollectionTypeForm({
                 } catch (e) {
                     console.error("Error parsing response:", e);
                 }
-                alert(`Error: ${errorMessage}`);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error creating collection type:", error);
-            alert(
+            toast.error(
                 `Failed to create collection type: ${
                     error?.message || String(error)
                 }`

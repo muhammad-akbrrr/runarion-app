@@ -2,8 +2,10 @@ import ProjectEditorLayout from "@/Layouts/ProjectEditorLayout";
 import { PageProps, Project, ProjectChapter } from "@/types";
 import { Head, router } from "@inertiajs/react";
 import { ChainBuilder } from "./ChainBuilder/ChainBuilder";
+import type { GraphTemplate } from "./ChainBuilder/types";
 import { useState, useEffect } from "react";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
 
 export default function ProjectEditorPage({
     workspaceId,
@@ -16,7 +18,7 @@ export default function ProjectEditorPage({
     project: Project;
     multipromptState?: {
         graph_state?: Record<string, unknown> | null;
-        templates?: unknown[] | null;
+        templates?: GraphTemplate[] | null;
     } | null;
 }>) {
     const [chapters, setChapters] = useState<ProjectChapter[]>([]);
@@ -96,13 +98,13 @@ export default function ProjectEditorPage({
                         error: "Unknown error",
                     }));
                     console.error("Failed to apply result:", error);
-                    alert(
+                    toast.error(
                         `Failed to save content: ${error.error || "Please try again."}`,
                     );
                 }
             } catch (error) {
                 console.error("Error applying result:", error);
-                alert("Failed to save content. Please try again.");
+                toast.error("Failed to save content. Please try again.");
             }
         }
     };

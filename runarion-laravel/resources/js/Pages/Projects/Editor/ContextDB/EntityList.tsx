@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Trash2, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/Components/ui/button";
 import { Checkbox } from "@/Components/ui/checkbox";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 interface Entity {
     vertex_id: string;  // String to avoid JS precision loss with large Apache AGE IDs
@@ -36,6 +37,7 @@ export default function EntityList({
     selectedEntity,
     showGrouped = false,
 }: EntityListProps) {
+    const confirm = useConfirm();
     const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
     
     // Filter out internal/metadata entities (types starting with _ or internal tracking types)
@@ -163,14 +165,20 @@ export default function EntityList({
     };
 
     // Handle bulk delete
-    const handleBulkDelete = (event?: React.MouseEvent) => {
+    const handleBulkDelete = async (event?: React.MouseEvent) => {
         if (event) {
             event.stopPropagation();
         }
         if (selectedIds.size === 0) {
             return;
         }
-        if (!confirm(`Are you sure you want to delete ${selectedIds.size} selected entity/entities?`)) {
+        if (
+            !(await confirm({
+                title: "Delete selected entities?",
+                description: `Are you sure you want to delete ${selectedIds.size} selected entity/entities?`,
+                actionLabel: "Delete entities",
+            }))
+        ) {
             return;
         }
         if (onBulkDelete) {

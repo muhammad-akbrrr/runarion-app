@@ -14,9 +14,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/Components/ui/tabs";
 import { Input } from "@/Components/ui/input";
 import { Label } from "@/Components/ui/label";
 import { Textarea } from "@/Components/ui/textarea";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 import RelationshipsTab from "./RelationshipsTab";
 import SettingsTab from "./SettingsTab";
 import SummaryTab from "./SummaryTab";
+import { toast } from "sonner";
 
 // Protected fields that cannot be deleted (required by deconstructor)
 const PROTECTED_FIELDS: Record<string, string[]> = {
@@ -68,6 +70,7 @@ export default function EntityDetailSidebar({
     onRelationshipDeleted,
     onSavingChange,
 }: EntityDetailSidebarProps) {
+    const confirm = useConfirm();
     const [activeTab, setActiveTab] = useState("details");
     const [isEditing, setIsEditing] = useState(false);
     const [editedName, setEditedName] = useState("");
@@ -125,11 +128,13 @@ export default function EntityDetailSidebar({
     };
 
     // Delete a specific summary
-    const handleDeleteSummary = (chapterNumber: number) => {
+    const handleDeleteSummary = async (chapterNumber: number) => {
         if (
-            !confirm(
-                `Are you sure you want to delete the summary for Chapter ${chapterNumber}?`,
-            )
+            !(await confirm({
+                title: "Delete chapter summary?",
+                description: `Are you sure you want to delete the summary for Chapter ${chapterNumber}?`,
+                actionLabel: "Delete summary",
+            }))
         ) {
             return;
         }
@@ -293,11 +298,11 @@ export default function EntityDetailSidebar({
                 } catch (e) {
                     console.error("Error parsing response:", e);
                 }
-                alert(`Error: ${errorMessage}`);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error updating entity:", error);
-            alert(
+            toast.error(
                 `Failed to update entity: ${error?.message || String(error)}`,
             );
         } finally {

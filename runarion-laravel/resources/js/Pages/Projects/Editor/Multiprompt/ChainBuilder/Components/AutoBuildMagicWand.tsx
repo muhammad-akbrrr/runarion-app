@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Loader2, Sparkles } from "lucide-react";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
 
 interface AutoBuildMagicWandProps {
     text: string;
@@ -56,7 +57,7 @@ export const AutoBuildMagicWand: React.FC<AutoBuildMagicWandProps> = ({
             }
         } catch (error) {
             console.error("Auto-Build Magic Wand error:", error);
-            alert(
+            toast.error(
                 `Failed to enhance prompt: ${error instanceof Error ? error.message : "Unknown error"}`,
             );
         } finally {

@@ -7,6 +7,7 @@ import type { ComponentType, ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Toaster } from '@/Components/ui/sonner';
 import CsrfTokenSync from '@/Components/CsrfTokenSync';
+import { ConfirmDialogProvider } from '@/Components/ConfirmDialogProvider';
 
 const appName = import.meta.env.VITE_APP_NAME || 'Laravel';
 type LayoutFunction = (page: ReactNode) => ReactNode;
@@ -26,7 +27,7 @@ createInertiaApp({
         const root = createRoot(el);
 
         root.render(
-            <>
+            <ConfirmDialogProvider>
                 <App {...props}>
                     {({ Component, props: pageProps, key }) => {
                         const PageComponent = Component as ReactComponentWithLayout;
@@ -71,7 +72,7 @@ createInertiaApp({
                     }}
                 </App>
                 <Toaster />
-            </>
+            </ConfirmDialogProvider>
         );
     },
     progress: {

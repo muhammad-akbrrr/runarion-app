@@ -25,6 +25,7 @@ import {
     DialogTitle,
 } from "@/Components/ui/dialog";
 import { ScrollArea } from "@/Components/ui/scroll-area";
+import { toast } from "sonner";
 import {
     HelpCircle,
     Plus,
@@ -1097,11 +1098,11 @@ export default function AdvisorTab({
                                                                 ].newText,
                                                             );
                                                         if (success) {
-                                                            alert(
+                                                            toast.success(
                                                                 "Edit applied!",
                                                             );
                                                         } else {
-                                                            alert(
+                                                            toast.info(
                                                                 "Could not find text to replace. The text may have changed.",
                                                             );
                                                         }

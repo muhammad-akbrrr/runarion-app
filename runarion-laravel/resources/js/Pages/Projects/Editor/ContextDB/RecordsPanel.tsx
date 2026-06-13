@@ -14,6 +14,8 @@ import RelationshipForm from "./RelationshipForm";
 import CollectionTypeForm from "./CollectionTypeForm";
 import EntityDetailSidebar from "./EntityDetailSidebar";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 interface Entity {
     vertex_id: string;  // String to avoid JS precision loss with large Apache AGE IDs
@@ -37,6 +39,7 @@ interface RecordsPanelProps {
 }
 
 export default function RecordsPanel({ workspaceId, projectId, onSavingChange }: RecordsPanelProps) {
+    const confirm = useConfirm();
     const [entities, setEntities] = useState<Entity[]>([]);
     const [relationships, setRelationships] = useState<Relationship[]>([]);
     const [loading, setLoading] = useState(true);
@@ -251,7 +254,13 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
     };
 
     const handleDeleteEntity = async (vertexId: string) => {
-        if (!confirm("Are you sure you want to delete this entity?")) {
+        if (
+            !(await confirm({
+                title: "Delete entity?",
+                description: "Are you sure you want to delete this entity?",
+                actionLabel: "Delete entity",
+            }))
+        ) {
             return;
         }
 
@@ -277,7 +286,9 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                 loadEntities();
                 loadRelationships(); // Reload relationships in case any were deleted
                 } else {
-                    alert(`Failed to delete entity: ${responseData.error || 'Unknown error'}`);
+                    toast.error(
+                        `Failed to delete entity: ${responseData.error || "Unknown error"}`,
+                    );
                 }
             } else {
                 let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
@@ -287,11 +298,11 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                     errorMessage = responseData.details.error || errorMessage;
                 }
                 console.error("Delete failed:", errorMessage, responseData);
-                alert(`Error deleting entity: ${errorMessage}`);
+                toast.error(`Error deleting entity: ${errorMessage}`);
             }
         } catch (error) {
             console.error("Error deleting entity:", error);
-            alert(`Failed to delete entity: ${error}`);
+            toast.error(`Failed to delete entity: ${error}`);
         } finally {
             onSavingChange?.(false);
         }
@@ -343,9 +354,11 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
 
             // Show results
             if (failCount === 0) {
-                alert(`Successfully deleted ${successCount} entity/entities.`);
+                toast.success(
+                    `Successfully deleted ${successCount} entity/entities.`,
+                );
             } else {
-                alert(
+                toast.info(
                     `Deleted ${successCount} entity/entities.\n` +
                     `Failed to delete ${failCount} entity/entities.\n\n` +
                     `Errors:\n${errors.slice(0, 5).join('\n')}${errors.length > 5 ? `\n... and ${errors.length - 5} more` : ''}`
@@ -353,7 +366,7 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
             }
         } catch (error) {
             console.error("Error in bulk delete:", error);
-            alert(`Failed to delete entities: ${error}`);
+            toast.error(`Failed to delete entities: ${error}`);
         } finally {
             onSavingChange?.(false);
         }
@@ -380,7 +393,13 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
     };
 
     const handleDeleteCollectionType = async (typeValue: string, typeLabel: string) => {
-        if (!confirm(`Are you sure you want to delete the "${typeLabel}" collection type? This cannot be undone.`)) {
+        if (
+            !(await confirm({
+                title: "Delete collection type?",
+                description: `Are you sure you want to delete the "${typeLabel}" collection type? This cannot be undone.`,
+                actionLabel: "Delete collection type",
+            }))
+        ) {
             return;
         }
 
@@ -403,7 +422,7 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                 );
 
                 if (!customType) {
-                    alert("Collection type not found");
+                    toast.info("Collection type not found");
                     return;
                 }
 
@@ -424,12 +443,16 @@ export default function RecordsPanel({ workspaceId, projectId, onSavingChange }:
                     }
                 } else {
                     const error = deleteResponse.data;
-                    alert(`Error: ${error.error || "Failed to delete collection type"}`);
+                    toast.error(
+                        error.error || "Failed to delete collection type",
+                    );
                 }
             }
         } catch (error: any) {
             console.error("Error deleting collection type:", error);
-            alert(`Failed to delete collection type: ${error?.message || String(error)}`);
+            toast.error(
+                `Failed to delete collection type: ${error?.message || String(error)}`,
+            );
         } finally {
             onSavingChange?.(false);
         }

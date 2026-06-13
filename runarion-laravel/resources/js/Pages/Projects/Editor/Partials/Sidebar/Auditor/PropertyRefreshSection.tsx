@@ -12,6 +12,8 @@ import { postJson } from "./utils";
 import CategoryEntityPicker, {
     type PickerMode,
 } from "./Shared/CategoryEntityPicker";
+import { toast } from "sonner";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 interface PropertyRefreshSectionProps extends SharedSectionProps {
     // Persisted state from parent
@@ -31,6 +33,7 @@ export default function PropertyRefreshSection({
     refreshResults,
     onRefreshResultsChange,
 }: PropertyRefreshSectionProps) {
+    const confirm = useConfirm();
     const [loadingRefresh, setLoadingRefresh] = useState(false);
 
     // Selection state
@@ -66,7 +69,13 @@ export default function PropertyRefreshSection({
             }.\n\nPrevious values will be backed up.\n\nContinue?`;
         }
 
-        if (!confirm(message)) {
+        if (
+            !(await confirm({
+                title: "Refresh entity properties?",
+                description: message,
+                actionLabel: "Refresh properties",
+            }))
+        ) {
             return;
         }
 
@@ -100,19 +109,19 @@ export default function PropertyRefreshSection({
                         errorMsg.includes("quota") ||
                         errorMsg.includes("RESOURCE_EXHAUSTED")
                     ) {
-                        alert(
+                        toast.error(
                             "API rate limit exceeded. Please wait a minute and try again, or use a paid API key.",
                         );
                     } else {
-                        alert(`Failed to refresh: ${errorMsg}`);
+                        toast.error(`Failed to refresh: ${errorMsg}`);
                     }
                 } catch {
-                    alert(`Failed to refresh: HTTP ${response.status}`);
+                    toast.error(`Failed to refresh: HTTP ${response.status}`);
                 }
             }
         } catch (error) {
             console.error("Error refreshing properties:", error);
-            alert(`Failed to refresh: ${error}`);
+            toast.error(`Failed to refresh: ${error}`);
         } finally {
             setLoadingRefresh(false);
         }

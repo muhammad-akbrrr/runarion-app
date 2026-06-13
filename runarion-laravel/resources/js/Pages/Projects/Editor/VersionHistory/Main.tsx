@@ -25,6 +25,7 @@ import { Clock, History, Loader2, Save, User } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { toast } from "sonner";
 import { http } from "@/Lib/http";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 interface SnapshotSummary {
     chapter_count: number;
@@ -62,6 +63,7 @@ export default function VersionHistoryPage({
     snapshots?: Snapshot[];
     summary: SnapshotSummary & { snapshot_count: number };
 }>) {
+    const confirm = useConfirm();
     const [localSnapshots, setLocalSnapshots] = useState<Snapshot[]>(snapshots);
     const [isSaveDialogOpen, setIsSaveDialogOpen] = useState(false);
     const [snapshotName, setSnapshotName] = useState("");
@@ -134,9 +136,12 @@ export default function VersionHistoryPage({
 
     const handleRestoreSnapshot = async (snapshotId: string) => {
         if (
-            !confirm(
-                "Restore this project snapshot? A pre-restore safety snapshot will be created automatically.",
-            )
+            !(await confirm({
+                title: "Restore project snapshot?",
+                description:
+                    "Restore this project snapshot? A pre-restore safety snapshot will be created automatically.",
+                actionLabel: "Restore snapshot",
+            }))
         ) {
             return;
         }

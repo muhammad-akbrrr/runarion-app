@@ -26,6 +26,7 @@ import { getSeverityColor, getIssueTypeColor, postJson } from "./utils";
 import { http } from "@/Lib/http";
 import StoryFixPreviewDialog from "./Shared/StoryFixPreviewDialog";
 import BatchStoryFixPreviewDialog from "./Shared/BatchStoryFixPreviewDialog";
+import { toast } from "sonner";
 
 interface StoryConsistencySectionProps {
     workspaceId: string;
@@ -147,19 +148,19 @@ export default function StoryConsistencySection({
                     });
                     setEditedStoryText(results.new_text || "");
                 } else {
-                    alert(
+                    toast.error(
                         `Failed to generate fix: ${data.error || "Unknown error"}`,
                     );
                 }
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to generate fix: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (error) {
             console.error("Error generating story fix:", error);
-            alert("Failed to generate fix");
+            toast.error("Failed to generate fix");
         } finally {
             setApplyingStoryFix(null);
         }
@@ -177,7 +178,7 @@ export default function StoryConsistencySection({
                 );
 
                 if (success) {
-                    alert(
+                    toast.success(
                         `Fix applied to ${storyTextPreview.chapterName}! The editor has been updated.`,
                     );
                     // Remove from list
@@ -192,7 +193,7 @@ export default function StoryConsistencySection({
                         return next;
                     });
                 } else {
-                    alert(
+                    toast.info(
                         `Could not find a match for the text. The chapter may have been edited since the fix was generated.`,
                     );
                 }
@@ -292,11 +293,11 @@ export default function StoryConsistencySection({
                             throw new Error("Failed to save chapter");
                         }
 
-                        alert(
+                        toast.success(
                             `Fix applied to ${storyTextPreview.chapterName}! Please refresh to see changes.`,
                         );
                     } else {
-                        alert(
+                        toast.info(
                             "Text not found in chapter. The fix may have already been applied or the text has changed.",
                         );
                     }
@@ -317,7 +318,7 @@ export default function StoryConsistencySection({
             setEditedStoryText("");
         } catch (error) {
             console.error("Error applying story fix:", error);
-            alert(
+            toast.error(
                 "Failed to apply fix: " +
                     (error instanceof Error ? error.message : "Unknown error"),
             );
@@ -326,7 +327,7 @@ export default function StoryConsistencySection({
 
     const handleApplyAllStorySelected = async () => {
         if (selectedStoryIssues.size === 0) {
-            alert("Please select at least one issue to fix");
+            toast.warning("Please select at least one issue to fix");
             return;
         }
 
@@ -374,19 +375,19 @@ export default function StoryConsistencySection({
                     setBatchFixes(fixItems);
                     setBatchDialogOpen(true);
                 } else if (data.results?.errors?.length > 0) {
-                    alert(
+                    toast.info(
                         `Some fixes could not be generated:\n${data.results.errors.join("\n")}`,
                     );
                 }
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to generate fixes: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (error) {
             console.error("Error generating batch fixes:", error);
-            alert("Failed to generate fixes");
+            toast.error("Failed to generate fixes");
         } finally {
             setApplyingAllStory(false);
         }
@@ -454,9 +455,9 @@ export default function StoryConsistencySection({
 
         // Show result
         if (failedFixes.length === 0) {
-            alert(`Successfully applied ${successCount} fixes!`);
+            toast.success(`Successfully applied ${successCount} fixes!`);
         } else {
-            alert(
+            toast.info(
                 `Applied ${successCount} fixes. Failed: ${failedFixes.join(", ")}`,
             );
         }

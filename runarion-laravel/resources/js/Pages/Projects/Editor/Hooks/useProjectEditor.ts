@@ -11,6 +11,7 @@ import {
 } from "../Utils/migrateAiRanges";
 import Echo from "@/echo";
 import { http, normalizeHttpError } from "@/Lib/http";
+import { toast } from "sonner";
 
 interface UseProjectEditorProps {
     workspaceId: string;
@@ -381,7 +382,7 @@ export function useProjectEditor({
             }
 
             // Show error alert
-            alert(error);
+            toast.error(error);
 
             // On error during regeneration, restore the original chapter content
             if (isRegenerating && selectedChapter) {
@@ -1138,7 +1139,7 @@ export function useProjectEditor({
                         safetyTimeoutRef.current = null;
                     }
 
-                    alert(
+                    toast.error(
                         normalizedError.data?.errors?.generation ||
                             "Failed to start generation. Please try again.",
                     );
@@ -1230,7 +1231,7 @@ export function useProjectEditor({
                         safetyTimeoutRef.current = null;
                     }
 
-                    alert(
+                    toast.error(
                         normalizedError.data?.errors?.generation ||
                             "Failed to start regeneration. Please try again.",
                     );

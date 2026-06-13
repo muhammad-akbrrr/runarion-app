@@ -10,6 +10,7 @@ import {
 } from "@/Components/ui/select";
 import { Input } from "@/Components/ui/input";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
 
 interface Entity {
     vertex_id: string; // String to avoid JS precision loss with large Apache AGE IDs
@@ -91,12 +92,12 @@ export default function RelationshipForm({
         e.preventDefault();
 
         if (!source || !target) {
-            alert("Please select both source and target entities");
+            toast.warning("Please select both source and target entities");
             return;
         }
 
         if (source === target) {
-            alert("Source and target entities must be different");
+            toast.warning("Source and target entities must be different");
             return;
         }
 
@@ -138,11 +139,11 @@ export default function RelationshipForm({
                 } catch (e) {
                     console.error("Error parsing response:", e);
                 }
-                alert(`Error: ${errorMessage}`);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error creating relationship:", error);
-            alert(
+            toast.error(
                 `Failed to create relationship: ${
                     error?.message || String(error)
                 }`

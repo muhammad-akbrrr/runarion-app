@@ -21,6 +21,8 @@ import EmotionalTonesManager from "./Components/EmotionalTonesManager";
 import AllRelationshipsView from "./Components/AllRelationshipsView";
 import OneToOneView from "./Components/OneToOneView";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 export default function RelationshipsTab({
     entity,
@@ -34,6 +36,7 @@ export default function RelationshipsTab({
     onRelationshipUpdated,
     onSavingChange,
 }: RelationshipsTabProps) {
+    const confirm = useConfirm();
     // View state
     const [viewMode, setViewMode] = useState<ViewMode>("all");
     const [selectedRelationship, setSelectedRelationship] =
@@ -161,6 +164,10 @@ export default function RelationshipsTab({
         return filtered;
     }, [entityRelationships, filterBy, searchQuery, sortBy, entity.name]);
 
+    const allVisibleSelected =
+        filteredAndSorted.length > 0 &&
+        filteredAndSorted.every((rel) => selectedEdgeIds.has(rel.edge_id));
+
     // Get all characters for 1-to-1 view
     const allCharacters = useMemo(() => {
         const chars = new Set<string>();
@@ -240,7 +247,7 @@ export default function RelationshipsTab({
 
         const finalType = useCustomType ? customType : editedType;
         if (!finalType.trim()) {
-            alert("Please enter a relationship type");
+            toast.warning("Please enter a relationship type");
             return;
         }
 
@@ -302,11 +309,11 @@ export default function RelationshipsTab({
                 } catch (e) {
                     console.error("Error parsing response:", e);
                 }
-                alert(`Error: ${errorMessage}`);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error updating relationship:", error);
-            alert(
+            toast.error(
                 `Failed to update relationship: ${error?.message || String(error)}`,
             );
         } finally {
@@ -354,7 +361,14 @@ export default function RelationshipsTab({
     };
 
     const handleDeleteRelationship = async (edgeId: string | number) => {
-        if (!confirm("Are you sure you want to delete this relationship?")) {
+        if (
+            !(await confirm({
+                title: "Delete relationship?",
+                description:
+                    "Are you sure you want to delete this relationship?",
+                actionLabel: "Delete relationship",
+            }))
+        ) {
             return;
         }
 
@@ -384,11 +398,11 @@ export default function RelationshipsTab({
                 } catch (e) {
                     console.error("Error parsing response:", e);
                 }
-                alert(`Error: ${errorMessage}`);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error deleting relationship:", error);
-            alert(
+            toast.error(
                 `Failed to delete relationship: ${error?.message || String(error)}`,
             );
         } finally {
@@ -463,9 +477,11 @@ export default function RelationshipsTab({
     const handleDeleteMultiple = async () => {
         if (selectedEdgeIds.size === 0) return;
         if (
-            !confirm(
-                `Are you sure you want to delete ${selectedEdgeIds.size} relationships?`,
-            )
+            !(await confirm({
+                title: "Delete selected relationships?",
+                description: `Are you sure you want to delete ${selectedEdgeIds.size} relationships?`,
+                actionLabel: "Delete relationships",
+            }))
         ) {
             return;
         }
@@ -505,7 +521,7 @@ export default function RelationshipsTab({
             onRelationshipDeleted();
         }
         if (errorCount > 0) {
-            alert(
+            toast.info(
                 `Deleted ${successCount} relationships. ${errorCount} failed.`,
             );
         }
@@ -513,7 +529,14 @@ export default function RelationshipsTab({
 
     // Interaction CRUD
     const handleDeleteInteraction = async (vertexId: string) => {
-        if (!confirm("Are you sure you want to delete this interaction?")) {
+        if (
+            !(await confirm({
+                title: "Delete interaction?",
+                description:
+                    "Are you sure you want to delete this interaction?",
+                actionLabel: "Delete interaction",
+            }))
+        ) {
             return;
         }
 
@@ -537,13 +560,13 @@ export default function RelationshipsTab({
                 );
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to delete interaction: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (e) {
             console.error("Error deleting interaction:", e);
-            alert("Failed to delete interaction");
+            toast.error("Failed to delete interaction");
         } finally {
             setDeletingInteraction(null);
             onSavingChange?.(false);
@@ -590,13 +613,13 @@ export default function RelationshipsTab({
                 setShowCreateInteraction(false);
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to create interaction: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (e) {
             console.error("Error creating interaction:", e);
-            alert("Failed to create interaction");
+            toast.error("Failed to create interaction");
         } finally {
             setCreatingInteraction(false);
             onSavingChange?.(false);
@@ -641,13 +664,13 @@ export default function RelationshipsTab({
                 setEditingInteraction(null);
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to update interaction: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (e) {
             console.error("Error updating interaction:", e);
-            alert("Failed to update interaction");
+            toast.error("Failed to update interaction");
         } finally {
             setSavingInteraction(false);
             onSavingChange?.(false);
@@ -688,13 +711,13 @@ export default function RelationshipsTab({
                 onRelationshipUpdated();
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to update chapters: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (e) {
             console.error("Error updating chapters:", e);
-            alert("Failed to update chapters");
+            toast.error("Failed to update chapters");
         } finally {
             setSavingChapter(false);
             onSavingChange?.(false);
@@ -703,7 +726,14 @@ export default function RelationshipsTab({
 
     const handleDeleteChapter = async (chapterNumber: number) => {
         if (!selectedRelationship) return;
-        if (!confirm("Are you sure you want to delete this chapter analysis?"))
+        if (
+            !(await confirm({
+                title: "Delete chapter analysis?",
+                description:
+                    "Are you sure you want to delete this chapter analysis?",
+                actionLabel: "Delete analysis",
+            }))
+        )
             return;
 
         setDeletingChapter(chapterNumber);
@@ -825,13 +855,13 @@ export default function RelationshipsTab({
                 setNewToneName("");
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to create tone: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (e) {
             console.error("Error creating emotional tone:", e);
-            alert("Failed to create emotional tone");
+            toast.error("Failed to create emotional tone");
         } finally {
             setCreatingTone(false);
             onSavingChange?.(false);
@@ -839,7 +869,14 @@ export default function RelationshipsTab({
     };
 
     const handleDeleteTone = async (toneId: number) => {
-        if (!confirm("Are you sure you want to delete this emotional tone?"))
+        if (
+            !(await confirm({
+                title: "Delete emotional tone?",
+                description:
+                    "Are you sure you want to delete this emotional tone?",
+                actionLabel: "Delete tone",
+            }))
+        )
             return;
 
         setDeletingTone(toneId);
@@ -861,13 +898,13 @@ export default function RelationshipsTab({
                 );
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to delete tone: ${error.error || "Unknown error"}`,
                 );
             }
         } catch (e) {
             console.error("Error deleting emotional tone:", e);
-            alert("Failed to delete emotional tone");
+            toast.error("Failed to delete emotional tone");
         } finally {
             setDeletingTone(null);
             onSavingChange?.(false);
@@ -882,9 +919,11 @@ export default function RelationshipsTab({
         const target = selectedRelationship.target;
 
         if (
-            !confirm(
-                `Re-analyze the relationship between ${source} and ${target}?\n\nThis will re-run the AI analysis across all chapters and update the stored data.`,
-            )
+            !(await confirm({
+                title: "Reassess relationship?",
+                description: `Re-analyze the relationship between ${source} and ${target}?\n\nThis will re-run the AI analysis across all chapters and update the stored data.`,
+                actionLabel: "Reassess relationship",
+            }))
         ) {
             return;
         }
@@ -903,7 +942,9 @@ export default function RelationshipsTab({
             );
 
             if (!sourceEntity || !targetEntity) {
-                alert("Could not find character entities for reassessment.");
+                toast.info(
+                    "Could not find character entities for reassessment.",
+                );
                 return;
             }
 
@@ -928,15 +969,17 @@ export default function RelationshipsTab({
             );
 
             if (response.status >= 200 && response.status < 300) {
-                alert(`✓ Successfully reassessed ${source} ↔ ${target}!`);
+                toast.success(`Successfully reassessed ${source} ↔ ${target}!`);
                 onRelationshipUpdated();
             } else {
                 const error = response.data;
-                alert(`Failed to reassess: ${error.error || "Unknown error"}`);
+                toast.error(
+                    `Failed to reassess: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (e: any) {
             console.error("Error reassessing relationship:", e);
-            alert(`Failed to reassess: ${e?.message || String(e)}`);
+            toast.error(`Failed to reassess: ${e?.message || String(e)}`);
         } finally {
             setReassessing(false);
             onSavingChange?.(false);
@@ -1056,6 +1099,7 @@ export default function RelationshipsTab({
                     {viewMode === "all" && (
                         <Button
                             size="sm"
+                            className="w-8 p-2"
                             variant={multiSelectMode ? "default" : "outline"}
                             onClick={() => {
                                 setMultiSelectMode(!multiSelectMode);
@@ -1072,7 +1116,7 @@ export default function RelationshipsTab({
                         </Button>
                     )}
                     <Button size="sm" onClick={onRelationshipCreated}>
-                        <Plus className="h-4 w-4 mr-2" />
+                        <Plus className="h-4 w-4" />
                         Add Relationship
                     </Button>
                 </div>
@@ -1080,26 +1124,22 @@ export default function RelationshipsTab({
 
             {/* Multi-select toolbar */}
             {multiSelectMode && viewMode === "all" && (
-                <div className="flex items-center justify-between bg-blue-50 p-2 rounded-lg border border-blue-200">
+                <div className="flex items-center justify-between bg-slate-50 p-2 rounded-md border border-slate-400">
                     <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-blue-800">
+                        <span className="text-sm justify-start font-medium">
                             {selectedEdgeIds.size} selected
                         </span>
                         <Button
                             size="sm"
-                            variant="ghost"
-                            onClick={selectAllVisible}
-                            className="text-xs h-6"
+                            variant="outline"
+                            onClick={
+                                allVisibleSelected
+                                    ? deselectAll
+                                    : selectAllVisible
+                            }
+                            className="text-xs p-1.5 h-auto"
                         >
-                            Select All
-                        </Button>
-                        <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={deselectAll}
-                            className="text-xs h-6"
-                        >
-                            Deselect All
+                            {allVisibleSelected ? "Deselect All" : "Select All"}
                         </Button>
                     </div>
                     <Button
@@ -1111,11 +1151,10 @@ export default function RelationshipsTab({
                         }
                     >
                         {deletingMultiple ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            <Loader2 className="h-4 w-4 animate-spin" />
                         ) : (
-                            <Trash2 className="h-4 w-4 mr-2" />
+                            <Trash2 className="h-4 w-4" />
                         )}
-                        Delete Selected
                     </Button>
                 </div>
             )}

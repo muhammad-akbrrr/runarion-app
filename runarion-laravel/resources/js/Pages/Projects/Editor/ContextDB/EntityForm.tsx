@@ -26,6 +26,8 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from "@/Components/ui/tooltip";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
+import { toast } from "sonner";
 
 // Baseline properties for each entity type (required by deconstructor)
 const BASELINE_PROPERTIES: Record<
@@ -313,6 +315,7 @@ export default function EntityForm({
     onCancel,
     onSavingChange,
 }: EntityFormProps) {
+    const confirm = useConfirm();
     const [name, setName] = useState("");
     const [type, setType] = useState("character");
     const [properties, setProperties] = useState<Record<string, any>>({});
@@ -410,7 +413,7 @@ export default function EntityForm({
         // Check if field is protected
         const protectedFields = PROTECTED_FIELDS[type] || [];
         if (protectedFields.includes(key)) {
-            alert(
+            toast.warning(
                 `Cannot remove "${key}" - this field is required by the deconstructor.`
             );
             return;
@@ -485,11 +488,13 @@ export default function EntityForm({
     };
 
     // Delete a specific summary
-    const handleDeleteSummary = (chapterNumber: number) => {
+    const handleDeleteSummary = async (chapterNumber: number) => {
         if (
-            !confirm(
-                `Are you sure you want to delete the summary for Chapter ${chapterNumber}?`
-            )
+            !(await confirm({
+                title: "Delete chapter summary?",
+                description: `Are you sure you want to delete the summary for Chapter ${chapterNumber}?`,
+                actionLabel: "Delete summary",
+            }))
         ) {
             return;
         }
@@ -550,11 +555,13 @@ export default function EntityForm({
                 } catch (e) {
                     console.error("Error parsing response:", e);
                 }
-                alert(`Error: ${errorMessage}`);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error saving entity:", error);
-            alert(`Failed to save entity: ${error?.message || String(error)}`);
+            toast.error(
+                `Failed to save entity: ${error?.message || String(error)}`,
+            );
         } finally {
             setSaving(false);
             onSavingChange?.(false);

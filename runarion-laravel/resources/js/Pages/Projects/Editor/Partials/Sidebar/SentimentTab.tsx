@@ -30,6 +30,8 @@ import { Checkbox } from "@/Components/ui/checkbox";
 import { Badge } from "@/Components/ui/badge";
 import { ScrollArea } from "@/Components/ui/scroll-area";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 import {
     HelpCircle,
     Play,
@@ -142,6 +144,7 @@ export default function SentimentTab({
     projectId,
     selectedModel,
 }: SentimentTabProps) {
+    const confirm = useConfirm();
     const [selectedCharacters, setSelectedCharacters] = useState<string[]>([]);
     const [, setUseAllCharacters] = useState<boolean>(true);
     const [focusMode, setFocusMode] = useState<"all" | "selected" | "1-to-1">(
@@ -259,7 +262,7 @@ export default function SentimentTab({
 
     const handleStart = () => {
         if (chapters.length === 0) {
-            alert("No chapters found. Please write some content first.");
+            toast.warning("No chapters found. Please write some content first.");
             return;
         }
         setShowConfirmDialog(true);
@@ -347,7 +350,7 @@ export default function SentimentTab({
 
                     // V2 success check
                     if (v2Relationships.length === 0) {
-                        alert(
+                        toast.info(
                             "No relationships could be analyzed. Make sure your characters appear together in the selected chapters."
                         );
                     }
@@ -375,14 +378,14 @@ export default function SentimentTab({
                     }
 
                     if ((data.interactions?.length || 0) === 0) {
-                        alert(
+                        toast.info(
                             "No interactions were detected in the selected chapters. Try selecting more chapters or check if your manuscript contains character interactions."
                         );
                     }
                 }
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to extract relationships: ${
                         error.error || "Unknown error"
                     }`
@@ -390,7 +393,7 @@ export default function SentimentTab({
             }
         } catch (error: any) {
             console.error("Error extracting relationships:", error);
-            alert(
+            toast.error(
                 `Failed to extract relationships: ${
                     error?.message || String(error)
                 }`
@@ -402,9 +405,12 @@ export default function SentimentTab({
 
     const handleDeleteAllInteractions = async () => {
         if (
-            !confirm(
-                "Are you sure you want to delete ALL interactions? This cannot be undone."
-            )
+            !(await confirm({
+                title: "Delete all interactions?",
+                description:
+                    "Are you sure you want to delete ALL interactions? This cannot be undone.",
+                actionLabel: "Delete interactions",
+            }))
         ) {
             return;
         }
@@ -428,12 +434,12 @@ export default function SentimentTab({
             if (response.status >= 200 && response.status < 300) {
                 const data = response.data;
                 if (data.deleted_count === 0) {
-                    alert(
+                    toast.info(
                         "No interactions to delete. The database is already clean!"
                     );
                 } else {
-                    alert(
-                        `✓ Deleted ${data.deleted_count} interactions successfully!`
+                    toast.success(
+                        `Deleted ${data.deleted_count} interactions successfully!`
                     );
                 }
                 setInteractions([]);
@@ -441,7 +447,7 @@ export default function SentimentTab({
                 setChapterResults([]);
             } else {
                 const error = response.data;
-                alert(
+                toast.error(
                     `Failed to delete interactions: ${
                         error.error || "Unknown error"
                     }`
@@ -449,7 +455,7 @@ export default function SentimentTab({
             }
         } catch (error: any) {
             console.error("Error deleting interactions:", error);
-            alert(
+            toast.error(
                 `Failed to delete interactions: ${
                     error?.message || String(error)
                 }`

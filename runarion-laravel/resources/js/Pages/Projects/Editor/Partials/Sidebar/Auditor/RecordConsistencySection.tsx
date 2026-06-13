@@ -25,6 +25,8 @@ import CategoryEntityPicker, {
     type PickerMode,
 } from "./Shared/CategoryEntityPicker";
 import RecordFixPreviewDialog from "./Shared/RecordFixPreviewDialog";
+import { toast } from "sonner";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 interface RecordConsistencySectionProps extends SharedSectionProps {
     // Persisted state from parent
@@ -44,6 +46,7 @@ export default function RecordConsistencySection({
     recordIssues,
     onRecordIssuesChange,
 }: RecordConsistencySectionProps) {
+    const confirm = useConfirm();
     const [loadingRecordCheck, setLoadingRecordCheck] = useState(false);
     const [selectedIssues, setSelectedIssues] = useState<Set<number>>(
         new Set(),
@@ -155,7 +158,7 @@ export default function RecordConsistencySection({
                         return next;
                     });
                 } else {
-                    alert(
+                    toast.error(
                         `Failed to apply fix: ${
                             data.error || results?.error || "Unknown error"
                         }`,
@@ -163,11 +166,13 @@ export default function RecordConsistencySection({
                 }
             } else {
                 const error = response.data;
-                alert(`Failed to apply fix: ${error.error || "Unknown error"}`);
+                toast.error(
+                    `Failed to apply fix: ${error.error || "Unknown error"}`,
+                );
             }
         } catch (error) {
             console.error("Error applying fix:", error);
-            alert("Failed to apply fix");
+            toast.error("Failed to apply fix");
         } finally {
             setApplyingFix(null);
         }
@@ -175,12 +180,16 @@ export default function RecordConsistencySection({
 
     const handleApplyAllSelected = async () => {
         if (selectedIssues.size === 0) {
-            alert("Please select at least one issue to fix");
+            toast.warning("Please select at least one issue to fix");
             return;
         }
 
         if (
-            !confirm(`Apply fixes for ${selectedIssues.size} selected issues?`)
+            !(await confirm({
+                title: "Apply selected fixes?",
+                description: `Apply fixes for ${selectedIssues.size} selected issues?`,
+                actionLabel: "Apply fixes",
+            }))
         ) {
             return;
         }
@@ -226,14 +235,16 @@ export default function RecordConsistencySection({
         }
 
         if (successCount > 0) {
-            alert(
+            toast.success(
                 `Applied ${successCount} fix(es) successfully${
                     failCount > 0 ? `, ${failCount} failed` : ""
                 }`,
             );
             handleRecordConsistencyCheck();
         } else {
-            alert(`Failed to apply any fixes. ${failCount} error(s) occurred.`);
+            toast.error(
+                `Failed to apply any fixes. ${failCount} error(s) occurred.`,
+            );
         }
 
         setSelectedIssues(new Set());

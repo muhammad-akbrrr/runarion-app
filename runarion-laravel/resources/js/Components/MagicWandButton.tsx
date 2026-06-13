@@ -7,6 +7,7 @@ import {
     TooltipTrigger,
 } from "@/Components/ui/tooltip";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
 
 export type EnhancementMode = 
     | 'story_text' 
@@ -164,7 +165,7 @@ export function MagicWandButton({
             });
             
             // Show user-friendly error
-            alert(`Enhancement failed: ${errorMessage}`);
+            toast.error(`Enhancement failed: ${errorMessage}`);
         } finally {
             setIsEnhancing(false);
         }

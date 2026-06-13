@@ -35,6 +35,8 @@ import {
 } from "./Services/chainService";
 import { router } from "@inertiajs/react";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 interface ChainBuilderProps {
     workspaceId: string;
@@ -69,6 +71,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
     onApplyResult,
     onLoadingChange,
 }) => {
+    const confirm = useConfirm();
     // Graph State - Combined for atomic updates (fixes edge selectability after auto-build)
     interface GraphState {
         nodes: GraphNode[];
@@ -788,7 +791,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
     const executeFlow = useCallback(async () => {
         if (isFlowRunning) return;
         if (detectCycles(nodes, edges)) {
-            alert(
+            toast.warning(
                 "Cannot run flow: Infinite loop detected! Please check your connections.",
             );
             return;
@@ -897,7 +900,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
             }
         } catch (error) {
             console.error("Error executing flow:", error);
-            alert(
+            toast.error(
                 "Error executing flow: " +
                     (error instanceof Error ? error.message : "Unknown error"),
             );
@@ -966,7 +969,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                             ? error.message
                             : "Unknown error",
                 });
-                alert(
+                toast.error(
                     "Node execution failed: " +
                         (error instanceof Error
                             ? error.message
@@ -1042,7 +1045,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
             }
         } catch (error) {
             console.error("Failed to build graph:", error);
-            alert(
+            toast.error(
                 "Failed to build graph: " +
                     (error instanceof Error ? error.message : "Unknown error"),
             );
@@ -1148,7 +1151,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
             }
         } catch (error) {
             console.error("Failed to refine selection:", error);
-            alert(
+            toast.error(
                 "Failed to refine selection: " +
                     (error instanceof Error ? error.message : "Unknown error"),
             );
@@ -1181,7 +1184,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
         if (hasExistingContent) {
             // Enhance existing content
             if (!wandSeed.trim()) {
-                alert(
+                toast.warning(
                     "Please enter enhancement instructions or leave empty to enhance automatically",
                 );
                 return;
@@ -1226,14 +1229,14 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                 console.error("Failed to enhance instruction:", error);
                 const errorMessage =
                     error instanceof Error ? error.message : "Unknown error";
-                alert(`Failed to enhance instruction: ${errorMessage}`);
+                toast.error(`Failed to enhance instruction: ${errorMessage}`);
             } finally {
                 setIsWandGenerating(false);
             }
         } else {
             // Create new prompt from seed
             if (!wandSeed.trim()) {
-                alert("Please enter a description of what you want to write");
+                toast.warning("Please enter a description of what you want to write");
                 return;
             }
 
@@ -1277,7 +1280,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                 console.error("Failed to generate instruction:", error);
                 const errorMessage =
                     error instanceof Error ? error.message : "Unknown error";
-                alert(`Failed to auto-generate instruction: ${errorMessage}`);
+                toast.error(`Failed to auto-generate instruction: ${errorMessage}`);
             } finally {
                 setIsWandGenerating(false);
             }
@@ -1333,7 +1336,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
     // Template handlers
     const handleSaveTemplate = useCallback(() => {
         if (!templateName.trim()) {
-            alert("Please enter a template name");
+            toast.warning("Please enter a template name");
             return;
         }
 
@@ -1363,11 +1366,14 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
     }, [templateName, nodes, edges, projectId, editingTemplateId, templates]);
 
     const handleLoadTemplate = useCallback(
-        (template: GraphTemplate) => {
+        async (template: GraphTemplate) => {
             if (
-                confirm(
-                    "Load this template? Current graph will be overwritten.",
-                )
+                await confirm({
+                    title: "Load template?",
+                    description:
+                        "Load this template? Current graph will be overwritten.",
+                    actionLabel: "Load template",
+                })
             ) {
                 const newState: GraphState = {
                     nodes: JSON.parse(JSON.stringify(template.nodes)),
@@ -1378,21 +1384,30 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                 saveToHistory(template.nodes, template.edges);
             }
         },
-        [saveToHistory],
+        [confirm, saveToHistory],
     );
 
-    const handleDeleteTemplate = useCallback((templateId: string) => {
-        if (confirm("Delete this template?")) {
+    const handleDeleteTemplate = useCallback(async (templateId: string) => {
+        if (
+            await confirm({
+                title: "Delete template?",
+                description: "Delete this template?",
+                actionLabel: "Delete template",
+            })
+        ) {
             setTemplates((prev) => prev.filter((t) => t.id !== templateId));
         }
-    }, []);
+    }, [confirm]);
 
     const handleEditTemplate = useCallback(
-        (template: GraphTemplate) => {
+        async (template: GraphTemplate) => {
             if (
-                confirm(
-                    "Load this template for editing? Current graph will be overwritten.",
-                )
+                await confirm({
+                    title: "Load template for editing?",
+                    description:
+                        "Load this template for editing? Current graph will be overwritten.",
+                    actionLabel: "Load template",
+                })
             ) {
                 const newState: GraphState = {
                     nodes: JSON.parse(JSON.stringify(template.nodes)),
@@ -1404,7 +1419,7 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                 saveToHistory(template.nodes, template.edges);
             }
         },
-        [saveToHistory],
+        [confirm, saveToHistory],
     );
 
     const handleStartNewTemplate = useCallback(() => {
@@ -1701,13 +1716,13 @@ export const ChainBuilder: React.FC<ChainBuilderProps> = ({
                                     error: "Unknown error",
                                 }));
                                 console.error("Failed to apply result:", error);
-                                alert(
+                                toast.error(
                                     `Failed to save content: ${error.error || "Please try again."}`,
                                 );
                             }
                         } catch (error) {
                             console.error("Error applying result:", error);
-                            alert("Failed to save content. Please try again.");
+                            toast.error("Failed to save content. Please try again.");
                         }
                     } else {
                         router.visit(

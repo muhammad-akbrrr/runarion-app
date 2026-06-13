@@ -40,6 +40,7 @@ import {
     Send,
 } from "lucide-react";
 import { MagicWandButton } from "@/Components/MagicWandButton";
+import { toast } from "sonner";
 
 interface UnifiedSelectionToolbarPluginProps {
     workspaceId: string;
@@ -754,7 +755,7 @@ export function UnifiedSelectionToolbarPlugin({
                 }
             } catch (error) {
                 console.error("Rewrite error:", error);
-                alert(
+                toast.error(
                     error instanceof Error
                         ? error.message
                         : "Failed to rewrite text",

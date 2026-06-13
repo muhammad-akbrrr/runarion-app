@@ -16,6 +16,7 @@ import { Textarea } from "@/Components/ui/textarea";
 import AuthenticatedLayout, {
     BreadcrumbItem,
 } from "@/Layouts/AuthenticatedLayout";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 import { http } from "@/Lib/http";
 import { PageProps, Project } from "@/types";
 import { Head, router } from "@inertiajs/react";
@@ -70,6 +71,7 @@ export default function ProjectBackups({
     snapshots,
     summary,
 }: Props) {
+    const confirm = useConfirm();
     const breadcrumbs: BreadcrumbItem[] = [
         { label: "Project Settings", path: "workspace.projects.edit" },
         { label: "Backups", path: "workspace.projects.edit.backups" },
@@ -147,9 +149,12 @@ export default function ProjectBackups({
 
     const handleRestoreSnapshot = async (snapshotId: string) => {
         if (
-            !confirm(
-                "Restore this project backup? A pre-restore snapshot will be created automatically before the restore starts.",
-            )
+            !(await confirm({
+                title: "Restore project backup?",
+                description:
+                    "Restore this project backup? A pre-restore snapshot will be created automatically before the restore starts.",
+                actionLabel: "Restore backup",
+            }))
         ) {
             return;
         }

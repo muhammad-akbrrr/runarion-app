@@ -41,6 +41,7 @@ import { isLexicalJSON, extractTextFromNode } from "./Utils/lexicalTextExtract";
 import { toast } from "sonner";
 import { useWorkspacePipelineEvents } from "@/Hooks/useWorkspacePipelineEvents";
 import { http } from "@/Lib/http";
+import { useConfirm } from "@/Components/ConfirmDialogProvider";
 
 /**
  * Calculate word count from content (handles both Lexical JSON and plain text)
@@ -81,6 +82,7 @@ export default function ProjectEditorPage({
     project: Project;
     chapters?: ProjectChapter[];
 }>) {
+    const confirm = useConfirm();
     const {
         authorStyles: rawAuthorStyles,
         projectPipelineLock: rawProjectPipelineLock,
@@ -284,9 +286,7 @@ export default function ProjectEditorPage({
     // Handler for adding a new chapter
     const handleAddChapterClick = async () => {
         if (isPipelineLocked) {
-            toast.error(
-                lockMessage,
-            );
+            toast.error(lockMessage);
             return;
         }
         if (!newChapterName.trim()) return;
@@ -356,9 +356,7 @@ export default function ProjectEditorPage({
 
     const handleSaveChapterEdit = async () => {
         if (isPipelineLocked) {
-            toast.error(
-                lockMessage,
-            );
+            toast.error(lockMessage);
             return;
         }
         if (!editingChapter || !editingChapterName.trim()) return;
@@ -398,15 +396,15 @@ export default function ProjectEditorPage({
     // Handle delete chapter
     const handleDeleteChapter = async (chapter: ProjectChapter) => {
         if (isPipelineLocked) {
-            toast.error(
-                lockMessage,
-            );
+            toast.error(lockMessage);
             return;
         }
         if (
-            !confirm(
-                `Are you sure you want to delete "${chapter.chapter_name}"? This cannot be undone.`,
-            )
+            !(await confirm({
+                title: "Delete chapter?",
+                description: `Are you sure you want to delete "${chapter.chapter_name}"? This cannot be undone.`,
+                actionLabel: "Delete chapter",
+            }))
         ) {
             return;
         }
@@ -427,11 +425,11 @@ export default function ProjectEditorPage({
                 router.reload();
             } else {
                 const error = response.data;
-                alert(error.error || "Failed to delete chapter");
+                toast.error(error.error || "Failed to delete chapter");
             }
         } catch (error: any) {
             console.error("Failed to delete chapter:", error);
-            alert("Failed to delete chapter. Please try again.");
+            toast.error("Failed to delete chapter. Please try again.");
         }
     };
 
@@ -449,9 +447,7 @@ export default function ProjectEditorPage({
         onSwitchVersion: versionControl.switchVersion,
         onRegenerate: () => {
             if (isPipelineLocked) {
-                toast.error(
-                    lockMessage,
-                );
+                toast.error(lockMessage);
                 return;
             }
             handleRegenerateText();
@@ -580,7 +576,7 @@ export default function ProjectEditorPage({
                             {projectPipelineLock.phase.replaceAll("_", " ")}.
                         </div>
                     )}
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between w-full max-w-360 ml-auto mr-auto">
                         {/* Left side - Menu items */}
                         <div
                             className="
@@ -820,7 +816,7 @@ export default function ProjectEditorPage({
                         </DialogContent>
                     </Dialog>
 
-                    <div className="flex-1 relative overflow-hidden">
+                    <div className="flex-1 relative overflow-hidden w-full max-w-360 ml-auto mr-auto">
                         <LexicalEditor
                             content={content}
                             setContent={setContent}
@@ -851,9 +847,7 @@ export default function ProjectEditorPage({
                             <EditorToolbar
                                 onSend={() => {
                                     if (isPipelineLocked) {
-                                        toast.error(
-                                            lockMessage,
-                                        );
+                                        toast.error(lockMessage);
                                         return;
                                     }
                                     // Get current editor content directly before generating

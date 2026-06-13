@@ -25,6 +25,7 @@ import { Checkbox } from "@/Components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/Components/ui/radio-group";
 import { HelpCircle, Play } from "lucide-react";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
 
 interface SummarizerTabProps {
     workspaceId: string;
@@ -259,7 +260,7 @@ export default function SummarizerTab({
             !enableRecordKeeper &&
             (selectedCategory === "none" || !selectedCategory)
         ) {
-            alert("Please enable Record Keeper or select a category");
+            toast.warning("Please enable Record Keeper or select a category");
             return;
         }
         if (
@@ -269,7 +270,7 @@ export default function SummarizerTab({
             analysisMode === "focused" &&
             selectedEntities.length === 0
         ) {
-            alert("Please select at least one entity for focused mode");
+            toast.warning("Please select at least one entity for focused mode");
             return;
         }
         setShowConfirmDialog(true);
@@ -362,7 +363,7 @@ export default function SummarizerTab({
                     message += `\n\n⚠️ No entries were created. This might mean:\n- Chapters don't have content yet\n- Chapter content is too short (< 100 characters)\n- Check Python logs for details`;
                 }
 
-                alert(message);
+                toast.info(message);
 
                 // Reload entities to show updated summaries
                 if (totalWork > 0) {
@@ -380,11 +381,11 @@ export default function SummarizerTab({
                         2
                     )}`;
                 }
-                alert(errorMessage);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error starting summarization:", error);
-            alert(
+            toast.error(
                 `Failed to start summarization: ${
                     error?.message || String(error)
                 }`

@@ -10,6 +10,7 @@ import {
     TooltipContent,
     TooltipTrigger,
 } from "@/Components/ui/tooltip";
+import { toast } from "sonner";
 
 interface Entity {
     vertex_id: string;  // String to avoid JS precision loss with large Apache AGE IDs
@@ -170,11 +171,13 @@ export default function SettingsTab({
                 } catch (e) {
                     console.error("Error parsing response:", e);
                 }
-                alert(`Error: ${errorMessage}`);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error saving settings:", error);
-            alert(`Failed to save settings: ${error?.message || String(error)}`);
+            toast.error(
+                `Failed to save settings: ${error?.message || String(error)}`,
+            );
         } finally {
             setSaving(false);
         }

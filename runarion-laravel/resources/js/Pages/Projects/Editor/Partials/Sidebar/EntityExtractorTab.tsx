@@ -24,6 +24,7 @@ import {
 import { Checkbox } from "@/Components/ui/checkbox";
 import { HelpCircle, Play } from "lucide-react";
 import { http } from "@/Lib/http";
+import { toast } from "sonner";
 
 interface EntityExtractorTabProps {
     workspaceId: string;
@@ -186,13 +187,13 @@ export default function EntityExtractorTab({
 
     const handleStart = () => {
         if (useAllCategories && collectionTypes.length === 0) {
-            alert(
+            toast.warning(
                 "No categories available. Please create some collection types first."
             );
             return;
         }
         if (!useAllCategories && selectedCategories.length === 0) {
-            alert("Please select at least one category");
+            toast.warning("Please select at least one category");
             return;
         }
         setShowConfirmDialog(true);
@@ -263,7 +264,7 @@ export default function EntityExtractorTab({
                     message += `\n\n⚠️ No entities were extracted. This might mean:\n- No entities of selected categories found in manuscript\n- Chapter content is too short\n- Check Python logs for details`;
                 }
 
-                alert(message);
+                toast.info(message);
 
                 // Reload entities to show new ones
                 if (created > 0 || updated > 0) {
@@ -286,11 +287,11 @@ export default function EntityExtractorTab({
                         2
                     )}`;
                 }
-                alert(errorMessage);
+                toast.error(errorMessage);
             }
         } catch (error: any) {
             console.error("Error extracting entities:", error);
-            alert(
+            toast.error(
                 `Failed to extract entities: ${error?.message || String(error)}`
             );
         } finally {
