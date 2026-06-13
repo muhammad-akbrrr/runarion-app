@@ -1,5 +1,5 @@
 import { Link } from "@inertiajs/react";
-import { Ellipsis } from "lucide-react";
+import { Ellipsis, Star } from "lucide-react";
 import { Badge } from "@/Components/ui/badge";
 import type { PipelineLock } from "@/types/project";
 import {
@@ -38,6 +38,8 @@ type ItemCardProps =
           item: ProjectItem;
           onDelete: (id: string, name: string) => void;
           onSettings: (id: string) => void;
+          onToggleFavorite: (id: string, isFavorite: boolean) => void;
+          isFavorite: boolean;
           workspaceId: string;
       };
 
@@ -107,7 +109,14 @@ export default function ItemCard(props: ItemCardProps) {
             </div>
         );
     } else {
-        const { item, onDelete, onSettings, workspaceId } = props;
+        const {
+            item,
+            onDelete,
+            onSettings,
+            onToggleFavorite,
+            isFavorite,
+            workspaceId,
+        } = props;
         const editorUrl = route("workspace.projects.editor", {
             workspace_id: workspaceId,
             project_id: item.id,
@@ -150,6 +159,22 @@ export default function ItemCard(props: ItemCardProps) {
                             align="end"
                             onClick={(e) => e.stopPropagation()}
                         >
+                            <DropdownMenuItem
+                                onClick={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    onToggleFavorite(item.id, isFavorite);
+                                }}
+                            >
+                                <Star
+                                    className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`}
+                                />
+                                <span>
+                                    {isFavorite
+                                        ? "Remove from favorites"
+                                        : "Add to favorites"}
+                                </span>
+                            </DropdownMenuItem>
                             <DropdownMenuItem
                                 disabled={isLocked}
                                 onClick={(e) => {

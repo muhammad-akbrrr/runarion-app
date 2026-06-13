@@ -45,11 +45,18 @@ import React, { PropsWithChildren } from "react";
 import { RouteParams } from "../../../vendor/tightenco/ziggy/src/js";
 import ProjectSettingsSidebar from "./Partials/ProjectSettingsSidebar";
 import SettingsSidebar from "./Partials/SettingsSidebar";
+import type { PageProps } from "@/types";
 
 export interface BreadcrumbItem {
     label: string;
     path: string;
     param?: RouteParams<string>;
+}
+
+interface FavoriteProject {
+    id: string;
+    name: string;
+    workspace_id: string;
 }
 
 interface SidebarItem {
@@ -67,13 +74,19 @@ export default function AuthenticatedLayout({
 }: PropsWithChildren<{
     breadcrumbs: BreadcrumbItem[];
 }>) {
-    const { auth, workspaces, workspace_switching } = usePage().props;
+    const { auth, workspaces, workspace_switching, favorite_projects } =
+        usePage<
+            PageProps<{
+                workspace_switching?: boolean;
+                favorite_projects?: FavoriteProject[];
+            }>
+        >().props;
     const user = auth.user;
     const workspaceId = user.last_workspace_id;
     const projectId = route().params.project_id as string | undefined;
 
     const currentWorkspace = workspaces.find(
-        (workspace) => workspace.id === workspaceId
+        (workspace) => workspace.id === workspaceId,
     );
     const workspaceName = currentWorkspace?.name;
 
@@ -147,17 +160,20 @@ export default function AuthenticatedLayout({
             : {
                   ...item,
                   path: "raw." + item.path,
-              }
+              },
     );
 
-    const dummyFavoriteItems: SidebarItem[] = [
-        { label: "The Three Musketeers" },
-        { label: "The Count of Monte Cristo" },
-    ].map((item) => ({
-        ...item,
-        icon: Star,
-        path: "",
-    }));
+    const favoriteItems: SidebarItem[] = (favorite_projects ?? []).map(
+        (item) => ({
+            label: item.name,
+            icon: Star,
+            path: "workspace.projects.editor",
+            param: {
+                workspace_id: item.workspace_id,
+                project_id: item.id,
+            },
+        }),
+    );
 
     const openSettings =
         route().current("workspace.edit*") ||
@@ -216,24 +232,13 @@ export default function AuthenticatedLayout({
                     {openSettings || openProjectSettings ? (
                         <div
                             className="w-full h-12 flex items-center gap-2 rounded hover:bg-gray-100 cursor-pointer"
-                            onClick={() =>
-                                router.get(
-                                    openProjectSettings
-                                        ? route("workspace.projects", {
-                                              workspace_id: workspaceId,
-                                          })
-                                        : route("workspace.dashboard", {
-                                              workspace_id: workspaceId,
-                                          })
-                                )
-                            }
+                            onClick={() => {
+                                window.history.back();
+                                return;
+                            }}
                         >
                             <ChevronLeft className="h-4 w-4 ml-1" />
-                            <div>
-                                {openProjectSettings
-                                    ? "All Projects"
-                                    : "Back to Dashboard"}
-                            </div>
+                            <div>Go Back</div>
                         </div>
                     ) : (
                         <DropdownMenu>
@@ -241,12 +246,17 @@ export default function AuthenticatedLayout({
                                 <div className="w-full h-12 rounded flex items-center gap-2 px-2 cursor-pointer hover:bg-gray-100">
                                     <Avatar>
                                         <AvatarImage
-                                            src={currentWorkspace?.cover_image_url || undefined}
+                                            src={
+                                                currentWorkspace?.cover_image_url ||
+                                                undefined
+                                            }
                                             alt={workspaceName}
                                             className="object-cover object-center"
                                         />
                                         <AvatarFallback>
-                                            {workspaceName?.substring(0, 2).toUpperCase()}
+                                            {workspaceName
+                                                ?.substring(0, 2)
+                                                .toUpperCase()}
                                         </AvatarFallback>
                                     </Avatar>
                                     <div className="flex-1 overflow-hidden text-left">
@@ -260,10 +270,7 @@ export default function AuthenticatedLayout({
                                     <ChevronDown className="h-4 w-4" />
                                 </div>
                             </DropdownMenuTrigger>
-                            <DropdownMenuContent
-                                align="start"
-                                className="w-[240px]"
-                            >
+                            <DropdownMenuContent align="start" className="w-60">
                                 {workspaces.map((workspace) => (
                                     <DropdownMenuItem
                                         key={workspace.id}
@@ -283,10 +290,8 @@ export default function AuthenticatedLayout({
                     {!openSettings && !openProjectSettings && (
                         <>
                             {renderSidebarGroup("Dashboard", dashboardItems)}
-                            {renderSidebarGroup(
-                                "Favorites",
-                                dummyFavoriteItems
-                            )}
+                            {favoriteItems.length > 0 &&
+                                renderSidebarGroup("Favorites", favoriteItems)}
                         </>
                     )}
 
@@ -351,7 +356,7 @@ export default function AuthenticatedLayout({
                                                         item.path
                                                             ? route(
                                                                   item.path,
-                                                                  item.param
+                                                                  item.param,
                                                               )
                                                             : "#"
                                                     }

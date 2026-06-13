@@ -12,6 +12,11 @@ export type PageProps<
         csrf_token: string;
     };
     workspaces: SimpleWorkspace[];
+    favorite_projects?: {
+        id: string;
+        name: string;
+        workspace_id: string;
+    }[];
     flash?: {
         success?: string | null;
         error?: string | null;

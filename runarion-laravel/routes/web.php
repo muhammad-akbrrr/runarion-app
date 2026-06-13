@@ -32,6 +32,8 @@ Route::middleware(['auth', 'workspace'])->group(function () {
     Route::post('/{workspace_id}/projects/folder', [ProjectController::class, 'storeFolder'])->name('workspace.folders.store');
     Route::post('/{workspace_id}/projects', [ProjectController::class, 'storeProject'])->name('workspace.projects.store');
     Route::get('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'openFolder'])->name('workspace.folders.open');
+    Route::post('/{workspace_id}/projects/{project_id}/favorite', [ProjectController::class, 'favoriteProject'])->name('workspace.projects.favorite');
+    Route::delete('/{workspace_id}/projects/{project_id}/favorite', [ProjectController::class, 'unfavoriteProject'])->name('workspace.projects.unfavorite');
     Route::delete('/{workspace_id}/projects/{project_id}', [ProjectController::class, 'destroyProject'])->middleware('project-unlocked')->name('workspace.projects.destroy');
     Route::delete('/{workspace_id}/projects/folder/{folder_id}', [ProjectController::class, 'destroyFolder'])->name('workspace.folders.destroy');
 

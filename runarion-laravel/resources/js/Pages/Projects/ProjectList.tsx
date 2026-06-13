@@ -45,7 +45,7 @@ export default function ProjectList({
         author?: { id: number; name: string };
     } | null;
 }>) {
-    const { flash } = usePage<PageProps>().props;
+    const { flash, auth } = usePage<PageProps>().props;
     const [open, setOpen] = useState(false);
     const [folderName, setFolderName] = useState("");
     const [loading, setLoading] = useState(false);
@@ -123,6 +123,18 @@ export default function ProjectList({
         ...item,
         param: { workspace_id: workspaceId },
     }));
+
+    const favoriteProjectIds = useMemo(
+        () =>
+            new Set(
+                (auth.user.highlighted_projects ?? [])
+                    .filter(
+                        (project) => project.workspace_id === workspaceId,
+                    )
+                    .map((project) => project.project_id),
+            ),
+        [auth.user.highlighted_projects, workspaceId],
+    );
 
     const handleAddFolder = async () => {
         if (!folderName.trim()) return;
@@ -228,6 +240,34 @@ export default function ProjectList({
                 workspace_id: workspaceId,
                 project_id: projectId,
             }),
+        );
+    };
+
+    const handleToggleFavorite = (
+        projectId: string,
+        isFavorite: boolean,
+    ) => {
+        const routeParams = {
+            workspace_id: workspaceId,
+            project_id: projectId,
+        };
+
+        if (isFavorite) {
+            router.delete(route("workspace.projects.unfavorite", routeParams), {
+                preserveScroll: true,
+                preserveState: true,
+            });
+
+            return;
+        }
+
+        router.post(
+            route("workspace.projects.favorite", routeParams),
+            {},
+            {
+                preserveScroll: true,
+                preserveState: true,
+            },
         );
     };
 
@@ -378,6 +418,12 @@ export default function ProjectList({
                                         item={project}
                                         onDelete={openDeleteDialog}
                                         onSettings={openProjectSettings}
+                                        onToggleFavorite={
+                                            handleToggleFavorite
+                                        }
+                                        isFavorite={favoriteProjectIds.has(
+                                            project.id,
+                                        )}
                                         workspaceId={workspaceId}
                                     />
                                 ))
@@ -540,6 +586,12 @@ export default function ProjectList({
                                             item={project}
                                             onDelete={openDeleteDialog}
                                             onSettings={openProjectSettings}
+                                            onToggleFavorite={
+                                                handleToggleFavorite
+                                            }
+                                            isFavorite={favoriteProjectIds.has(
+                                                project.id,
+                                            )}
                                             workspaceId={workspaceId}
                                         />
                                     ))
@@ -566,6 +618,12 @@ export default function ProjectList({
                                             item={project}
                                             onDelete={openDeleteDialog}
                                             onSettings={openProjectSettings}
+                                            onToggleFavorite={
+                                                handleToggleFavorite
+                                            }
+                                            isFavorite={favoriteProjectIds.has(
+                                                project.id,
+                                            )}
                                             workspaceId={workspaceId}
                                         />
                                     ))

@@ -32,6 +32,7 @@ class HandleInertiaRequests extends Middleware
     public function share(Request $request): array
     {
         $user = $request->user();
+        $activeWorkspaceId = $request->route('workspace_id') ?: $user?->last_workspace_id;
 
         $workspaces = $user ? DB::table('workspace_members')
             ->where('user_id', $user->id)
@@ -47,6 +48,9 @@ class HandleInertiaRequests extends Middleware
                 'csrf_token' => csrf_token(),
             ],
             'workspaces' => $workspaces,
+            'favorite_projects' => $user && $activeWorkspaceId
+                ? $this->resolveFavoriteProjects($user->highlighted_projects ?? [], $activeWorkspaceId)
+                : [],
             'flash' => [
                 'success' => fn () => $request->session()->get('success'),
                 'error' => fn () => $request->session()->get('error'),
@@ -73,6 +77,47 @@ class HandleInertiaRequests extends Middleware
         }
 
         return $shared;
+    }
+
+    /**
+     * @param  array<int, array<string, mixed>>  $highlightedProjects
+     * @return array<int, array{id: string, name: string, workspace_id: string}>
+     */
+    private function resolveFavoriteProjects(array $highlightedProjects, string $workspaceId): array
+    {
+        $workspaceFavorites = collect($highlightedProjects)
+            ->filter(fn ($project) => ($project['workspace_id'] ?? null) === $workspaceId)
+            ->values();
+
+        if ($workspaceFavorites->isEmpty()) {
+            return [];
+        }
+
+        $projectMap = DB::table('projects')
+            ->where('workspace_id', $workspaceId)
+            ->where('is_active', true)
+            ->whereIn('id', $workspaceFavorites->pluck('project_id')->all())
+            ->select('id', 'name', 'workspace_id')
+            ->get()
+            ->keyBy('id');
+
+        return $workspaceFavorites
+            ->map(function (array $favorite) use ($projectMap) {
+                $project = $projectMap->get($favorite['project_id'] ?? null);
+
+                if (! $project) {
+                    return null;
+                }
+
+                return [
+                    'id' => $project->id,
+                    'name' => $project->name,
+                    'workspace_id' => $project->workspace_id,
+                ];
+            })
+            ->filter()
+            ->values()
+            ->all();
     }
 
     /**

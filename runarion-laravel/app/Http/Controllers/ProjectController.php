@@ -248,6 +248,58 @@ class ProjectController extends Controller
         }
     }
 
+    public function favoriteProject(Request $request, string $workspace_id, string $project_id): RedirectResponse
+    {
+        $project = Projects::where('workspace_id', $workspace_id)
+            ->where('id', $project_id)
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        $user = $request->user();
+        $highlightedProjects = collect($user->highlighted_projects ?? []);
+        $alreadyFavorited = $highlightedProjects->contains(function ($favorite) use ($workspace_id, $project_id) {
+            return ($favorite['workspace_id'] ?? null) === $workspace_id
+                && ($favorite['project_id'] ?? null) === $project_id;
+        });
+
+        if (! $alreadyFavorited) {
+            $highlightedProjects->push([
+                'created_at' => now()->toIso8601String(),
+                'project_id' => $project->id,
+                'workspace_id' => $workspace_id,
+            ]);
+
+            $user->forceFill([
+                'highlighted_projects' => $highlightedProjects->values()->all(),
+            ])->save();
+        }
+
+        return back()->with('success', sprintf('"%s" added to favorites.', $project->name));
+    }
+
+    public function unfavoriteProject(Request $request, string $workspace_id, string $project_id): RedirectResponse
+    {
+        $project = Projects::where('workspace_id', $workspace_id)
+            ->where('id', $project_id)
+            ->where('is_active', true)
+            ->firstOrFail();
+
+        $user = $request->user();
+        $highlightedProjects = collect($user->highlighted_projects ?? [])
+            ->reject(function ($favorite) use ($workspace_id, $project_id) {
+                return ($favorite['workspace_id'] ?? null) === $workspace_id
+                    && ($favorite['project_id'] ?? null) === $project_id;
+            })
+            ->values()
+            ->all();
+
+        $user->forceFill([
+            'highlighted_projects' => $highlightedProjects === [] ? null : $highlightedProjects,
+        ])->save();
+
+        return back()->with('success', sprintf('"%s" removed from favorites.', $project->name));
+    }
+
     /**
      * Delete a project from the workspace.
      */
